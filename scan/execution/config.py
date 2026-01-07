@@ -113,21 +113,22 @@ def get_llm_config() -> LLMConfig:
     )
 
 
-def validate_config() -> list[str]:
+def validate_config(require_imap: bool = True) -> list[str]:
     """
     Validate that all required configuration is present.
     Returns list of missing/invalid config items.
     """
     errors = []
 
-    # Check IMAP config
-    imap = get_imap_config()
-    if not imap.server:
-        errors.append("IMAP_SERVER is not set")
-    if not imap.username:
-        errors.append("IMAP_USERNAME is not set")
-    if not imap.password:
-        errors.append("IMAP_PASSWORD is not set")
+    if require_imap:
+        # Check IMAP config
+        imap = get_imap_config()
+        if not imap.server:
+            errors.append("IMAP_SERVER is not set")
+        if not imap.username:
+            errors.append("IMAP_USERNAME is not set")
+        if not imap.password:
+            errors.append("IMAP_PASSWORD is not set")
 
     # Check PDF config (only validate Docling URL if using Docling)
     pdf = get_pdf_config()

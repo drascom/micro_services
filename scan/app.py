@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query, Depends, status
+from fastapi import FastAPI, HTTPException, Query, Depends, File, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -96,54 +96,7 @@ def extract_text_from_pdf(pdf_content: bytes, filename: str) -> tuple[str, Optio
     return "", f"Unknown PDF extraction method: {pdf_config.method}"
 
 
-def process_questionnaire(email_uid: str) -> ProcessingResult:
-    config_errors = validate_config()
-    if config_errors:
-        return ProcessingResult(
-            status="error",
-            email_uid=email_uid,
-            message=f"Configuration errors: {'; '.join(config_errors)}",
-        )
-
-    fetch_result = fetch_attachments(email_uid)
-
-    if fetch_result.status == "error":
-        return ProcessingResult(
-            status="error",
-            email_uid=email_uid,
-            message=fetch_result.message,
-        )
-
-    if fetch_result.status == "not_found":
-        return ProcessingResult(
-            status="error",
-            email_uid=email_uid,
-            message=f"Email with UID {email_uid} not found",
-        )
-
-    if not fetch_result.attachments:
-        return ProcessingResult(
-            status="no_actionable_document",
-            email_uid=email_uid,
-            message="No PDF attachments found in email",
-        )
-
-    questionnaire_pdfs = [a for a in fetch_result.attachments if a.get("is_questionnaire")]
-    selected_pdf = questionnaire_pdfs[0] if questionnaire_pdfs else fetch_result.attachments[0]
-
-    filename = selected_pdf["filename"]
-    pdf_content_b64 = selected_pdf["content_base64"]
-
-    try:
-        pdf_content = base64.b64decode(pdf_content_b64)
-    except Exception as exc:
-        return ProcessingResult(
-            status="error",
-            email_uid=email_uid,
-            source_filename=filename,
-            message=f"Failed to decode PDF content: {str(exc)}",
-        )
-
+def process_pdf_content(email_uid: str, filename: str, pdf_content: bytes) -> ProcessingResult:
     extracted_text, extraction_error = extract_text_from_pdf(pdf_content, filename)
 
     if extraction_error:
@@ -201,6 +154,57 @@ def process_questionnaire(email_uid: str) -> ProcessingResult:
         source_filename=filename,
         data=extracted_data,
     )
+
+
+def process_questionnaire(email_uid: str) -> ProcessingResult:
+    config_errors = validate_config()
+    if config_errors:
+        return ProcessingResult(
+            status="error",
+            email_uid=email_uid,
+            message=f"Configuration errors: {'; '.join(config_errors)}",
+        )
+
+    fetch_result = fetch_attachments(email_uid)
+
+    if fetch_result.status == "error":
+        return ProcessingResult(
+            status="error",
+            email_uid=email_uid,
+            message=fetch_result.message,
+        )
+
+    if fetch_result.status == "not_found":
+        return ProcessingResult(
+            status="error",
+            email_uid=email_uid,
+            message=f"Email with UID {email_uid} not found",
+        )
+
+    if not fetch_result.attachments:
+        return ProcessingResult(
+            status="no_actionable_document",
+            email_uid=email_uid,
+            message="No PDF attachments found in email",
+        )
+
+    questionnaire_pdfs = [a for a in fetch_result.attachments if a.get("is_questionnaire")]
+    selected_pdf = questionnaire_pdfs[0] if questionnaire_pdfs else fetch_result.attachments[0]
+
+    filename = selected_pdf["filename"]
+    pdf_content_b64 = selected_pdf["content_base64"]
+
+    try:
+        pdf_content = base64.b64decode(pdf_content_b64)
+    except Exception as exc:
+        return ProcessingResult(
+            status="error",
+            email_uid=email_uid,
+            source_filename=filename,
+            message=f"Failed to decode PDF content: {str(exc)}",
+        )
+
+    return process_pdf_content(email_uid, filename, pdf_content)
 
 
 class ScanRequest(BaseModel):
@@ -402,6 +406,12 @@ HTML_PAGE = """<!DOCTYPE html>
       <button id=\"submitBtn\" onclick=\"runScan()\">Run Scan</button>
       <pre id=\"result\">Waiting for scan...</pre>
     </div>
+    <div class=\"card\">
+      <label for=\"pdfFiles\">Upload PDF(s)</label>
+      <input id=\"pdfFiles\" type=\"file\" accept=\"application/pdf,.pdf\" multiple />
+      <button id=\"fileSubmitBtn\" onclick=\"runFileScan()\">Run File Scan</button>
+      <pre id=\"fileResult\">Waiting for file scan...</pre>
+    </div>
   </div>
 
   <script>
@@ -476,6 +486,8 @@ HTML_PAGE = """<!DOCTYPE html>
       document.getElementById('loginModal').classList.add('active');
       document.getElementById('currentUser').textContent = '';
       document.getElementById('result').textContent = 'Waiting for scan...';
+      document.getElementById('fileResult').textContent = 'Waiting for file scan...';
+      document.getElementById('pdfFiles').value = '';
     }
 
     async function runScan() {
@@ -505,6 +517,59 @@ HTML_PAGE = """<!DOCTYPE html>
         if (!response.ok) {
           if (response.status === 401) {
             // Invalid token - clear storage and show login
+            localStorage.removeItem('session_token');
+            localStorage.removeItem('username');
+            document.getElementById('loginModal').classList.add('active');
+            resultEl.textContent = JSON.stringify({ error: 'Session expired. Please login again.' }, null, 2);
+          } else {
+            resultEl.textContent = JSON.stringify({ error: data.detail || data }, null, 2);
+          }
+          return;
+        }
+
+        resultEl.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        resultEl.textContent = JSON.stringify({ error: err.message }, null, 2);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function runFileScan() {
+      const filesInput = document.getElementById('pdfFiles');
+      const files = filesInput.files;
+      const token = localStorage.getItem('session_token');
+      const resultEl = document.getElementById('fileResult');
+      const btn = document.getElementById('fileSubmitBtn');
+
+      if (!files || files.length === 0) {
+        resultEl.textContent = 'Please select at least one PDF file.';
+        return;
+      }
+
+      if (!token) {
+        resultEl.textContent = 'Please login first.';
+        document.getElementById('loginModal').classList.add('active');
+        return;
+      }
+
+      const formData = new FormData();
+      for (const file of files) {
+        formData.append('files', file);
+      }
+
+      btn.disabled = true;
+      resultEl.textContent = 'Uploading and scanning...';
+
+      try {
+        const response = await fetch(`/scanbyfile?token=${encodeURIComponent(token)}`, {
+          method: 'POST',
+          body: formData
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          if (response.status === 401) {
             localStorage.removeItem('session_token');
             localStorage.removeItem('username');
             document.getElementById('loginModal').classList.add('active');
@@ -554,6 +619,86 @@ def scan_uid(uid: str = Query(..., min_length=1), username: str = Depends(verify
 def scan_uid_post(payload: ScanRequest, username: str = Depends(verify_token)):
     result = process_questionnaire(payload.uid)
     return JSONResponse(content=asdict(result))
+
+
+def is_pdf_upload(upload: UploadFile) -> bool:
+    filename = (upload.filename or "").lower()
+    if filename.endswith(".pdf"):
+        return True
+    return upload.content_type == "application/pdf"
+
+
+def close_upload(upload: UploadFile) -> None:
+    try:
+        upload.file.close()
+    except Exception:
+        pass
+
+
+@app.post("/scanbyfile")
+def scan_by_file(
+    files: list[UploadFile] = File(...),
+    username: str = Depends(verify_token),
+):
+    config_errors = validate_config(require_imap=False)
+    results = []
+
+    for upload in files:
+        filename = upload.filename or "unknown"
+
+        if config_errors:
+            results.append(
+                ProcessingResult(
+                    status="error",
+                    email_uid="direct_upload",
+                    source_filename=filename,
+                    message=f"Configuration errors: {'; '.join(config_errors)}",
+                )
+            )
+            close_upload(upload)
+            continue
+
+        if not is_pdf_upload(upload):
+            results.append(
+                ProcessingResult(
+                    status="error",
+                    email_uid="direct_upload",
+                    source_filename=filename,
+                    message="Only PDF files are supported",
+                )
+            )
+            close_upload(upload)
+            continue
+
+        try:
+            pdf_content = upload.file.read()
+        except Exception as exc:
+            results.append(
+                ProcessingResult(
+                    status="error",
+                    email_uid="direct_upload",
+                    source_filename=filename,
+                    message=f"Failed to read uploaded file: {str(exc)}",
+                )
+            )
+            continue
+        finally:
+            close_upload(upload)
+
+        if not pdf_content:
+            results.append(
+                ProcessingResult(
+                    status="error",
+                    email_uid="direct_upload",
+                    source_filename=filename,
+                    message="Uploaded file is empty",
+                )
+            )
+            continue
+
+        results.append(process_pdf_content("direct_upload", filename, pdf_content))
+
+    return JSONResponse(content=[asdict(result) for result in results])
 
 
 @app.get("/health")
