@@ -12,9 +12,10 @@ if [ -f /etc/debian_version ]; then
     ${APT_PREFIX} apt-get update
     ${APT_PREFIX} apt-get install -y python3 curl ca-certificates
   fi
-  if ! python3 -m venv --help >/dev/null 2>&1; then
+  if ! python3 -c "import ensurepip" >/dev/null 2>&1; then
+    PY_MINOR="$(python3 -c 'import sys; print(f\"{sys.version_info.major}.{sys.version_info.minor}\")')"
     ${APT_PREFIX} apt-get update
-    ${APT_PREFIX} apt-get install -y python3-venv
+    ${APT_PREFIX} apt-get install -y "python${PY_MINOR}-venv" python3-venv
   fi
 else
   if ! command -v python3 >/dev/null 2>&1; then
@@ -47,6 +48,10 @@ if [ -n "${UV_BIN}" ]; then
   if [ ! -d "${SCRIPT_DIR}/venv" ]; then
     "${UV_BIN}" venv "${SCRIPT_DIR}/venv"
   fi
+fi
+
+if [ -d "${SCRIPT_DIR}/venv" ] && [ ! -f "${SCRIPT_DIR}/venv/bin/activate" ]; then
+  rm -rf "${SCRIPT_DIR}/venv"
 fi
 
 if [ ! -f "${SCRIPT_DIR}/venv/bin/activate" ]; then
