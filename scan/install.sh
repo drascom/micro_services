@@ -46,6 +46,11 @@ if [ -z "${UV_BIN}" ] && [ -x "${HOME}/.local/bin/uv" ]; then
   UV_BIN="${HOME}/.local/bin/uv"
 fi
 
+if [ ! -f "${SCRIPT_DIR}/.env" ] && [ -f "${SCRIPT_DIR}/.env.example" ]; then
+  cp "${SCRIPT_DIR}/.env.example" "${SCRIPT_DIR}/.env"
+  echo "Created ${SCRIPT_DIR}/.env from .env.example. Edit it with your real values."
+fi
+
 if [ -n "${UV_BIN}" ]; then
   if [ ! -d "${SCRIPT_DIR}/venv" ]; then
     "${UV_BIN}" venv "${SCRIPT_DIR}/venv"
@@ -100,6 +105,9 @@ EOF
     echo "Service ${SERVICE_NAME} failed to start." >&2
     exit 1
   fi
+
+  echo "Service status: sudo systemctl status ${SERVICE_NAME}"
+  echo "After updating .env, run: sudo systemctl restart ${SERVICE_NAME}"
 else
   echo "systemctl not found; skipping service installation." >&2
   exit 1
