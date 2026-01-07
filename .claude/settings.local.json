@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(source venv/bin/activate)",
+      "Bash(python -c:*)",
+      "Bash(./venv/bin/python:*)"
+    ]
+  }
+}

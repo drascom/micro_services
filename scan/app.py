@@ -4,14 +4,17 @@ Lightweight FastAPI app to process a questionnaire by email UID.
 """
 
 import base64
+import os
+import secrets
 import sys
 from pathlib import Path
 from dataclasses import asdict, dataclass
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends, status
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 
 # Ensure local scan folder is on sys.path for execution module imports
@@ -38,6 +41,29 @@ from execution.extract_medical_data import extract_medical_data
 
 
 app = FastAPI(title="LivAuto Scan", version="1.0.0")
+security = HTTPBasic()
+
+# Load basic auth credentials from environment
+BASIC_AUTH_USERNAME = os.getenv("BASIC_AUTH_USERNAME", "admin")
+BASIC_AUTH_PASSWORD = os.getenv("BASIC_AUTH_PASSWORD", "changeme123")
+
+
+def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
+    """Verify basic auth credentials."""
+    username_correct = secrets.compare_digest(
+        credentials.username.encode("utf8"), BASIC_AUTH_USERNAME.encode("utf8")
+    )
+    password_correct = secrets.compare_digest(
+        credentials.password.encode("utf8"), BASIC_AUTH_PASSWORD.encode("utf8")
+    )
+
+    if not (username_correct and password_correct):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
 
 
 @dataclass
@@ -216,6 +242,7 @@ HTML_PAGE = """<!DOCTYPE html>
       border-radius: 10px;
       padding: 20px;
       box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+      margin-bottom: 16px;
     }
     label {
       font-size: 13px;
@@ -232,6 +259,10 @@ HTML_PAGE = """<!DOCTYPE html>
       font-size: 14px;
       margin-bottom: 12px;
       font-family: "Courier New", monospace;
+      box-sizing: border-box;
+    }
+    input[type=\"password\"] {
+      font-family: monospace;
     }
     button {
       background: #111827;
@@ -256,12 +287,35 @@ HTML_PAGE = """<!DOCTYPE html>
       margin-top: 16px;
       white-space: pre-wrap;
     }
+    .auth-section {
+      margin-bottom: 20px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
   </style>
 </head>
 <body>
   <div class=\"wrap\">
     <h1>LivAuto UID Scan</h1>
     <div class=\"card\">
+      <div class=\"auth-section\">
+        <div class=\"grid-2\">
+          <div>
+            <label for=\"username\">Username</label>
+            <input id=\"username\" type=\"text\" placeholder=\"Enter username\" />
+          </div>
+          <div>
+            <label for=\"password\">Password</label>
+            <input id=\"password\" type=\"password\" placeholder=\"Enter password\" />
+          </div>
+        </div>
+      </div>
+
       <label for=\"uid\">Email UID</label>
       <input id=\"uid\" placeholder=\"176\" />
       <button id=\"submitBtn\" onclick=\"runScan()\">Run Scan</button>
@@ -272,6 +326,8 @@ HTML_PAGE = """<!DOCTYPE html>
   <script>
     async function runScan() {
       const uid = document.getElementById('uid').value.trim();
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value.trim();
       const resultEl = document.getElementById('result');
       const btn = document.getElementById('submitBtn');
 
@@ -280,15 +336,32 @@ HTML_PAGE = """<!DOCTYPE html>
         return;
       }
 
+      if (!username || !password) {
+        resultEl.textContent = 'Please enter username and password.';
+        return;
+      }
+
       btn.disabled = true;
       resultEl.textContent = 'Scanning...';
 
       try {
-        const response = await fetch(`/scan?uid=${encodeURIComponent(uid)}`);
+        // Create Basic Auth header
+        const credentials = btoa(`${username}:${password}`);
+
+        const response = await fetch(`/scan?uid=${encodeURIComponent(uid)}`, {
+          headers: {
+            'Authorization': `Basic ${credentials}`
+          }
+        });
+
         const data = await response.json();
 
         if (!response.ok) {
-          resultEl.textContent = JSON.stringify({ error: data.detail || data }, null, 2);
+          if (response.status === 401) {
+            resultEl.textContent = JSON.stringify({ error: 'Authentication failed. Invalid username or password.' }, null, 2);
+          } else {
+            resultEl.textContent = JSON.stringify({ error: data.detail || data }, null, 2);
+          }
           return;
         }
 
@@ -310,13 +383,13 @@ def home_page():
 
 
 @app.get("/scan")
-def scan_uid(uid: str = Query(..., min_length=1)):
+def scan_uid(uid: str = Query(..., min_length=1), username: str = Depends(verify_credentials)):
     result = process_questionnaire(uid)
     return JSONResponse(content=asdict(result))
 
 
 @app.post("/scan")
-def scan_uid_post(payload: ScanRequest):
+def scan_uid_post(payload: ScanRequest, username: str = Depends(verify_credentials)):
     result = process_questionnaire(payload.uid)
     return JSONResponse(content=asdict(result))
 

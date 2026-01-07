@@ -1,2 +1,18 @@
-.env
-venv/
+# Environment files (secrets) in all service directories
+**/.env
+
+# Virtual environments in all service directories
+**/venv/
+
+# Python cache
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
