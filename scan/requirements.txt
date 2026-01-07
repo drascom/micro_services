@@ -1,0 +1,34 @@
+# LivAuto - Medical Questionnaire Processing Dependencies
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Configuration management
+PyYAML>=6.0
+
+# ===========================================
+# PDF Extraction (choose based on your needs)
+# ===========================================
+# PyMuPDF - Fastest, recommended for text-based PDFs
+PyMuPDF>=1.23.0
+
+# pdfplumber - Better for form layouts (optional, install if needed)
+pdfplumber>=0.10.0
+
+# ===========================================
+# HTTP requests (only needed for Docling)
+# ===========================================
+requests>=2.31.0
+
+# ===========================================
+# LLM clients (install the one you need)
+# ===========================================
+openai>=1.0.0
+anthropic>=0.18.0
+
+# ===========================================
+# REST API (for web interface)
+# ===========================================
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
