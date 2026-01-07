@@ -10,6 +10,7 @@
 3. Install dependencies and set up the system service:
    ```bash
    cd "scan"
+   chmod +x install.sh
    ./install.sh
    ```
 
@@ -25,10 +26,9 @@ Check status:
 systemctl status scan-emails
 ```
 
-Manual run (stops the service first and does not restart it):
+Stop the service:
 ```bash
-cd "scan"
-./run.sh
+systemctl stop scan-emails
 ```
 
 The API starts on `http://0.0.0.0:1000`.
