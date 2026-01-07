@@ -138,11 +138,15 @@ def process_pdf_content(filename: str, pdf_content: bytes) -> ProcessingResult:
     full_name = extracted_data.get("full_name", "").strip()
     output_filename = f"{full_name}-form.pdf" if full_name else filename
 
+    validation_errors = extraction_result.validation_errors
+    error_message = "; ".join(validation_errors) if validation_errors else None
+
     extracted_data["_metadata"] = {
         "source_filename": filename,
         "extraction_method": pdf_config.method.value,
         "is_valid": extraction_result.is_valid,
         "validation_errors": extraction_result.validation_errors,
+        "error_message": error_message,
     }
 
     return ProcessingResult(

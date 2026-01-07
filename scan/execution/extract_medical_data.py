@@ -40,7 +40,6 @@ CHECKBOX INTERPRETATION:
 
 REQUIRED OUTPUT SCHEMA:
 {{
-  "record_valid": true/false,
   "full_name": "full name as written",
   "first_name": "first name only",
   "last_name": "last/surname only",
@@ -107,7 +106,7 @@ For preop_answers:
 - If answered "no" or "none", you can use "no" or an empty array []
 - For emotional_wellbeing, always use an array of selected feelings
 
-Only include fields that have actual data. Set record_valid to true if full_name and dob are present.
+Only include fields that have actual data.
 
 DOCUMENT TEXT:
 ---
@@ -327,11 +326,11 @@ def validate_extracted_data(data: dict) -> tuple[bool, list[str]]:
 
     # Required: full name
     if not data.get("full_name"):
-        errors.append("Missing required field: full_name")
+        errors.append("Full name could not be extracted")
 
     # Required: date of birth
     if not data.get("dob"):
-        errors.append("Missing required field: dob")
+        errors.append("Date of birth could not be extracted")
 
     is_valid = len(errors) == 0
     return is_valid, errors
@@ -394,11 +393,10 @@ def extract_medical_data(
             # Clean the data
             cleaned_data = clean_extracted_data(data)
 
+            cleaned_data.pop("record_valid", None)
+
             # Validate
             is_valid, validation_errors = validate_extracted_data(cleaned_data)
-
-            # Set record_valid flag based on validation
-            cleaned_data["record_valid"] = is_valid
 
             return ExtractionResult(
                 status="success",

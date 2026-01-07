@@ -205,12 +205,16 @@ def process_questionnaire(email_uid: str) -> ProcessingResult:
     extracted_data = extraction_result.data or {}
 
     # Add metadata
+    validation_errors = extraction_result.validation_errors
+    error_message = "; ".join(validation_errors) if validation_errors else None
+
     extracted_data["_metadata"] = {
         "email_uid": email_uid,
         "source_filename": filename,
         "extraction_method": pdf_config.method.value,
         "is_valid": extraction_result.is_valid,
-        "validation_errors": extraction_result.validation_errors
+        "validation_errors": extraction_result.validation_errors,
+        "error_message": error_message,
     }
 
     return ProcessingResult(
