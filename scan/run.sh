@@ -41,16 +41,23 @@ if [ -n "${UV_BIN}" ]; then
   if [ ! -d "${SCRIPT_DIR}/venv" ]; then
     "${UV_BIN}" venv "${SCRIPT_DIR}/venv"
   fi
-  source "${SCRIPT_DIR}/venv/bin/activate"
-  if [ -f "${SCRIPT_DIR}/requirements.txt" ]; then
+fi
+
+if [ ! -f "${SCRIPT_DIR}/venv/bin/activate" ]; then
+  python3 -m venv "${SCRIPT_DIR}/venv"
+fi
+
+if [ ! -f "${SCRIPT_DIR}/venv/bin/activate" ]; then
+  echo "Failed to create virtual environment at ${SCRIPT_DIR}/venv" >&2
+  exit 1
+fi
+
+source "${SCRIPT_DIR}/venv/bin/activate"
+
+if [ -f "${SCRIPT_DIR}/requirements.txt" ]; then
+  if [ -n "${UV_BIN}" ]; then
     "${UV_BIN}" pip install -r "${SCRIPT_DIR}/requirements.txt"
-  fi
-else
-  if [ ! -d "${SCRIPT_DIR}/venv" ]; then
-    python3 -m venv "${SCRIPT_DIR}/venv"
-  fi
-  source "${SCRIPT_DIR}/venv/bin/activate"
-  if [ -f "${SCRIPT_DIR}/requirements.txt" ]; then
+  else
     python -m pip install -r "${SCRIPT_DIR}/requirements.txt"
   fi
 fi
