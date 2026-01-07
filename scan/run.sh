@@ -13,4 +13,4 @@ if [ -f "${SCRIPT_DIR}/requirements.txt" ]; then
   python -m pip install -r "${SCRIPT_DIR}/requirements.txt"
 fi
 
-exec uvicorn app:app --reload --host 0.0.0.0 --port 8001
+exec uvicorn app:app --reload --host 0.0.0.0 --port 1000

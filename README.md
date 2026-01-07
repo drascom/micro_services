@@ -23,4 +23,4 @@ cd "scan"
 ./run.sh
 ```
 
-The API starts on `http://0.0.0.0:8001`.
+The API starts on `http://0.0.0.0:1000`.
