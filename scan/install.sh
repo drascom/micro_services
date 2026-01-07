@@ -89,6 +89,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=${SCRIPT_DIR}
+EnvironmentFile=${SCRIPT_DIR}/.env
 ExecStart=${SCRIPT_DIR}/venv/bin/uvicorn app:app --host 0.0.0.0 --port 1000
 Restart=on-failure
 RestartSec=5

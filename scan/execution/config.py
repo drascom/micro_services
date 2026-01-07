@@ -79,7 +79,7 @@ def get_pdf_config() -> PDFConfig:
 
     return PDFConfig(
         method=method,
-        docling_url=os.getenv("DOCLING_URL", "http://192.168.0.249:5001/v1/convert/file"),
+        docling_url=os.getenv("DOCLING_URL", "http://127.0.0.1:5001/v1/convert/file"),
         docling_timeout=int(os.getenv("DOCLING_TIMEOUT", "120")),
     )
 
@@ -98,7 +98,7 @@ def get_llm_config() -> LLMConfig:
         base_url = None
     elif provider == "ollama":
         api_key = os.getenv("OLLAMA_API_KEY", "")
-        model = os.getenv("OLLAMA_MODEL", "ministral-3:8b")
+        model = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
         base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     else:
         raise ValueError(f"Unknown LLM provider: {provider}")
