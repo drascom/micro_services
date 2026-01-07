@@ -3,16 +3,22 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if ! command -v python3 >/dev/null 2>&1; then
-  if [ -f /etc/debian_version ]; then
-    APT_PREFIX="sudo"
-    if [ "$(id -u)" -eq 0 ]; then
-      APT_PREFIX=""
-    fi
+if [ -f /etc/debian_version ]; then
+  APT_PREFIX="sudo"
+  if [ "$(id -u)" -eq 0 ]; then
+    APT_PREFIX=""
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
     ${APT_PREFIX} apt-get update
-    ${APT_PREFIX} apt-get install -y python3 python3-venv curl ca-certificates
-  else
-    echo "python3/pip3 missing and this does not look like Debian/Ubuntu." >&2
+    ${APT_PREFIX} apt-get install -y python3 curl ca-certificates
+  fi
+  if ! python3 -m venv --help >/dev/null 2>&1; then
+    ${APT_PREFIX} apt-get update
+    ${APT_PREFIX} apt-get install -y python3-venv
+  fi
+else
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 is missing and this does not look like Debian/Ubuntu." >&2
     exit 1
   fi
 fi
