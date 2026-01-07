@@ -14,7 +14,6 @@ from typing import Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Depends, status
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 
 # Ensure local scan folder is on sys.path for execution module imports
@@ -41,29 +40,23 @@ from execution.extract_medical_data import extract_medical_data
 
 
 app = FastAPI(title="LivAuto Scan", version="1.0.0")
-security = HTTPBasic()
 
-# Load basic auth credentials from environment
+# Load auth credentials from environment
 BASIC_AUTH_USERNAME = os.getenv("BASIC_AUTH_USERNAME", "admin")
 BASIC_AUTH_PASSWORD = os.getenv("BASIC_AUTH_PASSWORD", "changeme123")
 
+# Simple in-memory session store
+sessions = {}  # {token: username}
 
-def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
-    """Verify basic auth credentials."""
-    username_correct = secrets.compare_digest(
-        credentials.username.encode("utf8"), BASIC_AUTH_USERNAME.encode("utf8")
-    )
-    password_correct = secrets.compare_digest(
-        credentials.password.encode("utf8"), BASIC_AUTH_PASSWORD.encode("utf8")
-    )
 
-    if not (username_correct and password_correct):
+def verify_token(authorization: str = Query(None, alias="token")):
+    """Verify session token."""
+    if not authorization or authorization not in sessions:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Basic"},
+            detail="Invalid or expired session",
         )
-    return credentials.username
+    return sessions[authorization]
 
 
 @dataclass
@@ -212,6 +205,42 @@ def process_questionnaire(email_uid: str) -> ProcessingResult:
 
 class ScanRequest(BaseModel):
     uid: str
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/login")
+def login(payload: LoginRequest):
+    """Verify credentials and return session token."""
+    username_correct = secrets.compare_digest(
+        payload.username.encode("utf8"), BASIC_AUTH_USERNAME.encode("utf8")
+    )
+    password_correct = secrets.compare_digest(
+        payload.password.encode("utf8"), BASIC_AUTH_PASSWORD.encode("utf8")
+    )
+
+    if not (username_correct and password_correct):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+        )
+
+    # Generate session token
+    token = secrets.token_urlsafe(32)
+    sessions[token] = payload.username
+
+    return {"token": token, "username": payload.username}
+
+
+@app.post("/logout")
+def logout(token: str = Query(...)):
+    """Remove session token."""
+    if token in sessions:
+        del sessions[token]
+    return {"status": "logged out"}
 
 
 HTML_PAGE = """<!DOCTYPE html>
@@ -376,32 +405,16 @@ HTML_PAGE = """<!DOCTYPE html>
   </div>
 
   <script>
-    // Check for stored credentials on page load
+    // Check for stored token on page load
     window.addEventListener('DOMContentLoaded', function() {
-      const storedUsername = localStorage.getItem('auth_username');
-      const storedPassword = localStorage.getItem('auth_password');
+      const storedToken = localStorage.getItem('session_token');
+      const storedUsername = localStorage.getItem('username');
 
-      if (storedUsername && storedPassword) {
-        // Verify stored credentials
-        verifyStoredCredentials(storedUsername, storedPassword);
+      if (storedToken && storedUsername) {
+        document.getElementById('currentUser').textContent = storedUsername;
+        document.getElementById('loginModal').classList.remove('active');
       }
     });
-
-    async function verifyStoredCredentials(username, password) {
-      try {
-        const credentials = btoa(`${username}:${password}`);
-        const response = await fetch('/health');
-
-        // For now, just trust stored credentials and hide modal
-        // In production, you might want to verify with a protected endpoint
-        document.getElementById('currentUser').textContent = username;
-        document.getElementById('loginModal').classList.remove('active');
-      } catch (err) {
-        // If verification fails, clear storage and show login
-        localStorage.removeItem('auth_username');
-        localStorage.removeItem('auth_password');
-      }
-    }
 
     async function handleLogin() {
       const username = document.getElementById('modalUsername').value.trim();
@@ -414,17 +427,27 @@ HTML_PAGE = """<!DOCTYPE html>
         return;
       }
 
-      // Test credentials with a dummy scan request to /health (no auth needed)
-      // We'll verify on first actual scan request
       try {
-        const credentials = btoa(`${username}:${password}`);
+        const response = await fetch('/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
 
-        // Store credentials
-        localStorage.setItem('auth_username', username);
-        localStorage.setItem('auth_password', password);
+        if (!response.ok) {
+          errorEl.textContent = 'Invalid username or password.';
+          errorEl.classList.add('active');
+          return;
+        }
+
+        const data = await response.json();
+
+        // Store token and username
+        localStorage.setItem('session_token', data.token);
+        localStorage.setItem('username', data.username);
 
         // Update UI
-        document.getElementById('currentUser').textContent = username;
+        document.getElementById('currentUser').textContent = data.username;
         document.getElementById('loginModal').classList.remove('active');
         errorEl.classList.remove('active');
 
@@ -437,9 +460,19 @@ HTML_PAGE = """<!DOCTYPE html>
       }
     }
 
-    function handleLogout() {
-      localStorage.removeItem('auth_username');
-      localStorage.removeItem('auth_password');
+    async function handleLogout() {
+      const token = localStorage.getItem('session_token');
+
+      if (token) {
+        try {
+          await fetch(`/logout?token=${encodeURIComponent(token)}`, { method: 'POST' });
+        } catch (err) {
+          // Ignore errors on logout
+        }
+      }
+
+      localStorage.removeItem('session_token');
+      localStorage.removeItem('username');
       document.getElementById('loginModal').classList.add('active');
       document.getElementById('currentUser').textContent = '';
       document.getElementById('result').textContent = 'Waiting for scan...';
@@ -447,8 +480,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
     async function runScan() {
       const uid = document.getElementById('uid').value.trim();
-      const username = localStorage.getItem('auth_username');
-      const password = localStorage.getItem('auth_password');
+      const token = localStorage.getItem('session_token');
       const resultEl = document.getElementById('result');
       const btn = document.getElementById('submitBtn');
 
@@ -457,7 +489,7 @@ HTML_PAGE = """<!DOCTYPE html>
         return;
       }
 
-      if (!username || !password) {
+      if (!token) {
         resultEl.textContent = 'Please login first.';
         document.getElementById('loginModal').classList.add('active');
         return;
@@ -467,24 +499,16 @@ HTML_PAGE = """<!DOCTYPE html>
       resultEl.textContent = 'Scanning...';
 
       try {
-        // Create Basic Auth header
-        const credentials = btoa(`${username}:${password}`);
-
-        const response = await fetch(`/scan?uid=${encodeURIComponent(uid)}`, {
-          headers: {
-            'Authorization': `Basic ${credentials}`
-          }
-        });
-
+        const response = await fetch(`/scan?uid=${encodeURIComponent(uid)}&token=${encodeURIComponent(token)}`);
         const data = await response.json();
 
         if (!response.ok) {
           if (response.status === 401) {
-            // Invalid credentials - clear storage and show login
-            localStorage.removeItem('auth_username');
-            localStorage.removeItem('auth_password');
+            // Invalid token - clear storage and show login
+            localStorage.removeItem('session_token');
+            localStorage.removeItem('username');
             document.getElementById('loginModal').classList.add('active');
-            resultEl.textContent = JSON.stringify({ error: 'Authentication failed. Please login again.' }, null, 2);
+            resultEl.textContent = JSON.stringify({ error: 'Session expired. Please login again.' }, null, 2);
           } else {
             resultEl.textContent = JSON.stringify({ error: data.detail || data }, null, 2);
           }
@@ -521,13 +545,13 @@ def home_page():
 
 
 @app.get("/scan")
-def scan_uid(uid: str = Query(..., min_length=1), username: str = Depends(verify_credentials)):
+def scan_uid(uid: str = Query(..., min_length=1), username: str = Depends(verify_token)):
     result = process_questionnaire(uid)
     return JSONResponse(content=asdict(result))
 
 
 @app.post("/scan")
-def scan_uid_post(payload: ScanRequest, username: str = Depends(verify_credentials)):
+def scan_uid_post(payload: ScanRequest, username: str = Depends(verify_token)):
     result = process_questionnaire(payload.uid)
     return JSONResponse(content=asdict(result))
 
