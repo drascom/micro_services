@@ -26,6 +26,12 @@ if ! command -v uv >/dev/null 2>&1; then
   fi
 fi
 
+if [ -f "${HOME}/.local/bin/env" ]; then
+  # Ensure uv in PATH when installed to ~/.local/bin
+  # shellcheck disable=SC1090
+  source "${HOME}/.local/bin/env"
+fi
+
 UV_BIN="$(command -v uv || true)"
 if [ -z "${UV_BIN}" ] && [ -x "${HOME}/.local/bin/uv" ]; then
   UV_BIN="${HOME}/.local/bin/uv"
