@@ -511,7 +511,7 @@ HTML_PAGE = """<!DOCTYPE html>
       resultEl.textContent = 'Scanning...';
 
       try {
-        const response = await fetch(`/scan?uid=${encodeURIComponent(uid)}&token=${encodeURIComponent(token)}`);
+        const response = await fetch(`/scanbyuid?uid=${encodeURIComponent(uid)}&token=${encodeURIComponent(token)}`);
         const data = await response.json();
 
         if (!response.ok) {
@@ -609,13 +609,13 @@ def home_page():
     return HTML_PAGE
 
 
-@app.get("/scan")
+@app.get("/scanbyuid")
 def scan_uid(uid: str = Query(..., min_length=1), username: str = Depends(verify_token)):
     result = process_questionnaire(uid)
     return JSONResponse(content=asdict(result))
 
 
-@app.post("/scan")
+@app.post("/scanbyuid")
 def scan_uid_post(payload: ScanRequest, username: str = Depends(verify_token)):
     result = process_questionnaire(payload.uid)
     return JSONResponse(content=asdict(result))
@@ -626,6 +626,39 @@ def is_pdf_upload(upload: UploadFile) -> bool:
     if filename.endswith(".pdf"):
         return True
     return upload.content_type == "application/pdf"
+
+
+def wipe_upload_tempfile(upload: UploadFile, content_size: Optional[int] = None) -> None:
+    file_obj = upload.file
+    try:
+        if content_size is not None and hasattr(file_obj, "seek") and hasattr(file_obj, "write"):
+            try:
+                file_obj.seek(0)
+                file_obj.write(b"\x00" * content_size)
+                file_obj.flush()
+                file_obj.seek(0)
+                file_obj.truncate(0)
+            except Exception:
+                pass
+    finally:
+        try:
+            file_obj.close()
+        except Exception:
+            pass
+
+    temp_path = getattr(file_obj, "name", None)
+    if isinstance(temp_path, str) and os.path.isfile(temp_path):
+        try:
+            with open(temp_path, "r+b") as temp_file:
+                temp_file.seek(0, os.SEEK_END)
+                size = temp_file.tell()
+                temp_file.seek(0)
+                if size:
+                    temp_file.write(b"\x00" * size)
+                    temp_file.flush()
+            os.remove(temp_path)
+        except Exception:
+            pass
 
 
 def close_upload(upload: UploadFile) -> None:
@@ -645,6 +678,7 @@ def scan_by_file(
 
     for upload in files:
         filename = upload.filename or "unknown"
+        content_size = None
 
         if config_errors:
             results.append(
@@ -672,6 +706,7 @@ def scan_by_file(
 
         try:
             pdf_content = upload.file.read()
+            content_size = len(pdf_content)
         except Exception as exc:
             results.append(
                 ProcessingResult(
@@ -683,7 +718,7 @@ def scan_by_file(
             )
             continue
         finally:
-            close_upload(upload)
+            wipe_upload_tempfile(upload, content_size)
 
         if not pdf_content:
             results.append(
