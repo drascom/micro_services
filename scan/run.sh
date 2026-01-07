@@ -13,7 +13,7 @@ if [ -f /etc/debian_version ]; then
     ${APT_PREFIX} apt-get install -y python3 curl ca-certificates
   fi
   if ! python3 -c "import ensurepip" >/dev/null 2>&1; then
-    PY_MINOR="$(python3 -c 'import sys; print(f\"{sys.version_info.major}.{sys.version_info.minor}\")')"
+    PY_MINOR="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
     ${APT_PREFIX} apt-get update
     ${APT_PREFIX} apt-get install -y "python${PY_MINOR}-venv" python3-venv
   fi
