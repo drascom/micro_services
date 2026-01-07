@@ -277,6 +277,12 @@ HTML_PAGE = """<!DOCTYPE html>
       background: #9ca3af;
       cursor: not-allowed;
     }
+    button.logout {
+      background: #dc2626;
+      font-size: 12px;
+      padding: 6px 12px;
+      margin-left: 8px;
+    }
     pre {
       background: #0f172a;
       color: #e2e8f0;
@@ -287,35 +293,81 @@ HTML_PAGE = """<!DOCTYPE html>
       margin-top: 16px;
       white-space: pre-wrap;
     }
-    .auth-section {
-      margin-bottom: 20px;
-      padding-bottom: 20px;
-      border-bottom: 1px solid #e5e7eb;
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
     }
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
+    .user-info {
+      font-size: 13px;
+      color: #6b7280;
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.active {
+      display: flex;
+    }
+    .modal {
+      background: #ffffff;
+      border-radius: 10px;
+      padding: 32px;
+      max-width: 400px;
+      width: 90%;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    }
+    .modal h2 {
+      margin-top: 0;
+      font-size: 20px;
+      margin-bottom: 20px;
+    }
+    .error-message {
+      background: #fee2e2;
+      color: #dc2626;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      display: none;
+    }
+    .error-message.active {
+      display: block;
     }
   </style>
 </head>
 <body>
-  <div class=\"wrap\">
-    <h1>LivAuto UID Scan</h1>
-    <div class=\"card\">
-      <div class=\"auth-section\">
-        <div class=\"grid-2\">
-          <div>
-            <label for=\"username\">Username</label>
-            <input id=\"username\" type=\"text\" placeholder=\"Enter username\" />
-          </div>
-          <div>
-            <label for=\"password\">Password</label>
-            <input id=\"password\" type=\"password\" placeholder=\"Enter password\" />
-          </div>
-        </div>
-      </div>
+  <!-- Login Modal -->
+  <div id=\"loginModal\" class=\"modal-overlay active\">
+    <div class=\"modal\">
+      <h2>Login Required</h2>
+      <div id=\"loginError\" class=\"error-message\"></div>
+      <label for=\"modalUsername\">Username</label>
+      <input id=\"modalUsername\" type=\"text\" placeholder=\"Enter username\" autofocus />
+      <label for=\"modalPassword\">Password</label>
+      <input id=\"modalPassword\" type=\"password\" placeholder=\"Enter password\" />
+      <button onclick=\"handleLogin()\">Login</button>
+    </div>
+  </div>
 
+  <div class=\"wrap\">
+    <div class=\"header-bar\">
+      <h1>LivAuto UID Scan</h1>
+      <div class=\"user-info\">
+        Logged in as: <strong id=\"currentUser\"></strong>
+        <button class=\"logout\" onclick=\"handleLogout()\">Logout</button>
+      </div>
+    </div>
+    <div class=\"card\">
       <label for=\"uid\">Email UID</label>
       <input id=\"uid\" placeholder=\"176\" />
       <button id=\"submitBtn\" onclick=\"runScan()\">Run Scan</button>
@@ -324,10 +376,79 @@ HTML_PAGE = """<!DOCTYPE html>
   </div>
 
   <script>
+    // Check for stored credentials on page load
+    window.addEventListener('DOMContentLoaded', function() {
+      const storedUsername = localStorage.getItem('auth_username');
+      const storedPassword = localStorage.getItem('auth_password');
+
+      if (storedUsername && storedPassword) {
+        // Verify stored credentials
+        verifyStoredCredentials(storedUsername, storedPassword);
+      }
+    });
+
+    async function verifyStoredCredentials(username, password) {
+      try {
+        const credentials = btoa(`${username}:${password}`);
+        const response = await fetch('/health');
+
+        // For now, just trust stored credentials and hide modal
+        // In production, you might want to verify with a protected endpoint
+        document.getElementById('currentUser').textContent = username;
+        document.getElementById('loginModal').classList.remove('active');
+      } catch (err) {
+        // If verification fails, clear storage and show login
+        localStorage.removeItem('auth_username');
+        localStorage.removeItem('auth_password');
+      }
+    }
+
+    async function handleLogin() {
+      const username = document.getElementById('modalUsername').value.trim();
+      const password = document.getElementById('modalPassword').value.trim();
+      const errorEl = document.getElementById('loginError');
+
+      if (!username || !password) {
+        errorEl.textContent = 'Please enter both username and password.';
+        errorEl.classList.add('active');
+        return;
+      }
+
+      // Test credentials with a dummy scan request to /health (no auth needed)
+      // We'll verify on first actual scan request
+      try {
+        const credentials = btoa(`${username}:${password}`);
+
+        // Store credentials
+        localStorage.setItem('auth_username', username);
+        localStorage.setItem('auth_password', password);
+
+        // Update UI
+        document.getElementById('currentUser').textContent = username;
+        document.getElementById('loginModal').classList.remove('active');
+        errorEl.classList.remove('active');
+
+        // Clear modal fields
+        document.getElementById('modalUsername').value = '';
+        document.getElementById('modalPassword').value = '';
+      } catch (err) {
+        errorEl.textContent = 'Login failed. Please try again.';
+        errorEl.classList.add('active');
+      }
+    }
+
+    function handleLogout() {
+      localStorage.removeItem('auth_username');
+      localStorage.removeItem('auth_password');
+      document.getElementById('loginModal').classList.add('active');
+      document.getElementById('currentUser').textContent = '';
+      document.getElementById('result').textContent = 'Waiting for scan...';
+    }
+
     async function runScan() {
       const uid = document.getElementById('uid').value.trim();
-      const username = document.getElementById('username').value.trim();
-      const password = document.getElementById('password').value.trim();
+      const username = localStorage.getItem('auth_username');
+      const password = localStorage.getItem('auth_password');
       const resultEl = document.getElementById('result');
       const btn = document.getElementById('submitBtn');
 
@@ -337,7 +458,8 @@ HTML_PAGE = """<!DOCTYPE html>
       }
 
       if (!username || !password) {
-        resultEl.textContent = 'Please enter username and password.';
+        resultEl.textContent = 'Please login first.';
+        document.getElementById('loginModal').classList.add('active');
         return;
       }
 
@@ -358,7 +480,11 @@ HTML_PAGE = """<!DOCTYPE html>
 
         if (!response.ok) {
           if (response.status === 401) {
-            resultEl.textContent = JSON.stringify({ error: 'Authentication failed. Invalid username or password.' }, null, 2);
+            // Invalid credentials - clear storage and show login
+            localStorage.removeItem('auth_username');
+            localStorage.removeItem('auth_password');
+            document.getElementById('loginModal').classList.add('active');
+            resultEl.textContent = JSON.stringify({ error: 'Authentication failed. Please login again.' }, null, 2);
           } else {
             resultEl.textContent = JSON.stringify({ error: data.detail || data }, null, 2);
           }
@@ -372,6 +498,18 @@ HTML_PAGE = """<!DOCTYPE html>
         btn.disabled = false;
       }
     }
+
+    // Allow Enter key to submit in modal
+    document.getElementById('modalPassword').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        handleLogin();
+      }
+    });
+    document.getElementById('modalUsername').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        handleLogin();
+      }
+    });
   </script>
 </body>
 </html>"""
