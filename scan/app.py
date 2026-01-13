@@ -134,6 +134,21 @@ def process_pdf_content(filename: str, pdf_content: bytes) -> ProcessingResult:
 
     extracted_data = extraction_result.data or {}
 
+    # Reshape extracted data to desired payload structure
+    gp_details = {}
+    for key in ("gp_name", "gp_address", "gp_phone"):
+        if key in extracted_data:
+            gp_details[key] = extracted_data.pop(key)
+    if gp_details:
+        extracted_data["gp_details"] = gp_details
+
+    preop_answers = extracted_data.get("preop_answers", {}) or {}
+    if isinstance(preop_answers, dict):
+        for field in ("allergies", "height", "weight"):
+            if field in preop_answers:
+                extracted_data[field] = preop_answers.pop(field)
+        extracted_data["preop_answers"] = preop_answers
+
     # Use full_name from extracted data for filename, fallback to original
     full_name = extracted_data.get("full_name", "").strip()
     output_filename = f"{full_name}-form.pdf" if full_name else filename
@@ -141,7 +156,7 @@ def process_pdf_content(filename: str, pdf_content: bytes) -> ProcessingResult:
     validation_errors = extraction_result.validation_errors
     error_message = "; ".join(validation_errors) if validation_errors else None
 
-    extracted_data["_metadata"] = {
+    metadata = {
         "source_filename": filename,
         "extraction_method": pdf_config.method.value,
         "is_valid": extraction_result.is_valid,
@@ -149,10 +164,15 @@ def process_pdf_content(filename: str, pdf_content: bytes) -> ProcessingResult:
         "error_message": error_message,
     }
 
+    response_payload = {
+        "patient_details": extracted_data,
+        "_metadata": metadata,
+    }
+
     return ProcessingResult(
         status="success",
         source_filename=output_filename,
-        data=extracted_data,
+        data=response_payload,
     )
 
 
