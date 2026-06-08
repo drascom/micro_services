@@ -66,7 +66,9 @@ hf_download() { # hf_download <remote-filename> <dest-path>  → 0 on success
   local token="${HF_TOKEN:-${HUGGING_FACE_HUB_TOKEN:-}}"
   local auth=(); [ -n "$token" ] && auth=(-H "Authorization: Bearer $token")
   say "Downloading $file …"
-  if curl -fL --progress-bar "${auth[@]}" \
+  # Note the ${arr[@]+"${arr[@]}"} guard: under `set -u`, macOS bash 3.2 errors on
+  # expanding an empty array, so we only expand auth when it actually has elements.
+  if curl -fL --progress-bar ${auth[@]+"${auth[@]}"} \
        -o "$dest.part" "https://huggingface.co/$HF_REPO/resolve/main/$file?download=true"; then
     mv "$dest.part" "$dest"; return 0
   fi
