@@ -14,6 +14,7 @@ MMPROJ="${GEMMA_MMPROJ:-$HOME/.lmstudio/models/google/gemma-4-12B-it-qat-q4_0-gg
 HOST="${GEMMA_HOST:-0.0.0.0}"
 PORT="${GEMMA_PORT:-8080}"
 CTX="${GEMMA_CTX:-32768}"
+HF_REPO="${GEMMA_HF_REPO:-google/gemma-4-12B-it-qat-q4_0-gguf}"
 
 say() { printf "\033[1;36m▸ %s\033[0m\n" "$*"; }
 warn() { printf "\033[1;33m! %s\033[0m\n" "$*"; }
@@ -45,10 +46,40 @@ else
   cmake --build "$TARGET_DIR/build" -j --target llama-server llama-cli
 fi
 
-# ---- 2. Model check (informational) --------------------------------------
-if [ ! -f "$MODEL" ]; then
-  warn "Model not found at: $MODEL"
-  warn "Download the Gemma GGUF (e.g. via LM Studio) or set GEMMA_MODEL, then re-run."
+# ---- 2. Model — try to download, otherwise point the user to it ----------
+hf_download() { # hf_download <remote-filename> <dest-path>  → 0 on success
+  local file="$1" dest="$2"
+  [ -f "$dest" ] && return 0
+  mkdir -p "$(dirname "$dest")"
+  local token="${HF_TOKEN:-${HUGGING_FACE_HUB_TOKEN:-}}"
+  local auth=(); [ -n "$token" ] && auth=(-H "Authorization: Bearer $token")
+  say "Downloading $file …"
+  if curl -fL --progress-bar "${auth[@]}" \
+       -o "$dest.part" "https://huggingface.co/$HF_REPO/resolve/main/$file?download=true"; then
+    mv "$dest.part" "$dest"; return 0
+  fi
+  rm -f "$dest.part"; return 1
+}
+
+if [ ! -f "$MODEL" ] || [ ! -f "$MMPROJ" ]; then
+  say "Model missing — trying automatic download from Hugging Face ($HF_REPO)…"
+  ok=1
+  hf_download "$(basename "$MODEL")"  "$MODEL"  || ok=0
+  hf_download "$(basename "$MMPROJ")" "$MMPROJ" || ok=0
+  if [ "$ok" = 0 ]; then
+    warn "Automatic download failed — this model is likely gated (needs a Hugging Face"
+    warn "login + accepting its license). Get it one of these ways, then re-run ./install.sh:"
+    warn "  • In LM Studio, search and download:  $HF_REPO"
+    warn "  • Or accept the license here:         https://huggingface.co/$HF_REPO"
+    warn "      then either log in:   huggingface-cli login   (and re-run ./install.sh)"
+    warn "      or download directly:"
+    warn "        $MODEL"
+    warn "          ← https://huggingface.co/$HF_REPO/resolve/main/$(basename "$MODEL")"
+    warn "        $MMPROJ"
+    warn "          ← https://huggingface.co/$HF_REPO/resolve/main/$(basename "$MMPROJ")"
+  else
+    say "Model ready."
+  fi
 fi
 
 # ---- 3. Write config ------------------------------------------------------
