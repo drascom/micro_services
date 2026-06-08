@@ -176,31 +176,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // ----- UI -----
-    private lazy var menuGlyph: NSImage? = {
-        guard let dir = Bundle.main.resourcePath else { return nil }
-        let img = NSImage(contentsOfFile: dir + "/menubar.png")
-        img?.isTemplate = true
-        img?.size = NSSize(width: 18, height: 18)
-        return img
+    private lazy var baseGlyph: NSImage = {
+        if let dir = Bundle.main.resourcePath,
+           let img = NSImage(contentsOfFile: dir + "/menubar.png") {
+            img.isTemplate = true
+            img.size = NSSize(width: 18, height: 18)
+            return img
+        }
+        let fallback = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "Gemma server")
+                     ?? NSImage(size: NSSize(width: 18, height: 18))
+        fallback.isTemplate = true
+        return fallback
     }()
+
+    // Paint the glyph in `color` ourselves (a coloured, non-template image). Relying on
+    // NSStatusBarButton.contentTintColor with a template image is unreliable — the menu
+    // bar forces template images to black/white and ignores the tint.
+    private func tinted(_ base: NSImage, _ color: NSColor) -> NSImage {
+        let size = NSSize(width: 18, height: 18)
+        let img = NSImage(size: size)
+        img.lockFocus()
+        let rect = NSRect(origin: .zero, size: size)
+        base.draw(in: rect)
+        color.set()
+        rect.fill(using: .sourceAtop)
+        img.unlockFocus()
+        img.isTemplate = false
+        return img
+    }
 
     func updateUI() {
         guard let button = statusItem?.button else { return }
-        let tint: NSColor?
+        let tint: NSColor
         switch state {
-        case .stopped:  tint = .secondaryLabelColor
+        case .stopped:  tint = .systemGray
         case .starting: tint = .systemOrange
         case .running:  tint = .systemGreen
         }
-        // Prefer the custom lightning+G glyph; fall back to an SF Symbol bolt.
-        if let glyph = menuGlyph {
-            button.image = glyph
-        } else {
-            let fallback = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "Gemma server")
-            fallback?.isTemplate = true
-            button.image = fallback
-        }
-        button.contentTintColor = tint
+        button.image = tinted(baseGlyph, tint)
+        button.contentTintColor = nil
 
         switch state {
         case .stopped:
