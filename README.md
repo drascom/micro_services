@@ -1,34 +1,37 @@
 # Microservices
 
-## Install
+A monorepo of standalone services. Each top-level directory is an independent
+microservice with its own dependencies, configuration, and install steps.
+**See each service's own README for full instructions.**
 
-1. Create the environment file:
-   ```bash
-   cp scan/.env.example scan/.env
-   ```
-2. Edit `scan/.env` and set the required secrets.
-3. Install dependencies and set up the system service:
-   ```bash
-   cd "scan"
-   chmod +x install.sh
-   ./install.sh
-   ```
+## Services
 
-## Use
+| Service | What it is | Platform | Docs |
+|---------|------------|----------|------|
+| **gemma** | Local Gemma 4 12B server with an OpenAI-compatible API, driven by a macOS menu-bar app | macOS (Apple Silicon) | [gemma/README.md](gemma/README.md) |
+| **scan** | LivAuto Scan — processes hair-transplant pre-op questionnaires from email attachments (FastAPI) | Linux (systemd) | [scan/README.md](scan/README.md) |
 
-Start the service (systemd):
+## Quick start
+
+Each service is self-contained — `cd` into it and follow its README.
+
+**gemma** (macOS):
 ```bash
+cd gemma
+./install.sh        # builds llama.cpp + the app, downloads the model
+open GemmaServer.app
+```
+
+**scan** (Linux / systemd):
+```bash
+cd scan
+cp .env.example .env   # then edit secrets
+chmod +x install.sh
+./install.sh
 systemctl start scan-emails
 ```
 
-Check status:
-```bash
-systemctl status scan-emails
-```
+## Adding a service
 
-Stop the service:
-```bash
-systemctl stop scan-emails
-```
-
-The API starts on `http://0.0.0.0:1000`.
+Create a new top-level directory containing its own `README.md` and an
+install script (e.g. `install.sh`), then add a row to the **Services** table above.
