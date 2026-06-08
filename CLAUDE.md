@@ -13,6 +13,11 @@ This is a **microservices repository** where each top-level directory contains a
   - Runs as systemd service on Linux
   - Listens on `http://0.0.0.0:1000`
 
+- **gemma/** - Local Gemma 4 12B server with a macOS menu-bar app
+  - Serves Gemma 4 12B via llama.cpp as an OpenAI-compatible API on `http://0.0.0.0:8080`
+  - `GemmaServer.app` (Swift/AppKit) starts/stops the server from the menu bar
+  - macOS / Apple Silicon only; `install.sh` builds llama.cpp + the app and downloads the model
+
 ## Development Commands
 
 ### scan/ Service
@@ -69,6 +74,37 @@ curl "http://localhost:1000/scan?uid=12345"
 curl -X POST http://localhost:1000/scan \
   -H "Content-Type: application/json" \
   -d '{"uid": "12345"}'
+```
+
+### gemma/ Service
+
+**Setup and Installation (macOS / Apple Silicon):**
+```bash
+cd gemma
+./install.sh        # builds llama.cpp + GemmaServer.app, downloads the model
+open GemmaServer.app
+```
+`install.sh` is idempotent: it reuses an existing llama.cpp build and skips the
+model download if the files are already present. Override paths/port/ctx with
+env vars (`GEMMA_MODEL`, `GEMMA_PORT`, `GEMMA_CTX`, …) — they are written to a
+gitignored `config.env` and baked into the app bundle as `config.json`.
+
+**Running the server without the app:**
+```bash
+cd gemma
+./run-gemma.sh      # starts llama-server in the terminal (Ctrl-C to stop)
+```
+
+**Rebuilding just the app (after editing app/ sources):**
+```bash
+cd gemma
+./app/build.sh      # recompiles GemmaServer.app and regenerates icons
+```
+
+**Testing the API:**
+```bash
+curl http://localhost:8080/health
+curl http://localhost:8080/props        # shows loaded context size (n_ctx)
 ```
 
 ## Code Architecture
