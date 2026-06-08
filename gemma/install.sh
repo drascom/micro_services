@@ -31,9 +31,6 @@ banner() { # banner <title> <line...>
 # ---- 1. llama.cpp ---------------------------------------------------------
 if [ -x "$BIN" ]; then
   say "llama-server already built — reusing it."
-elif [ -x "$HOME/work/GEMMA/llama.cpp-mainline/build/bin/llama-server" ] && [ ! -e "$TARGET_DIR" ]; then
-  say "Found an existing llama.cpp build — linking it (no rebuild needed)."
-  ln -s "$HOME/work/GEMMA/llama.cpp-mainline" "$TARGET_DIR"
 else
   if ! command -v cmake >/dev/null 2>&1; then
     if command -v brew >/dev/null 2>&1; then

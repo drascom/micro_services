@@ -100,7 +100,7 @@ func renderMenuGlyph() -> NSImage {
 }
 
 let appDir = (CommandLine.arguments.count > 1) ? CommandLine.arguments[1]
-           : (NSHomeDirectory() + "/work/GEMMA/app")
+           : FileManager.default.currentDirectoryPath
 savePNG(renderAppIcon(), to: "/tmp/gemma-icon-1024.png")
 savePNG(renderMenuGlyph(), to: appDir + "/menubar.png")
 print("Rendered /tmp/gemma-icon-1024.png and \(appDir)/menubar.png")
