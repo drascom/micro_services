@@ -80,12 +80,12 @@ func renderAppIcon() -> NSImage {
 }
 
 // ---------- Menu-bar template glyph ----------
-// Black bolt with a "G" knocked out, on transparent → tints cleanly to any state colour.
+// Plain black lightning bolt on transparent → tints cleanly to any state colour.
+// (No "G": at 18px a knocked-out letter just muddies the shape.)
 func renderMenuGlyph() -> NSImage {
     let S: CGFloat = 256
     let img = NSImage(size: NSSize(width: S, height: S))
     img.lockFocus()
-    let ctx = NSGraphicsContext.current!.cgContext
 
     let bolt = boltImage(pointSize: 200)
     let bw = bolt.size.width, bh = bolt.size.height
@@ -93,19 +93,6 @@ func renderMenuGlyph() -> NSImage {
     let drawW = bw * scale, drawH = bh * scale
     let rect = NSRect(x: (S - drawW) / 2, y: (S - drawH) / 2, width: drawW, height: drawH)
     drawTinted(bolt, in: rect, color: .black)
-
-    // Knock out the G (destinationOut → transparent hole the bolt shows around).
-    let para = NSMutableParagraphStyle(); para.alignment = .center
-    let attrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.systemFont(ofSize: 150, weight: .black),
-        .foregroundColor: NSColor.white,
-        .paragraphStyle: para,
-    ]
-    ctx.setBlendMode(.destinationOut)
-    let g = "G" as NSString
-    let b = g.size(withAttributes: attrs)
-    g.draw(in: NSRect(x: 0, y: (S - b.height) / 2, width: S, height: b.height), withAttributes: attrs)
-    ctx.setBlendMode(.normal)
 
     img.unlockFocus()
     img.isTemplate = true
