@@ -115,3 +115,6 @@ say "Building GemmaServer.app"
 echo
 say "Done. Launch it with:  open \"$PROJ/GemmaServer.app\""
 say "(Optional) drag GemmaServer.app into /Applications to keep it."
+
+# Reveal the freshly built app in Finder (selected), so it's one double-click away.
+open -R "$PROJ/GemmaServer.app" 2>/dev/null || true
