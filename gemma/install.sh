@@ -9,8 +9,9 @@ TARGET_DIR="$PROJ/llama.cpp-mainline"
 BIN="$TARGET_DIR/build/bin/llama-server"
 
 # Defaults (override by exporting before running, e.g. GEMMA_PORT=9000 ./install.sh)
-MODEL="${GEMMA_MODEL:-$HOME/.lmstudio/models/google/gemma-4-12B-it-qat-q4_0-gguf/gemma-4-12b-it-qat-q4_0.gguf}"
-MMPROJ="${GEMMA_MMPROJ:-$HOME/.lmstudio/models/google/gemma-4-12B-it-qat-q4_0-gguf/mmproj-gemma-4-12b-it-qat-q4_0.gguf}"
+MODEL_HOME="${GEMMA_MODEL_DIR:-$HOME/.cache/gemma-server/models}"
+MODEL="${GEMMA_MODEL:-$MODEL_HOME/gemma-4-12b-it-qat-q4_0.gguf}"
+MMPROJ="${GEMMA_MMPROJ:-$MODEL_HOME/mmproj-gemma-4-12b-it-qat-q4_0.gguf}"
 HOST="${GEMMA_HOST:-0.0.0.0}"
 PORT="${GEMMA_PORT:-8080}"
 CTX="${GEMMA_CTX:-32768}"
@@ -18,6 +19,12 @@ HF_REPO="${GEMMA_HF_REPO:-google/gemma-4-12B-it-qat-q4_0-gguf}"
 
 say() { printf "\033[1;36m▸ %s\033[0m\n" "$*"; }
 warn() { printf "\033[1;33m! %s\033[0m\n" "$*"; }
+banner() { # banner <title> <line...>
+  printf "\n\033[1;35m┌─────────────────────────────────────────────────────────────┐\033[0m\n"
+  printf "\033[1;35m│\033[0m \033[1m%-59s\033[0m \033[1;35m│\033[0m\n" "$1"; shift
+  for l in "$@"; do printf "\033[1;35m│\033[0m %-59s \033[1;35m│\033[0m\n" "$l"; done
+  printf "\033[1;35m└─────────────────────────────────────────────────────────────┘\033[0m\n"
+}
 
 [ "$(uname)" = "Darwin" ] || { echo "This installer is macOS-only."; exit 1; }
 
@@ -36,13 +43,18 @@ else
       exit 1
     fi
   fi
+  banner "One-time setup: building llama.cpp" \
+         "This downloads + compiles llama.cpp with Metal." \
+         "Expect roughly 5-15 minutes. Progress is shown below." \
+         "You only pay this cost once."
   if [ ! -d "$TARGET_DIR/.git" ] && [ ! -L "$TARGET_DIR" ]; then
     say "Cloning llama.cpp…"
-    git clone --depth 1 https://github.com/ggml-org/llama.cpp "$TARGET_DIR"
+    git clone --depth 1 --progress https://github.com/ggml-org/llama.cpp "$TARGET_DIR"
   fi
-  say "Building llama.cpp with Metal (this can take a few minutes)…"
+  say "Configuring (cmake)…"
   cmake -B "$TARGET_DIR/build" -S "$TARGET_DIR" \
     -DCMAKE_BUILD_TYPE=Release -DGGML_METAL=ON -DLLAMA_CURL=OFF -DLLAMA_BUILD_SERVER=ON
+  say "Compiling — the [ NN%] markers below are your progress bar:"
   cmake --build "$TARGET_DIR/build" -j --target llama-server llama-cli
 fi
 
@@ -62,17 +74,20 @@ hf_download() { # hf_download <remote-filename> <dest-path>  → 0 on success
 }
 
 if [ ! -f "$MODEL" ] || [ ! -f "$MMPROJ" ]; then
-  say "Model missing — trying automatic download from Hugging Face ($HF_REPO)…"
+  banner "One-time setup: downloading the model" \
+         "The Gemma weights are several GB (~8 GB total)." \
+         "This can take a while on a slow connection." \
+         "A progress bar with speed/ETA is shown for each file."
+  say "Fetching from Hugging Face ($HF_REPO)…"
   ok=1
   hf_download "$(basename "$MODEL")"  "$MODEL"  || ok=0
   hf_download "$(basename "$MMPROJ")" "$MMPROJ" || ok=0
   if [ "$ok" = 0 ]; then
     warn "Automatic download failed — this model is likely gated (needs a Hugging Face"
-    warn "login + accepting its license). Get it one of these ways, then re-run ./install.sh:"
-    warn "  • In LM Studio, search and download:  $HF_REPO"
-    warn "  • Or accept the license here:         https://huggingface.co/$HF_REPO"
-    warn "      then either log in:   huggingface-cli login   (and re-run ./install.sh)"
-    warn "      or download directly:"
+    warn "login + accepting its license). Do one of these, then re-run ./install.sh:"
+    warn "  • Accept the license here:  https://huggingface.co/$HF_REPO"
+    warn "      then log in:  huggingface-cli login   (and re-run ./install.sh)"
+    warn "  • Or download the two files directly into $MODEL_HOME :"
     warn "        $MODEL"
     warn "          ← https://huggingface.co/$HF_REPO/resolve/main/$(basename "$MODEL")"
     warn "        $MMPROJ"

@@ -29,11 +29,11 @@ open GemmaServer.app
 
 To keep it around, drag **GemmaServer.app** into your **Applications** folder.
 
-> **Model:** `install.sh` tries to **download the Gemma GGUF automatically** from
-> Hugging Face. That model is gated, so if the download fails the installer prints a
-> link and asks you to either accept the license + `huggingface-cli login`, or grab it
-> in [LM Studio](https://lmstudio.ai) (`google/gemma-4-12B-it-qat-q4_0`) — then re-run.
-> Already have it elsewhere? Run `GEMMA_MODEL=/path/to/model.gguf ./install.sh`.
+> **Model:** `install.sh` **downloads the Gemma GGUF automatically** from Hugging Face
+> into `~/.cache/gemma-server/models`. That model is gated, so if the download fails the
+> installer prints the license page + direct file links and asks you to accept the
+> license and `huggingface-cli login`, then re-run.
+> Already have the file? Run `GEMMA_MODEL=/path/to/model.gguf ./install.sh`.
 
 ## Use
 

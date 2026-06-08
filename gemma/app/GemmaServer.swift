@@ -22,9 +22,9 @@ let cfg: [String: Any]? = {
     return obj
 }()
 
-let SERVER = cfgString(cfg, "server", "\(HOME)/work/GEMMA/llama.cpp-mainline/build/bin/llama-server")
-let MODEL  = cfgString(cfg, "model",  "\(HOME)/.lmstudio/models/google/gemma-4-12B-it-qat-q4_0-gguf/gemma-4-12b-it-qat-q4_0.gguf")
-let MMPROJ = cfgString(cfg, "mmproj", "\(HOME)/.lmstudio/models/google/gemma-4-12B-it-qat-q4_0-gguf/mmproj-gemma-4-12b-it-qat-q4_0.gguf")
+let SERVER = cfgString(cfg, "server", "\(HOME)/.cache/gemma-server/llama.cpp/build/bin/llama-server")
+let MODEL  = cfgString(cfg, "model",  "\(HOME)/.cache/gemma-server/models/gemma-4-12b-it-qat-q4_0.gguf")
+let MMPROJ = cfgString(cfg, "mmproj", "\(HOME)/.cache/gemma-server/models/mmproj-gemma-4-12b-it-qat-q4_0.gguf")
 let HOST   = cfgString(cfg, "host", "0.0.0.0")
 let PORT   = cfgInt(cfg, "port", 8080)
 let CTX    = cfgInt(cfg, "ctx", 32768)

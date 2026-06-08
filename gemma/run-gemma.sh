@@ -6,8 +6,8 @@ PROJ="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Defaults; config.env overrides them.
 LLAMA_SERVER="$PROJ/llama.cpp-mainline/build/bin/llama-server"
-MODEL="$HOME/.lmstudio/models/google/gemma-4-12B-it-qat-q4_0-gguf/gemma-4-12b-it-qat-q4_0.gguf"
-MMPROJ="$HOME/.lmstudio/models/google/gemma-4-12B-it-qat-q4_0-gguf/mmproj-gemma-4-12b-it-qat-q4_0.gguf"
+MODEL="$HOME/.cache/gemma-server/models/gemma-4-12b-it-qat-q4_0.gguf"
+MMPROJ="$HOME/.cache/gemma-server/models/mmproj-gemma-4-12b-it-qat-q4_0.gguf"
 HOST="0.0.0.0"; PORT=8080; CTX=32768
 [ -f "$PROJ/config.env" ] && source "$PROJ/config.env"
 
