@@ -1,0 +1,7 @@
+# Built menu-bar app bundle (regenerate with app/build.sh)
+GemmaServer.app/
+# Generated icon assets (render-icon.swift produces these)
+app/menubar.png
+# Third-party llama.cpp checkout (clone & build separately — see README)
+llama.cpp-mainline/
+.DS_Store
