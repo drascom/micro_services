@@ -1,14 +1,33 @@
 import AppKit
 import Foundation
 
-// ----- Configuration (mirrors "Serve Gemma.command") -----
+// ----- Configuration -----
+// Values are read from config.json inside the app bundle (written by build.sh at
+// install time). Hard-coded fallbacks keep the app usable if the file is missing.
 let HOME    = NSHomeDirectory()
-let SERVER  = "\(HOME)/work/GEMMA/llama.cpp-mainline/build/bin/llama-server"
-let MODEL   = "\(HOME)/.lmstudio/models/google/gemma-4-12B-it-qat-q4_0-gguf/gemma-4-12b-it-qat-q4_0.gguf"
-let MMPROJ  = "\(HOME)/.lmstudio/models/google/gemma-4-12B-it-qat-q4_0-gguf/mmproj-gemma-4-12b-it-qat-q4_0.gguf"
-let PORT    = 8080
-let CTX     = 32768
 let LOGFILE = "/tmp/gemma-server.log"
+
+func cfgString(_ obj: [String: Any]?, _ key: String, _ fallback: String) -> String {
+    (obj?[key] as? String).map { $0.replacingOccurrences(of: "~", with: HOME) } ?? fallback
+}
+func cfgInt(_ obj: [String: Any]?, _ key: String, _ fallback: Int) -> Int {
+    (obj?[key] as? Int) ?? fallback
+}
+
+let cfg: [String: Any]? = {
+    guard let res = Bundle.main.resourcePath,
+          let data = FileManager.default.contents(atPath: res + "/config.json"),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else { return nil }
+    return obj
+}()
+
+let SERVER = cfgString(cfg, "server", "\(HOME)/work/GEMMA/llama.cpp-mainline/build/bin/llama-server")
+let MODEL  = cfgString(cfg, "model",  "\(HOME)/.lmstudio/models/google/gemma-4-12B-it-qat-q4_0-gguf/gemma-4-12b-it-qat-q4_0.gguf")
+let MMPROJ = cfgString(cfg, "mmproj", "\(HOME)/.lmstudio/models/google/gemma-4-12B-it-qat-q4_0-gguf/mmproj-gemma-4-12b-it-qat-q4_0.gguf")
+let HOST   = cfgString(cfg, "host", "0.0.0.0")
+let PORT   = cfgInt(cfg, "port", 8080)
+let CTX    = cfgInt(cfg, "ctx", 32768)
 
 enum ServerState { case stopped, starting, running }
 
@@ -92,7 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "-ngl", "999",
             "-c", "\(CTX)",
             "--jinja",
-            "--host", "0.0.0.0",
+            "--host", HOST,
             "--port", "\(PORT)",
         ]
         FileManager.default.createFile(atPath: LOGFILE, contents: nil)

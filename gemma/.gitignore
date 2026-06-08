@@ -1,7 +1,10 @@
-# Built menu-bar app bundle (regenerate with app/build.sh)
+# Machine-specific config (written by install.sh)
+config.env
+# Built menu-bar app bundle (regenerate with ./install.sh)
 GemmaServer.app/
 # Generated icon assets (render-icon.swift produces these)
 app/menubar.png
-# Third-party llama.cpp checkout (clone & build separately — see README)
-llama.cpp-mainline/
+# Third-party llama.cpp checkout (install.sh clones/builds or links this);
+# no trailing slash so it also ignores the symlink install.sh may create.
+llama.cpp-mainline
 .DS_Store

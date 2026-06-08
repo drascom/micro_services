@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
-# RECOMMENDED on this Mac: plain Gemma 4 12B (no MTP draft) — fastest (~30 tok/s).
-# Opens an OpenAI-compatible server + web UI at http://127.0.0.1:8080
+# CLI alternative to the app: start the Gemma server in this terminal.
+# Reads paths from config.env (created by ./install.sh). Ctrl-C to stop.
 set -euo pipefail
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVER="$HERE/llama.cpp-mainline/build/bin/llama-server"
-TARGET="$HOME/.lmstudio/models/google/gemma-4-12B-it-qat-q4_0-gguf/gemma-4-12b-it-qat-q4_0.gguf"
-MMPROJ="$HOME/.lmstudio/models/google/gemma-4-12B-it-qat-q4_0-gguf/mmproj-gemma-4-12b-it-qat-q4_0.gguf"
+PROJ="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-exec "$SERVER" \
-  -m "$TARGET" \
+# Defaults; config.env overrides them.
+LLAMA_SERVER="$PROJ/llama.cpp-mainline/build/bin/llama-server"
+MODEL="$HOME/.lmstudio/models/google/gemma-4-12B-it-qat-q4_0-gguf/gemma-4-12b-it-qat-q4_0.gguf"
+MMPROJ="$HOME/.lmstudio/models/google/gemma-4-12B-it-qat-q4_0-gguf/mmproj-gemma-4-12b-it-qat-q4_0.gguf"
+HOST="0.0.0.0"; PORT=8080; CTX=32768
+[ -f "$PROJ/config.env" ] && source "$PROJ/config.env"
+
+[ -x "$LLAMA_SERVER" ] || { echo "llama-server not built. Run ./install.sh first."; exit 1; }
+
+exec "$LLAMA_SERVER" \
+  -m "$MODEL" \
   --mmproj "$MMPROJ" \
+  --alias gemma-4-12b \
   -ngl 999 \
-  -c 32768 \
+  -c "$CTX" \
   --jinja \
-  --host 0.0.0.0 --port 8080
+  --host "$HOST" --port "$PORT"

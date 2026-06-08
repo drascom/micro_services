@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
-# Builds GemmaServer.app (menu-bar app to start/stop the llama.cpp Gemma server).
+# Builds GemmaServer.app — the menu-bar app that starts/stops the Gemma server.
+# Output goes next to the project (gemma/GemmaServer.app). Run via ../install.sh.
 set -euo pipefail
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP="$HOME/work/GEMMA/GemmaServer.app"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # gemma/app
+PROJ="$(cd "$HERE/.." && pwd)"                          # gemma
+APP="$PROJ/GemmaServer.app"
+
+# Load install-time config (paths/port/ctx) if present; otherwise use defaults.
+LLAMA_SERVER="$PROJ/llama.cpp-mainline/build/bin/llama-server"
+MODEL="$HOME/.lmstudio/models/google/gemma-4-12B-it-qat-q4_0-gguf/gemma-4-12b-it-qat-q4_0.gguf"
+MMPROJ="$HOME/.lmstudio/models/google/gemma-4-12B-it-qat-q4_0-gguf/mmproj-gemma-4-12b-it-qat-q4_0.gguf"
+HOST="0.0.0.0"; PORT=8080; CTX=32768
+[ -f "$PROJ/config.env" ] && source "$PROJ/config.env"
 
 echo "Building $APP …"
 rm -rf "$APP"
@@ -13,21 +22,29 @@ swiftc -swift-version 5 -O \
   "$HERE/GemmaServer.swift" \
   -framework AppKit
 
+# Bake resolved config into the bundle so the app knows where everything is.
+cat > "$APP/Contents/Resources/config.json" <<JSON
+{
+  "server": "$LLAMA_SERVER",
+  "model":  "$MODEL",
+  "mmproj": "$MMPROJ",
+  "host":   "$HOST",
+  "port":   $PORT,
+  "ctx":    $CTX
+}
+JSON
+
 # --- Icons ---------------------------------------------------------------
-# Render the lightning+G artwork (writes /tmp/gemma-icon-1024.png and menubar.png).
 swiftc -swift-version 5 -o /tmp/render-icon "$HERE/render-icon.swift" -framework AppKit
 /tmp/render-icon "$HERE"
 
-# Build AppIcon.icns from the 1024 master.
 ICONSET="$(mktemp -d)/AppIcon.iconset"
 mkdir -p "$ICONSET"
 for sz in 16 32 128 256 512; do
-  sips -z $sz $sz       /tmp/gemma-icon-1024.png --out "$ICONSET/icon_${sz}x${sz}.png"      >/dev/null
+  sips -z $sz $sz             /tmp/gemma-icon-1024.png --out "$ICONSET/icon_${sz}x${sz}.png"    >/dev/null
   sips -z $((sz*2)) $((sz*2)) /tmp/gemma-icon-1024.png --out "$ICONSET/icon_${sz}x${sz}@2x.png" >/dev/null
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
-
-# Menu-bar glyph (template image, tinted at runtime by server state).
 cp "$HERE/menubar.png" "$APP/Contents/Resources/menubar.png"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
@@ -50,7 +67,5 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-# Ad-hoc code signature so macOS lets it run without an Xcode identity.
 codesign --force --sign - "$APP" >/dev/null 2>&1 || true
-
 echo "Done: $APP"
