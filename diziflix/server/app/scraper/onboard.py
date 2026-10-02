@@ -497,6 +497,11 @@ def _begin_auto_round(draft_id: str, round_no: int) -> Optional[str]:
     return text
 
 
+def _is_question(text: str) -> bool:
+    """Does the agent's last message end as a question (``?``, trailing quotes / brackets / spaces ignored)?"""
+    return (text or "").rstrip().rstrip("\"'”’)]*_` ").endswith("?")
+
+
 def _finish(draft_id: str, started: float, parser: EventParser, exit_code: Optional[int], crash: str,
             timed_out: bool, cancelled: bool, stderr: str, token: str, *, reaped: bool = False, auto_round: int = 0,
             turns_before: int = 0) -> Optional[str]:
@@ -533,6 +538,11 @@ def _finish(draft_id: str, started: float, parser: EventParser, exit_code: Optio
         elif parser.provider_error:   # pi exited 0, but the last assistant message ended with stopReason "error"
             status, notes = "failed", scrub(parser.provider_error, SUMMARY_CLIP, (token,))
             store.update_draft(draft_id, status="failed", error=notes, reason="provider_error")
+        elif draft.get("report") and draft.get("yaml_text") and not _is_question(parser.last_say):
+            # a draft was handed in EARLIER and this run (a chat answer) neither changed it nor asked anything: it is ready again
+            status, notes = "ready", "Taslak değişmedi, hazır"
+            store.update_draft(draft_id, status="ready", error=None, reason=None, question=None, question_data=None)
+            add_event(draft_id, {"t": _now(), "kind": "status", "status": "ready", "text": notes})
         else:
             status, notes = "needs_input", parser.last_say
             store.update_draft(draft_id, status="needs_input", error=None, question=parser.last_say or None, question_data=None)

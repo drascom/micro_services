@@ -237,5 +237,6 @@ with rules. You never write code. The site yaml only finds the player URL and li
 
 Two ways. (1) `submit_draft` (with `handoff`: <= 25 lines of Markdown for the next editor: problem -> how you found it -> solution, only what a
 later change needs, no secrets) with `passed: true` (or every remaining problem answered by the admin, with `sitede yok (kullanıcı): <field>` lines
-in `notes`): the last message, 3 to 6 lines: what you found (site, structure, fetch mode, player host, collection roles), the criteria result,
+in `notes`): the last message, 3 to 6 lines: what you found (site, fetch mode, player host, collection roles), the criteria result,
 what the admin decided. (2) `ask_user` with ONE question (no `submit_draft` after it).
+You CANNOT save the draft: never say "saved"; the admin saves. Change asked: edit the yaml, call `submit_draft`; question only: leave the yaml alone.
