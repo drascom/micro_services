@@ -645,6 +645,7 @@ Copy `.env.example` → `.env`. Relative paths resolve against `server/`.
 | `SCRAPER_HEAL_ENABLED` | `false` | master switch for LLM self-heal on drift |
 | `SCRAPER_HEAL_PROVIDER` | `codex_cli` | `codex_cli` \| `pi` \| `pi_agent` \| `openai_compatible` |
 | `SCRAPER_HEAL_AGENT_TIMEOUT` / `SCRAPER_HEAL_VERIFY_TIMEOUT` | `300` / `420` | `pi_agent` only: longest one repair-agent run / longest server-side verification of its proposal (seconds) |
+| `PLAYHEAL_STREAM_MIN_SOURCES` | `2` | different sources (episodes) of one site refused by the same stream host (the server's own probe fails too: 403 / "security error" page, `streamdiag`) within 24 h that start a repair run (evidence `stream_blocked`, layer `provider`; `blocked` and `hls_unsupported_browser` never count) |
 | `PLAYHEAL_COVERAGE_RATIO` / `PLAYHEAL_COVERAGE_MIN_SERIES` | `0.5` / `5` | share of series items without episode sources (and least number of series) that is a "no sources" signal: warning in the scan record + a repair run |
 | `SCRAPER_HEAL_TIMEOUT` | `120` | seconds to wait for the LLM |
 | `SCRAPER_HEAL_AUTOAPPLY` | `false` | **default only** (admin Ayarlar wins once saved): version + activate a sandbox-validated heal |

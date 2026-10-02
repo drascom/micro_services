@@ -38,6 +38,14 @@ is no series page any more / a changed structure; a site that is down or blocks 
 matter, and a series with no known series page is skipped without an error, so neither counts). ``record_crawl(site, counters)``
 remembers it; ``evaluate`` then returns evidence of ``kind == "series_inventory"`` (``failing`` = the series pages that failed, stage
 ``inventory``: the ``series_page`` layer), started with ``trigger="crawl"`` through the same gates, one repair per scan.
+
+A fourth signal is a stream the server RESOLVES but its host refuses (the diagnosis of ``library/streamdiag.py``: ``forbidden`` /
+``not_media`` / ``server_blocked``, i.e. the server's own probe fails too; ``blocked`` (not public) placeholders and the browser's
+``hls_unsupported_browser`` never count). ``record_stream_blocked(site, event)`` keeps one event per source for 24 h; when at least
+``PLAYHEAL_STREAM_MIN_SOURCES`` DIFFERENT sources of the site are refused by the same stream host, ``evaluate`` returns evidence of
+``kind == "stream_blocked"`` (``failing`` = those sources with the stream host / type, the probe's answer and the headers used under
+``stream``, stage ``stream``: the ``provider`` layer; the agent tries the recipe's ``stream_headers`` / ``warm_session`` / ``stream_proxy``
+or reports ``needs code``), same gates as any playback heal; one repair per group (the events are consumed when it starts).
 """
 from __future__ import annotations
 
@@ -57,6 +65,13 @@ MAX_OK = 3               # working examples handed to the agent
 LLM_SKIP_SECONDS = 60    # after an unhealthy LLM account: no new thread (and no new check) for this long
 INFRA_PREFIX = "sayfa:"  # videos._record error of a failed page fetch (site down / blocked): not a repair matter
 NO_SOURCES = "no_sources"  # evidence["kind"] of a site whose scan produced no episode video sources
+STREAM_BLOCKED = "stream_blocked"      # evidence["kind"] of a site whose streams resolve but the stream host refuses them
+STREAM_BLOCK_CODES = ("forbidden", "not_media", "server_blocked")   # streamdiag verdicts that count (never ``blocked`` / ``hls_unsupported_browser``)
+STREAM_BLOCK_TTL = 86400                # seconds an event counts
+MAX_BLOCKED_EVENTS = 60                 # events kept per site
+STREAM_HINT = ("The server resolves the stream but its host refuses it (also for the server's own probe). Try in the library recipe: "
+               "`stream_headers` (Referer / Origin = the player page), `warm_session: true`, `stream_proxy: true`; if it needs a signature, "
+               "a cookie from a real browser session or a TLS fingerprint, submit nothing and report `needs code: <host>`.")
 SERIES_INVENTORY = "series_inventory"   # evidence["kind"] of a site whose series pages mostly could not be read in the scan's inventory pass
 #: error texts of the inventory pass that say "the site is down / blocks us" (a transport problem), not "the page structure changed"
 INFRA_ERRORS = ("http ", "http_", "timeout", "timed out", "connection", "obscura", "crawlee", "challenge", "cloudflare", "blocked",
@@ -64,6 +79,7 @@ INFRA_ERRORS = ("http ", "http_", "timeout", "timed out", "connection", "obscura
 
 _lock = threading.Lock()
 _windows: dict[str, "OrderedDict[str, dict]"] = {}   # site -> source id -> latest counted outcome (oldest first)
+_blocked: dict[str, "OrderedDict[str, dict]"] = {}   # site -> source id -> latest stream_blocked event (oldest first)
 _meta: dict[str, dict] = {}                          # site -> {last_trigger_at, last_skip, llm_skip_until}
 _inflight: set[str] = set()
 _threads: dict[str, threading.Thread] = {}
@@ -80,7 +96,7 @@ def _s(value: Any, limit: int = 200) -> str:
 def reset(site: Optional[str] = None) -> None:
     """Forget the window (and the remembered trigger/skip) of one site, or of all of them."""
     with _lock:
-        for store in (_windows, _meta):
+        for store in (_windows, _meta, _blocked):
             if site is None:
                 store.clear()
             else:
@@ -180,12 +196,14 @@ def _cluster(failed: list[dict]) -> Optional[tuple[str, str, int]]:
 
 def evaluate(site: str, *, force: bool = False) -> Optional[dict]:
     """Evidence for ``heal.heal_site_playback`` when the site's window shows a repeating failure, else (no ``force``) the
-    "no sources" evidence of the latest scan's coverage when it is a signal and not consumed yet, else the "series_inventory"
-    evidence of the latest scan's inventory pass, else None.
+    "stream_blocked" evidence of refused streams, else the "no sources" evidence of the latest scan's coverage when it is a
+    signal and not consumed yet, else the "series_inventory" evidence of the latest scan's inventory pass, else None.
 
     ``force`` (admin button) only needs one failure in the window; the thresholds do not apply (and the coverage / the inventory
     pass are left to ``best_evidence``)."""
     evidence = _playback_evidence(site, force=force)
+    if evidence is None:
+        evidence = _blocked_evidence(site, force=force)
     if evidence is None and not force:
         evidence = _coverage_evidence(site) or _crawl_evidence(site)
     return evidence
@@ -241,6 +259,114 @@ def best_evidence(site: str) -> Optional[dict]:
     if ev is not None:
         return ev
     return _coverage_evidence(site, force=True) or _crawl_evidence(site, force=True)
+
+
+# --- stream blocked: the server resolves a stream its host refuses ---------------------------------------------------
+
+def _clean_headers(value: Any) -> dict:
+    return {_s(k, 40): _s(v, 120) for k, v in list(value.items())[:8]} if isinstance(value, dict) else {}
+
+
+def record_stream_blocked(site: str, event: dict) -> bool:
+    """Remember that the server's own probe of a stream of ``site`` was refused (``streamdiag`` verdict ``forbidden`` / ``not_media`` /
+    ``server_blocked``): ``event`` = ``{source_id, kind, episode_id, locator, code, http, ct, body, host, stream_type, sent, proxied}``.
+    One event per source (the newest wins), kept ``STREAM_BLOCK_TTL`` seconds. Never raises; False when it did not count (a trailer,
+    another code, no host / source id)."""
+    try:
+        if not site or not isinstance(event, dict) or event.get("code") not in STREAM_BLOCK_CODES or event.get("kind") == "trailer":
+            return False
+        source_id, host = _s(event.get("source_id"), 120), _s(event.get("host"), 100).lower()
+        if not source_id or not host:
+            return False
+        entry = {"source_id": source_id, "kind": _s(event.get("kind"), 20), "episode_id": _s(event.get("episode_id"), 120),
+                 "locator": _s(event.get("locator"), 500), "code": event["code"], "http": event.get("http"),
+                 "ct": _s(event.get("ct"), 60), "body": _s(event.get("body"), 80), "host": host,
+                 "stream_type": _s(event.get("stream_type"), 10), "sent": _clean_headers(event.get("sent")),
+                 "proxied": bool(event.get("proxied")), "at": time.time(), "consumed": False}
+        with _lock:
+            events = _blocked.setdefault(site, OrderedDict())
+            events.pop(source_id, None)
+            events[source_id] = entry
+            while len(events) > MAX_BLOCKED_EVENTS:
+                events.popitem(last=False)
+        return True
+    except Exception:
+        return False
+
+
+def clear_stream_blocked(site: str, source_id: str) -> None:
+    """The source's stream is reachable again: withdraw its event. Never raises."""
+    try:
+        with _lock:
+            (_blocked.get(site) or {}).pop(source_id, None)
+    except Exception:
+        pass
+
+
+def _live_blocked(site: str) -> list[dict]:
+    """The site's events inside the TTL (the stale ones are dropped), oldest first."""
+    cutoff = time.time() - STREAM_BLOCK_TTL
+    with _lock:
+        events = _blocked.get(site)
+        if not events:
+            return []
+        for key in [k for k, e in events.items() if e["at"] < cutoff]:
+            events.pop(key, None)
+        return [dict(e) for e in events.values()]
+
+
+def block_label(entry: dict) -> str:
+    """Short Turkish reason of the admin heal record: "akış erişilemiyor (403)"."""
+    code = entry.get("http")
+    return f"akış erişilemiyor ({code})" if code else "akış erişilemiyor (" + {"not_media": "video yerine hata sayfası",
+        "server_blocked": "sunucu da erişemiyor"}.get(str(entry.get("code")), "reddedildi") + ")"
+
+
+def blocked_failing(entry: dict) -> dict:
+    """One ``failing`` example of ``stream_blocked`` evidence (also built by the source finder from its own probe)."""
+    stream = {"host": entry.get("host") or "", "type": entry.get("stream_type") or "", "code": entry.get("code"),
+              "http": entry.get("http"), "ct": entry.get("ct") or "", "body": entry.get("body") or "",
+              "sent": entry.get("sent") or {}, "proxied": bool(entry.get("proxied"))}
+    return {"source_id": entry["source_id"], "kind": entry.get("kind") or "", "episode_id": entry.get("episode_id") or "",
+            "locator": entry.get("locator") or "", "error": block_label(entry), "stage": "stream", "host": "", "stream": stream,
+            "candidates": []}
+
+
+def blocked_evidence(site: str, group: list[dict], ok_examples: Optional[list] = None) -> dict:
+    """The ``heal.heal_site_playback`` evidence of refused streams (``group`` = events of one stream host, any number >= 1)."""
+    if ok_examples is None:
+        refused = {e["source_id"] for e in group}   # they resolve fine too, but they are the problem, not a working example
+        ok_examples = [{"source_id": e["source_id"], "locator": e["locator"]}
+                       for e in [e for e in _snapshot(site) if e["ok"] and e["source_id"] not in refused][::-1][:MAX_OK]]
+    first = group[-1]
+    return {"site": site, "kind": STREAM_BLOCKED, "window": {"n": len(group) + len(ok_examples), "failed": len(group)},
+            "failing": [blocked_failing(e) for e in group[::-1][:MAX_FAILING]], "ok_examples": ok_examples[:MAX_OK],
+            "stream": {"host": first.get("host"), "type": first.get("stream_type"), "code": first.get("code"), "http": first.get("http")},
+            "hint": STREAM_HINT}
+
+
+def _blocked_evidence(site: str, *, force: bool = False) -> Optional[dict]:
+    """Evidence of ``kind == "stream_blocked"``: the largest group of not yet consumed events of one stream host with at least
+    ``PLAYHEAL_STREAM_MIN_SOURCES`` different sources (``force``: the admin button, any event, consumed ones too)."""
+    events = _live_blocked(site)
+    if not force:
+        events = [e for e in events if not e["consumed"]]
+    groups: dict[str, list[dict]] = {}
+    for event in events:
+        groups.setdefault(event["host"], []).append(event)
+    if not groups:
+        return None
+    group = max(groups.values(), key=lambda g: (len(g), g[-1]["at"]))
+    if not force and len(group) < max(1, int(app_config.PLAYHEAL_STREAM_MIN_SOURCES)):
+        return None
+    return blocked_evidence(site, group)
+
+
+def _consume_blocked(site: str, host: str) -> None:
+    with _lock:
+        for event in (_blocked.get(site) or {}).values():
+            if event["host"] == host:
+                event["consumed"] = True
 
 
 # --- coverage: a scan that produced no episode sources --------------------------------------------------------
@@ -455,7 +581,9 @@ def maybe_trigger(site: str, *, sync: bool = False) -> str:
         if not _reserve(site):
             return "busy"
         trigger = "playback"
-        if evidence.get("kind") == NO_SOURCES:
+        if evidence.get("kind") == STREAM_BLOCKED:
+            _consume_blocked(site, str((evidence.get("stream") or {}).get("host") or ""))   # one repair per group
+        elif evidence.get("kind") == NO_SOURCES:
             _consume_coverage(site)   # one repair per scan
         elif evidence.get("kind") == SERIES_INVENTORY:
             _consume_crawl(site)

@@ -1,0 +1,12 @@
+name: trdizi_player
+description: Trdiziizle player pages with HLS sources.
+version: 1
+match:
+  host_regex: (^|[.])trdiziizle[.]tv$
+  path_regex: ^/player/oynat/
+fetch: http
+referer: '{page_url}'
+extract:
+- regex: file:"([^\"]+)"
+  type: hls
+updated_at: '2026-10-02T00:27:45Z'

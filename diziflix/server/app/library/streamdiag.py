@@ -22,6 +22,11 @@ A stream that is refused without the stream's own ``request_headers`` but answer
 parameter and answers the server, is LEARNED: ``video_sources.proxy_required=1`` and the stored resolution is dropped, so the
 next ``/api/streams`` serves the source's streams through the stream proxy (``proxy_reason: "learned"``). A stream that is
 already proxied and still refused is ``server_blocked``.
+
+A refusal that the proxy cannot fix (``forbidden`` / ``not_media`` / ``server_blocked``, not learned) is also a signal for the playback
+heal: ``_heal_signal`` -> ``playheal.record_stream_blocked`` (evidence kind ``stream_blocked``; ``PLAYHEAL_STREAM_MIN_SOURCES`` different
+sources on one stream host start a repair, see ``scraper/playheal.py``). :func:`quick_check` is the <= 3 s look the source finder takes at
+a freshly resolved stream.
 """
 from __future__ import annotations
 
@@ -50,6 +55,10 @@ LEARNABLE = ("forbidden", "not_media", "ip_bound")
 SKIP_CODES = ("aborted", "offline", "autoplay")
 MAX_DIAG_BYTES = 600
 MAX_DETAIL = 120
+MAX_BODY = 80            # characters of a refusing answer kept for the heal evidence
+#: codes whose cause may be the recipe / the site (not the user's device or a one-off): the playback heal's ``stream_blocked`` evidence
+HEAL_CODES = ("forbidden", "not_media", "server_blocked")
+QUICK_SECONDS = 3.0      # :func:`quick_check` (the source finder) waits at most this long
 MAX_STREAMS = 3          # streams of a source probed per run
 MAX_REDIRECTS = 3
 _HEAD_BYTES = 4096
@@ -160,8 +169,24 @@ def _client() -> httpx.Client:
     return httpx.Client(follow_redirects=False, timeout=httpx.Timeout(config.STREAM_DIAG_TIMEOUT))
 
 
-def _result(code: str, started: float, http: Optional[int] = None, ct: str = "", why: str = "") -> dict:
-    return {"code": code, "http": http, "ct": ct, "ms": int((time.monotonic() - started) * 1000), "why": why}
+def _result(code: str, started: float, http: Optional[int] = None, ct: str = "", why: str = "", body: bytes = b"") -> dict:
+    """``body`` = the start of the refusing answer (<= 80 characters of text, ``\"\"`` for media); only the heal evidence reads it."""
+    text = _clip(body.decode("utf-8", "replace"), MAX_BODY) if body else ""
+    return {"code": code, "http": http, "ct": ct, "ms": int((time.monotonic() - started) * 1000), "why": why, "body": text}
+
+
+def _head(response, limit: int, *, safe: bool = False) -> bytes:
+    """The first ``limit`` bytes of a streamed answer (``safe``: b"" when it cannot be read instead of raising)."""
+    head = b""
+    try:
+        for chunk in response.iter_bytes():
+            head += chunk
+            if len(head) >= limit:
+                break
+    except Exception:
+        if not safe:
+            raise
+    return head[:limit]
 
 
 def probe(url: str, headers: dict, kind: str, now: Optional[float] = None) -> dict:
@@ -197,19 +222,14 @@ def probe(url: str, headers: dict, kind: str, now: Optional[float] = None) -> di
                         continue
                     ct = (response.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
                     if status in (401, 403):
-                        return _result("forbidden", started, status, ct)
+                        return _result("forbidden", started, status, ct, body=_head(response, 200, safe=True))
                     if status in (404, 410):
                         return _result("gone", started, status, ct)
                     if status not in (200, 206, 416):
                         return _result("unreachable", started, status, ct, why=f"HTTP {status}")
-                    head = b""
-                    for chunk in response.iter_bytes():
-                        head += chunk
-                        if len(head) >= _HEAD_BYTES:
-                            break
-                    head = head[:_HEAD_BYTES]
+                    head = _head(response, _HEAD_BYTES)
                     if status != 416 and _not_media(head, ct, kind):
-                        return _result("not_media", started, status, ct)
+                        return _result("not_media", started, status, ct, body=head[:200])
                     return _result("reachable", started, status, ct)
     except httpx.TimeoutException:
         return _result("timeout", started)
@@ -262,6 +282,8 @@ def diagnose(job: dict, *, now: Optional[float] = None) -> Optional[dict]:
                 learn = True       # reachable for the server = the address the URL is bound to; the client is another address
                 result["code"] = "ip_bound"
         result["learn"] = learn
+        result["stream"] = {"host": (urlparse(url).hostname or "").lower(), "type": "hls" if kind == "hls" else "mp4",
+                            "sent": describe_headers(headers), "proxied": proxied}
         results.append(result)
         if result["code"] != "reachable" and not job.get("browser_hls"):
             break
@@ -271,6 +293,57 @@ def diagnose(job: dict, *, now: Optional[float] = None) -> Optional[dict]:
     if job.get("browser_hls") and verdict["code"] in ("reachable", "timeout", "unreachable"):
         verdict = {**verdict, "code": "hls_unsupported_browser", "learn": False}
     return verdict
+
+
+def describe_headers(headers: Any) -> dict:
+    """The request headers of a probe for the heal evidence: Referer / Origin / User-Agent with their (clipped) value, every other
+    header (Cookie, Authorization, ...) by name only (``"<set>"``); never a secret."""
+    out = {}
+    for name, value in (headers or {}).items():
+        out[str(name)] = _clip(value, 120) if str(name).lower() in ("referer", "origin", "user-agent") else "<set>"
+    return out
+
+
+def quick_check(streams: list, learned: bool = False, timeout: float = QUICK_SECONDS) -> Optional[dict]:
+    """A fast reachability check of freshly resolved ``streams`` (the source finder, the heal gate): the verdict of :func:`diagnose`
+    (``code`` ``reachable`` / ``forbidden`` / ... + ``learn`` + ``stream``), or None = uncertain (nothing probeable, no answer in
+    ``timeout`` seconds, any error). Never raises, never waits longer than ``timeout``; the probe thread is left to finish alone."""
+    try:
+        pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="streamdiag-quick")
+        try:
+            future = pool.submit(diagnose, {"streams": [s for s in streams if isinstance(s, dict)], "learned": bool(learned)})
+            return future.result(timeout=max(0.1, float(timeout)))
+        finally:
+            pool.shutdown(wait=False)
+    except Exception:
+        return None
+
+
+def blocked_event(job: dict, verdict: dict) -> dict:
+    """The ``playheal.record_stream_blocked`` event of a verdict about ``job``'s source (stream host / type, the probe's answer and
+    the headers it used)."""
+    stream = verdict.get("stream") if isinstance(verdict.get("stream"), dict) else {}
+    return {"source_id": job.get("source_id"), "kind": job.get("source_kind") or "", "episode_id": job.get("episode_id") or "",
+            "locator": job.get("locator") or "", "code": verdict.get("code"), "http": verdict.get("http"), "ct": verdict.get("ct") or "",
+            "body": verdict.get("body") or "", "host": stream.get("host") or "", "stream_type": stream.get("type") or "",
+            "sent": stream.get("sent") or {}, "proxied": bool(stream.get("proxied"))}
+
+
+def _heal_signal(job: dict, verdict: dict) -> None:
+    """A verdict that says the stream is refused (the server's own probe fails too) is evidence for the playback heal
+    (``stream_blocked``); a reachable one withdraws the source's earlier evidence. Never raises."""
+    try:
+        from ..scraper import playheal
+        site, sid, code = job.get("site"), job.get("source_id"), verdict.get("code")
+        if not site or not sid or job.get("source_kind") == "trailer" or (job.get("resolver") or "page") != "page":
+            return
+        if code == "reachable":
+            playheal.clear_stream_blocked(site, sid)
+        elif code in HEAL_CODES and not verdict.get("learn"):
+            if playheal.record_stream_blocked(site, blocked_event(job, verdict)):
+                playheal.maybe_trigger(site)
+    except Exception:
+        log.warning("stream_blocked signal of %s failed", job.get("source_id"), exc_info=True)
 
 
 def record(source_id: str, verdict: dict, detail: str = "") -> None:
@@ -296,6 +369,7 @@ def run(job: dict) -> Optional[dict]:
         verdict = diagnose(job)
         if verdict is not None:
             record(job["source_id"], verdict, job.get("detail") or "")
+            _heal_signal(job, verdict)
         return verdict
     except Exception:
         log.warning("playback diagnosis of %s failed", job.get("source_id"), exc_info=True)
@@ -375,5 +449,9 @@ def build_job(source: Any, streams: list, code: str, engine: str, detail: str, b
              "stream_proxy": s.get("stream_proxy") is True} for s in streams if s.get("url") and s.get("type") != "embed"]
     if not kept:
         return None
+    keys = source.keys()
+    get = lambda k: (source[k] if k in keys else "") or ""
     return {"source_id": source["id"], "streams": kept, "learned": bool(source["proxy_required"]), "code": code,
-            "engine": engine, "detail": _clip(detail, MAX_DETAIL), "browser_hls": browser_hls}
+            "engine": engine, "detail": _clip(detail, MAX_DETAIL), "browser_hls": browser_hls,
+            "site": get("source"), "locator": get("locator"), "episode_id": get("episode_id"), "source_kind": get("kind"),
+            "resolver": get("resolver") or "page"}

@@ -55,6 +55,7 @@ PROPOSAL_YAML_CHARS = 12000  # proposal yaml kept in the ops record when it is n
 PROPOSAL_RECIPE_CHARS = 4000
 NO_SOURCES = "no_sources"
 SERIES_INVENTORY = "series_inventory"   # evidence of a scan whose series pages mostly could not be read (``playheal.record_crawl``; trigger ``crawl``)
+STREAM_BLOCKED = "stream_blocked"       # evidence of streams the server resolves but the stream host refuses (``playheal.record_stream_blocked``)
 SOURCELESS = (NO_SOURCES, SERIES_INVENTORY)   # evidence kinds without a failing PLAYBACK example: verified in the sandbox, not by playing examples
 
 
@@ -169,6 +170,8 @@ def layers_of(evidence: dict, cfg: Optional[scfg.SiteConfig] = None) -> list:
         layers |= {"normalize", "series_page"}
         if cfg is not None and not cfg.data.get("resolvers"):
             layers.add("resolvers")
+    elif str(evidence.get("kind") or "playback") == STREAM_BLOCKED:   # the player is found and resolved, the stream host refuses: the video HOST side
+        layers |= {"provider"}
     elif str(evidence.get("kind") or "playback") == SERIES_INVENTORY:   # series pages the inventory pass cannot read: the selectors / the key + title rules
         layers |= {"series_page", "normalize"}
     for f in evidence.get("failing") or []:
@@ -277,6 +280,10 @@ def scope_violation(cfg: scfg.SiteConfig, evidence: dict, layers: list, new_data
 
 # --- the task message -------------------------------------------------------------------------------------------
 
+def kind_of(evidence: dict) -> str:
+    return str(evidence.get("kind") or "playback")
+
+
 def _slim_evidence(evidence: dict) -> dict:
     out = {k: evidence.get(k) for k in ("kind", "window") if evidence.get(k)}
     out["failing"] = []
@@ -292,6 +299,13 @@ def _slim_evidence(evidence: dict) -> dict:
     out["ok_examples"] = [{"locator": o.get("locator")} for o in (evidence.get("ok_examples") or [])[:3] if isinstance(o, dict)]
     if isinstance(evidence.get("coverage"), dict):
         out["coverage"] = evidence["coverage"]
+    if kind_of(evidence) == STREAM_BLOCKED:
+        for entry, f in zip(out["failing"], [f for f in (evidence.get("failing") or [])[:8] if isinstance(f, dict)]):
+            if isinstance(f.get("stream"), dict):
+                entry["stream"] = f["stream"]   # host / type, the probe's answer (http, ct, body start) and the headers it used
+        for key in ("stream", "hint"):
+            if evidence.get(key):
+                out[key] = evidence[key]
     text = json.dumps(out, ensure_ascii=False, default=str)
     while len(text) > MAX_EVIDENCE_CHARS and out["failing"]:   # drop the oldest failing examples until it fits
         out["failing"].pop()
@@ -310,6 +324,15 @@ def repair_message(cfg: scfg.SiteConfig, evidence: dict, trigger: str) -> str:
                    "(row_selector, fields.url, episode_url_regex, series_url_regex, series_slug_regex, same_series_regex) or the series "
                    "key / title rules (normalize) no longer fit. Failing examples are the series pages (`locator`); ok_examples still "
                    "read. Verify with test_config(playable: true): the criterion series_inventory_ok.")
+    elif kind == STREAM_BLOCKED:
+        stream = evidence.get("stream") if isinstance(evidence.get("stream"), dict) else {}
+        problem = (f"{window.get('failed')} different sources of this site resolve to a stream the stream host `{stream.get('host')}` "
+                   f"({stream.get('type')}) REFUSES (HTTP {stream.get('http') or '?'}; `failing[].stream` = what the server's own probe "
+                   "got: status, content type, start of the body such as `security error`, the request headers it sent). The player "
+                   "page and the resolution are fine, so the fix is the video host's recipe in the library: "
+                   f"{evidence.get('hint') or ''} Verify with test_provider on >= 3 player URLs AND check that the stream URL it "
+                   "returns answers (fetch_page it with the stream headers). The gate probes the stream again, a stream that is "
+                   "still refused is rejected.")
     elif kind == NO_SOURCES:
         problem = (f"The last scan wrote {window.get('failed')} of {window.get('n')} series items WITHOUT any episode video source "
                    "(nothing to play: the client shows \"Bölümler alınamadı\"). The site's normalize has no episode_source, or "
@@ -395,6 +418,12 @@ def _reasons(evidence: dict) -> list[str]:
         return [f"{window.get('failed')} of {window.get('n')} series items without episode sources"]
     if evidence.get("kind") == SERIES_INVENTORY:
         return [f"{window.get('failed')} of {window.get('n')} series pages could not be read"]
+    if evidence.get("kind") == STREAM_BLOCKED:   # short Turkish reason for the admin heal record
+        failing = [f for f in evidence.get("failing") or [] if isinstance(f, dict)]
+        stream = evidence.get("stream") if isinstance(evidence.get("stream"), dict) else {}
+        out = [(failing[0].get("error") if failing and failing[0].get("error") else "akış erişilemiyor")]
+        out.append(f"akış sunucusu {stream.get('host') or '?'} ({window.get('failed')} kaynak)")
+        return out
     out = [f"{window.get('failed')} of {window.get('n')} recent sources failed"]
     failing = [f for f in evidence.get("failing") or [] if isinstance(f, dict)]
     for key in ("stage", "host", "error"):
@@ -511,11 +540,24 @@ def _cfg_with(cfg: scfg.SiteConfig, data: Optional[dict], extra: list) -> scfg.S
     return out
 
 
-def _follow(sb: Any, cfg: scfg.SiteConfig, locator: str, deadline: float) -> dict:
-    """One example through the sandbox playback path (page -> discover -> providers), in memory; never raises."""
+def _follow(sb: Any, cfg: scfg.SiteConfig, locator: str, deadline: float, probe: bool = False) -> dict:
+    """One example through the sandbox playback path (page -> discover -> providers), in memory; never raises. ``probe`` (a
+    ``stream_blocked`` repair): a resolved stream only counts when it is also REACHABLE (the server's own probe with the stream's
+    headers, ``streamdiag``), else ``ok`` is false with the reason."""
     if time.monotonic() >= deadline - 1:
         return {"ok": False, "error": "verification ran out of time", "timeout": True}
-    return sb._follow_playback(cfg, locator, min(deadline, time.monotonic() + sb.PLAYABLE_SAMPLE_SECONDS), site_id=cfg.site_id)
+    raw: list = []
+    until = min(deadline, time.monotonic() + sb.PLAYABLE_SAMPLE_SECONDS)
+    result = (sb._follow_playback(cfg, locator, until, site_id=cfg.site_id, raw=raw) if probe
+              else sb._follow_playback(cfg, locator, until, site_id=cfg.site_id))
+    if probe and result.get("ok"):
+        from ..library import streamdiag
+        verdict = streamdiag.quick_check(raw or [], timeout=max(1.0, min(streamdiag.config.STREAM_DIAG_TIMEOUT, deadline - time.monotonic())))
+        if verdict is None or not (verdict.get("code") == "reachable" or verdict.get("learn")):
+            code = (verdict or {}).get("code") or "no answer"
+            http = (verdict or {}).get("http")
+            return {**result, "ok": False, "error": f"stream still refused ({code}{f', HTTP {http}' if http else ''})"}
+    return result
 
 
 def _healthy_samples(site: str, labels: set, limit: int) -> list[dict]:
@@ -644,7 +686,7 @@ def _gate_and_apply(cfg: scfg.SiteConfig, evidence: dict, record: dict, trace: d
         picks = locators[:FIX_EXAMPLES]
         if not picks:
             return _fail("proposal rejected: the evidence has no failing example to verify the repair with", trace)
-        results = [_follow(sb, new_cfg, loc, deadline) for loc in picks]
+        results = [_follow(sb, new_cfg, loc, deadline, probe=(kind == STREAM_BLOCKED)) for loc in picks]
         ok = sum(1 for r in results if r.get("ok"))
         verified["failing"] = {"checked": len(results), "resolved": ok}
         if ok == 0 or round(ok / len(results), 2) < sb.MIN_PLAYABLE_RATIO:

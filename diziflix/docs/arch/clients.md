@@ -1,0 +1,15 @@
+# İstemciler: Tizen/web, Android, istemci turu notları
+
+> Bu bölüm CLAUDE.md'den taşındı (2026-10-02). Metin birebir taşınmıştır; kısa harita ve kurallar `diziflix/CLAUDE.md`'dedir.
+
+## İstemci turu (sunucu uyumu)
+
+- **İstemci turu (sunucu uyumu)** Tizen: `js/finder.js` (kaynak bulucu metinleri: `searching` "Kaynak aranıyor…", `not_found`; `/api/source-finder` 5 sn yoklama, tavan 10 dk, `found` olunca otomatik yeniden dene), `js/notifications.js` (30 sn `/api/notifications` yoklayıcı; oynatıcıda/Profil/Ayarlar'da durur; `localStorage dz_notif_since_<profil>`; ilk çalıştırmada toast yok; "Kaynak bulundu · <ad> S04 B02" + `read`), "kaynak yok" durumu (`availability unavailable + no_video_source` artık "alınamadı" DEĞİL: "Bu dizi/film için henüz izleme kaynağı yok."), arama kartlarında `source_options` etiketleri + "Bazı kaynaklar yanıt vermedi" satırı, `trending_*`/`noteworthy_movies` satırlarına "Tümü" kartı (`sort=trending|popular`). Testler `tests/{finder_flow,notifications,no_source_state,search_sources,home_catalog_end}.js`. Android (`android/`, `android/README.md`): aynı davranışlar (`DetailLogic.isNoSource`, `SourceFinderLogic`, `NotificationPoller`, `NotificationLogic`, `SearchSourceLogic`, DataStore `notif_since_<profil>`, "Tümü" -> `catalog/{satır}`); TV'de bildirim yalnız bilgi, tablette snackbar "Aç"
+
+## UI cilası
+
+- İstemci UI cilası (`tizen-client/README.md`): detay düğmeleri `actions[]`'ten, ölü fragman = gri "Fragman yok", bölüm kartı = poster tile (dizi posteri), odakta yatay önizleme (`still_url`, yoksa yatay afiş) + `episode_label`, oynatıcıda "S04 B02 · Ad" + sonraki bölüm kartı (son ~45 sn, ardışık bölüm), Ayarlar'da varsayılan altyazı dili + "En yüksek kalite" (`dz_pref_quality`, `playflow.js` akış sırası), tek bildirim bileşeni `js/ui/toast.js`. Testler: `tests/{detail_actions,home_states,player_next_episode,quality_pref,settings_prefs}.js`
+
+## HLS/motor seçimi
+
+- İstemci HLS/motor seçimi: motor/embed kararı `streams[].type`'a (`hls|mp4|embed`) göre, URL uzantısına DEĞİL (uzantı yalnız `type` yoksa yedek; Tizen `player.js isEmbedStream`, Android `StreamLogic.isEmbed/mimeTypeFor` -> `MimeTypes.APPLICATION_M3U8|VIDEO_MP4`). Tarayıcı (HTML5 motoru) `type=hls` + doğal HLS yoksa `tizen-client/js/vendor/hls.min.js` (hls.js 1.7.3, sha256 `js/vendor/README.md`'de) tembel `<script>` ile bir kez yüklenir; AVPlay/Tizen TV yolu hls.js'e dokunmaz; fatal hls.js hatası `playback_failed` akışına bağlı (`startLoad`/`recoverMediaError` bir kez). `POST /api/playback-report` başarısızlıkta isteğe bağlı `detail` (≤120: `hls:<tür>/<ayrıntı>`, `video.error.code=N`, `avplay:<hata>`, `exo:<errorCodeName>`, `start-timeout`) gönderir. Cache-bust şu an `responsive-v32` (`index.html`; `tests/{brand_logos,settings_layout}.js` sürümü sabitler). Testler: `tests/player_hls.js`, Android `PlayFlowTest/StreamLogicTest/ApiClientTest`

@@ -10,12 +10,16 @@ The repair-mode tools are `fetch_page`, `query_html`, `grep_page`, `outline_page
 
 ## Input (the task message)
 
-`site_id`, `site_url`, `trigger` (`playback` | `crawl` | `manual` | `drift`), `problem` (`playback` | `no_sources` | `series_inventory` | `drift`) and the evidence (JSON). `playback`:
+`site_id`, `site_url`, `trigger` (`playback` | `crawl` | `manual` | `drift`), `problem` (`playback` | `no_sources` | `series_inventory` | `stream_blocked` | `drift`) and the evidence (JSON). `playback`:
 `failing[]` = pages that failed (`locator`, `kind`, `error`, `stage`, `host`, `candidates[]`), `ok_examples[]` = pages that still play, `window`.
 `stage` = where the chain broke: `discover` (no candidate: the yaml's `resolvers:`), `player_page.fetch` / `player_page.extract` / `follow...` (a
 recipe could not read the player), a provider name (a code provider failed). `no_sources`: series pages whose scan gave no episode `video_sources`
 (`stage: normalize`). `series_inventory`: series pages the scan's inventory pass could not read (`stage: inventory`, `failing[].locator` = the page): fix
-`series_page` / the key + title rules. `drift`: the drift reasons and the broken block. The ACTIVE yaml, version and baseline are NOT in the message: call
+`series_page` / the key + title rules. `stream_blocked`: the player is found and a stream resolves, but its host refuses it (layer `provider`; `failing[].stream` = host, type, the
+server's own probe: `http`, `ct`, `body` start such as `security error`, `sent` request headers; `hint`). Typical fixes, in the LIBRARY recipe:
+`stream_headers` (Referer / Origin = the player page, never the episode page), `warm_session: true` (cookie of the player page), `stream_proxy: true`
+(only when the host accepts the server's headers but not the client's); a Cloudflare / signature / JS-token wall = `needs code: <host>`. The gate
+probes the stream again: a stream still refused is rejected. `drift`: the drift reasons and the broken block. The ACTIVE yaml, version and baseline are NOT in the message: call
 `load_site_config(site_id)` first.
 
 ## Rules
@@ -74,6 +78,7 @@ host. When the real break is in another layer than the named one, say so in `not
    | stage `discover`, no candidates | page structure | site yaml `resolvers:` (selector / type) |
    | candidates found, stage `player_page.fetch` / `extract`, the player page looks different | the video host | UPDATE the recipe |
    | candidates found, no provider covers the host | a new video host | NEW recipe + its name in `providers:` |
+   | `problem: stream_blocked` (stream 403 / `security error`) | the host wants other request headers / a session | UPDATE the recipe (`stream_headers`, `warm_session`, `stream_proxy`), else `needs code` |
    | a code provider (`vidmolly`, `okru`) fails; a signature / cookie / TLS / JS API | not expressible | `needs code` |
    | `list` / `detail` selectors match nothing, drift reasons | page structure | site yaml `list:` / `detail:` selectors only |
    | `problem: no_sources` | `episode_source` / `series_page` / `resolvers:` missing | site yaml (`references/normalize.md` "Playable chain", `references/series-page.md`) |

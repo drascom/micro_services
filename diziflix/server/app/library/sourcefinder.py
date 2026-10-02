@@ -17,6 +17,10 @@ raises, so the play answer is not delayed; it only reports ``{"state": ...}`` fo
    (``SOURCEFINDER_DAILY_BUDGET`` agent runs per 24 h) allows it: ``heal.heal_site_playback(site, evidence, trigger="finder")``;
    a repair that was applied makes the failed sources resolve again.
 
+A stream that resolves but is refused by its host (``streamdiag.quick_check`` <= 3 s: HTTP 401/403, an error page, also for the server's
+own probe; ``SOURCEFINDER_PROBE=0`` skips it, an unclear answer counts as found) is NOT found: the step note says "akış çözüldü ama
+erişilemiyor (HTTP 403)", there is no notification, and the heal step gets ``stream_blocked`` evidence (also noted in the playback heal window).
+
 A found source becomes a ``notifications`` row (kind ``source_found``) for the profile that asked and is already stored the
 usual way (``video_sources`` row + resolved payload with ``valid_until``), so the next play answers from it. Every finished job
 is a ``finder_jobs`` row (admin event ``kind=finder``, found or not); a job without result tells the user nothing
@@ -38,7 +42,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional
 
 from .. import config as app_config, db
-from . import videos
+from . import streamdiag, videos
 
 log = logging.getLogger("diziflix.sourcefinder")
 
@@ -251,10 +255,42 @@ def _mark_usable(row) -> None:
                "WHERE id=? AND status IN ('broken','suspect')", (_now(), row["id"]))
 
 
-def _failed(job: dict, row, error: Any) -> None:
-    """Remember a failed resolution (evidence for the heal step)."""
+def _failed(job: dict, row, error: Any, blocked: Optional[dict] = None) -> None:
+    """Remember a failed resolution (evidence for the heal step). ``blocked`` = the ``stream_blocked`` event of a stream that
+    resolved but is refused (:func:`_probe_streams`)."""
     with _lock:
-        job.setdefault("failed", {})[row["id"]] = {"row": row, "error": _short(error, 200)}
+        job.setdefault("failed", {})[row["id"]] = {"row": row, "error": _short(error, 200), **({"blocked": blocked} if blocked else {})}
+
+
+def _probe_streams(row, result: Any) -> Optional[dict]:
+    """A quick look (<= ``streamdiag.QUICK_SECONDS``) at the stream a source just resolved to: the verdict of the server's own
+    probe, or None = uncertain (no answer in time / nothing probeable / any error: the old behaviour, the stream counts as found).
+    Tests replace this."""
+    if not app_config.SOURCEFINDER_PROBE:
+        return None
+    return streamdiag.quick_check((result or {}).get("streams") or [], learned=bool(row["proxy_required"]) if "proxy_required" in row.keys() else False)
+
+
+def _refused(row, result: Any) -> Optional[dict]:
+    """The ``playheal`` stream_blocked event when the freshly resolved stream of ``row`` is refused (HTTP 401/403, an error page,
+    also for the server's own probe), else None. The refusal is also noted in the playback heal window (the ``stream_blocked`` signal)."""
+    verdict = _probe_streams(row, result)
+    if not verdict or verdict.get("code") not in streamdiag.HEAL_CODES or verdict.get("learn"):
+        return None
+    keys = row.keys()
+    job = {"source_id": row["id"], "site": row["source"], "locator": row["locator"], "episode_id": row["episode_id"] or "",
+           "source_kind": row["kind"], "resolver": row["resolver"] if "resolver" in keys else "page"}
+    event = streamdiag.blocked_event(job, verdict)
+    try:
+        from ..scraper import playheal
+        playheal.record_stream_blocked(row["source"], event)
+    except Exception:
+        pass
+    return {**event, "code": verdict["code"], "http": verdict.get("http")}
+
+
+def _http_label(event: dict) -> str:
+    return f"HTTP {event['http']}" if event.get("http") else {"not_media": "video yerine hata sayfası"}.get(str(event.get("code")), "reddedildi")
 
 
 def _resolve_found(job: dict, rows: list, method: str, label: str = "") -> dict:
@@ -266,8 +302,17 @@ def _resolve_found(job: dict, rows: list, method: str, label: str = "") -> dict:
             continue   # a "not public" placeholder is no repair evidence: the heal step must not run for it (library/gate.py)
         if exc is not None or not _playable(result):
             _failed(job, row, exc or "akış yok")
+    refused = []
+    for row, result in list(good):   # resolving is not enough: a stream the host refuses (403) is no "found" source
+        event = _refused(row, result)
+        if event:
+            good.remove((row, result))
+            refused.append((row, event))
+            _failed(job, row, f"akış çözüldü ama erişilemiyor ({_http_label(event)})", blocked=event)
     for row, _result in good:
         _mark_usable(row)
+    if not good and refused:
+        return {"note": f"{label}akış çözüldü ama erişilemiyor ({_http_label(refused[0][1])})".strip()}
     if good:
         row = good[0][0]
         return {"found": True, "method": method, "site": row["source"], "source_id": row["id"],
@@ -397,6 +442,8 @@ def _host_known(host: str) -> bool:
 def _signal(entry: dict) -> str:
     """Why a failed resolution is worth a repair run: a candidate was found but gave no stream, or its video host is not
     covered by any provider. '' = no (the page had no candidate, or it only timed out)."""
+    if isinstance(entry.get("stream"), dict):
+        return "akış erişilemiyor"
     bad = [c for c in (entry.get("candidates") or []) if isinstance(c, dict) and not c.get("ok") and not _transient(c)]
     for candidate in bad:
         host = str(candidate.get("host") or "")
@@ -410,6 +457,8 @@ def _entry_of(job_row: dict, site: str) -> dict:
     bare error."""
     from ..scraper import playheal, state
     row, sid = job_row["row"], job_row["row"]["id"]
+    if job_row.get("blocked"):   # the stream resolved but its host refuses it: the evidence is the probe, not a resolution trace
+        return playheal.blocked_failing(job_row["blocked"])
     entry = next((e for e in playheal._snapshot(site) if e["source_id"] == sid and not e["ok"]), None)
     if entry is None:
         last = (state.get_site_state(site) or {}).get("last_resolver") or {}
@@ -425,14 +474,20 @@ def _evidence(site: str, entries: list[dict]) -> dict:
     """The ``heal.heal_site_playback`` evidence of this episode's failed sources of ``site`` (the shape ``playheal.evaluate`` hands over)."""
     from ..scraper import playheal
     keep = ("source_id", "kind", "episode_id", "locator", "error", "stage", "host", "candidates")
-    good = [e for e in playheal._snapshot(site) if e["ok"]][::-1][:playheal.MAX_OK]
+    refused = {e["source_id"] for e in entries if isinstance(e.get("stream"), dict)}
+    good = [e for e in playheal._snapshot(site) if e["ok"] and e["source_id"] not in refused][::-1][:playheal.MAX_OK]
     examples = [{"source_id": e["source_id"], "locator": e["locator"]} for e in good]
     if not examples:
         examples = [{"source_id": r["id"], "locator": r["locator"]} for r in db.query(
             "SELECT id,locator FROM video_sources WHERE source=? AND resolver='page' AND kind!='trailer' AND status='healthy' "
             "ORDER BY last_success_at DESC LIMIT ?", (site, playheal.MAX_OK))]
+    if entries and all(isinstance(e.get("stream"), dict) for e in entries):   # streams that resolve but are refused: the stream_blocked evidence
+        group = [{**e["stream"], "source_id": e["source_id"], "kind": e.get("kind"), "episode_id": e.get("episode_id"),
+                  "locator": e.get("locator"), "stream_type": e["stream"].get("type"), "http": e["stream"].get("http")} for e in entries]
+        return playheal.blocked_evidence(site, group, examples)
     return {"site": site, "window": {"n": len(entries) + len(examples), "failed": len(entries)},
-            "failing": [{k: e.get(k) for k in keep} for e in entries[:playheal.MAX_FAILING]], "ok_examples": examples}
+            "failing": [{k: e.get(k) for k in keep + (("stream",) if e.get("stream") else ())} for e in entries[:playheal.MAX_FAILING]],
+            "ok_examples": examples}
 
 
 def heal_runs_today() -> int:

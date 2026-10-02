@@ -278,6 +278,10 @@ PLAYHEAL_ENABLED = _int("PLAYHEAL_ENABLED", 1) != 0
 PLAYHEAL_WINDOW = max(3, _int("PLAYHEAL_WINDOW", 12))
 PLAYHEAL_MIN_SOURCES = max(1, _int("PLAYHEAL_MIN_SOURCES", 3))
 PLAYHEAL_FAIL_RATIO = min(1.0, max(0.1, _float("PLAYHEAL_FAIL_RATIO", 0.6)))
+# A stream the server RESOLVES but the host refuses (HTTP 401/403 / an HTML "security error" page, also for the server's own probe:
+# library/streamdiag.py): at least this many DIFFERENT sources (episodes) of one site on one stream host within 24 h start a repair
+# run (evidence kind "stream_blocked", layer provider, same gates as a playback heal).
+PLAYHEAL_STREAM_MIN_SOURCES = max(1, _int("PLAYHEAL_STREAM_MIN_SOURCES", 2))
 # A scan whose series items mostly have NO episode video source (library/ingest.py coverage; a registered site whose normalize
 # has no episode_source / series_page): PLAYHEAL_COVERAGE_RATIO = share of such series items (0.1 .. 1) and
 # PLAYHEAL_COVERAGE_MIN_SERIES = least number of series items that make it a signal: a warning in the scan record and a repair
@@ -305,6 +309,9 @@ SOURCEFINDER_COOLDOWN = max(0, _int("SOURCEFINDER_COOLDOWN", 3600))
 SOURCEFINDER_MAX_JOBS = max(1, _int("SOURCEFINDER_MAX_JOBS", 2))
 SOURCEFINDER_MAX_SITES = max(1, _int("SOURCEFINDER_MAX_SITES", 4))
 SOURCEFINDER_DAILY_BUDGET = max(0, _int("SOURCEFINDER_DAILY_BUDGET", 10))
+# SOURCEFINDER_PROBE = 0 skips the quick look (<= 3 s) at a freshly resolved stream: with it on, a stream its host refuses (HTTP 403 /
+# an error page, also for the server's own probe) is NOT "found" (no notification), it is evidence for the repair step instead.
+SOURCEFINDER_PROBE = _int("SOURCEFINDER_PROBE", 1) != 0
 
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 os.makedirs(IMG_CACHE_DIR, exist_ok=True)

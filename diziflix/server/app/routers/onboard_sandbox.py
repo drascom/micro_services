@@ -2217,14 +2217,17 @@ def _cookie_loader(cfg, locator: str):
     return load_cookies
 
 
-def _follow_playback(cfg, locator: str, deadline: float, site_id: str = DRAFT_SITE_ID, got: Optional[dict] = None) -> dict:
+def _follow_playback(cfg, locator: str, deadline: float, site_id: str = DRAFT_SITE_ID, got: Optional[dict] = None,
+                     raw: Optional[list] = None) -> dict:
     """One playback page, end to end like ``library/videos._resolve_page`` without the database: fetch it with the site
     transport, ``site_extractors.discover`` with the draft resolvers, resolve every candidate (SSRF-guarded, within the live
     limits). Returns ``{ok, streams: [{type, host, quality}], error, candidates, ms, timeout}`` (+ ``placeholder`` / ``frames`` when
     it failed and the page carries a block-placeholder-like iframe / what sits where the player should be); never raises.
     ``site_id`` is the id the site modules are looked up by (``DRAFT_SITE_ID`` for a draft; the heal passes the real site's
     id so a site without a ``resolvers:`` list still finds its own module). ``got`` = the page already fetched (``_fetch_store``
-    answer: the availability check read it, so it is not requested twice)."""
+    answer: the availability check read it, so it is not requested twice). ``raw`` (a list) receives the resolved streams in full
+    (``url`` / ``type`` / ``request_headers`` ...) for a caller that probes them (the heal's ``stream_blocked`` gate); the returned
+    dict never carries them."""
     from ..library import videos
     from ..scraper import site_extractors
     if site_id == DRAFT_SITE_ID:
@@ -2257,6 +2260,8 @@ def _follow_playback(cfg, locator: str, deadline: float, site_id: str = DRAFT_SI
             if outcome.get("streams") and outcome.get("provider") and outcome["provider"] not in out["providers"]:
                 out["providers"].append(outcome["provider"])
             for stream in outcome.get("streams") or []:
+                if raw is not None and isinstance(stream, dict):
+                    raw.append(stream)
                 entry = {"type": str(stream.get("type") or ""), "host": (urlsplit(str(stream.get("url") or "")).hostname or "").lower(),
                          "quality": str(stream.get("quality") or "")}
                 if tuple(entry.values()) not in seen and len(out["streams"]) < 6:
