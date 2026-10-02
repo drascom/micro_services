@@ -1,0 +1,444 @@
+{
+ "id": "tmdb_1322562",
+ "availability": {
+  "state": "ready",
+  "reason": null,
+  "has_trailer": true
+ },
+ "type": "movie",
+ "title": "Mononoke The Movie: Chapter Ⅲ - The Curse of the Serpent",
+ "year": 2026,
+ "card": "/img/tmdb_1322562/card?w=342&h=192",
+ "portrait": "/img/tmdb_1322562/portrait?w=300&h=450",
+ "backdrop": "/img/tmdb_1322562/backdrop?w=1280&h=720",
+ "has_backdrop": true,
+ "overview": "Ōoku'da yaşanan trajedinin ardından insanların çarpık tutkuları ve kangrenleşmiş kinleri, İlaç Satıcısı'nın karşısına şimdiye kadarki en korkunç rakibini çıkarır. Kutsal Kılıç'ın sahibi İlaç Satıcısı ile Karakasa arasındaki şiddetli mücadele ve akabinde Hinezumi ile yaşanan çatışma gibi Mononoke'lerden kaynaklanan iki önemli olayın ardından İç Odalar nihayet yeniden huzura kavuşmuş gibi görünmektedir. Ancak hâlâ çözümlenmemiş bir şeyler olduğunu hisseden İlaç Satıcısı daima tetiktedir. Bu gergin huzur ortamında, İmparator'u n yasal eşi Yukiko'ya uzun zamandır beklediği erkek veliaht bahşedilir. Ancak bu sevinç uzun sürmez ve edilen tüm dualara rağmen çocuk hayatını kaybeder. Mutsuz evliliğini bir veliahtın doğumuyla kurtarmak isteyen Yukiko bunun üzerine umutsuzluğa kapılır ve İç Odalar'ı temelinden sarsabilecek bir komplonun içine çekilir. Kurtuluşu olmayan bir keder, dinmeyen bir öfke gibi duygular belirmeye başlar. İç Odalar'ın inancı olan \"Omizusama\"nın rahibi Hokuto Mizorogi sessizce bu durumu izler. Aynı zamanda, doğal olmayan sarsıntılar İç Odalar'ı sallamaya başlar. Sanki yerin altında devasa bir şey hareket ediyormuş gibi, nerden geldiği belli olmayan üçgen pullar etrafa saçılmaya başlar. İlaç Satıcısı, dev bir yılan görünümünde bir yılan tanrı olan bir Mononoke ile karşılaşır. Tılsımların yardımıyla onu geçici olarak defetse de İlaç Satıcısı Kutsal Kılıç'ı çekmeyi başaramaz. Bunu yapabilmek için onun \"formunu\", \"gerçeğini\" ve \"sebebini\" açığa çıkarmalıdır. Ancak o zaman kılıcı kınından çıkararak Mononoke'yi öldürmeyi başarabilecektir. Peki, yılan tanrı nerede doğmuştur? Karşı konulmaz öfkesinin sebebi nedir? Ve neden şimdi dirilmiştir? Bu soruların yanıtları 150 yıl öncesine, Ōoku'nun kuruluşunun ardındaki gizli gerçeğe dayanmaktadır. İç Odalar uzun zaman önce, Üçüncü İmparator'un sütannesi Ama-no-Tsubone tarafından kurulmuştur. İç Odalar'ın sistemi sayesinde bir huzur dönemi sağlanmış ve bu sistem zamanla \"Omizusama\" olarak kutsanmıştır. Huzursuzluğun giderek arttığını hisseden İlaç Satıcısı, sunağın merkezindeki tapınağa gider ve orada asla dillendirilmemesi gereken bir gerçeği açığa çıkarır. Üçüncü yasal eş ile Ama-no-Tsubone'nin iç içe geçmiş kaderleri, Mizorogi ailesinin sırları ve Mononoke'lerin Ōoku'da art arda belirmesinin ardındaki neden gün yüzüne çıkarken tüm olay örgüleri tek bir noktada birleşir. Ōoku’nun karanlık tarihinin vücut bulmuş hâliyle yüzleşen İlaç Satıcısı savaşta her şeyini ortaya koymaya hazırlanır. Ancak yüzyıllar boyu birikmiş bir nefretten güç alan yılan tanrı, akılalmaz bir kudrete sahiptir ve İlaç Satıcısı'nı görülmemiş bir krize sürükler. Ölüm giderek yaklaşırken, daha da dehşet verici beklenmedik olaylar yaşanır. Şimdiye kadarki en büyük sınavıyla karşı karşıya kalan İlaç Satıcısı'nı nasıl bir kader beklemektedir?",
+ "genres": [
+  "Animasyon",
+  "Fantastik",
+  "Gizem"
+ ],
+ "rating": 7.0,
+ "country": "JP",
+ "followers": 2,
+ "badge": null,
+ "sources": [
+  "yabancidizi"
+ ],
+ "tmdb_id": 1322562,
+ "imdb_id": "tt36282134",
+ "playback": "video",
+ "progress": null,
+ "cast": [
+  "Hiroshi Kamiya",
+  "Takahiro Sakurai",
+  "Miyu Irino",
+  "Kenjirou Tsuda",
+  "Atsumi Tanezaki"
+ ],
+ "director": null,
+ "runtime": 0,
+ "in_mylist": false,
+ "seasons": [],
+ "resume": {
+  "episode_id": "tmdb_1322562",
+  "position": 0
+ },
+ "similar": [
+  {
+   "id": "tmdb_tv_318918",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "series",
+   "title": "Lego One Piece",
+   "year": 2026,
+   "card": "/img/tmdb_tv_318918/card?w=342&h=192",
+   "portrait": "/img/tmdb_tv_318918/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_tv_318918/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "İki bölümlük bu LEGO özel yapımında Hasır Şapkalar, engin denizlere açılıyor! LEGO parçalarıyla yeniden tasarlanan bu destansı yolculukta Luffy, Nami, Usopp ve diğerlerine katılın.",
+   "genres": [
+    "Aile",
+    "Animasyon",
+    "Komedi"
+   ],
+   "rating": 9.5,
+   "country": "CA",
+   "followers": 5,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 318918,
+   "imdb_id": "tt41538904",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_tv_60625",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "series",
+   "title": "Rick and Morty",
+   "year": 2013,
+   "card": "/img/tmdb_tv_60625/card?w=342&h=192",
+   "portrait": "/img/tmdb_tv_60625/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_tv_60625/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Rick, biraz dengesiz ama yetenekli bir bilim insanıdır ve son zamanlarda ailesiyle yeniden iletişime geçmiştir. Zamanının çoğunu, küçük torunu Morty ile alternatif evrenlerde, uzayda; tehlikeli ve sıra dışı maceralar yaşayarak geçirir...",
+   "genres": [
+    "Animasyon",
+    "Komedi"
+   ],
+   "rating": 9.3,
+   "country": "US",
+   "followers": 26012,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 60625,
+   "imdb_id": "tt2861424",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_tv_19885",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "series",
+   "title": "Sherlock",
+   "year": 2010,
+   "card": "/img/tmdb_tv_19885/card?w=342&h=192",
+   "portrait": "/img/tmdb_tv_19885/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_tv_19885/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Dizi, Arthur Conan Doyle'un ünlü romanı Sherlock Holmes'tan uyarlanmış modern bir hali. Bu sefer, ünlü dedektif Sherlock Holmes ve eski askeri doktor olan arkadaşı John Watson, Londra'da 21.yüzyılın suçlularını yakalamaya çalışıyor.",
+   "genres": [
+    "Aksiyon",
+    "Dram",
+    "Gerilim",
+    "Gizem",
+    "Suç"
+   ],
+   "rating": 9.2,
+   "country": "GB",
+   "followers": 28475,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 19885,
+   "imdb_id": "tt1475582",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_155",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "movie",
+   "title": "Kara Şövalye",
+   "year": 2008,
+   "card": "/img/tmdb_155/card?w=342&h=192",
+   "portrait": "/img/tmdb_155/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_155/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Batma suç ile olan savaşını daha da ileriye götürüyor. Batman, Teğmen Jim Gordon ve Bölge Savcısı Harvey Dent’in yardımlarıyla sokaklarda arta kalan suç örgütlerini temizlemeye başlarlar. Ortaklıkları aslında etkili gözükmektedir fakat kısa sürede kendilerini Joker adıyla bilinen zeki bir suçluya av olarak bulurlar.",
+   "genres": [
+    "Aksiyon",
+    "Bilim Kurgu",
+    "Gerilim",
+    "Gizem",
+    "Suç"
+   ],
+   "rating": 9.0,
+   "country": "GB",
+   "followers": 2179,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 155,
+   "imdb_id": "tt0468569",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "zack-snyder-s-justice-league-adalet-birligi-2021",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "movie",
+   "title": "Zack Snyder's Justice League: Adalet Birliği",
+   "year": 2021,
+   "card": "/img/zack-snyder-s-justice-league-adalet-birligi-2021/card?w=342&h=192",
+   "portrait": "/img/zack-snyder-s-justice-league-adalet-birligi-2021/portrait?w=300&h=450",
+   "backdrop": "/img/zack-snyder-s-justice-league-adalet-birligi-2021/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "2017 yapımı Adalet Birliği: JUSTiCE LEAGUE filminin Zack Snyder tarafından yeniden kurgulanacak kesilmemiş versiyonu. Orijinal film tamamlanmadan projeden ayrılmak durumunda kalan Snyder'in yerine filmi tamamlaması için Joss Whedon getirilmişti. Whedon'ın ellerinde ilk başta planlanandan bambaşka bir şeye dönüşen film başarıya ulaşamamıştı. Bunun üzerine DC Comics'in sadık hayranları tarafından başlatılan #ReleaseTheSnyderCut kampanyası, filmin üzerinden geçen 3 yılın sonunda amacına ulaştı ve Warner Bros. yayın hayatına yen i başlayan HBO Max platformunda 2021 yılında Snyder'in orijinal versiyonunu yayınlayacağını açıkladı.",
+   "genres": [
+    "Aksiyon",
+    "Bilim Kurgu",
+    "Fantastik",
+    "Gerilim",
+    "Macera"
+   ],
+   "rating": 9.0,
+   "country": "US",
+   "followers": 1125,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": null,
+   "imdb_id": null,
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_569094",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": false
+   },
+   "type": "movie",
+   "title": "Örümcek-Adam: Örümcek Evrenine Geçiş",
+   "year": 2023,
+   "card": "/img/tmdb_569094/card?w=342&h=192",
+   "portrait": "/img/tmdb_569094/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_569094/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Spider-Man: Across the Spider-Verse, radyoaktif bir örümcek tarafından ısırılmasıyla bambaşka bir dünyaya adım atıp özel yeteneklerle donanan Miles Morales'in maceralarını konu ediyor.",
+   "genres": [
+    "Aksiyon",
+    "Animasyon",
+    "Bilim Kurgu",
+    "Macera"
+   ],
+   "rating": 8.9,
+   "country": null,
+   "followers": null,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 569094,
+   "imdb_id": "tt9362722",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_615774",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": false
+   },
+   "type": "movie",
+   "title": "Scooby-Doo: Zombi Adasına Dönüş",
+   "year": 2019,
+   "card": "/img/tmdb_615774/card?w=342&h=192",
+   "portrait": "/img/tmdb_615774/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_615774/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Scooby-Doo ve arkadaşları, tüm masrafları karşılanan bir tatil kazanır ve tropik bir cennete hayatlarının bir yolculuğuna çıkarlar. Ancak hedefleri Zombi Adası olarak çıkıyor. Varır varmaz, buranın garip bir şekilde tanıdık geldiğini ve yıllar önce gittikleri bir yolculuğa çıktıklarını ve kendilerini zombilerle ilgili bir gizeme kaptırdıklarını fark ederler. Zombiler yeniden ortaya çıkıp otellerine saldırdığında, çete çok geçmeden cennete yolculuklarının bir bedeli olduğunu öğrenir. Will Scooby-Doo ve Gizem A.Ş. çete sonunda Zombi Adası'nın arkasındaki gizemi çözüyor mu?",
+   "genres": [
+    "Animasyon",
+    "Fantastik",
+    "Komedi"
+   ],
+   "rating": 8.9,
+   "country": null,
+   "followers": null,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 615774,
+   "imdb_id": "tt10622136",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "yuzuklerin-efendisi-3-kralin-donusu-extended-edition-2003",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": false
+   },
+   "type": "movie",
+   "title": "Yüzüklerin Efendisi 3: Kralın Dönüşü (Extended Edition)",
+   "year": 2003,
+   "card": "/img/yuzuklerin-efendisi-3-kralin-donusu-extended-edition-2003/card?w=342&h=192",
+   "portrait": "/img/yuzuklerin-efendisi-3-kralin-donusu-extended-edition-2003/portrait?w=300&h=450",
+   "backdrop": "/img/yuzuklerin-efendisi-3-kralin-donusu-extended-edition-2003/backdrop?w=1280&h=720",
+   "has_backdrop": false,
+   "overview": "",
+   "genres": [
+    "Aksiyon",
+    "Dram",
+    "Fantastik",
+    "Gerilim",
+    "Macera"
+   ],
+   "rating": 8.9,
+   "country": null,
+   "followers": null,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": null,
+   "imdb_id": null,
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_27205",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": false
+   },
+   "type": "movie",
+   "title": "Başlangıç",
+   "year": 2010,
+   "card": "/img/tmdb_27205/card?w=342&h=192",
+   "portrait": "/img/tmdb_27205/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_27205/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Hedeflerinin bilinçaltına sızarak kurumsal casusluk yapan yetenekli bir hırsız olan Cobb'a, imkansız olduğu düşünülen bir görev karşılığında eski hayatını geri kazanma şansı sunulur: Başka birinin fikrini hedefin bilinçaltına yerleştirme işlemi olan \"başlangıç.\"",
+   "genres": [
+    "Aksiyon",
+    "Bilim Kurgu",
+    "Gerilim",
+    "Gizem",
+    "Macera"
+   ],
+   "rating": 8.8,
+   "country": null,
+   "followers": null,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 27205,
+   "imdb_id": "tt1375666",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_tv_283319",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "series",
+   "title": "Marble Hall Murders",
+   "year": 2026,
+   "card": "/img/tmdb_tv_283319/card?w=342&h=192",
+   "portrait": "/img/tmdb_tv_283319/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_tv_283319/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Susan, 1955 yılında Korfu'da geçen hikayeyle bağlantılı bir çocuk kitabı yazarının ölümünü araştırmak ve sır perdesini aralamak için İngiltere'ye geri döner.",
+   "genres": [
+    "Gizem",
+    "Suç"
+   ],
+   "rating": 8.8,
+   "country": "GB",
+   "followers": 38,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 283319,
+   "imdb_id": "tt35617054",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "yenilmezler-3-sonsuzluk-savasi-bolum-1-2018",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": false
+   },
+   "type": "movie",
+   "title": "Yenilmezler 3: Sonsuzluk Savaşı – Bölüm 1",
+   "year": 2018,
+   "card": "/img/yenilmezler-3-sonsuzluk-savasi-bolum-1-2018/card?w=342&h=192",
+   "portrait": "/img/yenilmezler-3-sonsuzluk-savasi-bolum-1-2018/portrait?w=300&h=450",
+   "backdrop": "/img/yenilmezler-3-sonsuzluk-savasi-bolum-1-2018/backdrop?w=1280&h=720",
+   "has_backdrop": false,
+   "overview": "",
+   "genres": [
+    "Aksiyon",
+    "Bilim Kurgu",
+    "Fantastik",
+    "Gerilim",
+    "Macera"
+   ],
+   "rating": 8.8,
+   "country": null,
+   "followers": null,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": null,
+   "imdb_id": null,
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "yuzuklerin-efendisi-1-yuzuk-kardesligi-extended-edition-2001",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": false
+   },
+   "type": "movie",
+   "title": "Yüzüklerin Efendisi 1: Yüzük Kardeşliği (Extended Edition)",
+   "year": 2001,
+   "card": "/img/yuzuklerin-efendisi-1-yuzuk-kardesligi-extended-edition-2001/card?w=342&h=192",
+   "portrait": "/img/yuzuklerin-efendisi-1-yuzuk-kardesligi-extended-edition-2001/portrait?w=300&h=450",
+   "backdrop": "/img/yuzuklerin-efendisi-1-yuzuk-kardesligi-extended-edition-2001/backdrop?w=1280&h=720",
+   "has_backdrop": false,
+   "overview": "",
+   "genres": [
+    "Aksiyon",
+    "Fantastik",
+    "Macera"
+   ],
+   "rating": 8.8,
+   "country": null,
+   "followers": null,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": null,
+   "imdb_id": null,
+   "playback": "video",
+   "progress": null
+  }
+ ]
+}

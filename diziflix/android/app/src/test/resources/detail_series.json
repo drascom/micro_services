@@ -1,0 +1,937 @@
+{
+ "id": "tmdb_tv_103516",
+ "availability": {
+  "state": "ready",
+  "reason": null,
+  "has_trailer": true
+ },
+ "type": "series",
+ "title": "Star Trek: Strange New Worlds",
+ "year": 2022,
+ "card": "/img/tmdb_tv_103516/card?w=342&h=192",
+ "portrait": "/img/tmdb_tv_103516/portrait?w=300&h=450",
+ "backdrop": "/img/tmdb_tv_103516/backdrop?w=1280&h=720",
+ "has_backdrop": true,
+ "overview": "Dizi, James T. Kirk’ün U.S.S.Enterprise’ın kaptanı olmasından önceki on yılda geçiyor ve Star Trek Orijinal Seri’nin pilot bölümünden de tanıdığımız Kaptan Pike, Spock ve Bir Numara’nın galaksideki yeni dünyaları keşfedişlerini konu ediyor.",
+ "genres": [
+  "Aksiyon",
+  "Bilim Kurgu",
+  "Macera"
+ ],
+ "rating": 8.3,
+ "country": "US",
+ "followers": 1172,
+ "badge": null,
+ "sources": [
+  "yabancidizi"
+ ],
+ "tmdb_id": 103516,
+ "imdb_id": "tt12327578",
+ "playback": "video",
+ "progress": {
+  "episode_id": "tmdb_tv_103516:s4:e1",
+  "position": 56,
+  "duration": 3559,
+  "pct": 2
+ },
+ "cast": [
+  "Anson Mount",
+  "Christina Chong",
+  "Babs Olusanmokun",
+  "Ethan Peck",
+  "Celia Rose Gooding"
+ ],
+ "director": null,
+ "runtime": 45,
+ "in_mylist": false,
+ "seasons": [
+  {
+   "season": 1,
+   "title": "1. Sezon",
+   "name": "1. Sezon",
+   "overview": "Star Trek: Discovery'nin spin- off’u olan dizi, Christopher Pike'ın kaptan olarak görev yaptığı yıllarda U.S.S. Enterprise'ın mürettebatına odaklanıyor.Başrolde Anson Mount yer alırken Rebecca Romijn ve Ethan Peck, Number One ve Spock rollerini canlandırıyor.",
+   "air_date": "2022-05-05",
+   "poster_url": "/img/tmdb_tv_103516:s1/portrait?w=300&h=450",
+   "has_poster": true,
+   "episode_count": 10,
+   "episodes": [
+    {
+     "id": "tmdb_tv_103516:s1:e1",
+     "season": 1,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 1,
+     "title": "Garip Yeni Dünyalar",
+     "overview": "Pike'ın subaylarından biri, Yıldız Filosu için gizli bir görevdeyken kaybolduğunda, Pike kendi kendini empoze ettiği sürgünden çıkmak zorunda kalır. Kendisine verilen geleceğin vizyonuyla ne yapması gerektiği ile mücadele ederken, subayını nasıl kurtaracağını belirlemeli.",
+     "runtime": 53,
+     "still": "/img/tmdb_tv_103516:s1:e1/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s1:e1/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2022-05-06",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s1:e2",
+     "season": 1,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 2,
+     "title": "Kuyruklu Yıldızın Çocukları",
+     "overview": "Bir araştırma görevindeyken, U.S.S. Atılgan, bir kuyruklu yıldızın üzerinde yaşanılan bir gezegene çarpacağını keşfeder. Kuyruklu yıldızı yeniden yönlendirmeye çalışırlar, ancak kuyruklu yıldızın buzlu yüzeyine gömülü eski bir uzaylı kalıntısının bir şekilde onları engeller; Dış görev ekibi kalıntının sırlarını çözmeye çalışırken, Pike ve Bir Numara tehditle yüzleşir.",
+     "runtime": 53,
+     "still": "/img/tmdb_tv_103516:s1:e2/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s1:e2/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2022-05-13",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s1:e3",
+     "season": 1,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 3,
+     "title": "İlirya'nın Hayaletleri",
+     "overview": "U.S.S. Atılgan, gemiyi kasıp kavuran bir salgınla karşılaşır. Bir tedavi bulmaya çalışırken sakladığı bir sırla yüzleşmek zorunda olan Bir Numara Una Chin-Riley dışında tüm ekip birer birer aciz kalır.",
+     "runtime": 46,
+     "still": "/img/tmdb_tv_103516:s1:e3/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s1:e3/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2022-05-20",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s1:e4",
+     "season": 1,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 4,
+     "title": "Memento Mori",
+     "overview": "Bir koloni gezegenine rutin bir tedarik görevindeyken, U.S.S. Atılgan bilinmeyen bir kötü niyetli gücün saldırısına uğrar. Pike, krizle yüzleşmek için tüm yüreğini ve deneyimini ortaya koyuyor, ancak güvenlik görevlisi, düşmanla geleneksel Yıldız Filosu yöntemleriyle başa çıkılamayacağı konusunda onu uyarıyor.",
+     "runtime": 54,
+     "still": "/img/tmdb_tv_103516:s1:e4/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s1:e4/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2022-05-27",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s1:e5",
+     "season": 1,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 5,
+     "title": "Spock Amok",
+     "overview": "Spock ve Kaptan Pike'ın alışılmadık bir uzaylı türüyle yaptığı önemli müzakerelerin ortasında, Spock'ın kişisel bir ziyareti olduğunda...",
+     "runtime": 52,
+     "still": "/img/tmdb_tv_103516:s1:e5/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s1:e5/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2022-06-03",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s1:e6",
+     "season": 1,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 6,
+     "title": "Bizi Acının Ulaşamadığı Yere Kaldırın",
+     "overview": "Pastoral bir gezegene yönelik bir tehdit, Kaptan Pike'ı hayatının kayıp aşkıyla yeniden bir araya getirir. Onu ve bilimsel kutsal çocuğu bir komplodan korumak için Pike yardım teklif eder ve geçmişinin çözülmemiş duygularıyla yüzleşmek zorunda kalır.",
+     "runtime": 51,
+     "still": "/img/tmdb_tv_103516:s1:e6/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s1:e6/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2022-06-10",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s1:e7",
+     "season": 1,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 7,
+     "title": "Sakin Fırtına",
+     "overview": "Tehlikeli bir insani görevdeyken, U.S.S. Atılgan, çeyreğin en ölümcül uzay korsanıyla iç karartıcı bir oyununa düşüyor.",
+     "runtime": 50,
+     "still": "/img/tmdb_tv_103516:s1:e7/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s1:e7/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2022-06-17",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s1:e8",
+     "season": 1,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 8,
+     "title": "Elysian Krallığı",
+     "overview": "U.S.S. Atılgan, mürettebatı bir peri masalına hapseden yabancı bir bilince ev sahipliği yapan bir nebulada sıkışıp kalır.",
+     "runtime": 54,
+     "still": "/img/tmdb_tv_103516:s1:e8/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s1:e8/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2022-06-24",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s1:e9",
+     "season": 1,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 9,
+     "title": "Gezinen Herkes",
+     "overview": "U.S.S. Atılgan mürettebatı, iniş ekibi aç bir düşmanla çorak bir gezegende mahsur kaldığında iblisleriyle ve korkunç canavarlarla yüz yüze gelir.",
+     "runtime": 53,
+     "still": "/img/tmdb_tv_103516:s1:e9/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s1:e9/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2022-07-01",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s1:e10",
+     "season": 1,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 10,
+     "title": "Bir Merhamet Kalitesi",
+     "overview": "Kaptan Pike, kaderinden nasıl kaçacağını bulduğunu düşünürken, gelecekteki benliği tarafından ziyaret edilir ve ona eylemlerinin sonuçlarını gösterir.",
+     "runtime": 63,
+     "still": "/img/tmdb_tv_103516:s1:e10/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s1:e10/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2022-07-08",
+     "progress": null
+    }
+   ]
+  },
+  {
+   "season": 2,
+   "title": "2. Sezon",
+   "name": "2. Sezon",
+   "overview": "Star Trek:The Original Series’in yıllar öncesinde U.S.S. Enterprise’a kaptanlık yapan, kaptan Christopher Pike ve mürettebatının maceraları 2.sezonda da devam ediyor. Kaptan Pike ile ekibi Spock ve Bir Numara’nın galakside yeni yaşam alanları keşfettikleri yeni serüvene hazır mısınız?",
+   "air_date": "2023-06-15",
+   "poster_url": "/img/tmdb_tv_103516:s2/portrait?w=300&h=450",
+   "has_poster": true,
+   "episode_count": 10,
+   "episodes": [
+    {
+     "id": "tmdb_tv_103516:s2:e1",
+     "season": 2,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 1,
+     "title": "The Broken Circle",
+     "overview": "Bir imdat çağrısı ile Spock, emirlere karşı gelmek ve U.S.S.'yi almak zorunda kalır. Atılgan ve mürettebatı gemi arkadaşlarına yardım etmek için risk alırlar.",
+     "runtime": 53,
+     "still": "/img/tmdb_tv_103516:s2:e1/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s2:e1/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2023-06-16",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s2:e2",
+     "season": 2,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 2,
+     "title": "Ad Astra Per Aspera",
+     "overview": "Komutan Una Chin-Riley mahkemeye çıkarılır, hapis cezası alır ve Starlfleet'ten ihraç edilir.",
+     "runtime": 58,
+     "still": "/img/tmdb_tv_103516:s2:e2/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s2:e2/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2023-06-23",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s2:e3",
+     "season": 2,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 3,
+     "title": "Tomorrow and Tomorrow and Tomorrow",
+     "overview": "La'an, insanlığın gelecek tarihini değiştirecek bir saldırıyı önlemek için zamanda geri gider.",
+     "runtime": 61,
+     "still": "/img/tmdb_tv_103516:s2:e3/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s2:e3/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2023-06-30",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s2:e4",
+     "season": 2,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 4,
+     "title": "Among the Lotus Eaters",
+     "overview": "Trajik anıları canlandıran bir gezegene geri dönen Kaptan Pike ve ekip, geçmişten gelen bir hayaletle yüzleşirler.",
+     "runtime": 58,
+     "still": "/img/tmdb_tv_103516:s2:e4/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s2:e4/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2023-07-07",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s2:e5",
+     "season": 2,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 5,
+     "title": "Charedes",
+     "overview": "Bir uzay mekiği kazası Spock'ın Vulkan DNA'sının uzaylılar tarafından alınmasına yol açar.",
+     "runtime": 61,
+     "still": "/img/tmdb_tv_103516:s2:e5/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s2:e5/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2023-07-14",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s2:e6",
+     "season": 2,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 6,
+     "title": "Lost in Translation",
+     "overview": "Uhura'nın duyduğu garip sesi başka kimse duymaz. Gürültü gittikçe halisünasyonları tetikleyince Uhura, beklenmedik bir asistandan yardım alır.",
+     "runtime": 55,
+     "still": "/img/tmdb_tv_103516:s2:e6/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s2:e6/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2023-07-21",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s2:e7",
+     "season": 2,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 7,
+     "title": "Those Old Scientists",
+     "overview": "Meydana gelen bir kaza Teğmen Beckett Mariner ve Bradward Boimler'i 24. yüzyıldan zaman yolculuğuna çıkarır ve Pike ile mürettebatı onları geri götürmelidir.",
+     "runtime": 49,
+     "still": "/img/tmdb_tv_103516:s2:e7/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s2:e7/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2023-07-25",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s2:e8",
+     "season": 2,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 8,
+     "title": "Under the Cloak of War",
+     "overview": "Kaptan Pike ve mürettebatı U.S.S. Enterprise'da bir Klingon sığınmacısını karşılar ancak onun varlığı bazı şok edici sırların açığa çıkmasını tetikler.",
+     "runtime": 50,
+     "still": "/img/tmdb_tv_103516:s2:e8/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s2:e8/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2023-07-28",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s2:e9",
+     "season": 2,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 9,
+     "title": "Subspace Rhapsody",
+     "overview": "Yaşanan bir kaza U.S.S. Enterprise'daki herkesin kontrolsüzce şarkı söylemesine neden olur. Asıl tehlike ise alanın genişlemesi ve diğer gemileri etkilemesidir.",
+     "runtime": 63,
+     "still": "/img/tmdb_tv_103516:s2:e9/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s2:e9/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2023-08-04",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s2:e10",
+     "season": 2,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 10,
+     "title": "Hegemony (1)",
+     "overview": "[SEZON FİNALİ] Zorlu bir düşmanın dönüşü Kaptan Pike ve ekibini uğraştırır. Bir yandan Federasyon uzayının kenarındaki bir koloniye düzenlenen saldırıyı soruştururlar.",
+     "runtime": 54,
+     "still": "/img/tmdb_tv_103516:s2:e10/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s2:e10/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2023-08-11",
+     "progress": null
+    }
+   ]
+  },
+  {
+   "season": 3,
+   "title": "3. Sezon",
+   "name": "3. Sezon",
+   "overview": "In season three, when we reconnect with the crew of the U.S.S. Enterprise, still under the command of Captain Pike, they face the conclusion of season two's harrowing encounter with the Gorn. But new life and civilizations await, including a villain that will test our characters' grit and resolve. An exciting twist on classic Star Trek, season three takes characters both new and beloved to new heights, and dives into thrilling adventures of faith, duty, romance, comedy and mystery, with varying genres never before seen on any other Star Trek.",
+   "air_date": "2025-07-17",
+   "poster_url": "/img/tmdb_tv_103516:s3/portrait?w=300&h=450",
+   "has_poster": true,
+   "episode_count": 10,
+   "episodes": [
+    {
+     "id": "tmdb_tv_103516:s3:e1",
+     "season": 3,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 1,
+     "title": "Hegemony (2)",
+     "overview": "Kaptan Pike mürettebattan gelen önerileri değerlendirmeye başlar ve bir izleme cihazı yerleştirmek için Gorn destroyerine çarpmaya karar verir.",
+     "runtime": 49,
+     "still": "/img/tmdb_tv_103516:s3:e1/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s3:e1/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2025-07-18",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s3:e2",
+     "season": 3,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 2,
+     "title": "Wedding Bell Blues",
+     "overview": "Federasyon kutlamasında, davetsiz bir misafir ortamı altüst eder. Spock ve mürettebatın zihinlerinde karmaşa yaratır.",
+     "runtime": 51,
+     "still": "/img/tmdb_tv_103516:s3:e2/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s3:e2/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2025-07-18",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s3:e3",
+     "season": 3,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 3,
+     "title": "Shuttle to Kenfori",
+     "overview": "Pike ve M'Benga, Batel'in tedavesini bulmak için Klingon uzayına giderler. O esnada M'Benga'nın geçmişi ölümcül yaratıklarla dolu bir gezegende tekrar belirir.",
+     "runtime": 51,
+     "still": "/img/tmdb_tv_103516:s3:e3/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s3:e3/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2025-07-25",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s3:e4",
+     "season": 3,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 4,
+     "title": "A Space Adventure Hour",
+     "overview": "La'An, yalnızca kendisinin çözebileceği kurgusal bir vakayı test ederken sanal güverte kontrolden çıkar ve Enterprise'ın güvenliği tehlikeye girer.",
+     "runtime": 48,
+     "still": "/img/tmdb_tv_103516:s3:e4/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s3:e4/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2025-08-01",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s3:e5",
+     "season": 3,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 5,
+     "title": "Through the Lens of Time",
+     "overview": "Chapel ve Korby'nin insan evriminin bir sonraki adımını ortaya çıkarma arayışı, Enterprise'ı karanlık bir sırrı saklayan antik kalıntılara götürür.",
+     "runtime": 55,
+     "still": "/img/tmdb_tv_103516:s3:e5/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s3:e5/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2025-08-08",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s3:e6",
+     "season": 3,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 6,
+     "title": "The Sehlat Who Ate Its Tail",
+     "overview": "Kirk'ün kaptan koltuğundaki ilk günü, bir Scavenger Gemisi'nin Enterprise'ı ele geçirmesiyle felaketle sonuçlanır.",
+     "runtime": 49,
+     "still": "/img/tmdb_tv_103516:s3:e6/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s3:e6/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2025-08-15",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s3:e7",
+     "season": 3,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 7,
+     "title": "What Is Starfleet?",
+     "overview": "Enterprise, savaşın tahrip ettiği bir gezegene yardım ederken Pike ve mürettebat, araştırmacı bir gazetecinin merceği altına girer.",
+     "runtime": 41,
+     "still": "/img/tmdb_tv_103516:s3:e7/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s3:e7/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2025-08-22",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s3:e8",
+     "season": 3,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 8,
+     "title": "Four-and-a-Half Vulcans",
+     "overview": "Mürettebatın bir kısmı görev nedeniyle Vulkan formuna bürünür, ancak insan hallerine dönmeye çalıştıklarında yeni sorunlar ortaya çıkar.",
+     "runtime": 55,
+     "still": "/img/tmdb_tv_103516:s3:e8/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s3:e8/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2025-08-29",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s3:e9",
+     "season": 3,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 9,
+     "title": "Terrarium",
+     "overview": "Ortegas, hayatta kalma şansının neredeyse hiç olmadığı ölümcül zehirli bir gezegende mahsur kalır. Hayatta kalmak için en derin inançlarına karşı gelmek zorundadır.",
+     "runtime": 57,
+     "still": "/img/tmdb_tv_103516:s3:e9/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s3:e9/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2025-09-05",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s3:e10",
+     "season": 3,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 10,
+     "title": "New Life and New Civilizations",
+     "overview": "Eski, kötü bir güç ortaya çıktığında Pike kötülüğün yayılmasını durdurmak için hayatını değiştirecek bir seçimle karşı karşıya kalır.",
+     "runtime": 56,
+     "still": "/img/tmdb_tv_103516:s3:e10/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s3:e10/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2025-09-12",
+     "progress": null
+    }
+   ]
+  },
+  {
+   "season": 4,
+   "title": "4. Sezon",
+   "name": "4. Sezon",
+   "overview": "In the fourth season, the crew of the U.S.S. Enterprise—led by Captain Christopher Pike—embarks on a series of thrilling and emotional adventures across the stars. As they journey to strange new worlds, they battle inner demons and external threats, encounter colorful new characters, reunite with familiar faces and confront terrifying aliens. Through it all, they strive to embrace a bright, hopeful future.",
+   "air_date": "2026-07-23",
+   "poster_url": "/img/tmdb_tv_103516:s4/portrait?w=300&h=450",
+   "has_poster": true,
+   "episode_count": 10,
+   "episodes": [
+    {
+     "id": "tmdb_tv_103516:s4:e1",
+     "season": 4,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 1,
+     "title": "Valles Marineris",
+     "overview": "Pike leads the crew into a stellar storm, sending the Enterprise back 65 million years.",
+     "runtime": 59,
+     "still": "/img/tmdb_tv_103516:s4:e1/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s4:e1/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2026-07-24",
+     "progress": {
+      "position": 56,
+      "duration": 3559,
+      "pct": 2
+     }
+    },
+    {
+     "id": "tmdb_tv_103516:s4:e2",
+     "season": 4,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 2,
+     "title": "The Griffin Incident",
+     "overview": "La'An, Spock, and Kirk get trapped on a mysterious, long-lost Federation ship.",
+     "runtime": 59,
+     "still": "/img/tmdb_tv_103516:s4:e2/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s4:e2/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2026-07-31",
+     "progress": {
+      "position": 197,
+      "duration": 3565,
+      "pct": 6
+     }
+    },
+    {
+     "id": "tmdb_tv_103516:s4:e3",
+     "season": 4,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 3,
+     "title": "Human Best Friend",
+     "overview": "The Enterprise crew visits a shore-leave planet that guarantees fun in an inebriating atmosphere.",
+     "runtime": 48,
+     "still": "/img/tmdb_tv_103516:s4:e3/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s4:e3/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2026-08-07",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s4:e4",
+     "season": 4,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 4,
+     "title": "A Case of Chiaroscuro",
+     "overview": "Una is mistaken for a virtuous kingpin against a Klingon occupation.",
+     "runtime": 51,
+     "still": "/img/tmdb_tv_103516:s4:e4/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s4:e4/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2026-08-14",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s4:e5",
+     "season": 4,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 5,
+     "title": "Level Five Transporter Accident",
+     "overview": "A transporter accident turns everyone but Spock into puppets as pirates invade the ship.",
+     "runtime": 55,
+     "still": "/img/tmdb_tv_103516:s4:e5/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s4:e5/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2026-08-21",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s4:e6",
+     "season": 4,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 6,
+     "title": "Off-Hour",
+     "overview": "The Enterprise falls into a slipstream that pushes them to a catastrophic warp threshold.",
+     "runtime": 57,
+     "still": "/img/tmdb_tv_103516:s4:e6/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s4:e6/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2026-08-28",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s4:e7",
+     "season": 4,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 7,
+     "title": "Like Chronitons Through the Hourglass",
+     "overview": "A space trickster traps the Enterprise crew in a soap opera as Pike mourns a lost life.",
+     "runtime": 46,
+     "still": "/img/tmdb_tv_103516:s4:e7/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s4:e7/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2026-09-04",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s4:e8",
+     "season": 4,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 8,
+     "title": "Orders of Magnitude",
+     "overview": "Enterprise is commandeered by Admiral Reeger to track down an alien ship.",
+     "runtime": 63,
+     "still": "/img/tmdb_tv_103516:s4:e8/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s4:e8/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2026-09-11",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s4:e9",
+     "season": 4,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 9,
+     "title": "Once La'an a Time",
+     "overview": "We return to the Elysian Kingdom, but this time on a real fantasy planet.",
+     "runtime": 50,
+     "still": "/img/tmdb_tv_103516:s4:e9/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s4:e9/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2026-09-18",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_103516:s4:e10",
+     "season": 4,
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "episode": 10,
+     "title": "Tomorrow's Enterprise",
+     "overview": "A time ripple damages the Enterprise, forcing young and old Uhura to cooperate and fix the timeline.",
+     "runtime": 62,
+     "still": "/img/tmdb_tv_103516:s4:e10/still?w=320&h=180",
+     "still_url": "/img/tmdb_tv_103516:s4:e10/still?w=320&h=180",
+     "has_still": true,
+     "air_date": "2026-09-25",
+     "progress": {
+      "position": 99,
+      "duration": 3679,
+      "pct": 3
+     }
+    }
+   ]
+  }
+ ],
+ "resume": {
+  "episode_id": "tmdb_tv_103516:s4:e1",
+  "position": 56
+ },
+ "similar": [
+  {
+   "id": "tmdb_tv_19885",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "series",
+   "title": "Sherlock",
+   "year": 2010,
+   "card": "/img/tmdb_tv_19885/card?w=342&h=192",
+   "portrait": "/img/tmdb_tv_19885/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_tv_19885/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Dizi, Arthur Conan Doyle'un ünlü romanı Sherlock Holmes'tan uyarlanmış modern bir hali. Bu sefer, ünlü dedektif Sherlock Holmes ve eski askeri doktor olan arkadaşı John Watson, Londra'da 21.yüzyılın suçlularını yakalamaya çalışıyor.",
+   "genres": [
+    "Aksiyon",
+    "Dram",
+    "Gerilim",
+    "Gizem",
+    "Suç"
+   ],
+   "rating": 9.2,
+   "country": "GB",
+   "followers": 28475,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 19885,
+   "imdb_id": "tt1475582",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_155",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "movie",
+   "title": "Kara Şövalye",
+   "year": 2008,
+   "card": "/img/tmdb_155/card?w=342&h=192",
+   "portrait": "/img/tmdb_155/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_155/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Batma suç ile olan savaşını daha da ileriye götürüyor. Batman, Teğmen Jim Gordon ve Bölge Savcısı Harvey Dent’in yardımlarıyla sokaklarda arta kalan suç örgütlerini temizlemeye başlarlar. Ortaklıkları aslında etkili gözükmektedir fakat kısa sürede kendilerini Joker adıyla bilinen zeki bir suçluya av olarak bulurlar.",
+   "genres": [
+    "Aksiyon",
+    "Bilim Kurgu",
+    "Gerilim",
+    "Gizem",
+    "Suç"
+   ],
+   "rating": 9.0,
+   "country": "GB",
+   "followers": 2179,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 155,
+   "imdb_id": "tt0468569",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "zack-snyder-s-justice-league-adalet-birligi-2021",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "movie",
+   "title": "Zack Snyder's Justice League: Adalet Birliği",
+   "year": 2021,
+   "card": "/img/zack-snyder-s-justice-league-adalet-birligi-2021/card?w=342&h=192",
+   "portrait": "/img/zack-snyder-s-justice-league-adalet-birligi-2021/portrait?w=300&h=450",
+   "backdrop": "/img/zack-snyder-s-justice-league-adalet-birligi-2021/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "2017 yapımı Adalet Birliği: JUSTiCE LEAGUE filminin Zack Snyder tarafından yeniden kurgulanacak kesilmemiş versiyonu. Orijinal film tamamlanmadan projeden ayrılmak durumunda kalan Snyder'in yerine filmi tamamlaması için Joss Whedon getirilmişti. Whedon'ın ellerinde ilk başta planlanandan bambaşka bir şeye dönüşen film başarıya ulaşamamıştı. Bunun üzerine DC Comics'in sadık hayranları tarafından başlatılan #ReleaseTheSnyderCut kampanyası, filmin üzerinden geçen 3 yılın sonunda amacına ulaştı ve Warner Bros. yayın hayatına yen i başlayan HBO Max platformunda 2021 yılında Snyder'in orijinal versiyonunu yayınlayacağını açıkladı.",
+   "genres": [
+    "Aksiyon",
+    "Bilim Kurgu",
+    "Fantastik",
+    "Gerilim",
+    "Macera"
+   ],
+   "rating": 9.0,
+   "country": "US",
+   "followers": 1125,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": null,
+   "imdb_id": null,
+   "playback": "video",
+   "progress": null
+  }
+ ]
+}

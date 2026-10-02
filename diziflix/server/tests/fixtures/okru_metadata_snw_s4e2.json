@@ -1,0 +1,34 @@
+{
+ "movie": {
+  "id": "15385614158383",
+  "movieId": "15385614158383",
+  "contentId": "16936362576431",
+  "duration": "3565",
+  "title": "StarTrekStrangeNewWorlds402.tr",
+  "width": 2560,
+  "height": 1066
+ },
+ "videos": [
+  {
+   "name": "full",
+   "url": "https://ok6-31.vkuser.net/?expires=1790815509625&srcIp=203.0.113.7&pr=10&srcAg=CHROME&ms=203.0.113.9&type=5&sig=SIG&ct=0&urls=203.0.113.20%3B203.0.113.21&clientType=0&zs=65&id=16936362576431",
+   "seekSchema": 3,
+   "disallowed": false
+  },
+  {
+   "name": "quad",
+   "url": "https://ok6-31.vkuser.net/?expires=1790815509625&srcIp=203.0.113.7&pr=10&srcAg=CHROME&ms=203.0.113.9&type=6&sig=SIG&ct=0&urls=203.0.113.20%3B203.0.113.21&clientType=0&zs=65&id=16936362576431",
+   "seekSchema": 3,
+   "disallowed": false
+  }
+ ],
+ "provider": "UPLOADED_ODKL",
+ "service": "ok",
+ "ondemandHls": "https://ok6-31.vkuser.net/expires/1790815509625/clientType/0/srcIp/203.0.113.7/type/2/mid/15385614158383/id/16936362576431/ms/203.0.113.9/zs/65/srcAg/CHROME/urls/203.0.113.20%3B203.0.113.21/oq/0/pr/10/ct/28/sig/SIG/ondemand/hls4_16936362576431.TOKEN.m3u8",
+ "ondemandDash": "https://ok6-31.vkuser.net/expires/1790815509625/clientType/0/srcIp/203.0.113.7/type/2/mid/15385614158383/id/16936362576431/ms/203.0.113.9/zs/65/srcAg/CHROME/urls/203.0.113.20%3B203.0.113.21/oq/0/pr/10/ct/29/sig/SIG/ondemand/dash4_16936362576431.TOKEN.mpd",
+ "security": {
+  "url": "https://ok6-31.vkuser.net/usr_login",
+  "cookie": "vdsig"
+ },
+ "episodes": []
+}

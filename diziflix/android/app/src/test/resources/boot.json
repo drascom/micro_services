@@ -1,0 +1,747 @@
+{
+ "hero": {
+  "id": "tmdb_tv_95350",
+  "availability": {
+   "state": "ready",
+   "reason": null,
+   "has_trailer": true
+  },
+  "type": "series",
+  "title": "Lanterns",
+  "year": 2026,
+  "card": "/img/tmdb_tv_95350/card?w=342&h=192",
+  "portrait": "/img/tmdb_tv_95350/portrait?w=300&h=450",
+  "backdrop": "/img/tmdb_tv_95350/backdrop?w=1280&h=720",
+  "has_backdrop": true,
+  "overview": "Galaksiler arası iki polis; yeni işe alınan John Stewart ve Lantern efsanesi Hal Jordan, dünyada geçen karanlık ve gizemli bir olayın peşinde.",
+  "genres": [
+   "Gizem"
+  ],
+  "rating": 8.3,
+  "country": "US",
+  "followers": 758,
+  "badge": null,
+  "sources": [
+   "yabancidizi"
+  ],
+  "tmdb_id": 95350,
+  "imdb_id": "tt26545992",
+  "playback": "video",
+  "progress": null,
+  "logo_text": "Lanterns",
+  "tagline": "Öne Çıkanlar",
+  "in_mylist": false
+ },
+ "heroes": [
+  {
+   "id": "tmdb_tv_95350",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "series",
+   "title": "Lanterns",
+   "year": 2026,
+   "card": "/img/tmdb_tv_95350/card?w=342&h=192",
+   "portrait": "/img/tmdb_tv_95350/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_tv_95350/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Galaksiler arası iki polis; yeni işe alınan John Stewart ve Lantern efsanesi Hal Jordan, dünyada geçen karanlık ve gizemli bir olayın peşinde.",
+   "genres": [
+    "Gizem"
+   ],
+   "rating": 8.3,
+   "country": "US",
+   "followers": 758,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 95350,
+   "imdb_id": "tt26545992",
+   "playback": "video",
+   "progress": null,
+   "logo_text": "Lanterns",
+   "tagline": "Öne Çıkanlar",
+   "in_mylist": false
+  },
+  {
+   "id": "tmdb_tv_615",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "series",
+   "title": "Futurama",
+   "year": 1999,
+   "card": "/img/tmdb_tv_615/card?w=342&h=192",
+   "portrait": "/img/tmdb_tv_615/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_tv_615/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Fry pizza dağıtıcısıdır. 2000 yılına girilen yılbaşı gecesi kazara teslimat yaptığı laboratuvarda bir makineye girer. 31 Aralık 2999 gecesi yeniden uyanır. Tek gözlü Leela ve robot Bender ile tanışır. Ortak noktaları yapmak zorunda oldukları işten nefret etmeleri ve bundan kaçmalarıdır. Fry ve arkadaşları, Fry'ın hayattaki tek akrabası olan yaşlı yeğeni Farnsworth'a ulaşırlar ve macera başlar.",
+   "genres": [
+    "Animasyon",
+    "Komedi"
+   ],
+   "rating": 8.5,
+   "country": "US",
+   "followers": 348,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 615,
+   "imdb_id": "tt0149460",
+   "playback": "video",
+   "progress": null,
+   "logo_text": "Futurama",
+   "tagline": "Öne Çıkanlar",
+   "in_mylist": false
+  }
+ ],
+ "rows": [
+  {
+   "id": "continue",
+   "title": "İzlemeye Devam Et",
+   "loaded": true,
+   "items": [
+    {
+     "id": "tmdb_tv_103516",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": true
+     },
+     "type": "series",
+     "title": "Star Trek: Strange New Worlds",
+     "year": 2022,
+     "card": "/img/tmdb_tv_103516/card?w=342&h=192",
+     "portrait": "/img/tmdb_tv_103516/portrait?w=300&h=450",
+     "backdrop": "/img/tmdb_tv_103516/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "Dizi, James T. Kirk’ün U.S.S.Enterprise’ın kaptanı olmasından önceki on yılda geçiyor ve Star Trek Orijinal Seri’nin pilot bölümünden de tanıdığımız Kaptan Pike, Spock ve Bir Numara’nın galaksideki yeni dünyaları keşfedişlerini konu ediyor.",
+     "genres": [
+      "Aksiyon",
+      "Bilim Kurgu",
+      "Macera"
+     ],
+     "rating": 8.3,
+     "country": "US",
+     "followers": 1172,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": 103516,
+     "imdb_id": "tt12327578",
+     "playback": "video",
+     "progress": {
+      "episode_id": "tmdb_tv_103516:s4:e1",
+      "position": 56,
+      "duration": 3559,
+      "pct": 2
+     }
+    },
+    {
+     "id": "bir-gece-2023",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": true
+     },
+     "type": "movie",
+     "title": "Bir Gece",
+     "year": 2023,
+     "card": "/img/bir-gece-2023/card?w=342&h=192",
+     "portrait": "/img/bir-gece-2023/portrait?w=300&h=450",
+     "backdrop": "/img/bir-gece-2023/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "Bir gece, kalabalık Paris metrosunda bir adam ve bir kadın trene binerken tesadüf eseri karşılaşır. Hararetli bir şekilde tartışırken, çevredeki yolcuların bakışları altında, aralarındaki kıvılcım karşılıklı bir arzuya dönüşür ve ikili geceyi birlikte, yarın yokmuş gibi geçirmeye karar verir. İki yabancı, yıldızlarla dolu gökyüzünün altında, bir partiden diğerine geçerken vedalarını erteleyerek gezinirler. Gün doğduğunda tekrar birer yabancı olacaklardır.",
+     "genres": [
+      "Dram",
+      "Romantik"
+     ],
+     "rating": 6.0,
+     "country": "BE",
+     "followers": 0,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": null,
+     "imdb_id": null,
+     "playback": "video",
+     "progress": {
+      "episode_id": "bir-gece-2023",
+      "position": 50,
+      "duration": 5265,
+      "pct": 1
+     }
+    },
+    {
+     "id": "tmdb_tv_5920",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": true
+     },
+     "type": "series",
+     "title": "The Mentalist",
+     "year": 2008,
+     "card": "/img/tmdb_tv_5920/card?w=342&h=192",
+     "portrait": "/img/tmdb_tv_5920/portrait?w=300&h=450",
+     "backdrop": "/img/tmdb_tv_5920/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "Simon Baker’a performansıyla Altın Küre ve Emmy ödüllerinde En İyi Erkek Oyuncu dalında adaylık getiren farklı bir dizi. Polisiye türü içinde şimdiden bir kült haline gelen bu diziyi nefesinizi tutarak izleyeceksiniz! Patrick Jane isimli bir medyum, sirkte çalışan ve gözlem güçlerini kullanarak insanlar hakkında birtakım fikirler edinip bu fikirleri onlara medyum gibi satan biridir. Bir gün bu özelliği sebebiyle televizyona çıkar ve kendine Red John isimli bir düşman edinir. Red John Jane’in kızını ve eşini öldürünce ortada kalan ve bu ölümlerin sebebinin kendisi olduğunu düşünen Jane, en sonunda FBI’a başvurarak Red John’ın peşine düşmek ister. Her ne kadar ilk başlarda bu isteği geri çevrilse de FBI’ın çözemediği birtakım davaları çözen Jane, bu özel ekibe danışman olarak işe alınır.",
+     "genres": [
+      "Dram",
+      "Gizem"
+     ],
+     "rating": 8.1,
+     "country": "US",
+     "followers": 7805,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": 5920,
+     "imdb_id": "tt1196946",
+     "playback": "video",
+     "progress": {
+      "episode_id": "tmdb_tv_5920:s1:e1",
+      "position": 14,
+      "duration": 2698,
+      "pct": 1
+     }
+    }
+   ],
+   "total": 5,
+   "offset": 0
+  },
+  {
+   "id": "trending",
+   "title": "Trendler",
+   "loaded": true,
+   "items": [
+    {
+     "id": "tmdb_tv_5920",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": true
+     },
+     "type": "series",
+     "title": "The Mentalist",
+     "year": 2008,
+     "card": "/img/tmdb_tv_5920/card?w=342&h=192",
+     "portrait": "/img/tmdb_tv_5920/portrait?w=300&h=450",
+     "backdrop": "/img/tmdb_tv_5920/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "Simon Baker’a performansıyla Altın Küre ve Emmy ödüllerinde En İyi Erkek Oyuncu dalında adaylık getiren farklı bir dizi. Polisiye türü içinde şimdiden bir kült haline gelen bu diziyi nefesinizi tutarak izleyeceksiniz! Patrick Jane isimli bir medyum, sirkte çalışan ve gözlem güçlerini kullanarak insanlar hakkında birtakım fikirler edinip bu fikirleri onlara medyum gibi satan biridir. Bir gün bu özelliği sebebiyle televizyona çıkar ve kendine Red John isimli bir düşman edinir. Red John Jane’in kızını ve eşini öldürünce ortada kalan ve bu ölümlerin sebebinin kendisi olduğunu düşünen Jane, en sonunda FBI’a başvurarak Red John’ın peşine düşmek ister. Her ne kadar ilk başlarda bu isteği geri çevrilse de FBI’ın çözemediği birtakım davaları çözen Jane, bu özel ekibe danışman olarak işe alınır.",
+     "genres": [
+      "Dram",
+      "Gizem"
+     ],
+     "rating": 8.1,
+     "country": "US",
+     "followers": 7805,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": 5920,
+     "imdb_id": "tt1196946",
+     "playback": "video",
+     "progress": {
+      "episode_id": "tmdb_tv_5920:s1:e1",
+      "position": 14,
+      "duration": 2698,
+      "pct": 1
+     }
+    },
+    {
+     "id": "tmdb_1440098",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "type": "movie",
+     "title": "Dayanılmaz Çekim",
+     "year": null,
+     "card": "/img/tmdb_1440098/card?w=342&h=192",
+     "portrait": "/img/tmdb_1440098/portrait?w=300&h=450",
+     "backdrop": "/img/tmdb_1440098/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "Güçlü bir İspanyol iş insanının kızı olan Marfil, kaçırılıp açıklama yapılmadan serbest bırakılınca New York'taki hayatı altüst olur. Babası, Sebastian Moore'u kızına koruma olarak tutar. Her anı birlikte geçirmek zorunda kalan ikili arasında, hiçbir şeyin göründüğü gibi olmadığı bir dünyada kaçınılmaz bir çekim oluşur. \"Culpables\" serisinin yazarı Mercedes Ron'un romanından uyarlanmıştır.",
+     "genres": [
+      "Romantik",
+      "Gerilim"
+     ],
+     "rating": 6.772,
+     "country": null,
+     "followers": null,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": 1440098,
+     "imdb_id": "tt36073210",
+     "playback": "video",
+     "progress": null
+    },
+    {
+     "id": "tmdb_1279493",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": false
+     },
+     "type": "movie",
+     "title": "Çıkış Yolu",
+     "year": 2026,
+     "card": "/img/tmdb_1279493/card?w=342&h=192",
+     "portrait": "/img/tmdb_1279493/portrait?w=300&h=450",
+     "backdrop": "/img/tmdb_1279493/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "Bir gece kulübü sahibi, tehlikeli geçmişini arkasında bırakıp kız arkadaşıyla birlikte emekli olmanın eşiğindedir. Maskeli silahlı adamlar tarafından soyulduğunda ve kendisini acımasız kartellerin baskısı altında bulduğunda, mekanı satın almak isteyen gizemli bir yabancı çıkagelir. Tehlike her yanını sararken; kaçışın artık bir seçenek olmayabileceği, aldatmaca, güç ve hayatta kalma mücadelesiyle dolu ölümcül bir ağda yolunu bulmak zorundadır.",
+     "genres": [
+      "Aksiyon",
+      "Gerilim"
+     ],
+     "rating": 5.7,
+     "country": null,
+     "followers": null,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": 1279493,
+     "imdb_id": "tt32321803",
+     "playback": "video",
+     "progress": null
+    }
+   ],
+   "total": 32,
+   "offset": 0
+  },
+  {
+   "id": "latest_episodes",
+   "title": "Yeni Eklenen Bölümler",
+   "loaded": true,
+   "items": [
+    {
+     "id": "tmdb_tv_300126",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": true
+     },
+     "type": "series",
+     "title": "Liar Game",
+     "year": 2026,
+     "card": "/img/tmdb_tv_300126/card?w=342&h=192",
+     "portrait": "/img/tmdb_tv_300126/portrait?w=300&h=450",
+     "backdrop": "/img/tmdb_tv_300126/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "Üniversite öğrencisi Nao Kanzaki aniden tuhaf bir mektup ve içinde 100 milyon yen bulunan bir çanta alır. Yalanların, aldatmanın ve ihanetin hüküm sürdüğü, yüksek riskli bir psikolojik savaşa katılımcı olarak seçilmiştir.",
+     "genres": [
+      "Animasyon",
+      "Dram"
+     ],
+     "rating": 7.263,
+     "country": "JP",
+     "followers": 8,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": 300126,
+     "imdb_id": "tt39229633",
+     "playback": "video",
+     "progress": null
+    },
+    {
+     "id": "series-line-of-fire",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": true
+     },
+     "type": "series",
+     "title": "Line of Fire",
+     "year": 2026,
+     "card": "/img/series-line-of-fire/card?w=342&h=192",
+     "portrait": "/img/series-line-of-fire/portrait?w=300&h=450",
+     "backdrop": "/img/series-line-of-fire/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "Kolluk kuvveti mensuplarından oluşan bir aile; FBI, US Marshals, Gizli Servis ve Adalet Bakanlığı adına davaları üstlenirken kişisel anlaşmazlıklarını bir kenara bırakır ve mesleki sınırları aşar. Sıradan görünen bir davanın ölümcül bir komploya dönüşmesinin ardından, sivilleri ve politikacıları korumakla geçen bir ömrün kazandırdığı uzmanlığı bu kez birbirlerini korumak ve katili adalete teslim etmek için kullanmak zorunda kalacaktırlar.",
+     "genres": [
+      "Dram",
+      "Suç"
+     ],
+     "rating": null,
+     "country": "US",
+     "followers": 38,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": null,
+     "imdb_id": null,
+     "playback": "video",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_318918",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": true
+     },
+     "type": "series",
+     "title": "Lego One Piece",
+     "year": 2026,
+     "card": "/img/tmdb_tv_318918/card?w=342&h=192",
+     "portrait": "/img/tmdb_tv_318918/portrait?w=300&h=450",
+     "backdrop": "/img/tmdb_tv_318918/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "İki bölümlük bu LEGO özel yapımında Hasır Şapkalar, engin denizlere açılıyor! LEGO parçalarıyla yeniden tasarlanan bu destansı yolculukta Luffy, Nami, Usopp ve diğerlerine katılın.",
+     "genres": [
+      "Aile",
+      "Animasyon",
+      "Komedi"
+     ],
+     "rating": 9.5,
+     "country": "CA",
+     "followers": 5,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": 318918,
+     "imdb_id": "tt41538904",
+     "playback": "video",
+     "progress": null
+    }
+   ],
+   "total": 23,
+   "offset": 0
+  },
+  {
+   "id": "series",
+   "title": "Diziler",
+   "loaded": true,
+   "items": [
+    {
+     "id": "tmdb_tv_95480",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": true
+     },
+     "type": "series",
+     "title": "Slow Horses",
+     "year": 2022,
+     "card": "/img/tmdb_tv_95480/card?w=342&h=192",
+     "portrait": "/img/tmdb_tv_95480/portrait?w=300&h=450",
+     "backdrop": "/img/tmdb_tv_95480/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "Slow Horses, kariyerlerini sonlandıran hataları nedeniyle MI5'in çöplük departmanında görev yapan, zeki ama huysuz Jackson Lamb liderliğindeki bir İngiliz istihbarat ajanları ekibine odaklanıyor.",
+     "genres": [
+      "Dram",
+      "Suç"
+     ],
+     "rating": 7.8,
+     "country": "GB",
+     "followers": 928,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": 95480,
+     "imdb_id": "tt5875444",
+     "playback": "video",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_97546",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": true
+     },
+     "type": "series",
+     "title": "Ted Lasso",
+     "year": 2020,
+     "card": "/img/tmdb_tv_97546/card?w=342&h=192",
+     "portrait": "/img/tmdb_tv_97546/portrait?w=300&h=450",
+     "backdrop": "/img/tmdb_tv_97546/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "Amerikan futbolu koçu Ted Lasso, İngiltere'de zor günler geçiren üst düzey bir futbul takımının başına geçer.",
+     "genres": [
+      "Komedi"
+     ],
+     "rating": 8.7,
+     "country": "US",
+     "followers": 1282,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": 97546,
+     "imdb_id": "tt10986410",
+     "playback": "video",
+     "progress": null
+    },
+    {
+     "id": "tmdb_tv_1421",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": true
+     },
+     "type": "series",
+     "title": "Modern Family",
+     "year": 2009,
+     "card": "/img/tmdb_tv_1421/card?w=342&h=192",
+     "portrait": "/img/tmdb_tv_1421/portrait?w=300&h=450",
+     "backdrop": "/img/tmdb_tv_1421/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "Pritchett, Dunphy ve Tucker'lar harikulade geniş ve karışık bir ailedir. Bu aile bize kimi zaman sıcak, kimi zaman çarpık bir modern ailenin nasıl olduğunu dürüst ve çoğu zaman komik bir dille anlatır.",
+     "genres": [
+      "Komedi"
+     ],
+     "rating": 8.5,
+     "country": "US",
+     "followers": 6584,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": 1421,
+     "imdb_id": "tt1442437",
+     "playback": "video",
+     "progress": null
+    }
+   ],
+   "total": 52,
+   "offset": 0
+  },
+  {
+   "id": "movies",
+   "title": "En Son Filmler",
+   "loaded": true,
+   "items": [
+    {
+     "id": "tmdb_1322562",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": true
+     },
+     "type": "movie",
+     "title": "Mononoke The Movie: Chapter Ⅲ - The Curse of the Serpent",
+     "year": 2026,
+     "card": "/img/tmdb_1322562/card?w=342&h=192",
+     "portrait": "/img/tmdb_1322562/portrait?w=300&h=450",
+     "backdrop": "/img/tmdb_1322562/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "Ōoku'da yaşanan trajedinin ardından insanların çarpık tutkuları ve kangrenleşmiş kinleri, İlaç Satıcısı'nın karşısına şimdiye kadarki en korkunç rakibini çıkarır. Kutsal Kılıç'ın sahibi İlaç Satıcısı ile Karakasa arasındaki şiddetli mücadele ve akabinde Hinezumi ile yaşanan çatışma gibi Mononoke'lerden kaynaklanan iki önemli olayın ardından İç Odalar nihayet yeniden huzura kavuşmuş gibi görünmektedir. Ancak hâlâ çözümlenmemiş bir şeyler olduğunu hisseden İlaç Satıcısı daima tetiktedir. Bu gergin huzur ortamında, İmparator'u n yasal eşi Yukiko'ya uzun zamandır beklediği erkek veliaht bahşedilir. Ancak bu sevinç uzun sürmez ve edilen tüm dualara rağmen çocuk hayatını kaybeder. Mutsuz evliliğini bir veliahtın doğumuyla kurtarmak isteyen Yukiko bunun üzerine umutsuzluğa kapılır ve İç Odalar'ı temelinden sarsabilecek bir komplonun içine çekilir. Kurtuluşu olmayan bir keder, dinmeyen bir öfke gibi duygular belirmeye başlar. İç Odalar'ın inancı olan \"Omizusama\"nın rahibi Hokuto Mizorogi sessizce bu durumu izler. Aynı zamanda, doğal olmayan sarsıntılar İç Odalar'ı sallamaya başlar. Sanki yerin altında devasa bir şey hareket ediyormuş gibi, nerden geldiği belli olmayan üçgen pullar etrafa saçılmaya başlar. İlaç Satıcısı, dev bir yılan görünümünde bir yılan tanrı olan bir Mononoke ile karşılaşır. Tılsımların yardımıyla onu geçici olarak defetse de İlaç Satıcısı Kutsal Kılıç'ı çekmeyi başaramaz. Bunu yapabilmek için onun \"formunu\", \"gerçeğini\" ve \"sebebini\" açığa çıkarmalıdır. Ancak o zaman kılıcı kınından çıkararak Mononoke'yi öldürmeyi başarabilecektir. Peki, yılan tanrı nerede doğmuştur? Karşı konulmaz öfkesinin sebebi nedir? Ve neden şimdi dirilmiştir? Bu soruların yanıtları 150 yıl öncesine, Ōoku'nun kuruluşunun ardındaki gizli gerçeğe dayanmaktadır. İç Odalar uzun zaman önce, Üçüncü İmparator'un sütannesi Ama-no-Tsubone tarafından kurulmuştur. İç Odalar'ın sistemi sayesinde bir huzur dönemi sağlanmış ve bu sistem zamanla \"Omizusama\" olarak kutsanmıştır. Huzursuzluğun giderek arttığını hisseden İlaç Satıcısı, sunağın merkezindeki tapınağa gider ve orada asla dillendirilmemesi gereken bir gerçeği açığa çıkarır. Üçüncü yasal eş ile Ama-no-Tsubone'nin iç içe geçmiş kaderleri, Mizorogi ailesinin sırları ve Mononoke'lerin Ōoku'da art arda belirmesinin ardındaki neden gün yüzüne çıkarken tüm olay örgüleri tek bir noktada birleşir. Ōoku’nun karanlık tarihinin vücut bulmuş hâliyle yüzleşen İlaç Satıcısı savaşta her şeyini ortaya koymaya hazırlanır. Ancak yüzyıllar boyu birikmiş bir nefretten güç alan yılan tanrı, akılalmaz bir kudrete sahiptir ve İlaç Satıcısı'nı görülmemiş bir krize sürükler. Ölüm giderek yaklaşırken, daha da dehşet verici beklenmedik olaylar yaşanır. Şimdiye kadarki en büyük sınavıyla karşı karşıya kalan İlaç Satıcısı'nı nasıl bir kader beklemektedir?",
+     "genres": [
+      "Animasyon",
+      "Fantastik",
+      "Gizem"
+     ],
+     "rating": 7.0,
+     "country": "JP",
+     "followers": 2,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": 1322562,
+     "imdb_id": "tt36282134",
+     "playback": "video",
+     "progress": null
+    },
+    {
+     "id": "bir-gece-2023",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": true
+     },
+     "type": "movie",
+     "title": "Bir Gece",
+     "year": 2023,
+     "card": "/img/bir-gece-2023/card?w=342&h=192",
+     "portrait": "/img/bir-gece-2023/portrait?w=300&h=450",
+     "backdrop": "/img/bir-gece-2023/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "Bir gece, kalabalık Paris metrosunda bir adam ve bir kadın trene binerken tesadüf eseri karşılaşır. Hararetli bir şekilde tartışırken, çevredeki yolcuların bakışları altında, aralarındaki kıvılcım karşılıklı bir arzuya dönüşür ve ikili geceyi birlikte, yarın yokmuş gibi geçirmeye karar verir. İki yabancı, yıldızlarla dolu gökyüzünün altında, bir partiden diğerine geçerken vedalarını erteleyerek gezinirler. Gün doğduğunda tekrar birer yabancı olacaklardır.",
+     "genres": [
+      "Dram",
+      "Romantik"
+     ],
+     "rating": 6.0,
+     "country": "BE",
+     "followers": 0,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": null,
+     "imdb_id": null,
+     "playback": "video",
+     "progress": {
+      "episode_id": "bir-gece-2023",
+      "position": 50,
+      "duration": 5265,
+      "pct": 1
+     }
+    },
+    {
+     "id": "kendin-ol-2026",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": true
+     },
+     "type": "movie",
+     "title": "Kendin Ol",
+     "year": 2026,
+     "card": "/img/kendin-ol-2026/card?w=342&h=192",
+     "portrait": "/img/kendin-ol-2026/portrait?w=300&h=450",
+     "backdrop": "/img/kendin-ol-2026/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "Kötü kızın vücut bulmuş hâli olan 'Shy' Das'ın hayatı, üç yıllık sevgilisi Mayank'ın kendisini terk etmesiyle altüst olur. Fakat intikam planları yapan Shy, hiç beklenmedik birinin dostluğunu ve şefkatini kazanır. Mayank'ın yeni sevgilisi Tara'nın.",
+     "genres": [
+      "Komedi",
+      "Romantik"
+     ],
+     "rating": 0.0,
+     "country": "IN",
+     "followers": 1,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": null,
+     "imdb_id": null,
+     "playback": "video",
+     "progress": null
+    }
+   ],
+   "total": 20,
+   "offset": 0
+  },
+  {
+   "id": "noteworthy_movies",
+   "title": "Dikkate Değer Filmler",
+   "loaded": true,
+   "items": [
+    {
+     "id": "tmdb_278",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": true
+     },
+     "type": "movie",
+     "title": "Esaretin Bedeli",
+     "year": 1994,
+     "card": "/img/tmdb_278/card?w=342&h=192",
+     "portrait": "/img/tmdb_278/portrait?w=300&h=450",
+     "backdrop": "/img/tmdb_278/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "1940'lı yıllarda genç ve başarılı bir bankacı olan Andy Dufresne (Tim Robbins), karısını ve karısının sevgilisini öldürmek suçundan ömür boyu hapse mahkumdur. ve bunun için Shawshank hapishanesine gönderilir. Bu olaylar yaşanmadan önce dürüst bir bankacı olarak tanınan Andy için yeni bir hayat başlamaktadır. Zorbalığın , tecavüzün ve her türlü kötü koşulun yoğun olarak yaşandığı hapishane koşullarında Andy; hayata karşı hep umutla bakıyor ve güzel birşeyler oluşturma çabasına girişiyor. Yaşanılan problemlerden birisi de muh asebe becerilerini - ahlaki değerleri düşük, görevini suistimal eden - hapishane müdürü Warden (Bob Gunton) için kullanmasıdır. Bu süreç içerisinde zorluklara karşı mücadelesi, içindeki umudunu yitirmemesi çevresindeki mahkumların dikkatini çekmiş ve en yakın arkadaşı olacak olan Ellis Boyd 'Red' (Morgan Freeman) ile parmaklıkların arkasında hapishaneyi çok farklı bir ortam haline getirirler. Yaşanılan güzellikler ile birlikte adeletsizlikler ve kayıplarda olmaktadır. Bütün bu olaylar içerisinde Andy hep bir çözüm bulma çabasındadır.",
+     "genres": [
+      "Dram",
+      "Suç"
+     ],
+     "rating": 9.3,
+     "country": "US",
+     "followers": 2639,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": 278,
+     "imdb_id": "tt0111161",
+     "playback": "video",
+     "progress": null
+    },
+    {
+     "id": "tmdb_238",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": true
+     },
+     "type": "movie",
+     "title": "Baba",
+     "year": 1972,
+     "card": "/img/tmdb_238/card?w=342&h=192",
+     "portrait": "/img/tmdb_238/portrait?w=300&h=450",
+     "backdrop": "/img/tmdb_238/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "Spanning the years 1945 to 1955, a chronicle of the fictional Italian-American Corleone crime family. When organized crime family patriarch, Vito Corleone barely survives an attempt on his life, his youngest son, Michael steps in to take care of the would-be killers, launching a campaign of bloody revenge.",
+     "genres": [
+      "Dram",
+      "Suç"
+     ],
+     "rating": 9.2,
+     "country": "US",
+     "followers": 1063,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": 238,
+     "imdb_id": "tt0068646",
+     "playback": "video",
+     "progress": null
+    },
+    {
+     "id": "tmdb_1163258",
+     "availability": {
+      "state": "ready",
+      "reason": null,
+      "has_trailer": true
+     },
+     "type": "movie",
+     "title": "Bitmeyen Sınav",
+     "year": 2023,
+     "card": "/img/tmdb_1163258/card?w=342&h=192",
+     "portrait": "/img/tmdb_1163258/portrait?w=300&h=450",
+     "backdrop": "/img/tmdb_1163258/backdrop?w=1280&h=720",
+     "has_backdrop": true,
+     "overview": "Köyde yaşayan Manoj Kumar Sharma bir gün ailesinin desteğiyle rütbeli bir polis memuru olabilmek için bir yolculuğa çıkar. Ancak yaşayacağı çok büyük zorluklar onu beklemektedir. Hem çalışıp hem okuması gereken Manoj yaşadığı başarısızlıklara rağmen tekrar tekrar denemeye devam eder.",
+     "genres": [
+      "Biyografi",
+      "Dram"
+     ],
+     "rating": 9.1,
+     "country": "IN",
+     "followers": 124,
+     "badge": null,
+     "sources": [
+      "yabancidizi"
+     ],
+     "tmdb_id": 1163258,
+     "imdb_id": "tt23849204",
+     "playback": "video",
+     "progress": null
+    }
+   ],
+   "total": 20,
+   "offset": 0
+  }
+ ],
+ "layout": "tv-v1",
+ "catalog_total": 101,
+ "source": ""
+}

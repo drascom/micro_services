@@ -1,0 +1,25 @@
+{
+ "profiles": [
+  {
+   "id": "p1",
+   "name": "ayhan",
+   "avatar_seed": "a1",
+   "avatar": "/img/avatar/a1?w=200&h=200",
+   "is_kids": false
+  },
+  {
+   "id": "p2",
+   "name": "Neva",
+   "avatar_seed": "a16",
+   "avatar": "/img/avatar/a16?w=200&h=200",
+   "is_kids": true
+  },
+  {
+   "id": "p_dbecf70ba9",
+   "name": "Havva",
+   "avatar_seed": "a4",
+   "avatar": "/img/avatar/a4?w=200&h=200",
+   "is_kids": false
+  }
+ ]
+}

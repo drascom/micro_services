@@ -1,0 +1,146 @@
+{
+ "id": "tmdb_tv_171802",
+ "availability": {
+  "state": "unavailable",
+  "reason": "no_video_source",
+  "has_trailer": true
+ },
+ "type": "series",
+ "title": "Blade Runner 2099",
+ "year": 2026,
+ "card": "/img/tmdb_tv_171802/card?w=342&h=192",
+ "portrait": "/img/tmdb_tv_171802/portrait?w=300&h=450",
+ "backdrop": "/img/tmdb_tv_171802/backdrop?w=1280&h=720",
+ "has_backdrop": true,
+ "overview": "Blade Runner 2049'daki olayların üzerinden elli yıl geçmiş, Los Angeles yeniden ayağa kalkmıştır; fakat bu kez insanlığın eseri olarak değil. Kaçmaktan yorulan ve buna son vermek için son hamlesini yapan kaçak Cora, alacağı son kimliği kabullenir: Bir Blade Runner. Ölümüne günler kalmış bir Replikant olan Olwen ile ortaklık kurmak zorunda kalan Cora, kırılgan şehirlerini çökertebilecek bir gerçeği saklayan başka bir kaçağın peşine düşer.",
+ "genres": [
+  "Aksiyon",
+  "Bilim Kurgu",
+  "Dram",
+  "Gizem",
+  "Macera"
+ ],
+ "rating": null,
+ "country": "US",
+ "followers": 109,
+ "badge": null,
+ "sources": [
+  "yabancidizi"
+ ],
+ "tmdb_id": 171802,
+ "imdb_id": "tt18224594",
+ "playback": "trailer",
+ "progress": null,
+ "cast": [
+  "Michelle Yeoh",
+  "Hunter Schafer",
+  "Dimitri Abold",
+  "Lewis Gribben"
+ ],
+ "director": null,
+ "runtime": 50,
+ "in_mylist": false,
+ "seasons": [],
+ "resume": {
+  "episode_id": "tmdb_tv_171802",
+  "position": 0
+ },
+ "similar": [
+  {
+   "id": "tmdb_278",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "movie",
+   "title": "Esaretin Bedeli",
+   "year": 1994,
+   "card": "/img/tmdb_278/card?w=342&h=192",
+   "portrait": "/img/tmdb_278/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_278/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "1940'lı yıllarda genç ve başarılı bir bankacı olan Andy Dufresne (Tim Robbins), karısını ve karısının sevgilisini öldürmek suçundan ömür boyu hapse mahkumdur. ve bunun için Shawshank hapishanesine gönderilir. Bu olaylar yaşanmadan önce dürüst bir bankacı olarak tanınan Andy için yeni bir hayat başlamaktadır. Zorbalığın , tecavüzün ve her türlü kötü koşulun yoğun olarak yaşandığı hapishane koşullarında Andy; hayata karşı hep umutla bakıyor ve güzel birşeyler oluşturma çabasına girişiyor. Yaşanılan problemlerden birisi de muh asebe becerilerini - ahlaki değerleri düşük, görevini suistimal eden - hapishane müdürü Warden (Bob Gunton) için kullanmasıdır. Bu süreç içerisinde zorluklara karşı mücadelesi, içindeki umudunu yitirmemesi çevresindeki mahkumların dikkatini çekmiş ve en yakın arkadaşı olacak olan Ellis Boyd 'Red' (Morgan Freeman) ile parmaklıkların arkasında hapishaneyi çok farklı bir ortam haline getirirler. Yaşanılan güzellikler ile birlikte adeletsizlikler ve kayıplarda olmaktadır. Bütün bu olaylar içerisinde Andy hep bir çözüm bulma çabasındadır.",
+   "genres": [
+    "Dram",
+    "Suç"
+   ],
+   "rating": 9.3,
+   "country": "US",
+   "followers": 2639,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 278,
+   "imdb_id": "tt0111161",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_238",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "movie",
+   "title": "Baba",
+   "year": 1972,
+   "card": "/img/tmdb_238/card?w=342&h=192",
+   "portrait": "/img/tmdb_238/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_238/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Spanning the years 1945 to 1955, a chronicle of the fictional Italian-American Corleone crime family. When organized crime family patriarch, Vito Corleone barely survives an attempt on his life, his youngest son, Michael steps in to take care of the would-be killers, launching a campaign of bloody revenge.",
+   "genres": [
+    "Dram",
+    "Suç"
+   ],
+   "rating": 9.2,
+   "country": "US",
+   "followers": 1063,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 238,
+   "imdb_id": "tt0068646",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_tv_19885",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "series",
+   "title": "Sherlock",
+   "year": 2010,
+   "card": "/img/tmdb_tv_19885/card?w=342&h=192",
+   "portrait": "/img/tmdb_tv_19885/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_tv_19885/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Dizi, Arthur Conan Doyle'un ünlü romanı Sherlock Holmes'tan uyarlanmış modern bir hali. Bu sefer, ünlü dedektif Sherlock Holmes ve eski askeri doktor olan arkadaşı John Watson, Londra'da 21.yüzyılın suçlularını yakalamaya çalışıyor.",
+   "genres": [
+    "Aksiyon",
+    "Dram",
+    "Gerilim",
+    "Gizem",
+    "Suç"
+   ],
+   "rating": 9.2,
+   "country": "GB",
+   "followers": 28475,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 19885,
+   "imdb_id": "tt1475582",
+   "playback": "video",
+   "progress": null
+  }
+ ]
+}

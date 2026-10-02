@@ -1,0 +1,133 @@
+{
+ "id": "series",
+ "title": "Diziler",
+ "items": [
+  {
+   "id": "tmdb_tv_95480",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "series",
+   "title": "Slow Horses",
+   "year": 2022,
+   "card": "/img/tmdb_tv_95480/card?w=342&h=192",
+   "portrait": "/img/tmdb_tv_95480/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_tv_95480/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Slow Horses, kariyerlerini sonlandıran hataları nedeniyle MI5'in çöplük departmanında görev yapan, zeki ama huysuz Jackson Lamb liderliğindeki bir İngiliz istihbarat ajanları ekibine odaklanıyor.",
+   "genres": [
+    "Dram",
+    "Suç"
+   ],
+   "rating": 7.8,
+   "country": "GB",
+   "followers": 928,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 95480,
+   "imdb_id": "tt5875444",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_tv_97546",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "series",
+   "title": "Ted Lasso",
+   "year": 2020,
+   "card": "/img/tmdb_tv_97546/card?w=342&h=192",
+   "portrait": "/img/tmdb_tv_97546/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_tv_97546/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Amerikan futbolu koçu Ted Lasso, İngiltere'de zor günler geçiren üst düzey bir futbul takımının başına geçer.",
+   "genres": [
+    "Komedi"
+   ],
+   "rating": 8.7,
+   "country": "US",
+   "followers": 1282,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 97546,
+   "imdb_id": "tt10986410",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_tv_1421",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "series",
+   "title": "Modern Family",
+   "year": 2009,
+   "card": "/img/tmdb_tv_1421/card?w=342&h=192",
+   "portrait": "/img/tmdb_tv_1421/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_tv_1421/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Pritchett, Dunphy ve Tucker'lar harikulade geniş ve karışık bir ailedir. Bu aile bize kimi zaman sıcak, kimi zaman çarpık bir modern ailenin nasıl olduğunu dürüst ve çoğu zaman komik bir dille anlatır.",
+   "genres": [
+    "Komedi"
+   ],
+   "rating": 8.5,
+   "country": "US",
+   "followers": 6584,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 1421,
+   "imdb_id": "tt1442437",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_tv_18165",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "series",
+   "title": "The Vampire Diaries",
+   "year": 2009,
+   "card": "/img/tmdb_tv_18165/card?w=342&h=192",
+   "portrait": "/img/tmdb_tv_18165/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_tv_18165/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Ailelerini dört ay önce bir trafik kazasında kaybetmiş olan 17 yaşındaki Elena ve 15 yaşındaki kardeşi Jeremy, yaşadıkları acı sonrası hayatlarına devam etmeye çalışmaktadırlar. Bu diziden sonra en çok izlenen filmler listesine gözatmayı unutmayınız. Liste için tıklayınız. Elena çevresinde her zaman güzelliği ve başarılı bir öğrenci olmasıyla ön planda olmuştur. Yaşadığı acıyı dış dünyadan saklama çabasındadır. İki vampir kardeşten Stefan ve Damon'ın kasabaya gelmesiyle, Elena'yla Stefan hemen birbirlerine karşı ilgi duymaya başlarlar.",
+   "genres": [
+    "Dram",
+    "Fantastik",
+    "Korku",
+    "Romantik"
+   ],
+   "rating": 7.7,
+   "country": "US",
+   "followers": 23068,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 18165,
+   "imdb_id": "tt1405406",
+   "playback": "video",
+   "progress": null
+  }
+ ],
+ "offset": 0,
+ "limit": 20,
+ "total": 52
+}

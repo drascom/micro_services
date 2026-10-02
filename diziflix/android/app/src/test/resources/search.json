@@ -1,0 +1,166 @@
+{
+ "items": [
+  {
+   "id": "tmdb_tv_103516",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "series",
+   "title": "Star Trek: Strange New Worlds",
+   "year": 2022,
+   "card": "/img/tmdb_tv_103516/card?w=342&h=192",
+   "portrait": "/img/tmdb_tv_103516/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_tv_103516/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Dizi, James T. Kirk’ün U.S.S.Enterprise’ın kaptanı olmasından önceki on yılda geçiyor ve Star Trek Orijinal Seri’nin pilot bölümünden de tanıdığımız Kaptan Pike, Spock ve Bir Numara’nın galaksideki yeni dünyaları keşfedişlerini konu ediyor.",
+   "genres": [
+    "Aksiyon",
+    "Bilim Kurgu",
+    "Macera"
+   ],
+   "rating": 8.3,
+   "country": "US",
+   "followers": 1172,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 103516,
+   "imdb_id": "tt12327578",
+   "playback": "video",
+   "progress": {
+    "episode_id": "tmdb_tv_103516:s4:e1",
+    "position": 56,
+    "duration": 3559,
+    "pct": 2
+   }
+  },
+  {
+   "id": "tmdb_1514863",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": false
+   },
+   "type": "movie",
+   "title": "Best of the Best",
+   "year": 2026,
+   "card": "/img/tmdb_1514863/card?w=342&h=192",
+   "portrait": "/img/tmdb_1514863/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_1514863/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "İki çocukluk arkadaşı, UCLA'in rekabetçi Bollywood füzyon dans takımına katılınca ABD Şampiyonası'na giden yolun zannettiklerinden çok daha zorlu olduğunu anlar.",
+   "genres": [
+    "Dram",
+    "Komedi"
+   ],
+   "rating": 0.0,
+   "country": null,
+   "followers": null,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 1514863,
+   "imdb_id": "tt16478058",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_995775",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "movie",
+   "title": "Almost Legal",
+   "year": 2024,
+   "card": "/img/tmdb_995775/card?w=342&h=192",
+   "portrait": "/img/tmdb_995775/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_995775/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Okulu yeni bitiren Félix ve Vincent, Atlantik kıyısında yaşayan ve iş hayatında — hatta genel olarak hayatta — kendilerine bir yer bulmakta zorlanan iki gençtir. Tatil döneminde ikili, mahalledeki küçük bir marketi gizlice gece işletmesine dönüştürmeye karar verir. Bu iş için özel olarak topladıkları bir ekipten de yardım alırlar. Ancak planları, marketin gerçek sahibi ve polis bu şüpheli durumu fark etmeye başlayana kadar yolunda gider.",
+   "genres": [
+    "Komedi"
+   ],
+   "rating": 5.0,
+   "country": "FR",
+   "followers": 3,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 995775,
+   "imdb_id": "tt31070377",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_13",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": false
+   },
+   "type": "movie",
+   "title": "Forrest Gump",
+   "year": 1994,
+   "card": "/img/tmdb_13/card?w=342&h=192",
+   "portrait": "/img/tmdb_13/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_13/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Forrest Gump, düşük IQ’su olmasına rağmen, Amerikan tarihinin en önemli olaylarının tam ortasında yer alan biridir. Alabama'da büyüyen Forrest, koşma yeteneği sayesinde üniversiteye girer, Vietnam Savaşı'na katılır, Beyaz Saray’a davet edilir ve karides işinden milyoner olur. Ancak tüm bu başarılar, çocukluk aşkı Jenny’ye duyduğu sevginin yanında sönük kalır.",
+   "genres": [
+    "Dram",
+    "Komedi",
+    "Romantik"
+   ],
+   "rating": 8.8,
+   "country": null,
+   "followers": null,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 13,
+   "imdb_id": "tt0109830",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_tv_255358",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+   },
+   "type": "series",
+   "title": "The Ghost in the Shell",
+   "year": 2026,
+   "card": "/img/tmdb_tv_255358/card?w=342&h=192",
+   "portrait": "/img/tmdb_tv_255358/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_tv_255358/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "2029, yakın gelecek Japonya. Tamamen sibernetik bedene sahip Motoko Kusanagi, yeni tehditlere karşı bir önleyici saldırı ekibi kurmak ister. Daisuke Aramaki tarafından Kamu Güvenliği 9. Bölge'ye, nam-ı diğer \"Kabuk Timi\"ne alınır. Uluslararası bir komplo, \"Kuklacı\" olarak bilinen bir hacker'a işaret eder. Kusanagi'yi nasıl bir kader bekliyor? Hacker'ın amacı ne? Siberpunk aksiyonda dönemi başlar!",
+   "genres": [
+    "Animasyon"
+   ],
+   "rating": 8.176,
+   "country": "JP",
+   "followers": 47,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 255358,
+   "imdb_id": "tt36517689",
+   "playback": "video",
+   "progress": null
+  }
+ ],
+ "total": 5,
+ "remote": false
+}

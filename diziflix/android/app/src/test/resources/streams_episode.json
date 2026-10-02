@@ -1,0 +1,40 @@
+{
+ "streams": [
+  {
+   "url": "https://box-1500-u.vmeas.cloud/hls2/02/02676/cxym07utchpw_,n,l,.urlset/master.m3u8?t=REDACTED&s=REDACTED&e=REDACTED&v=&i=REDACTED&sp=REDACTED&asn=REDACTED",
+   "type": "hls",
+   "quality": "auto",
+   "label": "VidMolly · auto",
+   "provider": "VidMolly",
+   "source_id": "vs_ef2bd62f39e50e04c697af71",
+   "source": "yabancidizi",
+   "kind": "episode",
+   "attempt_token": "00000000000000000000000000000001"
+  },
+  {
+   "url": "https://box-1525-e.vmeas.cloud/hls2/02/02677/pqrstrb9x32e_,n,l,.urlset/master.m3u8?t=REDACTED&s=REDACTED&e=REDACTED&v=&i=REDACTED&sp=REDACTED&asn=REDACTED",
+   "type": "hls",
+   "quality": "auto",
+   "label": "VidMolly · auto",
+   "provider": "VidMolly",
+   "source_id": "vs_ef2bd62f39e50e04c697af71",
+   "source": "yabancidizi",
+   "kind": "episode",
+   "attempt_token": "00000000000000000000000000000001"
+  },
+  {
+   "url": "https://box-1663-w.vmbox.space/hls2/04/02725/3ykaq6z9vcg2_n/master.m3u8?t=REDACTED&s=REDACTED&e=REDACTED&v=&i=REDACTED&sp=REDACTED&asn=REDACTED",
+   "type": "hls",
+   "quality": "auto",
+   "label": "VidMolly · auto",
+   "provider": "VidMolly",
+   "source_id": "vs_ef2bd62f39e50e04c697af71",
+   "source": "yabancidizi",
+   "kind": "episode",
+   "attempt_token": "00000000000000000000000000000001"
+  }
+ ],
+ "subtitles": [],
+ "resume_position": 56,
+ "duration": 0
+}

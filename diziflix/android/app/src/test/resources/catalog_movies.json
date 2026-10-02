@@ -1,0 +1,300 @@
+{
+ "items": [
+  {
+   "id": "yuzuklerin-efendisi-1-yuzuk-kardesligi-extended-edition-2001",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": false
+   },
+   "type": "movie",
+   "title": "Yüzüklerin Efendisi 1: Yüzük Kardeşliği (Extended Edition)",
+   "year": 2001,
+   "card": "/img/yuzuklerin-efendisi-1-yuzuk-kardesligi-extended-edition-2001/card?w=342&h=192",
+   "portrait": "/img/yuzuklerin-efendisi-1-yuzuk-kardesligi-extended-edition-2001/portrait?w=300&h=450",
+   "backdrop": "/img/yuzuklerin-efendisi-1-yuzuk-kardesligi-extended-edition-2001/backdrop?w=1280&h=720",
+   "has_backdrop": false,
+   "overview": "",
+   "genres": [
+    "Aksiyon",
+    "Fantastik",
+    "Macera"
+   ],
+   "rating": 8.8,
+   "country": null,
+   "followers": null,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": null,
+   "imdb_id": null,
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_13",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": false
+   },
+   "type": "movie",
+   "title": "Forrest Gump",
+   "year": 1994,
+   "card": "/img/tmdb_13/card?w=342&h=192",
+   "portrait": "/img/tmdb_13/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_13/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Forrest Gump, düşük IQ’su olmasına rağmen, Amerikan tarihinin en önemli olaylarının tam ortasında yer alan biridir. Alabama'da büyüyen Forrest, koşma yeteneği sayesinde üniversiteye girer, Vietnam Savaşı'na katılır, Beyaz Saray’a davet edilir ve karides işinden milyoner olur. Ancak tüm bu başarılar, çocukluk aşkı Jenny’ye duyduğu sevginin yanında sönük kalır.",
+   "genres": [
+    "Dram",
+    "Komedi",
+    "Romantik"
+   ],
+   "rating": 8.8,
+   "country": null,
+   "followers": null,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 13,
+   "imdb_id": "tt0109830",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "yenilmezler-3-sonsuzluk-savasi-bolum-1-2018",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": false
+   },
+   "type": "movie",
+   "title": "Yenilmezler 3: Sonsuzluk Savaşı – Bölüm 1",
+   "year": 2018,
+   "card": "/img/yenilmezler-3-sonsuzluk-savasi-bolum-1-2018/card?w=342&h=192",
+   "portrait": "/img/yenilmezler-3-sonsuzluk-savasi-bolum-1-2018/portrait?w=300&h=450",
+   "backdrop": "/img/yenilmezler-3-sonsuzluk-savasi-bolum-1-2018/backdrop?w=1280&h=720",
+   "has_backdrop": false,
+   "overview": "",
+   "genres": [
+    "Aksiyon",
+    "Bilim Kurgu",
+    "Fantastik",
+    "Gerilim",
+    "Macera"
+   ],
+   "rating": 8.8,
+   "country": null,
+   "followers": null,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": null,
+   "imdb_id": null,
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_27205",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": false
+   },
+   "type": "movie",
+   "title": "Başlangıç",
+   "year": 2010,
+   "card": "/img/tmdb_27205/card?w=342&h=192",
+   "portrait": "/img/tmdb_27205/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_27205/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Hedeflerinin bilinçaltına sızarak kurumsal casusluk yapan yetenekli bir hırsız olan Cobb'a, imkansız olduğu düşünülen bir görev karşılığında eski hayatını geri kazanma şansı sunulur: Başka birinin fikrini hedefin bilinçaltına yerleştirme işlemi olan \"başlangıç.\"",
+   "genres": [
+    "Aksiyon",
+    "Bilim Kurgu",
+    "Gerilim",
+    "Gizem",
+    "Macera"
+   ],
+   "rating": 8.8,
+   "country": null,
+   "followers": null,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 27205,
+   "imdb_id": "tt1375666",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_569094",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": false
+   },
+   "type": "movie",
+   "title": "Örümcek-Adam: Örümcek Evrenine Geçiş",
+   "year": 2023,
+   "card": "/img/tmdb_569094/card?w=342&h=192",
+   "portrait": "/img/tmdb_569094/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_569094/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Spider-Man: Across the Spider-Verse, radyoaktif bir örümcek tarafından ısırılmasıyla bambaşka bir dünyaya adım atıp özel yeteneklerle donanan Miles Morales'in maceralarını konu ediyor.",
+   "genres": [
+    "Aksiyon",
+    "Animasyon",
+    "Bilim Kurgu",
+    "Macera"
+   ],
+   "rating": 8.9,
+   "country": null,
+   "followers": null,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 569094,
+   "imdb_id": "tt9362722",
+   "playback": "video",
+   "progress": null
+  },
+  {
+   "id": "tmdb_689249",
+   "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": false
+   },
+   "type": "movie",
+   "title": "La Casa De Papel: El Fenómeno",
+   "year": 2020,
+   "card": "/img/tmdb_689249/card?w=342&h=192",
+   "portrait": "/img/tmdb_689249/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_689249/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Bu belgesel, \"La Casa de Papel\"in bir grup sevimli hırsız ve başlarındaki profesör için dünya genelinde neden ve nasıl bir coşku dalgası yarattığını inceliyor.",
+   "genres": [
+    "Belgesel"
+   ],
+   "rating": 8.9,
+   "country": null,
+   "followers": null,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 689249,
+   "imdb_id": "tt12078990",
+   "playback": "video",
+   "progress": null
+  }
+ ],
+ "total": 49,
+ "offset": 0,
+ "limit": 6,
+ "genres": [
+  {
+   "id": "action",
+   "name": "Aksiyon"
+  },
+  {
+   "id": "comedy",
+   "name": "Komedi"
+  },
+  {
+   "id": "drama",
+   "name": "Dram"
+  },
+  {
+   "id": "horror",
+   "name": "Korku"
+  },
+  {
+   "id": "science_fiction",
+   "name": "Bilim Kurgu"
+  },
+  {
+   "id": "thriller",
+   "name": "Gerilim"
+  },
+  {
+   "id": "romance",
+   "name": "Romantik"
+  },
+  {
+   "id": "animation",
+   "name": "Animasyon"
+  },
+  {
+   "id": "documentary",
+   "name": "Belgesel"
+  },
+  {
+   "id": "adventure",
+   "name": "Macera"
+  },
+  {
+   "id": "crime",
+   "name": "Suç"
+  },
+  {
+   "id": "fantasy",
+   "name": "Fantastik"
+  },
+  {
+   "id": "family",
+   "name": "Aile"
+  },
+  {
+   "id": "war",
+   "name": "Savaş"
+  },
+  {
+   "id": "history",
+   "name": "Tarih"
+  },
+  {
+   "id": "music",
+   "name": "Müzikal"
+  },
+  {
+   "id": "western",
+   "name": "Western"
+  },
+  {
+   "id": "mystery",
+   "name": "Gizem"
+  },
+  {
+   "id": "biography",
+   "name": "Biyografi"
+  }
+ ],
+ "years": [
+  2026,
+  2025,
+  2024,
+  2023,
+  2022,
+  2021,
+  2020,
+  2019,
+  2018,
+  2010,
+  2008,
+  2003,
+  2001,
+  1994,
+  1993,
+  1974,
+  1972,
+  1966
+ ]
+}

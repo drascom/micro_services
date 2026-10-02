@@ -1,0 +1,179 @@
+{
+ "items": [
+  {
+   "id": "tmdb_tv_171802",
+   "availability": {
+    "state": "unavailable",
+    "reason": "no_video_source",
+    "has_trailer": true
+   },
+   "type": "series",
+   "title": "Blade Runner 2099",
+   "year": 2026,
+   "card": "/img/tmdb_tv_171802/card?w=342&h=192",
+   "portrait": "/img/tmdb_tv_171802/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_tv_171802/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Blade Runner 2049'daki olayların üzerinden elli yıl geçmiş, Los Angeles yeniden ayağa kalkmıştır; fakat bu kez insanlığın eseri olarak değil. Kaçmaktan yorulan ve buna son vermek için son hamlesini yapan kaçak Cora, alacağı son kimliği kabullenir: Bir Blade Runner. Ölümüne günler kalmış bir Replikant olan Olwen ile ortaklık kurmak zorunda kalan Cora, kırılgan şehirlerini çökertebilecek bir gerçeği saklayan başka bir kaçağın peşine düşer.",
+   "genres": [
+    "Aksiyon",
+    "Bilim Kurgu",
+    "Dram",
+    "Gizem",
+    "Macera"
+   ],
+   "rating": null,
+   "country": "US",
+   "followers": 109,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 171802,
+   "imdb_id": "tt18224594",
+   "playback": "trailer",
+   "progress": null
+  },
+  {
+   "id": "tmdb_tv_224377",
+   "availability": {
+    "state": "unavailable",
+    "reason": "no_video_source",
+    "has_trailer": true
+   },
+   "type": "series",
+   "title": "Harry Potter",
+   "year": 2026,
+   "card": "/img/tmdb_tv_224377/card?w=342&h=192",
+   "portrait": "/img/tmdb_tv_224377/portrait?w=300&h=450",
+   "backdrop": "/img/tmdb_tv_224377/backdrop?w=1280&h=720",
+   "has_backdrop": true,
+   "overview": "Harry Potter özel biri değil, en azından teyzesi Petunia hep böyle söyler. On birinci doğum gününde Hogwarts Cadılık ve Büyücülük Okulu'na kabul mektubu alan Harry için gizli, eğlenceli, dostane ve sihir dolu bir dünyanın kapıları aralanır. Ancak bu yeni macera büyük bir risk de beraberinde getirir çünkü Harry geçmişinden gelen tehlikeli bir düşmanla yüzleşmek zorunda kalır.",
+   "genres": [
+    "Aile"
+   ],
+   "rating": null,
+   "country": "GB",
+   "followers": 255,
+   "badge": null,
+   "sources": [
+    "yabancidizi"
+   ],
+   "tmdb_id": 224377,
+   "imdb_id": "tt13918446",
+   "playback": "trailer",
+   "progress": null
+  }
+ ],
+ "total": 2,
+ "offset": 0,
+ "limit": 6,
+ "genres": [
+  {
+   "id": "action",
+   "name": "Aksiyon"
+  },
+  {
+   "id": "comedy",
+   "name": "Komedi"
+  },
+  {
+   "id": "drama",
+   "name": "Dram"
+  },
+  {
+   "id": "horror",
+   "name": "Korku"
+  },
+  {
+   "id": "science_fiction",
+   "name": "Bilim Kurgu"
+  },
+  {
+   "id": "thriller",
+   "name": "Gerilim"
+  },
+  {
+   "id": "romance",
+   "name": "Romantik"
+  },
+  {
+   "id": "animation",
+   "name": "Animasyon"
+  },
+  {
+   "id": "documentary",
+   "name": "Belgesel"
+  },
+  {
+   "id": "adventure",
+   "name": "Macera"
+  },
+  {
+   "id": "crime",
+   "name": "Suç"
+  },
+  {
+   "id": "fantasy",
+   "name": "Fantastik"
+  },
+  {
+   "id": "family",
+   "name": "Aile"
+  },
+  {
+   "id": "war",
+   "name": "Savaş"
+  },
+  {
+   "id": "history",
+   "name": "Tarih"
+  },
+  {
+   "id": "music",
+   "name": "Müzikal"
+  },
+  {
+   "id": "western",
+   "name": "Western"
+  },
+  {
+   "id": "mystery",
+   "name": "Gizem"
+  },
+  {
+   "id": "biography",
+   "name": "Biyografi"
+  }
+ ],
+ "years": [
+  2026,
+  2025,
+  2024,
+  2023,
+  2022,
+  2021,
+  2020,
+  2019,
+  2018,
+  2017,
+  2015,
+  2013,
+  2011,
+  2010,
+  2009,
+  2008,
+  2006,
+  2005,
+  2003,
+  2001,
+  2000,
+  1999,
+  1994,
+  1993,
+  1989,
+  1974,
+  1972,
+  1966
+ ]
+}

@@ -1,0 +1,80 @@
+{
+ "genres": [
+  {
+   "id": "action",
+   "name": "Aksiyon"
+  },
+  {
+   "id": "comedy",
+   "name": "Komedi"
+  },
+  {
+   "id": "drama",
+   "name": "Dram"
+  },
+  {
+   "id": "horror",
+   "name": "Korku"
+  },
+  {
+   "id": "science_fiction",
+   "name": "Bilim Kurgu"
+  },
+  {
+   "id": "thriller",
+   "name": "Gerilim"
+  },
+  {
+   "id": "romance",
+   "name": "Romantik"
+  },
+  {
+   "id": "animation",
+   "name": "Animasyon"
+  },
+  {
+   "id": "documentary",
+   "name": "Belgesel"
+  },
+  {
+   "id": "adventure",
+   "name": "Macera"
+  },
+  {
+   "id": "crime",
+   "name": "Suç"
+  },
+  {
+   "id": "fantasy",
+   "name": "Fantastik"
+  },
+  {
+   "id": "family",
+   "name": "Aile"
+  },
+  {
+   "id": "war",
+   "name": "Savaş"
+  },
+  {
+   "id": "history",
+   "name": "Tarih"
+  },
+  {
+   "id": "music",
+   "name": "Müzikal"
+  },
+  {
+   "id": "western",
+   "name": "Western"
+  },
+  {
+   "id": "mystery",
+   "name": "Gizem"
+  },
+  {
+   "id": "biography",
+   "name": "Biyografi"
+  }
+ ]
+}
