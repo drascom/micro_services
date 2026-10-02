@@ -299,11 +299,11 @@ def _slim_evidence(evidence: dict) -> dict:
     out["ok_examples"] = [{"locator": o.get("locator")} for o in (evidence.get("ok_examples") or [])[:3] if isinstance(o, dict)]
     if isinstance(evidence.get("coverage"), dict):
         out["coverage"] = evidence["coverage"]
-    if kind_of(evidence) == STREAM_BLOCKED:
+    if kind_of(evidence) == STREAM_BLOCKED or isinstance(evidence.get("issue"), dict):
         for entry, f in zip(out["failing"], [f for f in (evidence.get("failing") or [])[:8] if isinstance(f, dict)]):
             if isinstance(f.get("stream"), dict):
                 entry["stream"] = f["stream"]   # host / type, the probe's answer (http, ct, body start) and the headers it used
-        for key in ("stream", "hint"):
+        for key in ("stream", "hint", "issue"):
             if evidence.get(key):
                 out[key] = evidence[key]
     text = json.dumps(out, ensure_ascii=False, default=str)
@@ -339,6 +339,17 @@ def repair_message(cfg: scfg.SiteConfig, evidence: dict, trigger: str) -> str:
                    "the site needs the series-page inventory (series_page) or resolvers. Failing examples are the series pages "
                    "(`locator`). Verify with test_config(playable: true): normalize.with_video_sources / "
                    "series_without_sources and the criteria series_have_episode_sources and playable_ratio.")
+    elif isinstance(evidence.get("issue"), dict):   # the playback issue ledger: clients could not play, the server's diagnosis is in `issue`
+        issue = evidence["issue"]
+        problem = (f"{issue.get('sources')} different sources (episodes) of this site could not be played by real users "
+                   f"(`{issue.get('code')}`: {issue.get('label')}; stream host `{issue.get('host') or '?'}` ({issue.get('stream_type') or '?'}), "
+                   f"provider `{issue.get('provider') or '?'}`; the server's own note: {issue.get('note')}). The page and the resolution "
+                   "worked (a stream was found), so the stream the recipe returns is the suspect: a WRONG stream (an unrelated host such as a "
+                   "social-media video, an ad, an analytics URL: fix the recipe's `extract` / `follow` so it picks the player's own file), a "
+                   "stream the host refuses without a Referer / Origin (`stream_headers`, `stream_proxy: true`), or a changed host. Fetch one "
+                   "failing player page (`locator`) with fetch_page and look at which media URLs it holds. Verify with test_provider on >= 3 "
+                   "examples; the gate checks that the failing examples resolve" + (" and that the stream answers." if evidence.get("probe") else ".")
+                   + " If it needs a signature, a cookie or a TLS fingerprint, submit nothing and report `needs code: <host>`.")
     else:
         problem = (f"{window.get('failed')} of the last {window.get('n')} playback attempts of this site failed in the same way "
                    "(stage / host / error in the evidence). The failing examples are playback pages (`locator`); ok_examples still "
@@ -424,6 +435,10 @@ def _reasons(evidence: dict) -> list[str]:
         out = [(failing[0].get("error") if failing and failing[0].get("error") else "akış erişilemiyor")]
         out.append(f"akış sunucusu {stream.get('host') or '?'} ({window.get('failed')} kaynak)")
         return out
+    if isinstance(evidence.get("issue"), dict):   # the playback issue ledger: short Turkish reason for the admin heal record
+        issue = evidence["issue"]
+        return [f"oynatma sorunu: {issue.get('label') or issue.get('code')}", f"{issue.get('sources')} kaynak"
+                + (f" · akış sunucusu {issue.get('host')}" if issue.get("host") else "")]
     out = [f"{window.get('failed')} of {window.get('n')} recent sources failed"]
     failing = [f for f in evidence.get("failing") or [] if isinstance(f, dict)]
     for key in ("stage", "host", "error"):
@@ -712,7 +727,7 @@ def _gate_and_apply(cfg: scfg.SiteConfig, evidence: dict, record: dict, trace: d
         picks = locators[:FIX_EXAMPLES]
         if not picks:
             return _fail("proposal rejected: the evidence has no failing example to verify the repair with", trace)
-        results = [_follow(sb, new_cfg, loc, deadline, probe=(kind == STREAM_BLOCKED)) for loc in picks]
+        results = [_follow(sb, new_cfg, loc, deadline, probe=(kind == STREAM_BLOCKED or bool(evidence.get("probe")))) for loc in picks]
         ok = sum(1 for r in results if r.get("ok"))
         verified["failing"] = {"checked": len(results), "resolved": ok}
         if ok == 0 or round(ok / len(results), 2) < sb.MIN_PLAYABLE_RATIO:

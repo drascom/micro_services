@@ -27,6 +27,7 @@ from typing import Any, Callable, Iterable, Mapping, Optional
 
 from .. import config, db
 from . import enrich, tmdb
+from .normalize import is_placeholder_image
 
 log = logging.getLogger("library.seasons")
 
@@ -286,6 +287,8 @@ def merge_episode(ep: dict, tm: Optional[Mapping]) -> dict:
     """Merge TMDB row ``tm`` into catalogue episode ``ep`` (in place): title/overview/runtime only when the
     source's is empty; air date from TMDB; ``still_remote`` = TMDB still, source still as fallback."""
     src_still = ep.get("still") or None
+    if is_placeholder_image(src_still):
+        src_still = None   # the source's "no picture" file is not a still
     ep["air_date"] = ep.get("air_date") or (tm["air_date"] if tm else None)
     ep["still_remote"] = (tm["tmdb_still_url"] if tm else None) or src_still
     if tm is not None:

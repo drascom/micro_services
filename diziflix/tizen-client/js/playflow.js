@@ -20,6 +20,7 @@
   var DZ = g.DZ = g.DZ || {};
 
   var STREAM_TIMEOUT_MS = 15000;   /* bir akisin oynamaya baslamasi icin azami sure */
+  var FINDER_WAIT_MS = 2500;      /* son hata raporunun yaniti (finder) icin azami bekleme */
   var SLOW_MS = 8000;              /* deneme bu kadar surerse "Baska kaynak deneniyor…" */
   var MAX_TRIES = 6;
 
@@ -99,9 +100,17 @@
     if (run.reported[key]) return;
     run.reported[key] = true;
     var payload = { attempt_token: s.attempt_token, event: event, code: code || '', engine: engineName(engine) };
+    /* hlsjs: html5 motoru bu akisi hls.js (MSE) ile oynatiyor: sunucu bunu "tarayici HLS'i oynatamaz" saymaz, gercek oynatma hatasi sayar */
+    if (engine && engine.hlsjs === true) payload.hlsjs = true;
     var det = event === 'failure' ? clipDetail(detail) : '';
     if (det) payload.detail = det;
-    try { DZ.api.playbackReport(payload).then(function () {}, function () {}); } catch (e) {}
+    try {
+      var pr = Promise.resolve(DZ.api.playbackReport(payload)).then(function (res) {
+        /* sunucu bu bolum icin kaynak bulucuyu baslattiysa (cozulen ama oynatilamayan akis) yanitta `finder` gelir */
+        if (event === 'failure' && res && res.finder && res.finder.state) run.finder = res.finder;
+      }, function () {});
+      if (event === 'failure') (run.pending = run.pending || []).push(pr);
+    } catch (e) {}
   }
 
   function clearTimers(run) {
@@ -117,7 +126,8 @@
 
   /* Geri tusu / disaridan iptal: denemeyi durdur, motoru birak, oldugun ekranda kal. */
   function cancel(run) {
-    if (!run.alive) return;
+    if (!run.alive && !run.waiting) return;
+    run.waiting = false;
     run.alive = false;
     clearTimers(run);
     destroyEngine(run);
@@ -163,8 +173,19 @@
     clearTimers(run);
     destroyEngine(run);
     if (active === run) active = null;
-    if (run.ctl) run.ctl.close();
-    openFail(run.o, message, finder);
+    /* hata raporlarinin yanitlari: sunucu kaynak bulucuyu baslattiysa panel "Kaynak araniyor…" ile acilir (en cok FINDER_WAIT_MS beklenir) */
+    var pend = run.pending || [];
+    if (finder || !pend.length) { if (run.ctl) run.ctl.close(); openFail(run.o, message, finder || run.finder || null); return; }
+    run.waiting = true;
+    var opened = false;
+    function open() {
+      if (opened || !run.waiting) return;
+      opened = true; run.waiting = false;
+      if (run.ctl) run.ctl.close();
+      openFail(run.o, message, run.finder || null);
+    }
+    Promise.all(pend).then(open, open);
+    setTimeout(open, FINDER_WAIT_MS);
   }
 
   function succeed(run, index, engine, silent) {

@@ -33,8 +33,10 @@ var FM={retry:'kaynak yeniden çözüldü',search:'başka sitede bulundu',heal:'
 function finLabel(e){return (e.title||e.canonical_id||'?')+(e.season!=null&&e.episode!=null?' · S'+(e.season<10?'0':'')+e.season+' B'+(e.episode<10?'0':'')+e.episode:'')}
 function onbCls(e){return e.status==='failed'?'bad':e.status==='needs_input'||(e.passed===false&&e.status!=='cancelled')?'warn':e.status==='saved'||e.status==='ready'?'ok':''}
 function pill(cls,txt){return '<span class="pill '+cls+'">'+esc(txt)+'</span>'}
+function pbiLabel(e){return (e.title||e.canonical_id||'?')+(e.season!=null&&e.episode!=null?' · S'+(e.season<10?'0':'')+e.season+' B'+(e.episode<10?'0':'')+e.episode:'')}
 function evPill(e){
   if(e.kind==='onboard')return pill('heal','Site ekle');
+  if(e.kind==='playback_issue')return pill(e.heal_class?'bad':'warn',(e.heal_class?'✕ ':'! ')+(e.label||e.code||'?'));
   if(e.kind==='finder')return e.state==='found'?pill('ok','✓ Bulundu'):pill('warn','! Bulunamadı');
   if(e.kind==='tmdb')return e.status==='error'?pill('bad','✕ Hata'):e.dry_run?pill('run','Önizleme'):e.status==='partial'?pill('warn','! Kısmi'):pill('ok','✓ Uygulandı');
   if(e.kind==='scan')return pill(SC[e.status]||'',(e.status==='success'?'✓ ':e.status==='error'?'✕ ':'! ')+(SL[e.status]||e.status||'?'));
@@ -74,8 +76,8 @@ function resolverHtml(s){
 }
 /* oynatma tetikli heal (Faz 5): pencere durumu, kanıt satırı, ajan günlüğü özeti */
 function playbackHtml(s){
-  var p=s&&s.playback_health;if(!p||(!p.window_n&&!p.last_trigger_at&&!p.last_skip))return '';
-  return '<h2 class="sec">Oynatma sağlığı</h2><div class="note" style="border-color:var(--muted)">Pencere: <b>'+num(p.failed)+'</b> hata / '+num(p.window_n)+' kaynak'+
+  var p=s&&s.playback_health,pi=p&&p.issues&&p.issues.open;if(!p||(!p.window_n&&!p.last_trigger_at&&!p.last_skip&&!pi))return '';
+  return '<h2 class="sec">Oynatma sağlığı</h2><div class="note" style="border-color:var(--muted)">Pencere: <b>'+num(p.failed)+'</b> hata / '+num(p.window_n)+' kaynak'+(pi?' · açık oynatma sorunu: <b>'+num(p.issues.open)+'</b> kaynak ('+num(p.issues.heal_open)+' heal sınıfı)':'')+
     (p.last_trigger_at?' · son oynatma heal: '+esc(ago(p.last_trigger_at)):'')+(p.last_skip?'<br>Atlandı: '+esc(p.last_skip.reason)+' · '+esc(ago(p.last_skip.at)):'')+'</div>';
 }
 function trigLabel(e){return e.trigger==='manual'?(e.playback?'elle · oynatma':'elle'):e.trigger==='playback'?'oynatma':e.trigger==='crawl'?'dizi sayfaları':'drift'}
@@ -172,9 +174,10 @@ function visible(){
   return events.filter(function(e){
     if(typeFilter==='scan'&&e.kind!=='scan')return false;
     if(typeFilter==='onboard'&&e.kind!=='onboard')return false;
-    if(typeFilter==='heal'&&(e.kind==='scan'||e.kind==='tmdb'||e.kind==='onboard'||e.kind==='finder'))return false;
+    if(typeFilter==='heal'&&(e.kind==='scan'||e.kind==='tmdb'||e.kind==='onboard'||e.kind==='finder'||e.kind==='playback_issue'))return false;
+    if(typeFilter==='issue'&&e.kind!=='playback_issue')return false;
     if(typeFilter==='tmdb'&&!(e.kind==='tmdb'||(e.kind==='scan'&&e.tmdb_enrich)))return false;
-    if(typeFilter==='bad'&&!(e.status==='error'||e.status==='partial'||e.outcome==='failed'||e.outcome==='not_applied'||e.kind==='cooldown'||e.kind==='rollback'||(e.kind==='onboard'&&(e.status==='failed'||e.passed===false))||(e.kind==='finder'&&e.state==='not_found')))return false;
+    if(typeFilter==='bad'&&!(e.status==='error'||e.status==='partial'||e.outcome==='failed'||e.outcome==='not_applied'||e.kind==='cooldown'||e.kind==='rollback'||(e.kind==='onboard'&&(e.status==='failed'||e.passed===false))||(e.kind==='finder'&&e.state==='not_found')||(e.kind==='playback_issue'&&e.heal_class)))return false;
     return true;
   });
 }
@@ -184,6 +187,10 @@ function evHtml(e){
     cls='scan '+onbCls(e);
     title='Site ekle · '+esc(hostOf(e.url)||e.site_id||'?')+' '+evPill(e);
     meta=esc(OL[e.status]||e.status||'?')+(e.site_id?' · '+esc(e.site_id):'')+(e.turns!=null?' · '+num(e.turns)+' tur':'')+(e.passed===false?' · kriterler sağlanmadı':'')+(e.seconds!=null?' · '+dur(e.seconds):'');
+  } else if(e.kind==='playback_issue'){
+    cls='scan '+(e.heal_class?'bad':'warn');
+    title='Oynatma sorunu · '+esc(e.site)+' '+evPill(e);
+    meta=num(e.sources)+' kaynak · '+num(e.reports)+' rapor'+(e.host?' · '+esc(e.host):'')+(e.provider?' · '+esc(e.provider):'')+(e.triggered_at?' · heal başlatıldı':'');
   } else if(e.kind==='finder'){
     cls='scan '+(e.state==='found'?'ok':'warn');
     title='Kaynak bulucu · '+esc(finLabel(e))+' '+evPill(e);
@@ -265,6 +272,20 @@ function renderDetail(){
     if(e.error)h+='<div class="note" style="border-color:var(--bad)">'+esc(e.error)+'</div>';
     if(e.notes)h+='<h2 class="sec">Ajan notları</h2><div class="note" style="white-space:pre-wrap">'+esc(typeof e.notes==='string'?e.notes:JSON.stringify(e.notes))+'</div>';
     h+='<div class="act">'+(e.draft_id?'<a class="btn" href="#onboard/'+esc(e.draft_id)+'">Taslağı aç</a>':'<button data-goto="onboard">Siteler sekmesi</button>')+'</div>';
+  } else if(e.kind==='playback_issue'){
+    h+=evPill(e)+' '+pill('heal','Oynatma sorunu')+'<h3>'+esc(e.site)+(e.host?' · <span class="mono">'+esc(e.host)+'</span>':'')+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+' · ilk: '+esc(ago(e.first_at))+'</div>'+
+      '<div class="kv">'+kv(esc(e.label||e.code||'?'),'Sorun')+kv(num(e.sources),'kaynak (bölüm)')+kv(num(e.reports),'rapor')+kv(e.http?esc(e.http):'-','HTTP')+'</div>';
+    if(e.note)h+='<div class="note" style="border-color:var(--'+(e.heal_class?'bad':'muted')+')">'+esc(e.note)+'</div>';
+    h+='<div class="note" style="border-color:var(--muted)">Sağlayıcı: <b>'+esc(e.provider||'-')+'</b> · akış: '+esc(e.stream_type||'-')+' · sınıf: <span class="mono">'+esc(e.code)+'</span>'+
+      (e.heal_class?'':' (heal tetiklemez: kaynağın hatası değil)')+(e.triggered_at?'<br>Bu sınıf için heal başlatıldı: '+esc(ago(e.triggered_at)):'')+'</div>';
+    if(e.host_rule){var hr=e.host_rule;
+      h+='<div class="note" style="border-color:var(--'+(hr.active?'ok':'muted')+')">Host kuralı (<span class="mono">'+esc(hr.host)+'</span>): '+(hr.reason==='referer'?'Referer '+esc((hr.headers||{}).Referer||''):'sunucu vekili (IP\'ye bağlı)')+
+        ' · '+(hr.active?'etkin':'askıda/süresi dolmuş')+' · öğrenildi: '+esc(ago(new Date(hr.learned_at*1000).toISOString()))+(hr.last_ok_at?' · son çalıştı: '+esc(ago(new Date(hr.last_ok_at*1000).toISOString())):'')+' · hata: '+num(hr.fail_count)+
+        '<div class="act"><button data-hostrule="suspend" data-host="'+esc(hr.host)+'">Askıya al</button><button data-hostrule="delete" data-host="'+esc(hr.host)+'">Sil</button></div></div>';}
+    h+='<h2 class="sec">Bölümler</h2>'+((e.episodes||[]).map(function(x){
+      return '<div class="mono" style="margin-top:4px">'+esc(pbiLabel(x))+' · '+num(x.reports)+' rapor · '+esc(x.client_code||'')+' · '+esc(ago(x.at))+(x.locator?'<br><span style="color:var(--muted);overflow-wrap:anywhere">'+esc(x.locator)+'</span>':'')+'</div>'}).join('')||'<div class="note" style="border-color:var(--muted)">Bölüm kaydı yok.</div>');
+    h+='<div class="act"><button data-do="heal-playback" data-site="'+esc(e.site)+'"'+(s.healing?' disabled':'')+'>Ajan düzeltsin</button></div>'+
+      (e.heal_class?'':'<div class="note" style="border-color:var(--muted)">Bu sınıf için ajan düzeltmesi anlamlı olmayabilir; yine de oynatma kanıtıyla çalıştırılabilir.</div>');
   } else if(e.kind==='finder'){
     h+=evPill(e)+' '+pill('heal','Kaynak bulucu')+'<h3>'+esc(finLabel(e))+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+(e.trigger?' · '+esc(e.trigger):'')+'</div>'+
       '<div class="kv">'+kv(esc(FL[e.state]||e.state||'?'),'Sonuç')+kv(e.method?esc(FM[e.method]||e.method):'-','Yöntem')+kv(e.site?esc(e.site):'-','Site')+kv(dur(e.seconds),'Süre')+'</div>';
@@ -371,6 +392,12 @@ $('detail').addEventListener('click',function(ev){
       if(r&&r.ok)alert('v'+r.version+' geri yüklendi');
       else alert((r&&r.error&&r.error.message)||(r&&r.message)||'geri alınamadı');
       refresh();poll()}).catch(function(){t.disabled=false;alert('istek başarısız')});
+    return;
+  }
+  if(t.dataset.hostrule){
+    t.disabled=true;
+    var hu='/api/ops/stream-host-rules/'+encodeURIComponent(t.dataset.host);
+    api(t.dataset.hostrule==='delete'?hu:hu+'/suspend',{method:t.dataset.hostrule==='delete'?'DELETE':'POST'}).then(function(){refresh()}).catch(function(){t.disabled=false});
     return;
   }
   if(t.dataset.do){

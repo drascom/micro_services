@@ -26,6 +26,45 @@ log = logging.getLogger("library.normalize")
 _REGISTRY: dict[str, Callable[[dict], Optional[dict]]] = {}
 
 
+# --- placeholder artwork ("no image" files) -----------------------------------------------------------------------
+# A site's "no picture" file is not artwork: it must not count as poster / backdrop / episode still (empty -> TMDB fills it,
+# otherwise the client draws its own placeholder). ONE place: ``is_placeholder_image`` (pattern) used by the generic normalizer,
+# ``ingest.merge_canonical`` (+ the repeated-URL heuristic ``ingest.shared_art_urls``), the catalogue read and the episode merge.
+# yaml ``normalize.clean: false`` keeps the site's image as is (``_keep_art`` flag on the normalized item).
+_PH_STRONG = re.compile(
+    r"placeholder|place[-_]?holder|no[-_]?image|no[-_]?img|no[-_]?pic|no[-_]?photo|no[-_]?poster|no[-_]?cover|no[-_]?thumb"
+    r"|image[-_]?(not[-_]?)?(available|found)|default[-_]?(poster|image|img|cover|thumb\w*|banner|backdrop)"
+    r"|poster[-_]?(not[-_]?)?(available|found)|coming[-_]?soon[-_]?(poster|image)", re.I)
+_PH_STEMS = {"none", "blank", "missing", "dummy", "default", "empty", "nothing", "noimage", "nopic", "nophoto", "na", "n-a",
+             "unknown", "notfound", "not-found", "not_found", "no-poster", "no_poster", "1x1", "pixel", "spacer"}
+_PH_SIZE = re.compile(r"([-_.@]\d+x\d*|[-_.]\d+|[-_](small|medium|large|thumb|thumbnail|poster|cover|image|img|bg|portrait|landscape))+$", re.I)
+
+
+def is_placeholder_image(url, shared=None) -> bool:
+    """True for an image URL that is a site's "no picture" file: the path holds ``placeholder`` / ``no-image`` / ``noimage`` /
+    ``no_image`` / ``nopic`` / ``default-poster`` ..., or the file name is just ``none`` / ``blank`` / ``missing`` / ``dummy`` /
+    ``default`` ... (optionally with a size tail: ``none-300x450.png``). ``shared`` = URLs used by several different titles
+    (``ingest.shared_art_urls``). A real poster (a title word in the path, a hash name) is never matched. ``data:`` URLs are not judged."""
+    if not isinstance(url, str) or not url.strip():
+        return False
+    url = url.strip()
+    if shared and url in shared:
+        return True
+    if url.startswith("data:"):
+        return False
+    try:
+        path = urlparse(url).path or ""
+    except ValueError:
+        return False
+    path = path.lower()
+    if _PH_STRONG.search(path):
+        return True
+    stem = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    if not stem:
+        return False
+    return stem in _PH_STEMS or _PH_SIZE.sub("", stem) in _PH_STEMS
+
+
 def register(source: str):
     def deco(fn: Callable[[dict], Optional[dict]]):
         _REGISTRY[source] = fn
@@ -38,6 +77,10 @@ def normalize(source: str, raw: dict) -> Optional[dict]:
     fn = _REGISTRY.get(source)
     if fn is not None:
         norm = fn(raw)
+        if norm is not None:
+            for field in ("poster_url", "backdrop_url"):
+                if is_placeholder_image(norm.get(field)):
+                    norm[field] = None
     else:
         rules, base_url = _site_rules(source)
         norm = _run(rules, raw, base_url)[0]
@@ -168,6 +211,7 @@ def normalize_yabancidizi(raw: dict) -> Optional[dict]:
 #     fields: {overview: synopsis, trailer_url: null}    # canonical <- raw field (str | list = first filled | null = off)
 #     split: {genres: ','}              # genres/cast: split each entry, trim, drop empties
 #     clean: true                       # optional (default true); false = no safety-net cleanup of the series key / title (below)
+#                                       # and the site's "no picture" files stay poster/backdrop (``is_placeholder_image``)
 #     episode_source:                   # type series + int season/episode -> one video_sources entry
 #       enabled: true
 #       url_template: '{url}/bolum-{episode}'            # optional; default: the absolute detail_url
@@ -580,9 +624,14 @@ def _run(rules, raw: dict, base_url: str, notes: Optional[dict] = None) -> tuple
     else:
         source_url = raw.get("detail_url")
 
+    clean_art = rules.get("clean", True) is not False
+
     def link(name):
         value = val(name)
-        return _http_url(base, value) if absolute else value
+        value = _http_url(base, value) if absolute else value
+        if clean_art and name in ("poster_url", "backdrop_url") and is_placeholder_image(value):
+            return None   # the site's "no picture" file is not artwork (is_placeholder_image)
+        return value
 
     norm = {
         "source_key": key,
@@ -602,6 +651,8 @@ def _run(rules, raw: dict, base_url: str, notes: Optional[dict] = None) -> tuple
         "trailer_url": link("trailer_url"),
         "source_url": source_url,
     }
+    if not clean_art:
+        norm["_keep_art"] = True   # `clean: false`: the site's images stay as they are (merge_canonical does not filter them)
 
     es = rules.get("episode_source")
     if es and es.get("enabled", True) and kind == "series" and detail:

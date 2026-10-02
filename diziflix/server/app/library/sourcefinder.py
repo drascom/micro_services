@@ -255,11 +255,29 @@ def _mark_usable(row) -> None:
                "WHERE id=? AND status IN ('broken','suspect')", (_now(), row["id"]))
 
 
-def _failed(job: dict, row, error: Any, blocked: Optional[dict] = None) -> None:
+def _failed(job: dict, row, error: Any, blocked: Optional[dict] = None, issue: Any = None) -> None:
     """Remember a failed resolution (evidence for the heal step). ``blocked`` = the ``stream_blocked`` event of a stream that
-    resolved but is refused (:func:`_probe_streams`)."""
+    resolved but is refused (:func:`_probe_streams`); ``issue`` = the ``playback_issues`` row of a stream that resolves but a client
+    could not play (:func:`_unplayable`)."""
     with _lock:
-        job.setdefault("failed", {})[row["id"]] = {"row": row, "error": _short(error, 200), **({"blocked": blocked} if blocked else {})}
+        job.setdefault("failed", {})[row["id"]] = {"row": row, "error": _short(error, 200), **({"blocked": blocked} if blocked else {}),
+                                                   **({"issue": dict(issue)} if issue is not None else {})}
+
+
+def _unplayable(row, result: Any) -> Optional[tuple]:
+    """``(issue row, note)`` when ``result`` is the very stream a client just failed to play (the source has an open ``playback_issues`` row
+    and every resolved stream is the same file: same host + path), else None. A different / new stream, a Referer / proxy the server
+    learned for the source (class ``proxy_learned``) or an issue without a recorded stream is NOT held back: resolving again is
+    not proof of playback, but a changed stream is worth offering."""
+    from . import playissues
+    issue = playissues.open_issue(row["id"])
+    if issue is None or not issue["stream_group"] or issue["issue_class"] == "proxy_learned":
+        return None
+    from .. import streamproxy
+    groups = {streamproxy.group_of(s["url"]) for s in (result or {}).get("streams") or [] if isinstance(s, dict) and s.get("url")}
+    if not groups or groups - {issue["stream_group"]}:
+        return None
+    return issue, f"akış çözüldü ama oynatılamıyor ({playissues.label(issue['issue_class'])})"
 
 
 def _probe_streams(row, result: Any) -> Optional[dict]:
@@ -275,6 +293,8 @@ def _refused(row, result: Any) -> Optional[dict]:
     """The ``playheal`` stream_blocked event when the freshly resolved stream of ``row`` is refused (HTTP 401/403, an error page,
     also for the server's own probe), else None. The refusal is also noted in the playback heal window (the ``stream_blocked`` signal)."""
     verdict = _probe_streams(row, result)
+    if verdict and verdict.get("learn"):   # a Referer / the proxy fixes it: keep the learning (source + stream host); the stream counts as found
+        streamdiag.persist_learning(row["id"], verdict)
     if not verdict or verdict.get("code") not in streamdiag.HEAL_CODES or verdict.get("learn"):
         return None
     keys = row.keys()
@@ -302,6 +322,13 @@ def _resolve_found(job: dict, rows: list, method: str, label: str = "") -> dict:
             continue   # a "not public" placeholder is no repair evidence: the heal step must not run for it (library/gate.py)
         if exc is not None or not _playable(result):
             _failed(job, row, exc or "akış yok")
+    held = []
+    for row, result in list(good):   # the stream a client just failed to play is not "found" again
+        verdict = _unplayable(row, result)
+        if verdict:
+            good.remove((row, result))
+            held.append((row, verdict[1]))
+            _failed(job, row, verdict[1], issue=verdict[0])
     refused = []
     for row, result in list(good):   # resolving is not enough: a stream the host refuses (403) is no "found" source
         event = _refused(row, result)
@@ -313,6 +340,8 @@ def _resolve_found(job: dict, rows: list, method: str, label: str = "") -> dict:
         _mark_usable(row)
     if not good and refused:
         return {"note": f"{label}akış çözüldü ama erişilemiyor ({_http_label(refused[0][1])})".strip()}
+    if not good and held:
+        return {"note": f"{label}{held[0][1]}".strip()}
     if good:
         row = good[0][0]
         return {"found": True, "method": method, "site": row["source"], "source_id": row["id"],
@@ -457,6 +486,9 @@ def _entry_of(job_row: dict, site: str) -> dict:
     bare error."""
     from ..scraper import playheal, state
     row, sid = job_row["row"], job_row["row"]["id"]
+    if job_row.get("issue"):   # the stream resolves but a client could not play it: the evidence is the playback issue row
+        from . import playissues
+        return playissues.failing_entry(job_row["issue"])
     if job_row.get("blocked"):   # the stream resolved but its host refuses it: the evidence is the probe, not a resolution trace
         return playheal.blocked_failing(job_row["blocked"])
     entry = next((e for e in playheal._snapshot(site) if e["source_id"] == sid and not e["ok"]), None)
@@ -536,13 +568,21 @@ def _step_heal(job: dict) -> dict:
         if heal_runs_today() >= app_config.SOURCEFINDER_DAILY_BUDGET:
             notes.append("günlük ajan bütçesi doldu")
             break
+        from . import playissues
+        issue_ids = [i["row"]["id"] for i in failed.values() if i["row"]["source"] == site and i.get("issue")]
+        if issue_ids and playissues.recently_triggered(site, issue_ids):
+            notes.append(f"{site}: oynatma heal'i zaten başlatıldı")   # one repair per issue: the playback trigger already runs / ran it
+            continue
         if not playheal._reserve(site):
             notes.append(f"{site}: heal zaten çalışıyor")
             continue
         try:
             with _lock:
                 _heal_runs.append(time.time())
-            result = sheal.heal_site_playback(site, evidence=_evidence(site, by_site[site]), trigger="finder")
+            evidence = (playissues.evidence(site, force=True) if issue_ids else None) or _evidence(site, by_site[site])
+            if issue_ids:
+                playissues.mark_triggered(site, code=str((evidence.get("issue") or {}).get("code") or ""))
+            result = sheal.heal_site_playback(site, evidence=evidence, trigger="finder")
         finally:
             playheal._release(site)
         result = result if isinstance(result, dict) else {}

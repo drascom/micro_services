@@ -985,7 +985,12 @@
         /* hata ayrintisi (<=120): yalniz basarisizlikta, bos degilse (sunucuda alan yoksa zararsiz) */
         var det = event === 'failure' ? clipDetail(detail) : '';
         if (det) payload.detail = det;
-        DZ.api.playbackReport(payload).then(function () {}, function () {});
+        if (current.eng && current.eng.hlsjs === true) payload.hlsjs = true;   /* hls.js (MSE) ile oynatiliyordu: sunucu gercek oynatma hatasi sayar */
+        var pr = Promise.resolve(DZ.api.playbackReport(payload)).then(function (res) {
+          /* sunucu bu bolum icin kaynak bulucuyu baslattiysa (cozulen ama oynatilamayan akis) yanitta `finder` gelir */
+          if (event === 'failure' && res && res.finder && res.finder.state) current.reportFinder = res.finder;
+        }, function () {});
+        if (event === 'failure') current.reportPending = pr;
       }
       function failed(message, code, detail) {
         if (!alive() || current.handlingError) return;
@@ -1008,9 +1013,22 @@
           return;
         }
         setStatus('Oynatma başarısız');
-        DZ.modal.open({title:'Oynatılamadı',message:String(message),
-          buttons:[{label:'Geri',primary:true,value:'back'},{label:'Yeniden dene',value:'retry'}],
-          onDone:function(value){ if (!alive()) return; if(value==='retry') DZ.app.go('player',p,true); else DZ.app.back(); }});
+        var shown = false;
+        function showFailed() {
+          if (shown || !alive()) return;
+          shown = true;
+          if (current.reportFinder && DZ.finder && DZ.finder.messageFor) {   /* sunucu kaynak bulucuyu baslatti: "Kaynak aranıyor…" + yoklama */
+            current.handlingError = false;
+            noStreams(current.reportFinder);
+            return;
+          }
+          DZ.modal.open({title:'Oynatılamadı',message:String(message),
+            buttons:[{label:'Geri',primary:true,value:'back'},{label:'Yeniden dene',value:'retry'}],
+            onDone:function(value){ if (!alive()) return; if(value==='retry') DZ.app.go('player',p,true); else DZ.app.back(); }});
+        }
+        /* son hata raporunun yaniti (finder) icin en cok 2.5 sn beklenir */
+        if (current.reportPending) { current.reportPending.then(showFailed, showFailed); setTimeout(showFailed, 2500); }
+        else showFailed();
       }
       /* /api/streams hic akis vermedi: sunucunun kaynak bulucu durumu (res.finder, js/finder.js) varsa onun metni (aranıyor / bulunamadi);
          aranirken 5 sn'de bir yoklanir, bulununca panel kapanir ve akis yeniden istenir. Yoksa genel mesaj. */

@@ -581,7 +581,7 @@ function renderHead(){
     }
   }
   else if(D.status==='running'&&D.auto_round>0&&!/otomatik düzeltme/i.test(stripText()))n='<div class="note warn"><b>Otomatik düzeltme turu '+esc(D.auto_round)+'/'+esc(D.auto_rounds||'?')+':</b> ajan eksikleri kendi gideriyor; bitince sonucu burada görürsün.</div>';
-  else if(D.status==='ready'&&D.auto_round>0&&D.report&&D.report.passed===false)n='<div class="note warn">Ajan eksikleri kendi gidermeyi '+esc(D.auto_round)+' kez denedi, hâlâ eksik var. Sorunlu adımlardaki “Ajan düzeltsin” ya da “Varsa al, yoksa atla” (alan korunur) düğmelerini kullanabilirsin.</div>';
+  else if(D.status==='ready'&&D.auto_round>0&&D.report&&(D.report.passed===false||(D.pipeline&&D.pipeline.overall&&D.pipeline.overall.state==='warn')))n='<div class="note warn">Ajan eksikleri ve düzeltilebilir uyarıları kendi gidermeyi '+esc(D.auto_round)+' kez denedi, hâlâ eksik ya da uyarı var. Sorunlu adımlardaki “Ajan düzeltsin” ya da “Varsa al, yoksa atla” (alan korunur) düğmelerini kullanabilirsin.</div>';
   $('ob-note').innerHTML=n;
 }
 

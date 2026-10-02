@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 from .. import cache, config, rows
 from ..deps import optional_profile
 from ..errors import not_found
-from ..library import trailer_check
+from ..library import enrich, trailer_check
 
 log = logging.getLogger("diziflix.detail")
 
@@ -33,6 +33,8 @@ def _hydrate(item_id: str, series: bool) -> None:
     try:
         from ..library import hydrate_item_metadata, hydrate_series_item, seasons
         ok = hydrate_series_item(item_id) if series else hydrate_item_metadata(item_id)
+        # a title that never went through TMDB (added by a live search): poster/backdrop/year/overview (+ seasons for a series)
+        ok = bool(enrich.enrich_items([item_id]).get("written")) or ok
         if series:  # the season list just arrived: fetch its TMDB posters/episode data too (auto settings)
             ok = bool(seasons.auto_enrich([item_id])["seasons"]) or ok
         if ok:
@@ -180,6 +182,8 @@ def detail(item_id: str, profile: str = Depends(optional_profile), poll: int = 0
             started = bool(schedule_hydrate(data["id"], bool(needs_series)))
         elif data.get("type") == "series" and data.get("tmdb_id") and data.get("seasons") and library:
             schedule_seasons(data["id"])
+        if library and not started and enrich.auto_enabled() and enrich.needs_lookup(data["id"]):
+            enrich.schedule([data["id"]], on_done=lambda _r: cache.refresh())   # artwork lands on the next read
         if config.RESOLVE_PREFETCH and data.get("type") in ("movie", "series") and library:
             _prefetch(data, profile)
         if library:

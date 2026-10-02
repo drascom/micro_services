@@ -25,7 +25,7 @@ from .. import config, db
 from ..scraper import run_site
 from ..scraper import collections as scollections, config as scfg, drift, fetch, parse, schema, site_extractors, state
 from . import tmdb, identity, videos, enrich, seasons, series_crawl, series_dir, gate
-from .normalize import normalize
+from .normalize import normalize, is_placeholder_image
 
 log = logging.getLogger("library.ingest")
 _discovery_lock = threading.RLock()
@@ -120,6 +120,7 @@ def merge_canonical(conn, canonical_id: str) -> None:
     sources.sort(key=lambda t: -t[0])
     if not sources:
         return
+    shared = enrich.shared_art_urls(conn)   # a picture used by several different titles is a site placeholder, not artwork
 
     merged: dict[str, Any] = {}
     provenance: dict[str, str] = {}
@@ -132,6 +133,8 @@ def merge_canonical(conn, canonical_id: str) -> None:
             added_candidate = norm["_added_at"]
         for f in _MERGE_FIELDS:
             if f not in merged and _filled(norm.get(f)):
+                if f in ("poster_url", "backdrop_url") and not norm.get("_keep_art") and is_placeholder_image(norm[f], shared):
+                    continue   # "no picture" file: counts as empty (TMDB fills it / the client draws its own placeholder)
                 merged[f] = norm[f]
                 provenance[f] = source
 

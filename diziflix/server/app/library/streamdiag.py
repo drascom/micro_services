@@ -21,7 +21,10 @@ that the admin Kütüphane tab shows. Codes:
 A stream that is refused without the stream's own ``request_headers`` but answers with them, or that carries an ``ip=``
 parameter and answers the server, is LEARNED: ``video_sources.proxy_required=1`` and the stored resolution is dropped, so the
 next ``/api/streams`` serves the source's streams through the stream proxy (``proxy_reason: "learned"``). A stream that is
-already proxied and still refused is ``server_blocked``.
+already proxied and still refused is ``server_blocked``. A stream that answers a plain request with 403 and NO headers of its own gets
+the page's ``Referer`` tried (:func:`referer_candidates`: the root of the source's page, then of the stream host): a 200 with one of them is
+learned too and the header is stored in ``video_sources.proxy_headers`` (``/api/streams`` then sends it through the proxy: mp4 and every
+HLS playlist / segment request, ``hlsproxy`` hands the token's headers on).
 
 A refusal that the proxy cannot fix (``forbidden`` / ``not_media`` / ``server_blocked``, not learned) is also a signal for the playback
 heal: ``_heal_signal`` -> ``playheal.record_stream_blocked`` (evidence kind ``stream_blocked``; ``PLAYHEAL_STREAM_MIN_SOURCES`` different
@@ -43,7 +46,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 
 from .. import config, db, netguard, streamproxy
-from . import streamlife
+from . import hostrules, streamlife
 
 log = logging.getLogger("diziflix.streamdiag")
 
@@ -99,10 +102,17 @@ def payload_streams(payload: Any) -> list:
     return [s for s in items or [] if isinstance(s, dict)]
 
 
-def hls_in_browser(streams: list, media_type: Optional[str], engine: str, user_agent: Optional[str]) -> bool:
+def played_with_hlsjs(flag: Any, detail: Any) -> bool:
+    """The client played the stream with hls.js (MSE): the report's ``hlsjs`` flag, or a ``detail`` that hls.js itself wrote (``hls:<type>/<details>[/<http>]``; ``hls.js:load`` = the
+    script could not even be loaded: not this). Such a browser CAN play HLS, so its failure is about the stream."""
+    return flag is True or str(detail or "").lstrip().lower().startswith("hls:")
+
+
+def hls_in_browser(streams: list, media_type: Optional[str], engine: str, user_agent: Optional[str], hlsjs: bool = False) -> bool:
     """The failure of a source whose streams are ALL hls, reported by the browser's own player (engine ``html5``) of a user
-    agent that cannot play HLS natively: a client capability, not a fault of the source."""
-    if engine != "html5" or not native_hls_unsupported(user_agent):
+    agent that cannot play HLS natively: a client capability, not a fault of the source. Not when the client played it with hls.js
+    (``hlsjs``: ``played_with_hlsjs``): that player works in such a browser, so the failure is real."""
+    if hlsjs or engine != "html5" or not native_hls_unsupported(user_agent):
         return False
     types = [s.get("type") for s in streams] or [media_type]
     return bool(types) and all(t == "hls" for t in types)
@@ -145,7 +155,7 @@ def public_diagnosis(row: Any) -> dict:
     learned = bool(row["proxy_required"]) if "proxy_required" in keys else False
     reasons = []
     for stream in payload_streams(row["resolved_payload"] if "resolved_payload" in keys else None):
-        reason = streamproxy.proxy_reason(stream, learned=learned)
+        reason = streamproxy.proxy_reason(stream, learned=learned or bool(hostrules.get(hostrules.host_of(stream.get("url")))))
         if reason and reason not in reasons:
             reasons.append(reason)
     return {"code": diag.get("code") if diag else None, "note": diag.get("note") if diag else None,
@@ -254,18 +264,37 @@ def _stream_kind(stream: dict) -> str:
     return "hls" if stream.get("type") == "hls" else "mp4"
 
 
+def referer_candidates(url: str, locator: str = "") -> list:
+    """The ``Referer`` header sets worth trying for a stream host that refuses a plain request, most likely first: the root of the page the
+    source was found on (``locator``: the site the player is embedded in) and the root of the stream's own host. Only plain http(s)
+    origins; no duplicates."""
+    out: list = []
+    for base in (locator, url):
+        parts = urlparse(base) if isinstance(base, str) else None
+        if parts and parts.scheme in ("http", "https") and parts.hostname:
+            header = {"Referer": f"{parts.scheme}://{parts.netloc}/"}
+            if header not in out:
+                out.append(header)
+    return out
+
+
 def diagnose(job: dict, *, now: Optional[float] = None) -> Optional[dict]:
-    """Probe the streams of ``job`` (``streams``, ``learned``, ``browser_hls``, ``detail``) and return the verdict
-    ``{code, http, ct, ms, why, learn}`` (None = nothing probeable). ``learn`` = the proxy would help (see the module text)."""
+    """Probe the streams of ``job`` (``streams``, ``learned``, ``learned_headers``, ``locator``, ``browser_hls``, ``detail``) and return the
+    verdict ``{code, http, ct, ms, why, learn[, learned_headers]}`` (None = nothing probeable). ``learn`` = the proxy would help (see the
+    module text); ``learned_headers`` = the ``Referer`` a plain refusal gave way to (:func:`referer_candidates`), stored with the source and
+    sent by the stream proxy from then on."""
     learned = bool(job.get("learned"))
+    extra = streamproxy.clean_headers(job.get("learned_headers")) if learned else {}
     results = []
     for stream in [s for s in job.get("streams") or [] if s.get("type") != "embed" and streamproxy.proxiable(s.get("url"))][:MAX_STREAMS]:
         url, kind = stream["url"], _stream_kind(stream)
         headers = streamproxy.clean_headers(stream.get("request_headers"))
-        proxied = streamproxy.proxy_reason(stream, headers, learned=learned) is not None
-        learn = False
-        if proxied:   # what the proxy does: the stream's own headers
-            result = probe(url, headers, kind, now)
+        rule = None if learned or headers else hostrules.get(hostrules.host_of(url))   # the host's verified rule (library/hostrules.py)
+        sent = {**(rule["headers"] if rule else {}), **extra, **headers}     # what the proxy sends: host rule < learned Referer < the stream's own headers
+        proxied = streamproxy.proxy_reason(stream, headers, learned=learned or bool(rule)) is not None
+        learn, found = False, None
+        if proxied:   # what the proxy does: the stream's own headers (and the learned ones)
+            result = probe(url, sent, kind, now)
             if result["code"] in BLOCKED:
                 result["code"] = "server_blocked"
         else:         # what a plain player would see
@@ -277,13 +306,23 @@ def diagnose(job: dict, *, now: Optional[float] = None) -> Optional[dict]:
                 elif streamproxy.url_names_an_ip(url):
                     result["code"] = "ip_bound"
                 else:
-                    result["code"] = "server_blocked" if headers else result["code"]
+                    found = next((c for c in referer_candidates(url, job.get("locator") or "")
+                                  if probe(url, {**headers, **c}, kind, now)["code"] == "reachable"), None)
+                    if found:       # the host wants the player page's Referer: learn it (the proxy sends it)
+                        learn = True
+                    else:
+                        result["code"] = "server_blocked" if headers else result["code"]
             elif result["code"] == "reachable" and streamproxy.url_names_an_ip(url):
                 learn = True       # reachable for the server = the address the URL is bound to; the client is another address
                 result["code"] = "ip_bound"
         result["learn"] = learn
+        if rule and proxied:   # the stream went through the host rule: how the probe fared decides whether the rule stays (``run``)
+            result["rule"] = rule["host"]
+            result["rule_ok"] = True if result["code"] == "reachable" else False if result["code"] in ("server_blocked", "forbidden", "not_media") else None
+        if found:
+            result["learned_headers"] = found
         result["stream"] = {"host": (urlparse(url).hostname or "").lower(), "type": "hls" if kind == "hls" else "mp4",
-                            "sent": describe_headers(headers), "proxied": proxied}
+                            "sent": describe_headers({**sent, **found} if found else sent), "proxied": proxied}
         results.append(result)
         if result["code"] != "reachable" and not job.get("browser_hls"):
             break
@@ -346,6 +385,15 @@ def _heal_signal(job: dict, verdict: dict) -> None:
         log.warning("stream_blocked signal of %s failed", job.get("source_id"), exc_info=True)
 
 
+def _issue_signal(job: dict, verdict: dict) -> None:
+    """The verdict joins the source's row of the playback issue ledger (``library/playissues.py``). Never raises."""
+    try:
+        from . import playissues
+        playissues.note_diag(job, verdict)
+    except Exception:
+        log.warning("playback issue note of %s failed", job.get("source_id"), exc_info=True)
+
+
 def record(source_id: str, verdict: dict, detail: str = "") -> None:
     """Store ``verdict`` in ``video_sources.last_diag``; a learned one also sets ``proxy_required`` and drops the stored
     resolution (the next ``/api/streams`` serves it through the proxy)."""
@@ -354,13 +402,51 @@ def record(source_id: str, verdict: dict, detail: str = "") -> None:
         note = {"ip_bound": _NOTES["ip_bound"],
                 "forbidden": "Kaynak site düz isteği reddediyor, başlıklarla veriyor; sunucu vekille oynatılacak.",
                 "not_media": "Kaynak site düz isteğe video yerine başka içerik veriyor; sunucu vekille oynatılacak."}.get(verdict["code"])
+        if note and verdict.get("learned_headers"):
+            note = "Kaynak site Referer'sız isteği reddediyor, site adresiyle veriyor; sunucu vekille Referer ekleyerek oynatılacak."
     diag = make_diag(verdict["code"], http=verdict.get("http"), ct=verdict.get("ct") or "", ms=verdict.get("ms") or 0,
                      note=note, detail=detail, why=verdict.get("why") or "")
     if verdict.get("learn"):
-        db.execute("UPDATE video_sources SET last_diag=?,proxy_required=1,resolved_payload=NULL,resolved_at=NULL WHERE id=?",
-                   (diag, source_id))
+        learned_headers = streamproxy.clean_headers(verdict.get("learned_headers"))
+        if learned_headers:     # a Referer the host wanted: kept with the source, the stream proxy sends it (routers/streams.py)
+            db.execute("UPDATE video_sources SET last_diag=?,proxy_required=1,proxy_headers=?,resolved_payload=NULL,resolved_at=NULL WHERE id=?",
+                       (diag, json.dumps(learned_headers), source_id))
+        else:
+            db.execute("UPDATE video_sources SET last_diag=?,proxy_required=1,resolved_payload=NULL,resolved_at=NULL WHERE id=?",
+                       (diag, source_id))
+        _learn_host(source_id, verdict)
     else:
         db.execute("UPDATE video_sources SET last_diag=? WHERE id=?", (diag, source_id))
+
+
+def _learn_host(source_id: str, verdict: dict) -> None:
+    """A VERIFIED fix (the probe got the media with a Referer / only the server reaches an IP-bound host) also becomes the rule of the stream HOST
+    (``library/hostrules.py``): the other episodes of the host work on their first try. Never raises."""
+    try:
+        host = ((verdict.get("stream") or {}).get("host") or "").lower()
+        headers = streamproxy.clean_headers(verdict.get("learned_headers"))
+        if host and headers:
+            hostrules.learn(host, headers, "referer", source_id)
+        elif host and verdict.get("code") == "ip_bound":
+            hostrules.learn(host, {}, "ip", source_id)
+    except Exception:
+        log.warning("host rule of %s not written", source_id, exc_info=True)
+
+
+def persist_learning(source_id: str, verdict: dict) -> None:
+    """The source finder's quick look learned a fix (``learn``): keep it with the source and the host without dropping the freshly stored
+    resolution (:func:`record` does that for a playback report). Never raises."""
+    try:
+        if not verdict.get("learn"):
+            return
+        learned_headers = streamproxy.clean_headers(verdict.get("learned_headers"))
+        if learned_headers:
+            db.execute("UPDATE video_sources SET proxy_required=1,proxy_headers=? WHERE id=?", (json.dumps(learned_headers), source_id))
+        else:
+            db.execute("UPDATE video_sources SET proxy_required=1 WHERE id=?", (source_id,))
+        _learn_host(source_id, verdict)
+    except Exception:
+        log.warning("learning of %s not kept", source_id, exc_info=True)
 
 
 def run(job: dict) -> Optional[dict]:
@@ -369,6 +455,9 @@ def run(job: dict) -> Optional[dict]:
         verdict = diagnose(job)
         if verdict is not None:
             record(job["source_id"], verdict, job.get("detail") or "")
+            if verdict.get("rule") and verdict.get("rule_ok") is not None:
+                hostrules.note_probe(verdict["rule"], bool(verdict["rule_ok"]))
+            _issue_signal(job, verdict)
             _heal_signal(job, verdict)
         return verdict
     except Exception:
@@ -440,18 +529,29 @@ def schedule(job: dict) -> bool:
         return False
 
 
+def learned_headers_of(source: Any) -> dict:
+    """The request headers learned for a source's stream host (``video_sources.proxy_headers``, see :func:`diagnose`), cleaned; ``{}`` if none."""
+    try:
+        raw = source["proxy_headers"] if "proxy_headers" in source.keys() else None
+        return streamproxy.clean_headers(json.loads(raw)) if raw else {}
+    except (ValueError, TypeError):
+        return {}
+
+
 def build_job(source: Any, streams: list, code: str, engine: str, detail: str, browser_hls: bool) -> Optional[dict]:
     """The diagnosis job of a failed attempt of ``source`` (a ``video_sources`` row) holding the stored ``streams``;
     None when there is nothing to probe or the failure code is not about the stream."""
     if code in SKIP_CODES:
         return None
     kept = [{"url": s.get("url"), "type": s.get("type"), "request_headers": streamproxy.clean_headers(s.get("request_headers")),
-             "stream_proxy": s.get("stream_proxy") is True} for s in streams if s.get("url") and s.get("type") != "embed"]
+             "stream_proxy": s.get("stream_proxy") is True, "provider": _clip(s.get("provider"), 60)}
+            for s in streams if s.get("url") and s.get("type") != "embed"]
     if not kept:
         return None
     keys = source.keys()
     get = lambda k: (source[k] if k in keys else "") or ""
     return {"source_id": source["id"], "streams": kept, "learned": bool(source["proxy_required"]), "code": code,
             "engine": engine, "detail": _clip(detail, MAX_DETAIL), "browser_hls": browser_hls,
+            "learned_headers": learned_headers_of(source),
             "site": get("source"), "locator": get("locator"), "episode_id": get("episode_id"), "source_kind": get("kind"),
             "resolver": get("resolver") or "page"}

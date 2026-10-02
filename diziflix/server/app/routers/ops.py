@@ -119,6 +119,11 @@ def _playback_health(site: str, last_heal: Optional[dict]) -> dict[str, Any]:
         out = {"window_n": 0, "failed": 0, "last_trigger_at": None, "last_skip": None}
     if not out.get("last_trigger_at") and last_heal and last_heal.get("trigger") == "playback":
         out["last_trigger_at"] = last_heal.get("at")
+    try:   # the playback issue ledger (library/playissues.py): sources with a reported / diagnosed problem now
+        from ..library import playissues
+        out["issues"] = playissues.summary(site)
+    except Exception:
+        out["issues"] = {"open": 0, "heal_open": 0}
     return out
 
 
@@ -200,6 +205,26 @@ def runs(site: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=200)
     return {"runs": sstate.list_ops("runs", site, limit)}
 
 
+@router.get("/api/ops/stream-host-rules")
+def stream_host_rules() -> dict[str, Any]:
+    """What the server's probe verified per stream host (``library/hostrules.py``): ``{rules: [{host, proxy_required, headers, reason,
+    learned_from_source, learned_at, last_ok_at, fail_count, expires_at, suspended, active}]}``."""
+    from ..library import hostrules
+    return {"rules": hostrules.listing()}
+
+
+@router.post("/api/ops/stream-host-rules/{host}/suspend")
+def stream_host_rule_suspend(host: str) -> dict[str, Any]:
+    from ..library import hostrules
+    return {"ok": hostrules.suspend(host)}
+
+
+@router.delete("/api/ops/stream-host-rules/{host}")
+def stream_host_rule_delete(host: str) -> dict[str, Any]:
+    from ..library import hostrules
+    return {"ok": hostrules.delete(host)}
+
+
 @router.get("/api/ops/heals")
 def heals(site: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=200)) -> dict[str, Any]:
     return {"heals": sstate.list_ops("heals", site, limit)}
@@ -274,6 +299,11 @@ def events(site: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=20
     ``tmdb`` events (site ``"tmdb"``) are finished admin backfills/previews (counters flat).
     ``onboard`` events (site ``"onboard"``, ``?site=`` also matches their ``site_id``) are finished site-onboarding
     pi runs / saved sites: ``draft_id, url, site_id?, status, seconds, turns, passed, notes``.
+    ``playback_issue`` events are the playback problems clients reported / the server diagnosed (``library/playissues.py``): ``id, at,
+    first_at, site, code`` (issue class), ``label, host, provider, stream_type, note, http, sources, reports, heal_class, triggered_at``
+    (a playback heal was started for it), ``episodes[{source_id, title, season, episode, locator, reports, client_code, at}]``; the
+    admin button "Ajan düzeltsin" posts ``/api/ops/sites/{site}/heal-playback``; ``host_rule`` = the stream host's verified rule
+    (``/api/ops/stream-host-rules``, ``library/hostrules.py``) or null.
     Heal events carry ``can_rollback`` (newest applied heal of the site, not yet rolled back). Heals started by playback
     failures (``trigger=="playback"``, or any heal with ``evidence``) also carry ``playback: true``, ``evidence_summary``
     (``sources, window_n, window_failed, stages, hosts, errors, ok_examples``; ``layers`` = the layer(s) the agent repair was scoped to)
@@ -303,6 +333,11 @@ def events(site: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=20
     for o in sstate.list_ops("onboard", None, 1000):
         if not site or site in (o.get("site"), o.get("site_id")):
             rows.append({**o, "kind": "onboard", "at": o.get("at")})
+    try:   # playback issues clients reported / the server diagnosed (library/playissues.py): one event per (site, class, stream host)
+        from ..library import playissues
+        rows.extend(playissues.events(60, site))
+    except Exception:  # pragma: no cover - the feed must never fail on an optional kind
+        pass
     try:   # source finder jobs (library/sourcefinder.py, table finder_jobs): ``?site=`` matches the site a source was found on
         from ..library import sourcefinder
         rows.extend(f for f in sourcefinder.events(200) if not site or f.get("site") == site)

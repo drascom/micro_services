@@ -277,7 +277,7 @@ class ExtractTests(Case):
 
 class TypeTests(Case):
     """The URL decides the stream type when its extension is unmistakable; ``auto`` is the default."""
-    M3U8 = "https://video.twimg.com/amplify_video/1/pl/abc.m3u8?tag=12"
+    M3U8 = "https://video.cdnhost.example/amplify_video/1/pl/abc.m3u8?tag=12"
     MP4 = "https://cdn.example.net/v/film.mp4?x=1"
 
     def kinds(self, body, **rule):

@@ -48,7 +48,7 @@ function harness(streamsResponse, behaviours, opts) {
   vm.runInNewContext(read('playflow.js'), sandbox);
   return { T, log, engines, flow: DZ.playflow, DZ, window };
 }
-const tick = async (n = 6) => { for (let i = 0; i < n; i++) await Promise.resolve(); };
+const tick = async (n = 14) => { for (let i = 0; i < n; i++) await Promise.resolve(); };
 const S = (id, extra) => Object.assign({ url: 'https://v.example/' + id + '.mp4', type: 'mp4', attempt_token: id + '-token', kind: 'movie', label: id }, extra || {});
 const opts = extra => Object.assign({ itemId: 'movie-1', episodeId: null, title: 'Film', type: 'movie', kind: 'video', onCancel() { this.cancelled = (this.cancelled || 0) + 1; } }, extra || {});
 
@@ -144,6 +144,16 @@ const opts = extra => Object.assign({ itemId: 'movie-1', episodeId: null, title:
     await tick();
     assert.equal(h.log.go.length, 1); assert.equal(h.log.go[0].params.prepared.index, 1);
     assert.deepEqual(h.log.reports[1], { attempt_token: 'good-token', event: 'success', code: '', engine: 'avplay' });
+  }
+
+  // D2) html5 engine playing HLS with hls.js: the failure report carries hlsjs:true (the server then counts it as a real playback failure)
+  {
+    const h = harness({ streams: [S('bad', { type: 'hls' })] }, ['prepare-error']);
+    const make = h.DZ.player.createEngine;
+    h.DZ.player.createEngine = (host, useAv, cb, o) => { const e = make(host, useAv, cb, o); e.av = false; e.hlsjs = true; return e; };
+    h.flow.start(opts());
+    await tick();
+    assert.deepEqual(h.log.reports[0], { attempt_token: 'bad-token', event: 'failure', code: 'playback_failed', engine: 'html5', hlsjs: true });
   }
 
   // E) ordering: verifiable files first, embed last; embed-only goes straight to the player (no probe, no report)

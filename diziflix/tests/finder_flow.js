@@ -14,7 +14,8 @@ const GENERIC = 'Bu içerik için kullanılabilir video kaynağı bulunamadı.';
 const S = (id, extra) => Object.assign({ url: 'https://v.example/' + id + '.mp4', type: 'mp4', attempt_token: id + '-token', kind: 'movie', label: id }, extra || {});
 
 // ---------------------------------------------------------------- playflow harness
-function harness(streamsFn, finderFn) {
+function harness(streamsFn, finderFn, x) {
+  x = x || {};
   const T = timers();
   const log = { dialogs: [], loadings: [], stages: [], go: [], streamCalls: 0, finderCalls: [], engines: [], modalOpen: false };
   const window = { navigator: { onLine: true }, DZ: {} };
@@ -22,7 +23,7 @@ function harness(streamsFn, finderFn) {
   DZ.api = {
     streams() { log.streamCalls++; return Promise.resolve(streamsFn(log.streamCalls)); },
     sourceFinder(id, ep) { log.finderCalls.push([id, ep]); return Promise.resolve(finderFn(log.finderCalls.length)); },
-    playbackReport() { return Promise.resolve({}); }
+    playbackReport(p) { (log.reports = log.reports || []).push(p); return Promise.resolve(x.reportAnswer ? x.reportAnswer(p) : {}); }
   };
   DZ.modal = {
     loading(cfg) { log.modalOpen = false; const ctl = { stage: '', setStage(t) { ctl.stage = t; log.stages.push(t); }, close() {}, cfg }; log.loadings.push(ctl); return ctl; },
@@ -36,7 +37,7 @@ function harness(streamsFn, finderFn) {
     createEngine(host, useAv, cb) {
       const eng = { av: true, cb, prepared: false, playing: false,
         setCallbacks(n) { eng.cb = n; },
-        prepare(url) { eng.url = url; Promise.resolve().then(() => { eng.prepared = true; eng.cb.prepared(); }); },
+        prepare(url) { eng.url = url; if (x.engineFails && x.engineFails(url)) { Promise.resolve().then(() => eng.cb.error('boom', 'playback_failed', 'hls:networkError/manifestLoadError/403')); return; } Promise.resolve().then(() => { eng.prepared = true; eng.cb.prepared(); }); },
         start() { eng.playing = true; Promise.resolve().then(() => eng.cb.started()); },
         destroy() {} };
       log.engines.push(eng);
@@ -105,6 +106,35 @@ const epOpts = extra => opts(Object.assign({ itemId: 'd1', episodeId: 'd1:s1:e3'
     h.flow.start(epOpts());
     await tick();
     assert.equal(h.log.dialogs[0].message, 'Bu bölüm için kaynak bulunamadı.');
+    h.T.advance(60000); await tick();
+    assert.equal(h.log.finderCalls.length, 0);
+  }
+
+  // ---- J) the stream RESOLVES but cannot be played: the failure report's answer carries `finder` -> "Kaynak aranıyor…" panel (not the generic one),
+  //         polled every 5 s, found -> the stream is requested again automatically (the new stream plays)
+  {
+    let finderState = 'searching';
+    const h = harness(n => ({ streams: [S(n === 1 ? 'bad' : 'good')] }), () => ({ state: finderState }),
+      { engineFails: url => url.indexOf('bad') >= 0, reportAnswer: p => (p.event === 'failure' ? { ok: true, finder: { state: 'searching' } } : { ok: true }) });
+    h.flow.start(epOpts());
+    await tick(30);
+    assert.deepEqual(h.log.reports.map(r => r.attempt_token + ':' + r.event), ['bad-token:failure']);
+    assert.equal(h.log.dialogs.length, 1);
+    assert.equal(h.log.dialogs[0].message, SEARCHING); assert.equal(h.log.dialogs[0].title, 'Kaynak aranıyor');
+    assert.deepEqual(h.log.dialogs[0].buttons.map(b => b.label), ['Tekrar dene', 'Geri']);
+    h.T.advance(5000); await tick();
+    assert.deepEqual(h.log.finderCalls, [['d1', 'd1:s1:e3']]);
+    finderState = 'found';
+    h.T.advance(5000); await tick(30);
+    assert.equal(h.log.streamCalls, 2, 'found -> /api/streams again');
+    assert.equal(h.log.go.length, 1); assert.equal(h.log.go[0].name, 'player');
+  }
+  // ---- K) the report answer has no finder (or arrives late): the old generic panel, no polling
+  {
+    const h = harness(() => ({ streams: [S('bad')] }), () => ({ state: 'idle' }), { engineFails: () => true });
+    h.flow.start(epOpts());
+    await tick(30);
+    assert.equal(h.log.dialogs.length, 1); assert.equal(h.log.dialogs[0].title, 'Kaynak çalışmıyor');
     h.T.advance(60000); await tick();
     assert.equal(h.log.finderCalls.length, 0);
   }

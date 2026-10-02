@@ -328,6 +328,51 @@ class AutoRoundSettingTest(unittest.TestCase):
                 self.assertEqual(onboard.auto_rounds(), want, raw)
 
 
+WARNING_TEXT = ("series_page: row_selector matched 0 elements on https://x.example/dizi/a; the episodes were found by scanning every "
+                "link (structured=false): fix row_selector")
+
+
+def warned_report(**extra):
+    """A report that PASSED but carries a fixable series_page warning and an empty summary on the detail pages."""
+    report = canned_report(True)
+    report["warnings"] = [WARNING_TEXT, "playable: 1 sample(s) not checked (the call ran out of time); call test_config again",
+                          "series_page: could not judge the episode pages of u (x); try again"]
+    report["detail"] = {"fill": {"synopsis": 0.0, "year": 1.0, "player_url": 1.0}}
+    report.update(extra)
+    return report
+
+
+class FixableWarningsTest(unittest.TestCase):
+    def test_only_what_the_agent_can_fix_is_listed(self):
+        found = onboard.fixable_warnings(warned_report())
+        texts = [w["warning"] for w in found]
+        self.assertEqual(len(found), 2, texts)
+        self.assertTrue(texts[0].startswith("series_page: row_selector matched 0"))
+        self.assertIn("synopsis", texts[1])
+        self.assertTrue(all(w["hint"] for w in found))
+        self.assertEqual(onboard.fixable_warnings(canned_report(True)), [])
+        self.assertEqual(onboard.fixable_warnings(None), [])
+        self.assertEqual(onboard.fixable_warnings({"warnings": "x", "series": 3, "collections": [1], "detail": []}), [])
+
+    def test_what_the_admin_skipped_is_left_out(self):
+        self.assertEqual(len(onboard.fixable_warnings(warned_report(), ["synopsis"])), 1)
+        self.assertEqual(len(onboard.fixable_warnings(warned_report(), ["özet"])), 1)
+        self.assertEqual(onboard.fixable_warnings(warned_report(), ["synopsis", "series_inventory"]), [])
+        report = warned_report(collections=[{"role": "trending", "status": "error", "errors": ["list: parsing failed"]}])
+        self.assertEqual(len(onboard.fixable_warnings(report, ["synopsis", "series_inventory"])), 1)
+        self.assertEqual(onboard.fixable_warnings(report, ["synopsis", "series_inventory", "collection:trending"]), [])
+
+    def test_message_and_event_name_the_warnings(self):
+        warns = onboard.fixable_warnings(warned_report())
+        text = onboard.auto_fix_message(warned_report(), 1, 2, [], warns)
+        self.assertTrue(text.startswith("AUTOMATIC CORRECTION ROUND 1/2"))
+        self.assertIn("still carries warnings", text)
+        self.assertIn("- warning: series_page: row_selector matched 0", text)
+        self.assertIn("Hint:", text)
+        self.assertEqual(text.count("row_selector matched 0"), 1)   # (not repeated in the generic warnings block)
+        self.assertIn("2 düzeltilebilir uyarı", onboard._auto_event_text(1, 2, [], warns))
+
+
 class AutoRoundTest(Harness):
     def chain(self, *procs):
         for proc in procs:
@@ -437,6 +482,38 @@ class AutoRoundTest(Harness):
             draft = self.chain(submitting(report))
             self.assertEqual((draft["status"], len(self.calls)), ("ready", 1), name)
             self.assertNotIn("auto_round", draft, name)
+
+    def test_a_passed_report_with_a_fixable_warning_gets_its_rounds(self):
+        draft = self.chain(*[submitting(warned_report()) for _ in range(3)])
+        self.assertEqual(len(self.calls), 3)                                          # the ceiling holds: 2 rounds, then the admin
+        self.assertEqual((draft["status"], draft["auto_round"], draft["auto_rounds"]), ("ready", 2, 2))
+        for number, proc in ((1, self.calls[1]), (2, self.calls[2])):
+            text = proc.stdin.data
+            self.assertTrue(text.startswith(f"AUTOMATIC CORRECTION ROUND {number}/2"), text[:60])
+            self.assertIn("row_selector matched 0", text)
+            self.assertNotIn("- warning: series_page: could not judge", text)         # (a retry notice is not fixable)
+        notes = [e["text"] for e in draft["events"] if e.get("status") == "auto_fix"]
+        self.assertEqual(len(notes), 2)
+        self.assertIn("düzeltilebilir uyarı", notes[0])
+
+    def test_a_warning_round_that_fixes_it_ends_the_chain(self):
+        draft = self.chain(submitting(warned_report()), submitting(canned_report(True)))
+        self.assertEqual((len(self.calls), draft["auto_round"]), (2, 1))
+
+    def test_a_switched_off_setting_starts_no_round_for_warnings_either(self):
+        with patch.dict(os.environ, {"ONBOARD_AUTO_ROUNDS": "0"}):
+            draft = self.chain(submitting(warned_report()))
+        self.assertEqual((draft["status"], len(self.calls)), ("ready", 1))
+        self.assertNotIn("auto_round", draft)
+
+    def test_the_skipped_field_warnings_do_not_start_a_round(self):
+        first = self.run_to_end(FakeProc(asking({"field": "synopsis", "question": "Özet var mı?"})))
+        self.queue.append(submitting(warned_report()))
+        self.queue.append(submitting(canned_report(True)))
+        onboard.message(first["id"], "Sitede yok, atla: synopsis, series_inventory")
+        self.assertTrue(onboard.join(first["id"], 10))
+        self.assertEqual((store.get_draft(first["id"])["status"], len(self.calls)), ("ready", 2))   # ask run + the answer run; no round
+        self.assertEqual(store.get_draft(first["id"]).get("auto_round", 0), 0)
 
     def test_the_number_of_rounds_follows_the_setting(self):
         for rounds, expected_runs in ((0, 1), (1, 2), (3, 4)):

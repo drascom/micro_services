@@ -46,6 +46,12 @@ A fourth signal is a stream the server RESOLVES but its host refuses (the diagno
 ``kind == "stream_blocked"`` (``failing`` = those sources with the stream host / type, the probe's answer and the headers used under
 ``stream``, stage ``stream``: the ``provider`` layer; the agent tries the recipe's ``stream_headers`` / ``warm_session`` / ``stream_proxy``
 or reports ``needs code``), same gates as any playback heal; one repair per group (the events are consumed when it starts).
+
+A fifth signal is the PLAYBACK ISSUE LEDGER (``library/playissues.py``, persistent): what clients report (``playback_failed`` / ``timeout`` ...) together
+with the server's diagnosis (``forbidden``, ``unreachable``, ...). At least ``PLAYHEAL_ISSUE_MIN_SOURCES`` DIFFERENT sources of the site with one heal
+class within ``PLAYHEAL_ISSUE_TTL`` start a repair run (evidence ``kind == "playback"`` + ``issue{code, host, provider, stream_type, note, sources}`` and
+``probe``; the layer is ``provider``); the sources of a started repair are marked (``PLAYHEAL_ISSUE_COOLDOWN``) so one repair is not started twice.
+A trigger that cannot start (heal off, cooldown, busy, LLM account) is remembered in ``summary(site)["last_skip"]``.
 """
 from __future__ import annotations
 
@@ -204,6 +210,8 @@ def evaluate(site: str, *, force: bool = False) -> Optional[dict]:
     evidence = _playback_evidence(site, force=force)
     if evidence is None:
         evidence = _blocked_evidence(site, force=force)
+    if evidence is None:
+        evidence = _issues_evidence(site, force=force)
     if evidence is None and not force:
         evidence = _coverage_evidence(site) or _crawl_evidence(site)
     return evidence
@@ -360,6 +368,26 @@ def _blocked_evidence(site: str, *, force: bool = False) -> Optional[dict]:
     if not force and len(group) < max(1, int(app_config.PLAYHEAL_STREAM_MIN_SOURCES)):
         return None
     return blocked_evidence(site, group)
+
+
+def _issues_evidence(site: str, *, force: bool = False) -> Optional[dict]:
+    """Evidence of the playback issue ledger (``library/playissues.py``): playback failures clients reported (+ the server's diagnosis) of at
+    least ``PLAYHEAL_ISSUE_MIN_SOURCES`` different sources with one issue class (``force``: the admin button, any one). Never raises."""
+    try:
+        from ..library import playissues
+        return playissues.evidence(site, force=force)
+    except Exception:
+        return None
+
+
+def note_trigger_result(site: str, result: str) -> None:
+    """Remember in ``summary(site)["last_skip"]`` why a trigger asked for by the issue ledger did not start (admin overview)."""
+    if result in ("started", "no_signal", "error"):
+        return
+    with _lock:
+        known = (_meta.get(site) or {}).get("last_skip") or {}
+    if known.get("reason") != result:
+        _note_skip(site, result)
 
 
 def _consume_blocked(site: str, host: str) -> None:
@@ -581,8 +609,11 @@ def maybe_trigger(site: str, *, sync: bool = False) -> str:
         if not _reserve(site):
             return "busy"
         trigger = "playback"
+        if isinstance(evidence.get("issue"), dict):
+            _mark_issues(site, code=str(evidence["issue"].get("code") or ""))   # one repair per issue class (the ledger's dedup)
         if evidence.get("kind") == STREAM_BLOCKED:
             _consume_blocked(site, str((evidence.get("stream") or {}).get("host") or ""))   # one repair per group
+            _mark_issues(site, host=str((evidence.get("stream") or {}).get("host") or ""))
         elif evidence.get("kind") == NO_SOURCES:
             _consume_coverage(site)   # one repair per scan
         elif evidence.get("kind") == SERIES_INVENTORY:
@@ -597,6 +628,14 @@ def maybe_trigger(site: str, *, sync: bool = False) -> str:
         return "started"
     except Exception:
         return "error"
+
+
+def _mark_issues(site: str, **kw: str) -> None:
+    try:
+        from ..library import playissues
+        playissues.mark_triggered(site, **{k: v for k, v in kw.items() if v})
+    except Exception:
+        pass
 
 
 def wait(site: str, timeout: float = 5.0) -> None:

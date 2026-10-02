@@ -890,7 +890,7 @@ class MultiPageResolversTest(SandboxCase):
     CODES = {0: "aaa", 1: "bbb", 2: "ccc"}
     STREAMS = {   # embed code -> what the (patched) vidmolly provider answers: one site, three players
         "aaa": {"provider": "vidmolly", "duration": 0, "streams": [{"url": "https://downloader.disk.yandex.ru/d/a.mp4", "type": "mp4", "quality": "auto"}]},
-        "bbb": {"provider": "vidmolly", "duration": 0, "streams": [{"url": "https://video.twimg.com/pl/b.m3u8", "type": "hls", "quality": "auto"}]},
+        "bbb": {"provider": "vidmolly", "duration": 0, "streams": [{"url": "https://video.cdnhost.example/pl/b.m3u8", "type": "hls", "quality": "auto"}]},
         "ccc": {"provider": "vidmolly", "duration": 0, "streams": [{"url": "https://redirector.googlevideo.com/v/c.mp4", "type": "mp4", "quality": "360p"}]},
         "none": None,
     }
@@ -939,7 +939,7 @@ class MultiPageResolversTest(SandboxCase):
         first, second, third = out["pages"]
         self.assertEqual((first["status"], first["candidates"], first["resolved"], first["error"]), ("resolved", 1, 1, ""))
         self.assertEqual(first["streams"], [{"type": "mp4", "host": "downloader.disk.yandex.ru", "quality": "auto"}])
-        self.assertEqual(second["streams"], [{"type": "hls", "host": "video.twimg.com", "quality": "auto"}])
+        self.assertEqual(second["streams"], [{"type": "hls", "host": "video.cdnhost.example", "quality": "auto"}])
         self.assertEqual(third["streams"], [{"type": "mp4", "host": "redirector.googlevideo.com", "quality": "360p"}])
         self.assertTrue(all(p["page_id"].startswith("pg_") for p in out["pages"]))
 
@@ -956,7 +956,7 @@ class MultiPageResolversTest(SandboxCase):
         out = self.go()
         warned = self.warning(out, "varied hosts/types:")
         self.assertIsNotNone(warned, out["warnings"])
-        for needle in ("page 1 = downloader.disk.yandex.ru/mp4", "page 2 = video.twimg.com/hls", "page 3 = redirector.googlevideo.com/mp4"):
+        for needle in ("page 1 = downloader.disk.yandex.ru/mp4", "page 2 = video.cdnhost.example/hls", "page 3 = redirector.googlevideo.com/mp4"):
             self.assertIn(needle, warned)
         same = self.go(self.site({0: "aaa", 1: "aaa", 2: "aaa"}))
         self.assertEqual((same["status"], same["pages_resolved"]), ("resolved", 3))
@@ -1371,15 +1371,15 @@ class PlayerPageTest(SandboxCase):
 
     def test_a_declared_type_that_contradicts_the_url_is_warned_and_the_url_wins(self):
         text = self.yaml_with('{regex: \'file:"([^"]+)"\', type: mp4}')
-        out, _limited, _browser = self.run_resolvers(text, body='jwplayer().setup({file:"https://video.twimg.com/pl/x.m3u8?tag=12"});')
+        out, _limited, _browser = self.run_resolvers(text, body='jwplayer().setup({file:"https://video.cdnhost.example/pl/x.m3u8?tag=12"});')
         got = out["resolved"][0]
-        self.assertEqual((got["ok"], got["host"], got["stream_type"]), (True, "video.twimg.com", "hls"))
+        self.assertEqual((got["ok"], got["host"], got["stream_type"]), (True, "video.cdnhost.example", "hls"))
         self.assertTrue(any(e["stage"] == "player_page.type: declared mp4, url is m3u8 -> hls" and e["ok"] for e in got["trace"]), got["trace"])
         warned = [w for w in out["warnings"] if "declared mp4, url is m3u8 -> hls" in w]
         self.assertEqual(len(warned), 1, out["warnings"])
         self.assertIn("candidate 0", warned[0])
         self.assertIn("auto", warned[0])
-        self.assertEqual(out["pages"][0]["streams"], [{"type": "hls", "host": "video.twimg.com", "quality": "auto"}])
+        self.assertEqual(out["pages"][0]["streams"], [{"type": "hls", "host": "video.cdnhost.example", "quality": "auto"}])
 
     def test_a_sources_list_gives_one_stream_per_quality_best_first(self):
         text = self.yaml_with('{regex: \'file:"([^"]+)",label:"([^"]+)"\', quality_group: 2}')
@@ -1813,13 +1813,13 @@ class PlayableTest(SandboxCase):
         streams = [{"provider": "p", "streams": [{"url": "https://disk.example/a.mp4", "type": "mp4", "quality": "720p"},
                                                  {"url": "https://disk.example/a-1080.mp4", "type": "mp4", "quality": "1080p"}]},
                    {"provider": "p", "streams": [{"url": "https://redirector.googlevideo.com/b.mp4", "type": "mp4", "quality": "360p"}]},
-                   {"provider": "p", "streams": [{"url": "https://video.twimg.com/c.m3u8", "type": "hls", "quality": "auto"}]}]
+                   {"provider": "p", "streams": [{"url": "https://video.cdnhost.example/c.m3u8", "type": "hls", "quality": "auto"}]}]
         with public_dns(), any_page(), patch.object(vidmolly, "resolve", side_effect=streams):
             out = self.post("/test_config", {"yaml_text": DRAFT_YAML, "page_id": self.list_id, "detail_page_id": self.detail_id,
                                              "playable": True}).json()
         got = [[(s["type"], s["host"], s["quality"]) for s in sample["streams"]] for sample in out["playable"]["samples"]]
         self.assertEqual(got, [[("mp4", "disk.example", "720p"), ("mp4", "disk.example", "1080p")],
-                               [("mp4", "redirector.googlevideo.com", "360p")], [("hls", "video.twimg.com", "auto")]])
+                               [("mp4", "redirector.googlevideo.com", "360p")], [("hls", "video.cdnhost.example", "auto")]])
 
     def test_a_page_without_a_player_is_a_failed_sample(self):
         out = self.run_config(player_html="<html><body><p>no player here</p></body></html>")

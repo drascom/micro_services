@@ -19,6 +19,7 @@ from typing import Any, Callable, Iterable, Optional
 
 from .. import config, db, settings
 from . import identity, tmdb
+from .normalize import is_placeholder_image
 
 log = logging.getLogger("library.enrich")
 ERROR_BREAKER = 3  # consecutive TMDB errors before the batch gives up
@@ -28,6 +29,38 @@ FILL_FIELDS = ("overview", "original_title", "genres", "rating", "runtime")
 
 def _filled(v: Any) -> bool:
     return v is not None and v != "" and v != []
+
+
+# --- placeholder artwork: URLs several different titles share ----------------------------------------------------
+
+SHARED_ART_MIN = 3        # the same image URL on >= this many different titles = a site placeholder, not a poster
+_SHARED_TTL = 60.0
+_shared_cache: dict[str, tuple[float, frozenset]] = {}
+
+
+def shared_art_urls(conn, force: bool = False) -> frozenset:
+    """Poster/backdrop URLs that >= ``SHARED_ART_MIN`` different canonical titles carry in their SOURCE items (60 s cache per
+    database). Counted on ``source_items.normalized`` (not on ``library_items``, which loses the URL once it is judged a
+    placeholder). Never raises (an old SQLite without JSON1 = no heuristic)."""
+    key = str(config.DB_PATH)
+    hit = _shared_cache.get(key)
+    now = time.monotonic()
+    if hit and not force and now - hit[0] < _SHARED_TTL:
+        return hit[1]
+    urls: set[str] = set()
+    try:
+        for field in ("poster_url", "backdrop_url"):
+            for r in conn.execute(
+                    f"SELECT json_extract(normalized,'$.{field}') AS u FROM source_items "
+                    f"WHERE json_extract(normalized,'$.{field}') LIKE 'http%' "
+                    f"GROUP BY u HAVING COUNT(DISTINCT canonical_id) >= ?", (SHARED_ART_MIN,)):
+                if r["u"]:
+                    urls.add(r["u"])
+    except Exception as exc:
+        log.debug("shared art urls skipped: %s", exc)
+    out = frozenset(urls)
+    _shared_cache[key] = (now, out)
+    return out
 
 
 def new_counters() -> dict[str, Any]:
@@ -179,19 +212,139 @@ def ingest_lock():
 
 
 def select_todo(conn, media_type: str, limit: int = 0, force: bool = False):
-    """Library rows of ``media_type`` still needing a lookup -> ``(rows, total_in_library)``."""
+    """Library rows of ``media_type`` still needing a lookup -> ``(rows, total_in_library)``.
+
+    A title whose only poster is a site "no picture" file (``is_placeholder_image``) and that TMDB has no art for counts as
+    missing: it is looked up again even inside the retry window (unless it is already matched). Once the sweep
+    (``clean_placeholder_art``) emptied that poster the normal retry window applies again."""
     rows = conn.execute("SELECT id,type,title,original_title,year,tmdb_id,imdb_id,tmdb_enrich_status,"
-                        "tmdb_checked_at FROM library_items WHERE type=? ORDER BY added_at DESC,id",
-                        (media_type,)).fetchall()
+                        "tmdb_checked_at,poster_url,tmdb_poster_url FROM library_items WHERE type=? "
+                        "ORDER BY added_at DESC,id", (media_type,)).fetchall()
     types = settings.tmdb_types()
+    shared = shared_art_urls(conn)
     out = []
     for r in rows:
         state = {"status": r["tmdb_enrich_status"], "checked_at": r["tmdb_checked_at"]}
-        if should_run(media_type, state, force=force, types=types):
+        no_art = not r["tmdb_poster_url"] and bool(r["poster_url"]) and is_placeholder_image(r["poster_url"], shared)
+        if should_run(media_type, state, force=force, types=types) or (
+                no_art and r["tmdb_enrich_status"] != "matched" and type_enabled(media_type, types)):
             out.append(r)
         if limit and len(out) >= limit:
             break
     return out, len(rows)
+
+
+def clean_placeholder_art(conn) -> int:
+    """Library rows whose poster/backdrop is a site "no picture" file are merged again (``merge_canonical`` drops it), so
+    records written before the placeholder rule lose it. Returns rows rebuilt; caller holds the ingest lock + commits."""
+    from .ingest import merge_canonical  # local: ingest imports this module
+    shared = shared_art_urls(conn, force=True)
+    n = 0
+    for r in conn.execute("SELECT id,poster_url,backdrop_url FROM library_items").fetchall():
+        if any(u and is_placeholder_image(u, shared) for u in (r["poster_url"], r["backdrop_url"])):
+            merge_canonical(conn, r["id"])
+            n += 1
+    return n
+
+
+# --- titles that arrive outside a scan (live search hit, opened detail): background enrichment -----------------
+
+_pending: set[str] = set()
+_pending_lock = threading.Lock()
+_recent: dict[str, float] = {}
+RECHECK_SECONDS = 300.0
+
+
+def needs_lookup(cid: str) -> bool:
+    """True when ``cid`` is in the library, its type is enabled for TMDB, and it is neither matched nor inside the retry window."""
+    conn = db.connect()
+    try:
+        r = conn.execute("SELECT type,tmdb_enrich_status,tmdb_checked_at FROM library_items WHERE id=?", (cid,)).fetchone()
+    finally:
+        conn.close()
+    if r is None:
+        return False
+    return should_run(r["type"], {"status": r["tmdb_enrich_status"], "checked_at": r["tmdb_checked_at"]})
+
+
+def enrich_items(cids: Iterable[str], budget: Optional[float] = None, force: bool = False) -> dict[str, Any]:
+    """TMDB-enrich canonical titles that were added/updated outside an ingest scan (live search hits, an opened detail):
+    poster/backdrop/year/overview + (series) the season data. Obeys ``tmdb_auto`` + ``tmdb_types`` + the retry window. Blocking and
+    network-bound: callers run it in a thread (``schedule``). Returns counters (+ ``written``); never raises."""
+    counters = new_counters()
+    counters["written"] = 0
+    started = time.monotonic()
+    try:
+        if not auto_enabled():
+            return counters
+        jobs: dict[str, dict] = {}
+        conn = db.connect()
+        try:
+            for cid in dict.fromkeys(cids):
+                r = conn.execute("SELECT id,type,title,original_title,year,tmdb_id,imdb_id,tmdb_enrich_status,tmdb_checked_at "
+                                 "FROM library_items WHERE id=?", (cid,)).fetchone()
+                if r is None:
+                    continue
+                state = {"status": r["tmdb_enrich_status"], "checked_at": r["tmdb_checked_at"]}
+                if not should_run(r["type"], state, force=force):
+                    counters["skipped"] += 1
+                    continue
+                jobs[cid] = dict(title=r["title"], year=r["year"], original_title=r["original_title"],
+                                 media_type=r["type"] or "movie", tmdb_id=r["tmdb_id"], imdb_id=r["imdb_id"])
+        finally:
+            conn.close()
+        results, c = run_batch(jobs, budget=budget)
+        for k in ("matched", "unmatched", "review", "deferred", "errors"):
+            counters[k] += c[k]
+        if results:
+            counters["written"] = _write_results(results, force, counters, stale_check=False)
+        series = [cid for cid, j in jobs.items() if j["media_type"] == "series"] if counters["written"] else []
+        if series:   # the title just got its TMDB id: its seasons/episodes can be filled right away
+            from . import seasons
+            conn = db.connect()
+            try:   # a title merged into an older one by its TMDB id keeps working through the alias
+                series = [(conn.execute("SELECT canonical_id FROM catalogue_aliases WHERE alias=?", (cid,)).fetchone() or [cid])[0]
+                          for cid in series]
+            finally:
+                conn.close()
+            seasons.auto_enrich(series, budget=budget)
+    except Exception as exc:  # TMDB / storage trouble must never break search or detail
+        log.warning("title enrichment skipped: %s", exc)
+        counters["errors"] += 1
+    counters["seconds"] = round(time.monotonic() - started, 2)
+    return counters
+
+
+def schedule(cids: Iterable[str], on_done: Optional[Callable[[dict], None]] = None) -> bool:
+    """Background ``enrich_items`` for the given titles (de-duplicated per title, each title re-checked at most every
+    ``RECHECK_SECONDS``); a no-op while TMDB is off. ``on_done(counters)`` runs when something was written (e.g. catalogue refresh)."""
+    if not auto_enabled():
+        return False
+    now = time.monotonic()
+    todo: list[str] = []
+    with _pending_lock:
+        for cid in dict.fromkeys(cids):
+            if cid in _pending or now - _recent.get(cid, -RECHECK_SECONDS) < RECHECK_SECONDS:
+                continue
+            _pending.add(cid)
+            _recent[cid] = now
+            todo.append(cid)
+    if not todo:
+        return False
+
+    def run() -> None:
+        try:
+            res = enrich_items(todo)
+            if res.get("written") and on_done:
+                on_done(res)
+        except Exception as exc:  # a background task never crashes noisily
+            log.warning("background title enrichment failed: %s", exc)
+        finally:
+            with _pending_lock:
+                _pending.difference_update(todo)
+
+    threading.Thread(target=run, daemon=True, name="title-enrich").start()
+    return True
 
 
 def _cand_text(c: dict) -> str:
@@ -398,6 +551,14 @@ def backfill(kind: str, dry_run: bool = False, limit: int = 0,
     counters["skipped"] = total - len(todo)
     if on_start:
         on_start(total, len(todo))
+    if not dry_run:   # rows that kept a site "no picture" file from before the placeholder rule: rebuilt without it
+        with ingest_lock():
+            conn = db.connect()
+            try:
+                if clean_placeholder_art(conn):
+                    conn.commit()
+            finally:
+                conn.close()
     for i in range(0, len(todo), chunk):
         part = todo[i:i + chunk]
         jobs = {r["id"]: dict(title=r["title"], year=r["year"], original_title=r["original_title"],

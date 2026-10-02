@@ -25,6 +25,7 @@ from selectolax.parser import HTMLParser
 from ... import config as app_config, netguard
 from . import _unpack, _util as util
 from ..providers import trace
+from .. import badhosts
 
 NAME = "player_page"
 DESCRIPTION = ("Opens the player page the detail page points to (typically an iframe on the site's own host), over plain "
@@ -386,13 +387,17 @@ def _quality_number(text: str) -> int:
 def extract(body: str, base: str, rules: list[dict], notes: Optional[list] = None) -> list[dict]:
     """The streams ``[{url, type, quality, label}]`` the ``rules`` find in ``body`` (de-duplicated, at most
     :data:`MAX_STREAMS`). Order: the rule order; but as soon as one stream got its quality from a ``quality_group`` the
-    list is sorted best quality first (highest number; ``auto`` / unlabelled last, stable). Pure function: no network;
+    list is sorted best quality first (highest number; ``auto`` / unlabelled last, stable). A URL on an unrelated host
+    (``badhosts``: social media, ads, analytics) is never a stream (a note says so), and within one rule the streams on the player's
+    OWN site come before foreign ones (a promo video earlier in the page must not beat the player's file). Pure function: no network;
     warnings (a URL that contradicts its declared type, a skipped DASH stream) are appended to ``notes`` when given."""
     streams: list[dict] = []
     index: dict[str, dict] = {}
     unpacked: Optional[list[str]] = None
     page_quality = False
+    own = badhosts.own_domain(base)
     for rule in rules:
+        first_of_rule = len(streams)
         text = body
         if rule.get("unpack"):
             if unpacked is None:
@@ -402,6 +407,11 @@ def extract(body: str, base: str, rules: list[dict], notes: Optional[list] = Non
         for value, found_quality, found_label in _values(rule, text):
             url = _clean(value, rule, base)
             if not url:
+                continue
+            bad = badhosts.bad_stream_host(url)
+            if bad:
+                if notes is not None and f"skipped a stream on an unrelated host ({bad})" not in notes:
+                    notes.append(f"skipped a stream on an unrelated host ({bad})")
                 continue
             known = index.get(url)
             if known is not None:   # the same URL again: only a real quality improves an unlabelled earlier find
@@ -422,6 +432,9 @@ def extract(body: str, base: str, rules: list[dict], notes: Optional[list] = Non
             streams.append(stream)
             if len(streams) >= MAX_STREAMS:
                 break
+        if own and len(streams) - first_of_rule > 1:   # the player's own site first (stable), only within this rule's finds
+            mine = [s for s in streams[first_of_rule:] if badhosts.own_domain(s["url"]) == own]
+            streams[first_of_rule:] = mine + [s for s in streams[first_of_rule:] if s not in mine]
         if len(streams) >= MAX_STREAMS:
             break
     if page_quality:

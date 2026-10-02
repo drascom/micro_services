@@ -9,6 +9,7 @@ import uuid
 from urllib.parse import urljoin, urlparse
 from .. import config as app_config, db
 from . import streamdiag, streamlife, tracks
+from ..scraper import badhosts
 
 TTL=6*3600  # legacy trailer cache on source_items; resolved payloads follow config.RESOLVE_CACHE_TTL
 RESOLVER_VERSION=7  # 7: streams may carry request_headers (OK.ru mp4: the User-Agent its signed URL is bound to; /api/streams serves them through the stream proxy), cached payloads without them are re-resolved (6: candidates carry resolver_type, json_api streams skip the provider step, per-site provider allow-list (5: re-signed duplicates merged, spare copies marked (mirror_of), sub_known/site_lang_hint, no unmeasured language in labels; 4: soft subtitle tracks + per-stream variant_id/audio_lang/sub_mode/hard_lang; 3: labels carry the subtitle language))
@@ -209,6 +210,12 @@ def _resolve_candidate(row,cfg,raw,locator,frame_pages,load_cookies,use_neg):
         out['duration']=resolved.get('duration',0)
         out['cache_ttl']=streamlife.provider_ttl(resolved.get('cache_ttl'))   # the provider's own "reuse for N seconds" (recipe/resolver ``cache_ttl``)
         found=[{**s,'url':_url(s.get('url')),'provider':provider} for s in resolved['streams'] if _url(s.get('url'))]
+        unrelated=sorted({h for h in (badhosts.bad_stream_host(s['url']) for s in found) if h})
+        if unrelated:   # a stream on a social-media / ad / analytics host is never the video: dropped here, whatever resolver found it
+            found=[s for s in found if not badhosts.bad_stream_host(s['url'])]
+            if not found:
+                trace.note('stream_host',unrelated[0],False,started,'ilgisiz akış sunucusu: '+', '.join(unrelated))
+                raise ValueError('sağlayıcı ilgisiz bir sunucuda akış verdi ('+', '.join(unrelated)+')')
         if not found: raise ValueError('sağlayıcı geçerli akış vermedi')
         # One provider file = one variant: its soft subtitle tracks and what the page says about its languages.
         soft=[t for t in (resolved.get('subtitles') or []) if isinstance(t,dict) and _url(t.get('url'))]
@@ -467,6 +474,7 @@ def _cached(row):
     except ValueError: return None
     if not isinstance(cached,dict): return None
     if row['resolver']=='page' and cached.get('resolver_version')!=RESOLVER_VERSION: return None
+    if row['resolver']=='page' and any(badhosts.bad_stream_host(s.get('url')) for s in cached.get('streams') or [] if isinstance(s,dict)): return None   # stored before the unrelated-host rule
     until=cached.get('valid_until')
     legacy=isinstance(until,bool) or not isinstance(until,(int,float))
     if legacy: until=row['resolved_at']+ttl
@@ -681,7 +689,7 @@ DEVICE_CODES=('unsupported','decode','autoplay','aborted','offline')  # device-s
 KEEP_CACHE_CODES=('autoplay','aborted','offline')  # device-side AND unrelated to the link: the stored resolution stays; any other failure drops it
 
 
-def feedback(token, event, code='', engine='', detail='', user_agent=''):
+def feedback(token, event, code='', engine='', detail='', user_agent='', hlsjs=False, profile_id=''):
     """One health update per provider/attempt; tokens expire and bind the source.
 
     Every stream of a source shares one token and the client falls through to the next stream after a
@@ -693,15 +701,41 @@ def feedback(token, event, code='', engine='', detail='', user_agent=''):
     desktop Chrome / Firefox / Edge) is a client capability, not a fault of the source: it is not counted and the stored link
     stays (library/streamdiag.py). Any failure that is about the stream (everything but aborted / offline / autoplay) also
     queues a background probe of the source's streams after the transaction (``detail`` = the client's own error text,
-    <= 120 characters, ends up in the source's ``last_diag`` note); the answer is never delayed by it."""
-    result,job=_feedback(token,event,code,engine,detail,user_agent)
+    <= 120 characters, ends up in the source's ``last_diag`` note); the answer is never delayed by it. Every failure that is about the
+    stream also joins the playback issue ledger (library/playissues.py: admin Olay defteri, playback heal), a success clears it."""
+    result,job=_feedback(token,event,code,engine,detail,user_agent,hlsjs)
     if job:
         try: streamdiag.schedule(job)
+        except Exception: pass
+    if not result.get('duplicate'):   # the playback issue ledger (admin Olay defteri + the playback heal): a failure joins it, a success clears it
+        try:
+            from . import playissues
+            if event=='success': playissues.clear_for_token(token)
+            else:
+                cls=playissues.record_failure(token,code,engine,detail,job)
+                finder=_finder_for_failure(token,cls,profile_id)
+                if finder: result={**result,'finder':finder}
         except Exception: pass
     return result
 
 
-def _feedback(token, event, code, engine, detail, user_agent):
+def _finder_for_failure(token, issue_class, profile_id):
+    """A failure the SERVER side can be blamed for (a heal class of library/playissues.py: refused / wrong / dead stream, an hls.js or player
+    error on a stream the server resolves; not a device / browser-capability class) starts the source finder for that episode
+    (``trigger='playback_failed'``, same single-flight / cooldown / budget rules as a play request without a stream). ``{'state':
+    'searching'|'not_found'}`` for the optional ``finder`` field of the playback-report answer, else None. Never raises."""
+    try:
+        from . import playissues, sourcefinder
+        if issue_class not in playissues.HEAL_CLASSES: return None
+        row=db.query_one('SELECT s.canonical_id,s.episode_id FROM playback_attempts a JOIN video_sources s ON s.id=a.source_id WHERE a.token=?',(token,))
+        if not row: return None
+        res=sourcefinder.request(row['canonical_id'],row['episode_id'] or '',profile_id or '',trigger='playback_failed')
+        return {'state':res['state']} if res.get('state') in ('searching','not_found') else None
+    except Exception:
+        return None
+
+
+def _feedback(token, event, code, engine, detail, user_agent, hlsjs=False):
     """``(answer, diagnosis job or None)`` of :func:`feedback`."""
     now=int(time.time())
     job=None
@@ -734,7 +768,7 @@ def _feedback(token, event, code, engine, detail, user_agent):
             return {'ok':True},None
         # the stored streams are read BEFORE a failure drops the resolution: the diagnosis probes them
         streams=streamdiag.payload_streams(source['resolved_payload'])
-        browser_hls=streamdiag.hls_in_browser(streams,source['media_type'],engine,user_agent)
+        browser_hls=streamdiag.hls_in_browser(streams,source['media_type'],engine,user_agent,hlsjs=streamdiag.played_with_hlsjs(hlsjs,detail))
         if browser_hls:  # the browser cannot play HLS: not this source's fault, the stored link is fine
             streamdiag.write_browser_diag(conn,source,detail)
         elif code not in DEVICE_CODES:

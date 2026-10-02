@@ -516,6 +516,15 @@ def _detail_fill(rep: dict) -> tuple[dict, list]:
     return fill, [k for k, v in info.items() if _num(v) <= 0]
 
 
+#: (public names for ``onboard.fixable_warnings``)
+def path_of(url: str) -> str:
+    return _path(url)
+
+
+def detail_fill(rep: dict) -> tuple[dict, list]:
+    return _detail_fill(rep)
+
+
 def _step_info(rep: dict, errors: list) -> dict:
     norm = _dict(rep.get("normalize"))
     series_block = rep.get("series")

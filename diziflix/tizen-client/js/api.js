@@ -213,14 +213,16 @@
     markNotificationsRead: function (pid, upto) {
       return request('/api/notifications/read?profile=' + enc(pid), { method: 'POST', body: { upto: upto }, timeout: 8000 });
     },
-    /* payload: {attempt_token, event, code, engine, detail?}; detail (hata ayrintisi, en cok 120 karakter) yalniz doluysa gider,
-       sunucuda alan yoksa zararsiz */
+    /* payload: {attempt_token, event, code, engine, detail?, hlsjs?}; detail (hata ayrintisi, en cok 120 karakter) yalniz doluysa gider,
+       hlsjs (bool) yalniz true ise gider (html5 motoru akisi hls.js ile oynatiyor); sunucuda alan yoksa ikisi de zararsiz.
+       Yanit: {ok, finder?: {state:'searching'|'not_found'}} - sunucu bu bolum icin kaynak bulucuyu baslattiysa (API.md "Kaynak bulucu"); `?profile=` bildirim icin */
     playbackReport: function (payload) {
       var body = {};
       for (var k in payload) { if (Object.prototype.hasOwnProperty.call(payload, k)) body[k] = payload[k]; }
       if (body.detail === undefined || body.detail === null || body.detail === '') delete body.detail;
       else body.detail = String(body.detail).slice(0, 120);
-      return request('/api/playback-report', { method: 'POST', body: body });
+      if (body.hlsjs !== true) delete body.hlsjs;
+      return request('/api/playback-report?profile=' + enc(api.profileId()), { method: 'POST', body: body });
     },
     progress: function (payload) {
       return request('/api/progress', { method: 'POST', body: payload, timeout: 8000 });

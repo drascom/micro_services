@@ -146,7 +146,7 @@ SCHEMA += [
         last_error TEXT, last_checked_at INTEGER, last_success_at INTEGER,
         resolved_payload TEXT, resolved_at INTEGER, updated_at INTEGER NOT NULL,
         trailer_dead INTEGER NOT NULL DEFAULT 0, trailer_checked_at INTEGER,
-        proxy_required INTEGER NOT NULL DEFAULT 0, last_diag TEXT)""",
+        proxy_required INTEGER NOT NULL DEFAULT 0, last_diag TEXT, proxy_headers TEXT)""",
     "CREATE INDEX IF NOT EXISTS idx_video_item ON video_sources(canonical_id, episode_id, kind)",
     """CREATE TABLE IF NOT EXISTS playback_attempts (
         token TEXT PRIMARY KEY, source_id TEXT NOT NULL, created_at INTEGER NOT NULL,
@@ -176,6 +176,31 @@ SCHEMA += [
         title TEXT, overview TEXT, air_date TEXT, runtime_minutes INTEGER, tmdb_still_url TEXT,
         checked_at INTEGER,
         PRIMARY KEY (canonical_id, season, episode))""",
+]
+
+
+SCHEMA += [
+    # Stream HOST rules (library/hostrules.py): what the server's probe verified for one stream host. ``headers`` = JSON (a Referer),
+    # ``reason`` referer | ip; ``fail_count`` = failed probes of streams served through it; ``suspended`` = dropped (fail limit / admin).
+    """CREATE TABLE IF NOT EXISTS stream_host_rules (
+        host TEXT PRIMARY KEY, proxy_required INTEGER NOT NULL DEFAULT 1, headers TEXT NOT NULL DEFAULT '{}', reason TEXT NOT NULL DEFAULT '',
+        learned_from_source TEXT NOT NULL DEFAULT '', learned_at INTEGER NOT NULL, last_ok_at INTEGER, fail_count INTEGER NOT NULL DEFAULT 0,
+        expires_at INTEGER NOT NULL, suspended INTEGER NOT NULL DEFAULT 0)""",
+]
+
+
+SCHEMA += [
+    # Playback issue ledger (library/playissues.py): one row per video source with a reported / diagnosed playback problem.
+    # ``issue_class`` = the diagnosis code (forbidden, server_blocked, ...) or the client's own code (playback_failed, timeout ...);
+    # ``reports`` = how many failure reports; ``triggered_at`` = when a playback heal was started for it (dedup); deleted when the source plays.
+    """CREATE TABLE IF NOT EXISTS playback_issues (
+        source_id TEXT PRIMARY KEY, site TEXT NOT NULL, canonical_id TEXT NOT NULL DEFAULT '', episode_id TEXT NOT NULL DEFAULT '',
+        kind TEXT NOT NULL DEFAULT '', locator TEXT NOT NULL DEFAULT '', client_code TEXT NOT NULL DEFAULT '',
+        diag_code TEXT NOT NULL DEFAULT '', issue_class TEXT NOT NULL, note TEXT NOT NULL DEFAULT '',
+        host TEXT NOT NULL DEFAULT '', provider TEXT NOT NULL DEFAULT '', stream_type TEXT NOT NULL DEFAULT '',
+        stream_group TEXT NOT NULL DEFAULT '', http INTEGER, engine TEXT NOT NULL DEFAULT '', reports INTEGER NOT NULL DEFAULT 1,
+        first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, triggered_at INTEGER)""",
+    "CREATE INDEX IF NOT EXISTS idx_issue_site ON playback_issues(site, last_at)",
 ]
 
 
@@ -351,6 +376,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         # stream proxy (app/streamproxy.py): the source's streams were learned to need the server's proxy; last_diag = the
         # verdict of the last playback-failure probe (library/streamdiag.py, JSON <= 600 bytes)
         ("proxy_required", "INTEGER NOT NULL DEFAULT 0"), ("last_diag", "TEXT"),
+        # request headers the server's probe LEARNED the source's stream host wants (a Referer): JSON, sent by the stream proxy (streamdiag)
+        ("proxy_headers", "TEXT"),
     ):
         if vcols and col not in vcols:
             conn.execute(f"ALTER TABLE video_sources ADD COLUMN {col} {decl}")

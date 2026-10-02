@@ -15,6 +15,7 @@ from typing import Any, Optional
 
 from .. import db
 from ..library import seasons as tmdb_seasons
+from ..library.normalize import is_placeholder_image
 from .base import SourceAdapter
 
 log = logging.getLogger("sources.library")
@@ -46,6 +47,11 @@ def _col(row, name):
         return None
 
 
+def _real_art(url):
+    """A site's "no picture" file is not artwork (``normalize.is_placeholder_image``): rows written before that rule read as empty."""
+    return None if is_placeholder_image(url) else url
+
+
 def _to_item(row) -> dict[str, Any]:
     return {
         "id": row["id"],
@@ -68,8 +74,8 @@ def _to_item(row) -> dict[str, Any]:
         "runtime": row["runtime"] or 0,
         # remote artwork (proxied by /img); absent -> Pillow placeholder
         # TMDB artwork wins when enrichment found it; the source image is the fallback.
-        "poster_url": _col(row, "tmdb_poster_url") or row["poster_url"],
-        "backdrop_url": _col(row, "tmdb_backdrop_url") or row["backdrop_url"],
+        "poster_url": _col(row, "tmdb_poster_url") or _real_art(row["poster_url"]),
+        "backdrop_url": _col(row, "tmdb_backdrop_url") or _real_art(row["backdrop_url"]),
     }
 
 

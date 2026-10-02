@@ -21,6 +21,7 @@ from .. import cache, config, db
 from ..scraper import config as scfg
 from ..scraper import site_search
 from .ingest import ingest_discovered_items
+from . import enrich
 
 log = logging.getLogger("diziflix.search_all")
 
@@ -90,6 +91,11 @@ def _run(flight: _Flight, site: str, text: str, limit: int) -> dict:
     try:
         raw = site_search.search(site, text, limit)
         ids = list(ingest_discovered_items(site, raw)) if raw else []
+        if ids:   # hits join the library without a scan: TMDB poster/year/overview + seasons in the background (tmdb_auto)
+            try:
+                enrich.schedule(ids, on_done=lambda _r: cache.refresh())
+            except Exception as exc:
+                log.debug("search: tmdb enrichment not scheduled: %s", exc)
     except BaseException:
         flight.ended = time.monotonic()
         with _lock:

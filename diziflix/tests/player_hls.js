@@ -203,8 +203,9 @@ function env(res, o) {
     assert.deepEqual(h.calls.filter(c => c !== 'loadSource' && c !== 'attachMedia'), []);
     h.emit({ fatal: true, type: 'networkError', details: 'manifestLoadError', response: { code: 403 } });
     assert.equal(e.log.reports.length, 1);
-    assert.deepEqual(e.log.reports[0], { attempt_token: 'tok', event: 'failure', code: 'network', engine: 'html5', detail: 'hls:networkError/manifestLoadError/403' });
+    assert.deepEqual(e.log.reports[0], { attempt_token: 'tok', event: 'failure', code: 'network', engine: 'html5', detail: 'hls:networkError/manifestLoadError/403', hlsjs: true });
     assert(h.destroyed, 'the failed hls.js instance is destroyed');
+    for (let i = 0; i < 8; i++) await Promise.resolve();   /* panel, hata raporu yaniti (finder) beklendikten sonra acilir */
     assert.equal(e.log.dialogs.length, 1, 'only stream -> "Oynatilamadi" dialog (existing failure flow)');
     e.DZ.screens.player.exit();
   }
@@ -259,7 +260,7 @@ function env(res, o) {
     assert.equal(h.url, HLS_URL);
     h.emit({ fatal: true, type: 'networkError', details: 'manifestLoadTimeOut' });
     await tick();
-    assert.deepEqual(e.log.reports[0], { attempt_token: 'tok', event: 'failure', code: 'network', engine: 'html5', detail: 'hls:networkError/manifestLoadTimeOut' });
+    assert.deepEqual(e.log.reports[0], { attempt_token: 'tok', event: 'failure', code: 'network', engine: 'html5', detail: 'hls:networkError/manifestLoadTimeOut', hlsjs: true });
     // next stream (mp4, extensionless) is tried natively under the modal
     const v2 = e.log.videos[e.log.videos.length - 1];
     assert.equal(v2.src, MP4_PROXY);
@@ -299,7 +300,7 @@ function env(res, o) {
     await api.playbackReport({ attempt_token: 't', event: 'failure', code: 'network', engine: 'html5', detail: 'y'.repeat(500) });
     await api.playbackReport({ attempt_token: 't', event: 'success', code: '', engine: 'html5', detail: '' });
     await api.playbackReport({ attempt_token: 't', event: 'failure', code: 'network', engine: 'html5' });
-    assert(/\/api\/playback-report$/.test(bodies[0].u));
+    assert(/\/api\/playback-report(\?profile=.*)?$/.test(bodies[0].u));
     assert.equal(bodies[0].body.detail.length, 120);
     assert(!('detail' in bodies[1].body) && !('detail' in bodies[2].body), 'empty/absent detail is not sent');
   }

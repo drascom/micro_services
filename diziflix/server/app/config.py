@@ -282,6 +282,19 @@ PLAYHEAL_FAIL_RATIO = min(1.0, max(0.1, _float("PLAYHEAL_FAIL_RATIO", 0.6)))
 # library/streamdiag.py): at least this many DIFFERENT sources (episodes) of one site on one stream host within 24 h start a repair
 # run (evidence kind "stream_blocked", layer provider, same gates as a playback heal).
 PLAYHEAL_STREAM_MIN_SOURCES = max(1, _int("PLAYHEAL_STREAM_MIN_SOURCES", 2))
+# Playback issue ledger (library/playissues.py; table playback_issues, admin Olay defteri "oynatma sorunu"): every failure a client reports
+# (playback_failed / timeout / ...) and the server's own diagnosis (last_diag code) is kept per source. PLAYHEAL_ISSUE_MIN_SOURCES = different
+# sources (episodes) of one site with the same issue class within PLAYHEAL_ISSUE_TTL seconds (24 h) that start a repair run (evidence kind
+# "playback" + `issue`, layer provider); PLAYHEAL_ISSUE_COOLDOWN = seconds the sources of a started repair do not count again (6 h).
+# Stream HOST rules (library/hostrules.py, table stream_host_rules): what the server's probe VERIFIED for one stream host (a Referer that turns 403 into
+# 200, an IP-bound host that needs the proxy) is applied to every stream of that host, not just the source it was learned on. STREAM_HOST_RULES = 0 turns
+# it off, STREAM_HOST_RULE_TTL = seconds a rule lives (30 days), STREAM_HOST_RULE_FAILS = failed probes of streams served through it that suspend it (2).
+STREAM_HOST_RULES = _int("STREAM_HOST_RULES", 1) != 0
+STREAM_HOST_RULE_TTL = max(3600, _int("STREAM_HOST_RULE_TTL", 30 * 86400))
+STREAM_HOST_RULE_FAILS = max(1, _int("STREAM_HOST_RULE_FAILS", 2))
+PLAYHEAL_ISSUE_MIN_SOURCES = max(1, _int("PLAYHEAL_ISSUE_MIN_SOURCES", 2))
+PLAYHEAL_ISSUE_TTL = max(600, _int("PLAYHEAL_ISSUE_TTL", 86400))
+PLAYHEAL_ISSUE_COOLDOWN = max(0, _int("PLAYHEAL_ISSUE_COOLDOWN", 21600))
 # A scan whose series items mostly have NO episode video source (library/ingest.py coverage; a registered site whose normalize
 # has no episode_source / series_page): PLAYHEAL_COVERAGE_RATIO = share of such series items (0.1 .. 1) and
 # PLAYHEAL_COVERAGE_MIN_SERIES = least number of series items that make it a signal: a warning in the scan record and a repair

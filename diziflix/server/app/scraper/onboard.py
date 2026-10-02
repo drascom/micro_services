@@ -10,7 +10,8 @@ tools of ``server/pi/extensions/diziflix-onboard.ts`` (ten sandbox tools + ``ask
 non-zero exit / crash, ``provider_error`` = the model provider failed while pi still exited 0, ``timeout``, ``server_restart``)
 or ``cancelled``.
 
-SELF-CORRECTION: a ``ready`` draft whose report says ``passed: false`` with a non-empty ``failing`` list (and no question
+SELF-CORRECTION: a ``ready`` draft whose report says ``passed: false`` with a non-empty ``failing`` list, or carries fixable warnings
+(``fixable_warnings``; also when it passed) (and no question
 pending) is not handed to the admin yet: the same pi session gets an automatic message (``auto_fix_message``: the failing
 criteria, their hints and the diagnostics) and runs again, at most ``auto_rounds()`` (``ONBOARD_AUTO_ROUNDS``, default 2) times
 in a row inside the one run thread (slot and token are kept; the draft is ``running`` and carries ``auto_round`` /
@@ -311,16 +312,83 @@ def open_failing(report: Any, skipped: Optional[list] = None) -> list[dict]:
     return out
 
 
-def auto_fix_message(report: dict, round_no: int, rounds: int, failing: list) -> str:
+#: ``report.warnings`` the agent can fix with the yaml (list / series_page / normalize / role of a collection / site meta); every other
+#: warning (a page that did not open, a time-out, "try again", blocked content, ``playable:`` = judged by its criterion, the admin's own
+#: choices) stays with the admin as before
+_FIXABLE_WARNING = re.compile(r"^(?:list\.fields\.|list: \d+ of \d+ rows|series_page: (?:no episode|row_selector|none of)|normalize[.:]|"
+                              r"collections: (?:no )?site_id|collections\[[^\]]*\]: role |display_name: missing|playback: |playback is )", re.I)
+_TRANSIENT_WARNING = re.compile(r"ran out of time|try again|not available|not checked|blocked", re.I)
+_WARNING_HINT = ("Find the cause on the page with query_html / grep_page (what does the selector catch, is the field in another attribute / "
+                 "element?) and fix the yaml; if the site does not have it, ask_user.")
+
+
+def _skip_names(skipped: Optional[list]) -> list[str]:
+    """The admin's skipped fields plus their other spellings (``özet`` = ``synopsis`` / ``overview`` / ``description``)."""
+    out = [str(f) for f in skipped or []]
+    for field in list(out):
+        out += [k for k, v in onboard_pipeline.FIELD_NAMES.items() if v == field]
+    return out
+
+
+def fixable_warnings(report: Any, skipped: Optional[list] = None) -> list[dict]:
+    """The warnings of a report the agent can remove itself (yaml / skill), as ``[{warning, hint, keys}]`` (``keys``: the criterion-like
+    names an admin "Sitede yok, atla: <field>" is matched against, see ``_field_matches``). Sources: ``report.warnings`` (the patterns
+    above), the series pages' own warnings (``series.samples[].warnings``: the row selector took the wrong links, ...), the information
+    fields of the detail page that stayed empty (the empty summary), and the home sections that could not be read. What the admin skipped
+    is left out (``skipped_fields``); a report without any of these gives ``[]`` (nothing to correct automatically)."""
+    if not isinstance(report, dict):
+        return []
+    found: list[dict] = []
+    seen: set = set()
+
+    def add(text: Any, keys: list, hint: str = _WARNING_HINT) -> None:
+        text = _clip(" ".join(str(text or "").split()), 260)
+        if text and text not in seen:
+            seen.add(text)
+            found.append({"warning": text, "hint": hint, "keys": keys})
+
+    for raw in report.get("warnings") or []:
+        text = " ".join(str(raw or "").split())
+        if not _FIXABLE_WARNING.search(text) or _TRANSIENT_WARNING.search(text):
+            continue
+        name = re.match(r"list\.fields\.([A-Za-z0-9_]+)", text)
+        keys = [f"{name.group(1)}_fill", name.group(1)] if name else (["series_full_inventory", "series_page"] if text.startswith("series_page") else [])
+        add(text, keys)
+    series = report.get("series") if isinstance(report.get("series"), dict) else {}
+    for sample in series.get("samples") or []:
+        if isinstance(sample, dict) and not sample.get("skipped") and not sample.get("blocked") and not sample.get("error"):
+            for w in (sample.get("warnings") or [])[:2]:
+                if not re.search(r"elendi|ait sayıldı", str(w)):   # (episodes of another series were dropped: information, not a defect)
+                    add(f"series page {onboard_pipeline.path_of(str(sample.get('series_url') or ''))}: {w}", ["series_full_inventory", "series_page"])
+    fill, empty = onboard_pipeline.detail_fill(report)
+    for name in empty:
+        add(f"detail page: field {name!r} is empty on every sampled page (yaml detail.fields.{name} selector / label)",
+            [f"{name}_fill", name], "Look for the label / element of this information on the sampled detail pages (query_html); if the site has none, ask_user.")
+    cols = report.get("collections")
+    if isinstance(cols, list):
+        for entry in cols:
+            if isinstance(entry, dict) and entry.get("status") == "error" and entry.get("role"):
+                why = "; ".join(str(e) for e in (entry.get("errors") or [])[:2]) or "could not be read"
+                add(f"home section {entry.get('role')!r}: {why}", [f"collection_{entry['role']}", f"collection:{entry['role']}"])
+    names = _skip_names(skipped)
+    return [w for w in found if not any(_field_matches(k, f) for k in w["keys"] for f in names)]
+
+
+def auto_fix_message(report: dict, round_no: int, rounds: int, failing: list, warns: Optional[list] = None) -> str:
     """The message of an automatic correction round: what failed (``failing`` with ``hint``), the diagnostics that belong to it and
     what to do about it. English like the skill; the admin sees only the one-line event ``Otomatik düzeltme turu n/N``."""
+    warns = warns or []
     lines = [f"AUTOMATIC CORRECTION ROUND {round_no}/{rounds}. The draft you handed in does not meet the acceptance criteria "
-             "(it is NOT ready for the admin). Fix it yourself:", ""]
+             "(it is NOT ready for the admin). Fix it yourself:" if failing else
+             f"AUTOMATIC CORRECTION ROUND {round_no}/{rounds}. The draft you handed in meets the acceptance criteria but still carries "
+             "warnings you can fix yourself (it is NOT ready for the admin). Fix it yourself:", ""]
     for item in failing[:8]:
         line = f"- {item['criterion']}: value {item.get('value')!r}, bound {item.get('bound')!r}"
         if item.get("hint"):
             line += f". Hint: {_clip(item['hint'], FAIL_HINT_CLIP)}"
         lines.append(line)
+    for item in warns[:6]:
+        lines.append(f"- warning: {item['warning']}. Hint: {_clip(item.get('hint') or _WARNING_HINT, FAIL_HINT_CLIP)}")
     wanted: list[str] = []
     for item in failing:
         for key in _DIAG_KEYS.get(item["criterion"], ()):
@@ -330,9 +398,11 @@ def auto_fix_message(report: dict, round_no: int, rounds: int, failing: list) ->
     shown = [(k, t) for k, t in shown if t]
     if shown:
         lines += ["", "Diagnostics of the failing pages (what your selectors caught, first rows):"] + [f"- {k}: {t}" for k, t in shown]
-    warns = [_clip(w, 200) for w in ((report or {}).get("warnings") or [])[:5]] if isinstance(report, dict) else []
-    if warns:
-        lines += ["", "Warnings of the same run (solve the solvable ones too):"] + [f"- {w}" for w in warns]
+    listed = {w["warning"] for w in warns}
+    others = [_clip(w, 200) for w in ((report or {}).get("warnings") or []) if _clip(" ".join(str(w).split()), 260) not in listed][:5] \
+        if isinstance(report, dict) else []
+    if others:
+        lines += ["", "Warnings of the same run (solve the solvable ones too):"] + [f"- {w}" for w in others]
     blocked = (report or {}).get("blocked") if isinstance(report, dict) else None
     if isinstance(blocked, dict) and blocked.get("count"):
         lines += ["", f"{blocked.get('count')} item(s) are blocked (copyright / access) and are not counted: do not fight them "
@@ -348,13 +418,16 @@ def _clip_block(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit - 1] + "…"
 
 
-def _auto_event_text(round_no: int, rounds: int, failing: list) -> str:
+def _auto_event_text(round_no: int, rounds: int, failing: list, warns: Optional[list] = None) -> str:
     names = []
     for item in failing[:4]:
         label = onboard_pipeline.criterion_label(item["criterion"])
         names.append(label)
     more = len(failing) - len(names)
-    return f"Otomatik düzeltme turu {round_no}/{rounds}: " + ", ".join(names) + (f" (+{more})" if more > 0 else "")
+    text = f"Otomatik düzeltme turu {round_no}/{rounds}: " + ", ".join(names) + (f" (+{more})" if more > 0 else "")
+    if warns:
+        text += ("; " if names else "") + f"{len(warns)} düzeltilebilir uyarı"
+    return text
 
 
 # --- draft events -----------------------------------------------------------------------------------------------
@@ -471,8 +544,8 @@ def _snapshot_pipeline(draft_id: str) -> None:
 def _begin_auto_round(draft_id: str, round_no: int) -> Optional[str]:
     """Decide an automatic correction round for the ``ready`` draft that was just handed in: the message of the round (and the draft
     is ``running`` again, ``auto_round`` / ``auto_rounds`` set, one ``Otomatik düzeltme turu`` event), or None when the draft goes
-    to the admin as it is: the rounds are used up (or switched off), the report passed / has no ``failing`` list / only failures the
-    admin skipped, the draft is an EDIT of a registered site, or it is no longer ``ready`` (cancelled / saved / deleted meanwhile). The check and the flip to
+    to the admin as it is: the rounds are used up (or switched off), the report has neither a ``failing`` list nor fixable warnings
+    (``fixable_warnings``) / only what the admin skipped, the draft is an EDIT of a registered site, or it is no longer ``ready`` (cancelled / saved / deleted meanwhile). The check and the flip to
     ``running`` happen under the save lock, so a save of the same draft either wins (no round) or is refused (``bad_state``)."""
     rounds = auto_rounds()
     if round_no >= rounds:
@@ -482,18 +555,18 @@ def _begin_auto_round(draft_id: str, round_no: int) -> Optional[str]:
         if not draft or draft.get("status") != "ready" or draft.get("question_data") or draft.get("mode") == "edit":
             return None   # (an edit of a registered site is judged on what the change touches: some criteria stay unmet by design)
         report = draft.get("report") or {}
-        if report.get("passed") is not False:
+        skipped = skipped_fields(draft)
+        failing = open_failing(report, skipped) if report.get("passed") is False else []
+        warns = fixable_warnings(report, skipped)   # (a passed report with fixable warnings gets its round too)
+        if not failing and not warns:
             return None
-        failing = open_failing(report, skipped_fields(draft))
-        if not failing:
-            return None
-        text = auto_fix_message(report, round_no + 1, rounds, failing)
+        text = auto_fix_message(report, round_no + 1, rounds, failing, warns)
         updated = store.update_draft(draft_id, status="running", error=None, question=None, question_data=None, reason=None,
                                      auto_round=round_no + 1, auto_rounds=rounds)
         if updated is None:
             return None
     add_event(draft_id, {"t": _now(), "kind": "status", "status": "auto_fix", "round": round_no + 1, "rounds": rounds,
-                         "text": _auto_event_text(round_no + 1, rounds, failing)})
+                         "text": _auto_event_text(round_no + 1, rounds, failing, warns)})
     return text
 
 

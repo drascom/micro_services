@@ -336,6 +336,12 @@ arama-yetenekli sitede aranır, aynı kanonik kimliğe çözülen sonuçta o diz
 izi "aday var ama akış yok / bilinmeyen host" ise ve LLM hesabı sağlıklı, heal açık, günlük bütçe (`SOURCEFINDER_DAILY_BUDGET`, 10 ajan koşusu) uygunsa onarım
 ajanı. İlk akış veren adım işi bitirir; bulunan kaynak `video_sources`ta kayıtlıdır ve çözülmüş bağlantısı önbelleğe yazılıdır (sonraki oynatma doğrudan).
 
+**Çözülen ama OYNATILAMAYAN akış**: `POST /api/playback-report?profile={pid}` (isteğe bağlı `profile`, bildirimin gideceği profil) sunucu tarafına yazılabilecek bir
+oynatma hatası (`playback_failed|timeout|network`; `aborted|offline|autoplay|unsupported|decode` ve tarayıcı-HLS hatası hariç) bildirirse sunucu aynı kaynak
+bulucuyu o bölüm için başlatır (`trigger: playback_failed`; tek-uçuş / cooldown / bütçe kuralları aynı) ve yanıta isteğe bağlı
+`"finder":{"state":"searching"|"not_found"}` ekler (yoksa alan YOKTUR; yanıt `{"ok":true}` olarak kalır). `retry` adımı, son oynatılamayan AYNI akışı
+(aynı host+yol) "bulundu" saymaz; yeni/başka akış ya da sunucunun öğrendiği Referer/vekil bulunduysa sayar. İstemci davranışı `/api/streams` `finder` ile aynıdır.
+
 #### `GET /api/source-finder/{item_id}?episode={episode_id}`
 → `{"state":"idle"|"searching"|"found"|"not_found","steps":[{"name":"retry","ok":false,"ms":1800,"note":"2 kaynak denendi, akış yok (...)"}],"updated_at":1790889094}`.
 `steps` en çok 6 kısa kayıt (`name` = `retry|search|heal`; `ok` = bu adım akış buldu; `note` kısa Türkçe açıklama), `updated_at` epoch saniye (`idle`'da 0).
@@ -448,7 +454,9 @@ Akışlar `source_id`, `source`, `kind`, `attempt_token` taşır.
 `POST /api/playback-report` başarı/hata bildirimini yalnızca ilgili sağlayıcıya
 uygular. İsteğe bağlı EK alan `detail` (en çok 120 karakter, yalnızca `event: "failure"` ile; istemci hata ayrıntısı:
 `hls:<tür>/<ayrıntı>[/<http kodu>]` hls.js, `video.error.code=N`, `avplay:<hata>`, `exo:<errorCodeName>[/<neden>][/http<kod>]`,
-`start-timeout`, `user-report`) — alanı bilmeyen sunucu için zararsız. Tam sözleşme ve kimlik birleştirme kuralları: `server/CANONICAL.md`.
+`start-timeout`, `user-report`) — alanı bilmeyen sunucu için zararsız. İsteğe bağlı EK alan `hlsjs` (bool, yalnız `true` ile gönderilir):
+html5 motoru akışı hls.js ile oynatıyordu; sunucu bu hatayı "tarayıcı HLS'i oynatamıyor" saymaz (gerçek oynatma hatası: tanı kodu + akış
+host'u ile oynatma sorunu defterine girer, ağ hatası kaynak sağlığına yazılır; `detail` `hls:<tür>/…` ile başlıyorsa `hlsjs` yokken de aynı). Tam sözleşme ve kimlik birleştirme kuralları: `server/CANONICAL.md`.
 İstemci motor seçimi `streams[].type`'a (`hls|mp4|embed`) göre yapılır, URL uzantısına DEĞİL (vekil mp4 adresi uzantısız,
 doğrudan HLS adresi `.txt` olabilir); uzantı yalnız `type` yoksa yedektir.
 Yönetim: `/api/admin/video-sources`, `/api/admin/identities`.

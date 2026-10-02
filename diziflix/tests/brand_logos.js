@@ -38,7 +38,7 @@ const focusStops = root => { const out = []; walk(root, n => { if (n.getAttribut
   assert(/<icon src="icon\.png"\/>/.test(cfg), 'config.xml icon -> icon.png');
   const html = read('index.html');
   assert(/<link rel="icon" type="image\/png" href="img\/favicon\.png">/.test(html), 'web favicon linked');
-  assert(!/responsive-v31/.test(html) && /responsive-v32/.test(html), 'cache-bust bumped to v32');
+  assert(!/responsive-v31/.test(html) && /responsive-v34/.test(html), 'cache-bust bumped to v32');
 }
 
 // ---------------------------------------------------------------- CSS: sizes keep the PNG aspect ratio, 2x assets, no GPU-heavy effects

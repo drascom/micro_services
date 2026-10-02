@@ -1791,7 +1791,7 @@ QUALITY_PAGE = ('<script>player.setup({sources:[{file:"https://cdn.example/q/360
 MIXED_URL = "https://mixed.example/player/m1"
 MIXED_PAGES = {   # the three player formats of one site (mixed_formats_player): extension-less file hosts, escaped HLS, googlevideo
     "yandex": '<script>jwplayer().setup({file:"https://downloader.disk.yandex.ru/disk/abc?filename=v.bin"});</script>',
-    "hls": '<script>jwplayer().setup({file:"https:\\/\\/video.twimg.com\\/pl\\/x.m3u8?tag=12", label:"auto"});</script>',
+    "hls": '<script>jwplayer().setup({file:"https:\\/\\/video.cdnhost.example\\/pl\\/x.m3u8?tag=12", label:"auto"});</script>',
     "google": '<script>jwplayer().setup({file:"https://redirector.googlevideo.com/videoplayback?id=1&itag=22"});</script>',
 }
 PUBLIC_DNS = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
@@ -1920,7 +1920,7 @@ class ProviderRecipeExamples(unittest.TestCase):
         self.assertEqual(got["url"], "https://cdn.example/q/360.mp4")
         # one extract rule per format: each page of the site is found by the rule that fits it
         expected = {"yandex": ("https://downloader.disk.yandex.ru/disk/abc?filename=v.bin", "mp4"),
-                    "hls": ("https://video.twimg.com/pl/x.m3u8?tag=12", "hls"),
+                    "hls": ("https://video.cdnhost.example/pl/x.m3u8?tag=12", "hls"),
                     "google": ("https://redirector.googlevideo.com/videoplayback?id=1&itag=22", "mp4")}
         for kind, (url, media) in expected.items():
             custom = {**self.samples, "mixed_formats_player": (MIXED_URL, {MIXED_URL: MIXED_PAGES[kind]}, url, "http")}
