@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Yalnızca platform teması (Material Components kütüphanesi kullanılmıyor; arayüz Compose Material3).
+         Koyu pencere/durum çubuğu: ilk kare ve sistem çubukları uygulama rengiyle uyumlu olsun. -->
+    <style name="Theme.Diziflix" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/dz_background</item>
+        <item name="android:statusBarColor">@color/dz_background</item>
+        <item name="android:navigationBarColor">@color/dz_background</item>
+        <item name="android:colorBackground">@color/dz_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

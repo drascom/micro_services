@@ -1,0 +1,105 @@
+{
+  "items": [
+    {
+      "id": "dizi-sinyal",
+      "card_kind": "title",
+      "card_key": "title:dizi-sinyal",
+      "availability": {
+        "state": "ready",
+        "reason": null,
+        "has_trailer": true
+      },
+      "type": "series",
+      "title": "Kayıp Sinyal",
+      "year": 2021,
+      "card": "/img/dizi-sinyal/card?w=342&h=192",
+      "portrait": "/img/dizi-sinyal/portrait?w=300&h=450",
+      "backdrop": "/img/dizi-sinyal/backdrop?w=1280&h=720",
+      "has_backdrop": true,
+      "overview": "Uzak bir istasyondan gelen sinyalin peşinde bir ekip.",
+      "genres": [
+        "Bilim Kurgu",
+        "Gizem"
+      ],
+      "rating": 8.3,
+      "country": "US",
+      "followers": 1172,
+      "badge": null,
+      "sources": [
+        "yabancidizi"
+      ],
+      "tmdb_id": 2001,
+      "imdb_id": "tt2000001",
+      "playback": "video",
+      "progress": {
+        "episode_id": "dizi-sinyal:s2:e1",
+        "position": 600,
+        "duration": 2700,
+        "pct": 22
+      }
+    },
+    {
+      "id": "dizi-merdiven",
+      "card_kind": "title",
+      "card_key": "title:dizi-merdiven",
+      "availability": {
+        "state": "ready",
+        "reason": null,
+        "has_trailer": false
+      },
+      "type": "series",
+      "title": "Yedinci Merdiven",
+      "year": 2024,
+      "card": "/img/dizi-merdiven/card?w=342&h=192",
+      "portrait": "/img/dizi-merdiven/portrait?w=300&h=450",
+      "backdrop": "/img/dizi-merdiven/backdrop?w=1280&h=720",
+      "has_backdrop": true,
+      "overview": "Bir apartmanın yedinci katındaki sırlar.",
+      "genres": [
+        "Gizem"
+      ],
+      "rating": 8.0,
+      "country": "US",
+      "followers": 420,
+      "badge": null,
+      "sources": [
+        "yabancidizi"
+      ],
+      "tmdb_id": null,
+      "imdb_id": null,
+      "playback": "video",
+      "progress": null
+    }
+  ],
+  "total": 7,
+  "offset": 0,
+  "limit": 2,
+  "genres": [
+    {
+      "id": "action",
+      "name": "Aksiyon"
+    },
+    {
+      "id": "comedy",
+      "name": "Komedi"
+    },
+    {
+      "id": "drama",
+      "name": "Dram"
+    },
+    {
+      "id": "science_fiction",
+      "name": "Bilim Kurgu"
+    },
+    {
+      "id": "mystery",
+      "name": "Gizem"
+    }
+  ],
+  "years": [
+    2026,
+    2024,
+    2023,
+    2021
+  ]
+}

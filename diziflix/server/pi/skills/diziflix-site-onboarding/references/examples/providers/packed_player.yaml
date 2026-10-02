@@ -1,0 +1,10 @@
+# eval(function(p,a,c,k,e,d){...}) hides the URL: `unpack: true` lets the rule search the unpacked script too (the page
+# text is searched as well). Nothing is executed: the unpacker only substitutes the packer's word table.
+name: packed_player
+description: "Player pages of packed.example: a p.a.c.k.e.r.-packed jwplayer setup holds the HLS URL."
+version: 1
+match:
+  host_regex: '(^|\.)packed\.example$'
+extract:
+  - regex: 'file\s*:\s*[\x22\x27]([^\x22\x27]+\.m3u8[^\x22\x27]*)'
+    unpack: true

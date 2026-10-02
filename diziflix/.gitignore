@@ -1,0 +1,44 @@
+# --- secrets / env ---
+.env
+**/.env
+server/data/stream_proxy.key
+
+# --- python ---
+venv/
+__pycache__/
+*.pyc
+
+# --- runtime data (keep only the mock fixture) ---
+/server/data/*
+!/server/data/fixture.json
+
+# --- deploy backups / local removals ---
+/deploy-backups/
+
+# --- build outputs ---
+/dist/
+*.wgt
+*.apk
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+/android/.idea/
+node_modules/
+
+# --- tests: not tracked for now (decision 2026-10-02) ---
+/tests/
+/server/tests/
+/server/tests_archive/
+/android/app/src/test/
+/android/app/src/androidTest/
+
+# --- handoff notes: never tracked (decision 2026-10-02; only the latest one is kept locally) ---
+HANDOFF*.md
+/docs/handoff-reports/
+
+# --- macOS / editors ---
+._*
+.DS_Store
+.vscode/
+.idea/

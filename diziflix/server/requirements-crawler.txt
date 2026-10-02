@@ -1,0 +1,2 @@
+# Separate runtime for plain HTTP crawling. Obscura owns browser rendering.
+crawlee==1.10.0

@@ -1,0 +1,16 @@
+venv/
+__pycache__/
+*.pyc
+.env
+data/diziflix.db
+data/diziflix.db-*
+data/imgcache/
+data/subcache/
+data/ops_settings.json
+data/ops_settings.json.lock
+data/.ops_settings.*.tmp
+data/tmdb_preview.json
+data/tmdb_seasons_preview.json
+data/.tmdb_preview.*.tmp
+app/scraper/configs/providers/.recipes.lock
+app/scraper/configs/providers/.tmp-*

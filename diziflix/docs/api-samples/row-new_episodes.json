@@ -1,0 +1,139 @@
+{
+  "id": "new_episodes",
+  "title": "Yeni Eklenen Bölümler",
+  "items": [
+    {
+      "id": "dizi-sinyal",
+      "card_kind": "episode",
+      "card_key": "episode:dizi-sinyal:s3:e1",
+      "availability": {
+        "state": "ready",
+        "reason": null,
+        "has_trailer": true
+      },
+      "type": "series",
+      "title": "Kayıp Sinyal",
+      "year": 2021,
+      "card": "/img/dizi-sinyal/card?w=342&h=192",
+      "portrait": "/img/dizi-sinyal/portrait?w=300&h=450",
+      "backdrop": "/img/dizi-sinyal/backdrop?w=1280&h=720",
+      "has_backdrop": true,
+      "overview": "Uzak bir istasyondan gelen sinyalin peşinde bir ekip.",
+      "genres": [
+        "Bilim Kurgu",
+        "Gizem"
+      ],
+      "rating": 8.3,
+      "country": "US",
+      "followers": 1172,
+      "badge": null,
+      "sources": [
+        "yabancidizi"
+      ],
+      "tmdb_id": 2001,
+      "imdb_id": "tt2000001",
+      "playback": "video",
+      "progress": null,
+      "episode_id": "dizi-sinyal:s3:e1",
+      "episode_label": "S03 B01 · Yankı",
+      "season": 3,
+      "episode": 1,
+      "still_url": "/img/dizi-sinyal:s3:e1/still?w=320&h=180",
+      "has_still": true,
+      "primary_action": {
+        "kind": "play_episode",
+        "item_id": "dizi-sinyal",
+        "episode_id": "dizi-sinyal:s3:e1"
+      }
+    },
+    {
+      "id": "dizi-hat",
+      "card_kind": "episode",
+      "card_key": "episode:dizi-hat:s1:e5",
+      "availability": {
+        "state": "ready",
+        "reason": null,
+        "has_trailer": false
+      },
+      "type": "series",
+      "title": "Sınır Hattı",
+      "year": 2026,
+      "card": "/img/dizi-hat/card?w=342&h=192",
+      "portrait": "/img/dizi-hat/portrait?w=300&h=450",
+      "backdrop": "/img/dizi-hat/backdrop?w=1280&h=720",
+      "has_backdrop": false,
+      "overview": "Tek bölümü olan dizi.",
+      "genres": [
+        "Aksiyon"
+      ],
+      "rating": 7.9,
+      "country": "US",
+      "followers": null,
+      "badge": null,
+      "sources": [
+        "yabancidizi"
+      ],
+      "tmdb_id": null,
+      "imdb_id": null,
+      "playback": "video",
+      "progress": null,
+      "episode_id": "dizi-hat:s1:e5",
+      "episode_label": "S01 B05 · Hat Kopuyor",
+      "season": 1,
+      "episode": 5,
+      "still_url": "/img/dizi-hat:s1:e5/still?w=320&h=180",
+      "has_still": false,
+      "primary_action": {
+        "kind": "play_episode",
+        "item_id": "dizi-hat",
+        "episode_id": "dizi-hat:s1:e5"
+      }
+    },
+    {
+      "id": "dizi-yakinda",
+      "card_kind": "episode",
+      "card_key": "episode:dizi-yakinda:s1:e1",
+      "availability": {
+        "state": "ready",
+        "reason": null,
+        "has_trailer": false
+      },
+      "type": "series",
+      "title": "Yakında Gelen",
+      "year": 2026,
+      "card": "/img/dizi-yakinda/card?w=342&h=192",
+      "portrait": "/img/dizi-yakinda/portrait?w=300&h=450",
+      "backdrop": "/img/dizi-yakinda/backdrop?w=1280&h=720",
+      "has_backdrop": false,
+      "overview": "Yeni bölümü henüz yayınlanmadı.",
+      "genres": [
+        "Komedi"
+      ],
+      "rating": 7.0,
+      "country": "US",
+      "followers": null,
+      "badge": null,
+      "sources": [
+        "yabancidizi"
+      ],
+      "tmdb_id": null,
+      "imdb_id": null,
+      "playback": "video",
+      "progress": null,
+      "episode_id": "dizi-yakinda:s1:e1",
+      "episode_label": "S01 B01 · Pilot",
+      "season": 1,
+      "episode": 1,
+      "still_url": "/img/dizi-yakinda:s1:e1/still?w=320&h=180",
+      "has_still": false,
+      "primary_action": {
+        "kind": "play_episode",
+        "item_id": "dizi-yakinda",
+        "episode_id": "dizi-yakinda:s1:e1"
+      }
+    }
+  ],
+  "offset": 0,
+  "limit": 20,
+  "total": 3
+}

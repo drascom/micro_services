@@ -1,0 +1,17 @@
+{
+  "min_items": 5,
+  "min_fill_ratio": 0.9,
+  "critical_field_fill": {
+    "title": 1.0,
+    "poster_url": 0.9,
+    "detail_url": 1.0
+  },
+  "series_page": {
+    "min_items": 1,
+    "min_fill_ratio": 0.9,
+    "critical_field_fill": {
+      "url": 1.0,
+      "title": 0.9
+    }
+  }
+}

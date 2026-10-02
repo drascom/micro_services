@@ -1,0 +1,10 @@
+# The player is a <video> with <source> tags (one rule per quality, the last rule takes whatever is left).
+name: source_tag_player
+description: "Embed pages of sourcetag.example: a <video> element with one <source> per quality."
+version: 1
+match:
+  host_regex: '(^|\.)sourcetag\.example$'
+  path_regex: '^/embed/'
+extract:
+  - {css: 'source[size="1080"]', attr: src, quality: "1080p"}
+  - {css: "video source[src]", attr: src}

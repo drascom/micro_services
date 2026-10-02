@@ -1,0 +1,105 @@
+playback: trailer
+display_name: Sinemalar.com
+site_id: sinemalar
+fetch_mode: http
+schema: MovieItem
+version: 2
+updated_at: "2026-09-06T00:00:00Z"
+base_url: "https://www.sinemalar.com"
+# robots.txt disallows only /ara and /mobileweb/ara (search). /filmler is allowed.
+list_url: "/filmler"
+
+# Small discovery feed only: recent, visible and upcoming titles. Full genre
+# catalogues are intentionally not crawled; user searches are resolved live.
+# The scraper reuses the shared selectors below for each entry:
+#   id    -> collection id in the API
+#   title -> row title shown on the home screen
+#   path  -> site path to fetch (page 0)
+#   role  -> catalog | new | upcoming
+# Per-collection item cap lives in the ingester (~30, first page only).
+# NOT a model for `collections:`: these ids/roles (catalog, new) predate the <role>_<site_id> convention and a new
+# site never lists whole catalogues; write collections as `references/collections.md` says.
+collections:
+  - {id: "sinemalar_recent", title: "Sinemalar Yeni Filmler", path: "/filmler/en-yeni-filmler", role: "catalog"}
+  - {id: "new",     title: "Yeni Eklenenler", path: "/filmler",            role: "new"}
+  - {id: "yakinda", title: "Yakında Vizyonda", path: "/filmler/pekyakinda", role: "upcoming"}
+
+list:
+  row_selector: "div.card.metadata-card"
+  fields:
+    title:
+      selector: "div.card-title h2"
+    original_title:
+      selector: "div.card-info.dark"
+    poster_url:
+      selector: "div.img-container img"
+      attr: "src"
+    detail_url:
+      selector: "a.poster-link"
+      attr: "href"
+    rating:
+      selector: "div.stat .value"
+      cast: "float"
+    year:
+      selector: "div.card-info:not(.dark):not(.card-excerpt)"
+      regex: "(?:19|20)\\d{2}"
+      cast: "int"
+    genres:
+      selector: "div.card-info:not(.dark):not(.card-excerpt)"
+      split: "•"
+      index: -1
+      then_split: ","
+      multi: true
+    synopsis:
+      selector: "div.card-excerpt"
+
+# Turn the site-internal /embed/<id> player URL into a real playable MP4.
+# Pure DATA (like the selectors above) so a new provider is a new yaml block, not code.
+stream_resolver:
+  provider: empower
+  video_id_regex: "/embed/(\\d+)"          # extract the numeric video id from the embed url
+  endpoint: "https://vm.empower.net/player/sinemalar/{video_id}?mode=st&m="
+  referer: "https://www.sinemalar.com/"     # required by the player API (not by the mp4 itself)
+  sources_json_path: "media.level"          # list of {value, source}
+  source_field: "source"
+  quality_field: "value"
+  # Prefer real numeric qualities high->low; "0" is advertised but 403s on the CDN, so last.
+  quality_preference: ["1080", "720", "480", "360", "270", "240", "0"]
+  default_quality_json_path: "media.defaultQuality"
+  duration_json_path: "duration"            # milliseconds (top-level)
+  verify: true                               # probe the chosen mp4; skip 403/unreachable qualities
+  type: "mp4"
+
+# Verified detail pages supplement list discovery; no canonical IDs are assigned here.
+detail_pages:
+  - /film/287065/drama
+  - /film/282704/mayday
+  - /film/286639/jester-2
+  - /film/280975/cesur-yaga-ve-sihirli-dunya
+  - /film/282865/uzayli-dostum-flik
+
+detail:
+  fields:
+    title:
+      selector: h1
+    original_title:
+      selector: 'meta[property="og:title"]'
+      attr: content
+      regex: '\((.+)\) - Film'
+    year:
+      selector: 'meta[property="og:title"]'
+      attr: content
+      regex: 'Film, ((?:19|20)\d{2})'
+      cast: int
+    poster_url:
+      selector: 'meta[property="og:image"]'
+      attr: content
+    synopsis:
+      selector: "div.text-content.summary"
+    trailer_url:
+      # site-internal embed (not YouTube): https://www.sinemalar.com/embed/<id>
+      selector: 'meta[property="og:video:url"]'
+      attr: "content"
+    genres:
+      selector: "div.chip-container a.chip"
+      all: true

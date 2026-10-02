@@ -1,0 +1,11 @@
+# The player URL itself answers JSON and wants the embedding site as referer plus an XHR header.
+name: json_api_player
+description: "Player API of jsonapi.example: answers {sources: [{file, label}]} when called with the site as referer."
+version: 1
+match:
+  host_regex: '(^|\.)jsonapi\.example$'
+  path_regex: '^/api/player/'
+referer: "{base}/"
+headers: {X-Requested-With: XMLHttpRequest}
+extract:
+  - {json_path: "sources[*].file"}

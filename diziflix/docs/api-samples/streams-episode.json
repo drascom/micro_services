@@ -1,0 +1,36 @@
+{
+  "streams": [
+    {
+      "audio_lang": null,
+      "sub_mode": "none",
+      "hard_lang": null,
+      "sub_known": false,
+      "site_lang_hint": null,
+      "mirror_of": null,
+      "url": "https://cdn.example/dizi-sinyal/s1e1.mp4",
+      "type": "mp4",
+      "quality": "auto",
+      "label": "yabancidizi · VidMolly",
+      "variant_id": "v_952861ef5892",
+      "source_id": "vs_f96f6dbd61f5d16e2fe6c10d",
+      "source": "yabancidizi",
+      "kind": "episode",
+      "attempt_token": "REDACTED",
+      "proxied": false
+    }
+  ],
+  "subtitles": [],
+  "audio": [
+    {
+      "id": "a_orig",
+      "lang": null,
+      "label": "Orijinal",
+      "stream_ids": [
+        "v_952861ef5892"
+      ],
+      "default": true
+    }
+  ],
+  "resume_position": 0,
+  "duration": 0
+}

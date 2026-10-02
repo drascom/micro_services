@@ -1,0 +1,87 @@
+/* DIZIFLIX - Ayarlar ekrani (js/screens/settings.js). 1920x1080 tasarim birimi, yatay kenar 80px. No box-shadow / blur / filter (Tizen GPU).
+   Odak dili uygulamanin geri kalaniyla ayni: koyu yuzey, --accent sari halka/dolgu. Secili (dolu nokta + hafif sari zemin) ile
+   odakli (sari halka) ayri gorunur. */
+.settings{position:relative;width:var(--stage-w);padding:36px 80px 0;}
+
+/* ---- ust satir ---- */
+.set-top{display:flex;align-items:center;height:64px;}
+.set-top .back-btn{position:static;margin-left:0;}
+.set-spacer{flex:1;}
+.set-top-nav{display:flex;align-items:center;}
+.set-title{font-size:48px;font-weight:900;margin:14px 0 22px;}
+
+/* ---- kartlar ---- */
+.set-card{
+  background:var(--surface);border:2px solid #303030;border-radius:20px;
+  padding:24px 28px;
+}
+.set-card-title{font-size:26px;font-weight:700;color:#fff;}
+.set-hint{font-size:20px;color:#8a8a8a;min-height:28px;margin:2px 0 12px;}
+.set-note{font-size:22px;color:#8a8a8a;margin-top:14px;}
+
+/* ---- dugmeler ---- */
+.set-btn{
+  display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
+  height:60px;padding:0 30px;font-size:24px;font-weight:700;white-space:nowrap;
+  border-radius:12px;border:4px solid transparent;
+  background:rgba(255,255,255,.10);color:#fff;cursor:pointer;user-select:none;
+  transition:transform .2s var(--ease),background-color .2s var(--ease);
+}
+.set-btn:hover{background:rgba(255,255,255,.18);}
+.set-btn.primary{background:var(--accent);color:#111;}
+.set-btn.primary:hover{background:#ffd84d;}
+.set-btn.focused{background:var(--accent);color:#111;border-color:var(--accent);transform:scale(1.05);}
+.set-btn.primary.focused{border-color:#fff;}
+.set-btn-top{height:52px;padding:0 26px;font-size:22px;}
+
+/* ---- sunucu karti ---- */
+.set-server-row{display:flex;align-items:center;margin-top:12px;}
+.set-field{
+  flex:1;min-width:0;display:flex;align-items:center;height:72px;margin-right:20px;
+  background:var(--surface-2);border:3px solid #444;border-radius:14px;
+  transition:border-color .15s var(--ease),background-color .15s var(--ease);
+}
+.set-field.is-focus{border-color:var(--accent);background:#252525;}
+.set-input{
+  flex:1;min-width:0;height:100%;padding:0 22px;border:0;outline:0;background:transparent;
+  color:#fff;font-size:26px;
+}
+.set-input::placeholder{color:#777;}
+.set-btn-inline{height:52px;margin-right:8px;padding:0 22px;font-size:22px;border-radius:10px;}
+.set-status{font-size:22px;color:var(--accent);margin-top:10px;min-height:30px;}
+
+/* ---- tercih kartlari: yan yana, dikey radyo listeleri ---- */
+.set-cols{display:flex;margin-top:24px;}
+.set-cols .set-card{flex:1;min-width:0;}
+.set-cols .set-card + .set-card{margin-left:24px;}
+.set-radios{display:block;}
+.opt{
+  display:flex;align-items:center;height:68px;margin-bottom:10px;padding:0 24px;
+  font-size:28px;color:#d6d6d6;
+  background:rgba(255,255,255,.04);border:4px solid transparent;border-radius:12px;
+  cursor:pointer;user-select:none;
+  transition:background-color .15s var(--ease),border-color .15s var(--ease);
+}
+.opt:last-child{margin-bottom:0;}
+.opt:hover{background:rgba(255,255,255,.09);}
+.opt-mark{
+  position:relative;flex:0 0 28px;width:28px;height:28px;margin-right:20px;
+  border:3px solid #777;border-radius:50%;
+}
+/* secili: dolu nokta + hafif sari zemin ve kenar (odaktan bagimsiz) */
+.opt.on{background:rgba(245,197,24,.10);border-color:rgba(245,197,24,.45);color:#fff;font-weight:700;}
+.opt.on .opt-mark{border-color:var(--accent);}
+.opt.on .opt-mark:after{
+  content:'';position:absolute;left:5px;top:5px;width:12px;height:12px;border-radius:50%;background:var(--accent);
+}
+/* odakli: ana sayfa kartlarindaki gibi tam sari halka (secili olsun olmasin) */
+.opt.focused{border-color:var(--accent);background:#353535;color:#fff;}
+.opt.on.focused{background:rgba(245,197,24,.18);}
+
+/* ---- alt ---- */
+.set-foot{display:flex;margin-top:24px;}
+.set-info{
+  margin-top:20px;font-size:20px;line-height:1.45;color:#7d7d7d;
+  /* cok kucuk marka amblemi (img/mascot-sm.png): sag altta, yerlesimi/odagi etkilemez (yalniz arka plan) */
+  background:url(../img/mascot-sm.png) no-repeat right bottom / 52px 40px;
+}

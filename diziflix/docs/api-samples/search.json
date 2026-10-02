@@ -1,0 +1,96 @@
+{
+  "items": [
+    {
+      "id": "dizi-sinyal",
+      "card_kind": "title",
+      "card_key": "title:dizi-sinyal",
+      "availability": {
+        "state": "ready",
+        "reason": null,
+        "has_trailer": true
+      },
+      "type": "series",
+      "title": "Kayıp Sinyal",
+      "year": 2021,
+      "card": "/img/dizi-sinyal/card?w=342&h=192",
+      "portrait": "/img/dizi-sinyal/portrait?w=300&h=450",
+      "backdrop": "/img/dizi-sinyal/backdrop?w=1280&h=720",
+      "has_backdrop": true,
+      "overview": "Uzak bir istasyondan gelen sinyalin peşinde bir ekip.",
+      "genres": [
+        "Bilim Kurgu",
+        "Gizem"
+      ],
+      "rating": 8.3,
+      "country": "US",
+      "followers": 1172,
+      "badge": null,
+      "sources": [
+        "yabancidizi"
+      ],
+      "tmdb_id": 2001,
+      "imdb_id": "tt2000001",
+      "playback": "video",
+      "progress": {
+        "episode_id": "dizi-sinyal:s2:e1",
+        "position": 600,
+        "duration": 2700,
+        "pct": 22
+      },
+      "source_options": [
+        {
+          "site": "yabancidizi",
+          "name": "Yabancı Dizi",
+          "kind": "series",
+          "episodes": 7,
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "id": "film-sahil",
+      "card_kind": "title",
+      "card_key": "title:film-sahil",
+      "availability": {
+        "state": "unavailable",
+        "reason": "no_video_source",
+        "has_trailer": false
+      },
+      "type": "movie",
+      "title": "Kayıp Sahil",
+      "year": 2023,
+      "card": "/img/film-sahil/card?w=342&h=192",
+      "portrait": "/img/film-sahil/portrait?w=300&h=450",
+      "backdrop": "/img/film-sahil/backdrop?w=1280&h=720",
+      "has_backdrop": false,
+      "overview": "Fragmanı silinmiş bir film.",
+      "genres": [
+        "Macera"
+      ],
+      "rating": 6.1,
+      "country": "US",
+      "followers": null,
+      "badge": null,
+      "sources": [
+        "yabancidizi"
+      ],
+      "tmdb_id": null,
+      "imdb_id": null,
+      "playback": "unavailable",
+      "progress": null,
+      "source_options": [
+        {
+          "site": "yabancidizi",
+          "name": "Yabancı Dizi",
+          "kind": "movie",
+          "episodes": 0,
+          "status": "unknown"
+        }
+      ]
+    }
+  ],
+  "total": 2,
+  "remote": false,
+  "remote_error": null,
+  "remote_sites": {}
+}

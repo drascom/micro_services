@@ -1,0 +1,26 @@
+{
+  "streams": [
+    {
+      "audio_lang": null,
+      "sub_mode": "none",
+      "hard_lang": null,
+      "sub_known": false,
+      "site_lang_hint": null,
+      "mirror_of": null,
+      "url": "https://www.youtube.com/embed/aaaaaaaaaaa",
+      "type": "embed",
+      "quality": "auto",
+      "label": "yabancidizi · Fragman",
+      "variant_id": "v_acbd81a7421a",
+      "source_id": "vs_0925a83a316506190b074efa",
+      "source": "yabancidizi",
+      "kind": "trailer",
+      "attempt_token": "REDACTED",
+      "proxied": false
+    }
+  ],
+  "subtitles": [],
+  "audio": [],
+  "resume_position": 0,
+  "duration": 0
+}

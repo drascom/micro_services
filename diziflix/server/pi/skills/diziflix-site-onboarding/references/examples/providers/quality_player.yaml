@@ -1,0 +1,11 @@
+# A player with several qualities, sources: [{file, label}, ...]: quality_group / label_group read them from the page, one stream
+# per entry, best first (auto / unlabelled last), duplicate URLs once.
+name: quality_player
+description: "Player pages of qualities.example: a sources list with one file and quality label per entry."
+version: 1
+match:
+  host_regex: '(^|\.)qualities\.example$'
+extract:
+  - regex: 'file\s*:\s*\x22([^\x22]+)\x22[^}]*?label\s*:\s*\x22([^\x22]+)\x22'
+    group: 1
+    quality_group: 2

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>diziflix ops</title>
+<link rel="stylesheet" href="/admin/style.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1><span id="ttl">Olay Defteri</span><small>diziflix ops · <span id="upd">yükleniyor</span></small></h1>
+    <span id="sys" class="pill"></span>
+  </div>
+  <nav class="tabs" role="tablist" aria-label="Bölümler">
+    <button role="tab" id="tab-btn-events" data-tab="events" aria-selected="true" aria-controls="tab-events">Olay defteri</button>
+    <button role="tab" id="tab-btn-library" data-tab="library" aria-selected="false" aria-controls="tab-library">Kütüphane</button>
+    <button role="tab" id="tab-btn-settings" data-tab="settings" aria-selected="false" aria-controls="tab-settings">Ayarlar</button>
+    <button role="tab" id="tab-btn-onboard" data-tab="onboard" aria-selected="false" aria-controls="tab-onboard">Siteler</button>
+  </nav>
+  <div id="banner" class="banner" aria-live="polite"></div>
+  <div class="layout" id="tab-events" role="tabpanel" aria-labelledby="tab-btn-events">
+    <main>
+      <h2>Kaynaklar (süzgeç · son 24 tarama)</h2>
+      <div id="filters" class="filters"></div>
+      <div class="types" role="group" aria-label="Olay türü">
+        <button data-type="all" aria-pressed="true">Hepsi</button>
+        <button data-type="scan" aria-pressed="false">Taramalar</button>
+        <button data-type="heal" aria-pressed="false">LLM düzeltmeleri</button>
+        <button data-type="tmdb" aria-pressed="false">TMDB</button>
+        <button data-type="onboard" aria-pressed="false">Site ekle</button>
+        <button data-type="bad" aria-pressed="false">Sadece sorunlar</button>
+      </div>
+      <ol id="feed" class="feed" aria-label="Olaylar"></ol>
+      <div class="more" id="morew"><button id="more">Daha eski olaylar</button></div>
+    </main>
+    <aside id="detail" class="detail" aria-label="Olay detayı" tabindex="-1"></aside>
+  </div>
+  <div class="layout hidden" id="tab-library" role="tabpanel" aria-labelledby="tab-btn-library">
+    <main>
+      <div class="lbar">
+        <input id="lq" type="search" placeholder="Başlık ara…" aria-label="Başlık ara" autocomplete="off">
+        <select id="lsort" aria-label="Sıralama">
+          <option value="recent">Son eklenen</option>
+          <option value="title">Başlık (A-Z)</option>
+          <option value="broken">En çok kırık</option>
+        </select>
+        <div class="seg" id="lview" role="group" aria-label="Görünüm">
+          <button data-view="grid" aria-pressed="true">Grid</button>
+          <button data-view="list" aria-pressed="false">Liste</button>
+        </div>
+        <button id="lreload" class="btn" title="Yenile">Yenile</button>
+      </div>
+      <div id="lfilters" class="lfilters"></div>
+      <div id="lmeta" class="lmeta" aria-live="polite"></div>
+      <div id="litems" class="lgrid" aria-label="Kütüphane öğeleri"></div>
+      <div class="lmore" id="lmorew"><button id="lmore" class="btn">Daha fazla</button></div>
+    </main>
+    <aside id="ldetail" class="detail" aria-label="Öğe detayı" tabindex="-1"></aside>
+  </div>
+  <div class="hidden" id="tab-settings" role="tabpanel" aria-labelledby="tab-btn-settings">
+    <div id="set-root" class="sset"><div class="empty">Yükleniyor…</div></div>
+  </div>
+  <div class="hidden" id="tab-onboard" role="tabpanel" aria-labelledby="tab-btn-onboard">
+    <div id="ob-root" class="obw"><div class="empty">Yükleniyor…</div></div>
+  </div>
+</div>
+<div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+<script src="/admin/app.js"></script>
+<script src="/admin/library.js"></script>
+<script src="/admin/settings.js"></script>
+<script src="/admin/onboard.js"></script>
+</body>
+</html>

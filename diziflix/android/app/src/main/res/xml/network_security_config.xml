@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Diziflix sunucusu LAN'da düz HTTP (http://192.168.0.61:8090) sunar; görseller (/img) ve API aynı
+  adresten gelir. Android 9+ varsayılan olarak cleartext trafiği engeller.
+
+  Neden genel izin (base-config)? Network Security Config, IP aralığı/CIDR ya da "özel ağ" kalıbı
+  tanımlayamaz; yalnızca tam alan adı/IP ve alt alan adı eşleşir. Sunucu adresi kullanıcı tarafından
+  Ayarlar'dan değiştirilebildiği (başka IP, .local adı, VPN adresi) için sabit bir liste yeterli olmaz.
+  Uygulama yalnızca kullanıcının girdiği sunucuyla ve sunucunun verdiği akış adresleriyle konuşur.
+
+  Daha kısıtlı istenirse base-config'i kaldırıp aşağıdaki gibi alan adı bazlı izin verin
+  (yalnızca bu tam ana bilgisayara düz HTTP açılır, diğerleri HTTPS zorunlu kalır):
+
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.0.61</domain>
+    </domain-config>
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

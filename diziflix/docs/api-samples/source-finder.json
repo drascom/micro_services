@@ -1,0 +1,12 @@
+{
+  "state": "found",
+  "steps": [
+    {
+      "name": "retry",
+      "ok": true,
+      "ms": 4200,
+      "note": "1/1 kaynak çözüldü"
+    }
+  ],
+  "updated_at": 1790939000
+}

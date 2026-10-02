@@ -1,0 +1,16 @@
+{
+  "avatars": [
+    {
+      "seed": "a1",
+      "url": "/img/avatar/a1?w=200&h=200"
+    },
+    {
+      "seed": "a2",
+      "url": "/img/avatar/a2?w=200&h=200"
+    },
+    {
+      "seed": "a3",
+      "url": "/img/avatar/a3?w=200&h=200"
+    }
+  ]
+}

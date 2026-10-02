@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diziflix Kokpit</title>
+<style>
+:root{
+  --bg:#f5f6f8; --surface:#ffffff; --surface2:#eef0f4; --line:#dfe2e8;
+  --text:#14171f; --muted:#5b6474;
+  --ok:#0f8a4f; --ok-bg:#dff5e8; --warn:#a86500; --warn-bg:#fdefd0;
+  --bad:#c62b3a; --bad-bg:#fbdfe2; --heal:#6a3fd1; --heal-bg:#e9e1fb;
+  --run:#1c62d6; --run-bg:#dce8fc; --idle:#c9cfd9;
+  --radius:14px; --font:ui-sans-serif,-apple-system,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0d1016; --surface:#161a23; --surface2:#1e2330; --line:#2a3040;
+  --text:#e8ebf2; --muted:#98a2b6;
+  --ok:#4bd18b; --ok-bg:#12352385; --warn:#f0b34a; --warn-bg:#3a2c0f;
+  --bad:#ff7a86; --bad-bg:#421a20; --heal:#b494ff; --heal-bg:#2c2250;
+  --run:#6ea2ff; --run-bg:#172a4f; --idle:#3a4256;
+}}
+*{box-sizing:border-box}
+html{color-scheme:light dark}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 var(--font);-webkit-text-size-adjust:100%}
+.wrap{max-width:1240px;margin:0 auto;padding:16px}
+header{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;margin-bottom:16px}
+h1{font-size:20px;margin:0;letter-spacing:-.01em}
+h1 small{font-weight:500;color:var(--muted);font-size:13px;margin-left:8px}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px;font-weight:600}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;background:var(--surface2);color:var(--muted)}
+.pill.ok{background:var(--ok-bg);color:var(--ok)} .pill.warn{background:var(--warn-bg);color:var(--warn)}
+.pill.bad{background:var(--bad-bg);color:var(--bad)} .pill.heal{background:var(--heal-bg);color:var(--heal)}
+.pill.run{background:var(--run-bg);color:var(--run)}
+.dot{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block}
+.pulse{animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.pulse{animation:none}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.grid{display:grid;gap:14px}
+.kpis{grid-template-columns:repeat(4,1fr);margin-bottom:14px}
+.kpi b{display:block;font-size:26px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.kpi span{color:var(--muted);font-size:12px}
+.row2{grid-template-columns:1.5fr 1fr;margin-bottom:14px}
+.mono{font-family:var(--mono);font-size:12.5px}
+.num{font-variant-numeric:tabular-nums}
+/* live */
+.live-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.bar{height:10px;background:var(--surface2);border-radius:99px;overflow:hidden;margin:12px 0 8px}
+.bar i{display:block;height:100%;background:var(--run);border-radius:99px;transition:width .5s linear}
+.bar.heal i{background:var(--heal)}
+.stats{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:13px}
+.stats b{color:var(--text)}
+.idle-note{color:var(--muted);padding:8px 0}
+/* health cards */
+.src-grid{grid-template-columns:repeat(auto-fill,minmax(230px,1fr));margin-bottom:14px}
+.src{position:relative;display:flex;flex-direction:column;gap:8px;padding:14px}
+.src .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.src .name{font-weight:650;font-size:15px}
+.src .big{font-size:22px;font-weight:650;letter-spacing:-.02em}
+.src .meta{display:flex;justify-content:space-between;color:var(--muted);font-size:12.5px}
+.strip{display:grid;grid-template-columns:repeat(24,1fr);gap:2px}
+.strip span{height:20px;border-radius:3px;background:var(--idle)}
+.strip .ok{background:var(--ok)} .strip .bad{background:var(--bad)}
+.strip .healed{background:var(--heal)} .strip .warn{background:var(--warn)}
+.strip .bad{background-image:repeating-linear-gradient(45deg,transparent 0 3px,rgba(255,255,255,.35) 3px 5px)}
+.strip .healed{background-image:radial-gradient(circle,rgba(255,255,255,.6) 1.5px,transparent 2px);background-size:6px 6px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:4px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+svg{display:block;width:100%;height:auto}
+.spark{height:28px}
+/* timeline */
+.tl-lane text{fill:var(--muted);font-size:11px}
+.tl-grid{stroke:var(--line);stroke-width:1}
+.tl-run{cursor:default}
+/* feed */
+.feed{list-style:none;margin:0;padding:0;max-height:330px;overflow:auto}
+.feed li{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.feed li:last-child{border:0}
+.feed time{color:var(--muted);min-width:44px;font-size:12px;padding-top:1px}
+.feed .new{animation:flash 1.6s ease-out}
+@keyframes flash{from{background:var(--run-bg)}to{background:transparent}}
+/* heals */
+.heal-item{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--surface2)}
+.heal-item:last-child{margin-bottom:0}
+.heal-item header{margin:0 0 8px}
+.diff{display:grid;gap:4px;margin:6px 0}
+.diff code{display:block;padding:5px 8px;border-radius:6px;font-family:var(--mono);font-size:12px;word-break:break-all}
+.diff .b{background:var(--bad-bg);color:var(--bad)} .diff .a{background:var(--ok-bg);color:var(--ok)}
+button{font:inherit;font-size:13px;font-weight:600;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--text);cursor:pointer;min-height:34px}
+button:hover{background:var(--surface2)}
+:focus-visible{outline:2px solid var(--run);outline-offset:2px}
+/* catalog */
+.cat{display:grid;gap:8px}
+.cat-row{display:grid;grid-template-columns:96px 1fr auto;gap:10px;align-items:center;font-size:13px}
+.cat-row .t{height:8px;background:var(--surface2);border-radius:99px;overflow:hidden}
+.cat-row .t i{display:block;height:100%;background:var(--run);opacity:.7}
+.recent{margin:12px 0 0;padding:0;list-style:none;color:var(--muted);font-size:12.5px}
+.recent li{padding:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.recent b{color:var(--text);font-weight:600}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (max-width:900px){.row2{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:480px){.wrap{padding:12px}.cat-row{grid-template-columns:78px 1fr auto}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Diziflix Kokpit<small>demo veri, canlı simülasyon</small></h1>
+    <div id="sys" class="pill"></div>
+  </header>
+
+  <section class="grid kpis" aria-label="Özet">
+    <div class="card kpi"><b id="k1">-</b><span>Sağlıklı kaynak</span></div>
+    <div class="card kpi"><b id="k2">-</b><span>Son 24s tarama / başarı</span></div>
+    <div class="card kpi"><b id="k3">-</b><span>Ort. hız (öğe/sn)</span></div>
+    <div class="card kpi"><b id="k4">-</b><span>Son 24s LLM düzeltme</span></div>
+  </section>
+
+  <section class="card" style="margin-bottom:14px" aria-labelledby="hl">
+    <h2 id="hl">Şu an</h2>
+    <div id="live"></div>
+  </section>
+
+  <section aria-labelledby="hs">
+    <h2 id="hs">Kaynak sağlığı, son 24 tarama (eskiden yeniye)</h2>
+    <div id="srcs" class="grid src-grid"></div>
+    <div class="legend" style="margin:-4px 0 14px">
+      <span><i style="background:var(--ok)"></i>Başarılı</span>
+      <span><i style="background:var(--heal)"></i>LLM düzeltti</span>
+      <span><i style="background:var(--warn)"></i>Kısmi</span>
+      <span><i style="background:var(--bad)"></i>Hata</span>
+    </div>
+  </section>
+
+  <section class="card" style="margin-bottom:14px" aria-labelledby="tl">
+    <h2 id="tl">Zaman çizgisi, son 12 saat</h2>
+    <div id="timeline"></div>
+  </section>
+
+  <div class="grid row2">
+    <section class="card" aria-labelledby="hh">
+      <h2 id="hh">LLM düzeltmeleri</h2>
+      <div id="heals"></div>
+    </section>
+    <div class="grid" style="align-content:start">
+      <section class="card" aria-labelledby="hf">
+        <h2 id="hf">Canlı akış</h2>
+        <ul id="feed" class="feed" aria-live="polite"></ul>
+      </section>
+      <section class="card" aria-labelledby="hc">
+        <h2 id="hc">Katalog</h2>
+        <div id="cat" class="cat"></div>
+        <ul id="recent" class="recent"></ul>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ---------- sahte veri motoru ---------- */
+var H=3600e3, MIN=60e3;
+var seed=7; function rnd(){seed=(seed*16807)%2147483647;return (seed-1)/2147483646}
+function ri(a,b){return Math.floor(a+rnd()*(b-a+1))}
+function pick(a){return a[Math.floor(rnd()*a.length)]}
+var SRC=[
+ {id:'sinemalar',name:'sinemalar',speed:9.5,items:[180,320],pages:[14,26],cat:4820,every:70},
+ {id:'yabancidizi',name:'yabancidizi',speed:6.2,items:[120,260],pages:[10,22],cat:3140,every:95},
+ {id:'dizipal',name:'dizipal',speed:7.8,items:[90,200],pages:[8,18],cat:2260,every:110},
+ {id:'filmizle',name:'filmizle',speed:11,items:[200,380],pages:[16,30],cat:5510,every:130},
+ {id:'hdfilmcehennemi',name:'hdfilmcehennemi',speed:5.4,items:[80,170],pages:[7,15],cat:1870,every:150}
+];
+var SEL={
+ title:['h1.entry-title','.film-title > a','div.post-head h2','a.movie-name'],
+ poster:['img.poster::attr(src)','.thumb img::attr(data-src)','figure > img'],
+ episodes:['ul.ep-list li a','.seasons .ep > a','div.bolumler a'],
+ next:['a.next.page-numbers','.pagination li.active + li a','link[rel=next]']
+};
+var ERR=['HTTP 503 kaynak yanıt vermedi','Zaman aşımı (30s)','Cloudflare challenge','Boş sayfa döndü'];
+var runs=[], heals=[], feed=[], uid=1, cool={}, live=null, lastTick=Date.now();
+var now=Date.now();
+SRC.forEach(function(s){
+  var t=now-24*H+ri(0,40)*MIN;
+  while(t<now-4*MIN){
+    var items=ri(s.items[0],s.items[1]), dur=Math.round(items/s.speed*(0.8+rnd()*.5)), r=rnd(), st='ok', err=null;
+    if(r>.93){st='bad';err=pick(ERR);items=Math.round(items*.2);dur=ri(20,40)}
+    else if(r>.86){st='healed'}
+    else if(r>.83){st='warn'}
+    var run={id:uid++,src:s.id,start:t,dur:dur,items:items,pages:ri(s.pages[0],s.pages[1]),status:st,err:err};
+    run.speed=+(run.items/run.dur).toFixed(1);
+    runs.push(run);
+    if(st==='healed'){
+      var f=pick(Object.keys(SEL)), b=pick(SEL[f]), a=pick(SEL[f].filter(function(x){return x!==b}));
+      heals.push({id:uid++,src:s.id,time:t+dur*500,field:f,before:b,after:a,status:'applied',model:'gemma-4-12b',run:run.id,tries:ri(1,2)});
+    }
+    t+=(s.every+ri(-15,25))*MIN;
+  }
+});
+runs.sort(function(a,b){return a.start-b.start});
+heals.sort(function(a,b){return a.time-b.time});
+function runsOf(id){return runs.filter(function(r){return r.src===id})}
+
+/* ---------- yardımcılar ---------- */
+function $(id){return document.getElementById(id)}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function ago(t){var d=(Date.now()-t)/1000;if(d<60)return Math.round(d)+' sn';if(d<3600)return Math.round(d/60)+' dk';if(d<86400)return Math.round(d/3600)+' sa';return Math.round(d/86400)+' g'}
+function dur(s){return s<60?s+' sn':Math.floor(s/60)+' dk '+(s%60)+' sn'}
+var LBL={ok:'Başarılı',healed:'Düzeltildi',warn:'Kısmi',bad:'Hata'};
+var ICON={ok:'✓',healed:'✦',warn:'!',bad:'✕'};
+function pillFor(st){var c={ok:'ok',healed:'heal',warn:'warn',bad:'bad'}[st];return '<span class="pill '+c+'">'+ICON[st]+' '+LBL[st]+'</span>'}
+function srcHealth(id){
+  if(cool[id]&&cool[id]>Date.now())return {k:'bad',t:'Bekleme (cooldown)'};
+  if(live&&live.src===id&&live.phase!=='scan')return {k:'heal',t:'Düzeltiliyor'};
+  var l=runsOf(id).slice(-5), bad=l.filter(function(r){return r.status==='bad'}).length, w=l.filter(function(r){return r.status==='warn'||r.status==='healed'}).length;
+  if(bad>=2)return {k:'bad',t:'Sorunlu'};
+  if(bad===1||w>=2)return {k:'warn',t:'Dikkat'};
+  return {k:'ok',t:'Sağlıklı'};
+}
+function spark(vals,color){
+  var w=100,h=28,mx=Math.max.apply(null,vals),mn=Math.min.apply(null,vals),sp=mx-mn||1;
+  var pts=vals.map(function(v,i){return (i/(vals.length-1)*w).toFixed(1)+','+(h-3-(v-mn)/sp*(h-6)).toFixed(1)}).join(' ');
+  return '<svg class="spark" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" aria-hidden="true"><polyline points="'+pts+'" fill="none" stroke="'+color+'" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>';
+}
+
+/* ---------- render ---------- */
+function renderKpis(){
+  var h=0;SRC.forEach(function(s){if(srcHealth(s.id).k==='ok')h++});
+  var r24=runs.filter(function(r){return r.start>Date.now()-24*H}), ok=r24.filter(function(r){return r.status!=='bad'}).length;
+  var sp=r24.length?r24.reduce(function(a,r){return a+r.speed},0)/r24.length:0;
+  var h24=heals.filter(function(x){return x.time>Date.now()-24*H});
+  var good=h24.filter(function(x){return x.status==='applied'}).length;
+  $('k1').textContent=h+' / '+SRC.length;
+  $('k2').textContent=r24.length+' / %'+Math.round(ok/Math.max(1,r24.length)*100);
+  $('k3').textContent=sp.toFixed(1);
+  $('k4').textContent=h24.length+' ('+good+' geçerli)';
+  var bad=SRC.filter(function(s){return srcHealth(s.id).k==='bad'}).length, warn=SRC.filter(function(s){return srcHealth(s.id).k==='warn'}).length;
+  var p=$('sys'); p.className='pill '+(bad?'bad':warn?'warn':'ok');
+  p.innerHTML='<span class="dot"></span> '+(bad?bad+' kaynak sorunlu':warn?warn+' kaynak dikkat istiyor':'Sistem sağlıklı');
+}
+function renderLive(){
+  var el=$('live');
+  if(!live){
+    var nx=SRC.map(function(s){return {s:s,t:(runsOf(s.id).slice(-1)[0]||{start:0}).start+s.every*MIN}}).sort(function(a,b){return a.t-b.t})[0];
+    el.innerHTML='<div class="idle-note"><span class="pill">Boşta</span> Sıradaki tarama: <b>'+nx.s.name+'</b> (demo için birkaç sn içinde)</div>';return;
+  }
+  var isHeal=live.phase!=='scan', pct=Math.min(100,Math.round(live.pages/live.totalPages*100));
+  var label=live.phase==='scan'?'Tarıyor':live.phase==='drift'?'Drift algılandı':'LLM düzeltiyor';
+  el.innerHTML='<div class="live-head"><div><b style="font-size:17px">'+esc(live.src)+'</b> <span class="pill '+(isHeal?'heal':'run')+'"><span class="dot pulse"></span> '+label+'</span></div><span class="mono">geçen '+Math.round((Date.now()-live.start)/1000)+' sn</span></div>'+
+   '<div class="bar '+(isHeal?'heal':'')+'" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'"><i style="width:'+pct+'%"></i></div>'+
+   '<div class="stats"><span><b class="num">'+live.pages+'</b> / '+live.totalPages+' sayfa</span><span><b class="num">'+live.items+'</b> öğe</span><span><b class="num">'+(live.rate||0).toFixed(1)+'</b> öğe/sn</span>'+
+   (live.phase==='heal'?'<span>alan: <b class="mono">'+live.field+'</b></span>':'')+'</div>';
+}
+function renderSrcs(){
+  $('srcs').innerHTML=SRC.map(function(s){
+    var rs=runsOf(s.id), last=rs[rs.length-1], h=srcHealth(s.id), l24=rs.slice(-24);
+    var cells='';for(var i=0;i<24;i++){var r=l24[l24.length-24+i];cells+=r?'<span class="'+(r.status==='ok'?'ok':r.status)+'" title="'+esc(new Date(r.start).toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'})+' '+LBL[r.status]+' '+r.items+' öğe')+'"></span>':'<span></span>'}
+    var col=getComputedStyle(document.documentElement).getPropertyValue('--run').trim();
+    return '<article class="card src" aria-label="'+esc(s.name)+' '+h.t+'"><div class="top"><span class="name">'+esc(s.name)+'</span><span class="pill '+h.k+'">'+h.t+'</span></div>'+
+     '<div class="big num">'+last.speed+' <span style="font-size:13px;font-weight:500;color:var(--muted)">öğe/sn</span></div>'+
+     '<div class="meta"><span>'+ago(last.start)+' önce</span><span class="num">'+dur(last.dur)+' · '+last.items+' öğe · '+last.pages+' sf</span></div>'+
+     '<div class="strip" role="img" aria-label="Son 24 tarama durumu">'+cells+'</div>'+
+     spark(l24.map(function(r){return r.dur}),col)+
+     '<div class="meta"><span>tarama süresi trendi</span><span>'+(last.err?esc(last.err):(cool[s.id]&&cool[s.id]>Date.now()?'cooldown '+Math.ceil((cool[s.id]-Date.now())/1000)+' sn':'hata yok'))+'</span></div></article>';
+  }).join('');
+}
+function renderTimeline(){
+  var W=1000,LH=30,padL=118,padT=6,H_=SRC.length*LH+34,span=12*H,t0=Date.now()-span,x=function(t){return padL+(t-t0)/span*(W-padL-8)};
+  var g='';
+  for(var i=0;i<=12;i+=2){var tx=x(t0+i*H);g+='<line class="tl-grid" x1="'+tx+'" x2="'+tx+'" y1="'+padT+'" y2="'+(SRC.length*LH+padT)+'"/><text x="'+tx+'" y="'+(SRC.length*LH+padT+16)+'" text-anchor="middle" fill="var(--muted)" font-size="11">'+new Date(t0+i*H).toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'})+'</text>'}
+  SRC.forEach(function(s,i){
+    var y=padT+i*LH;
+    g+='<text x="0" y="'+(y+19)+'" fill="var(--text)" font-size="12.5">'+esc(s.name)+'</text><line class="tl-grid" x1="'+padL+'" x2="'+(W-8)+'" y1="'+(y+LH)+'" y2="'+(y+LH)+'"/>';
+    runsOf(s.id).concat(live&&live.src===s.id?[{start:live.start,dur:(Date.now()-live.start)/1000,status:'live',items:live.items}]:[]).forEach(function(r){
+      if(r.start+r.dur*1000<t0)return;
+      var x1=Math.max(padL,x(r.start)),w=Math.max(4,x(r.start+r.dur*1000)-x(r.start));
+      var c={ok:'var(--ok)',healed:'var(--heal)',warn:'var(--warn)',bad:'var(--bad)',live:'var(--run)'}[r.status];
+      g+='<rect class="tl-run" x="'+x1+'" y="'+(y+6)+'" width="'+w+'" height="16" rx="3" fill="'+c+'"><title>'+esc(s.name+' · '+(LBL[r.status]||'canlı'))+' · '+r.items+' öğe</title></rect>';
+    });
+    heals.filter(function(h){return h.src===s.id&&h.time>t0}).forEach(function(h){
+      var hx=x(h.time);g+='<path d="M'+hx+' '+(y+1)+' l5 5 l-5 5 l-5 -5z" fill="var(--surface)" stroke="var(--heal)" stroke-width="2"><title>LLM düzeltme: '+esc(h.field)+'</title></path>'
+    });
+  });
+  $('timeline').innerHTML='<svg viewBox="0 0 '+W+' '+H_+'" role="img" aria-label="Kaynak başına tarama zaman çizgisi"><g>'+g+'</g></svg><div class="legend"><span><i style="background:var(--run)"></i>Çalışan</span><span>◇ LLM düzeltme anı</span></div>';
+}
+function renderHeals(){
+  var l=heals.slice(-4).reverse();
+  $('heals').innerHTML=l.map(function(h){
+    var st=h.status==='applied'?'<span class="pill ok">✓ Uygulandı</span>':h.status==='rolled_back'?'<span class="pill warn">↶ Geri alındı</span>':'<span class="pill bad">✕ İşe yaramadı</span>';
+    return '<div class="heal-item"><header><b>'+esc(h.src)+' <span class="mono" style="color:var(--muted);font-weight:500">'+esc(h.field)+'</span></b>'+st+'</header>'+
+     '<div class="diff"><code class="b">− '+esc(h.before)+'</code><code class="a">+ '+esc(h.after)+'</code></div>'+
+     '<div class="meta" style="display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--muted);font-size:12.5px"><span>'+ago(h.time)+' önce · '+esc(h.model)+' · '+h.tries+' deneme</span>'+
+     (h.status==='applied'?'<button data-rb="'+h.id+'">Geri al</button>':'')+'</div></div>';
+  }).join('')||'<div class="idle-note">Henüz düzeltme yok.</div>';
+}
+function renderFeed(){
+  $('feed').innerHTML=feed.slice(0,30).map(function(f,i){return '<li class="'+(f.fresh?'new':'')+'"><time>'+ago(f.t)+'</time><span>'+f.html+'</span></li>'}).join('');
+  feed.forEach(function(f){f.fresh=false});
+}
+function renderCat(){
+  var mx=Math.max.apply(null,SRC.map(function(s){return s.cat}));
+  $('cat').innerHTML=SRC.map(function(s){return '<div class="cat-row"><span>'+esc(s.name.slice(0,12))+'</span><span class="t"><i style="width:'+(s.cat/mx*100)+'%"></i></span><b class="num">'+s.cat.toLocaleString('tr-TR')+'</b></div>'}).join('');
+  var titles=['Kara Şövalye','Breaking Bad S05E14','Dune: Part Two','The Bear S03E02','Oppenheimer','Severance S02E07'];
+  $('recent').innerHTML=titles.slice(0,4).map(function(t,i){return '<li><b>'+esc(t)+'</b> · '+esc(SRC[i%SRC.length].name)+' · '+(i*7+2)+' dk önce</li>'}).join('');
+}
+function renderAll(){renderKpis();renderLive();renderSrcs();renderTimeline();renderHeals();renderFeed();renderCat()}
+function log(html){feed.unshift({t:Date.now(),html:html,fresh:true})}
+/* seed feed */
+runs.slice(-6).reverse().forEach(function(r){feed.push({t:r.start+r.dur*1000,html:'<b>'+esc(r.src)+'</b> '+pillFor(r.status)+' '+r.items+' öğe, '+dur(r.dur)})});
+
+/* ---------- canlı simülasyon ---------- */
+function startJob(){
+  var cand=SRC.filter(function(s){return !(cool[s.id]&&cool[s.id]>Date.now())});
+  var s=pick(cand), items=ri(s.items[0],s.items[1]);
+  live={src:s.id,start:Date.now(),phase:'scan',pages:0,items:0,totalPages:ri(s.pages[0],s.pages[1]),targetItems:items,speed:s.speed,
+        willDrift:rnd()<.4,driftAt:.35+rnd()*.4,field:pick(Object.keys(SEL)),healLeft:0,driftDone:false,healed:null,rate:0};
+  log('<b>'+esc(s.id)+'</b> <span class="pill run">▶ başladı</span>');
+}
+function finishJob(status,err){
+  var s=SRC.filter(function(x){return x.id===live.src})[0], d=Math.max(1,Math.round((Date.now()-live.start)/1000)*1);
+  var run={id:uid++,src:live.src,start:live.start,dur:d*6,items:live.items,pages:live.pages,status:status,err:err||null};
+  run.speed=+(run.items/run.dur).toFixed(1);
+  runs.push(run);
+  log('<b>'+esc(run.src)+'</b> '+pillFor(status)+' '+run.items+' öğe, '+dur(run.dur)+(err?' · '+esc(err):''));
+  if(status!=='bad'){s.cat+=Math.round(live.items*.06)}
+  live=null;renderAll();
+}
+setInterval(function(){
+  var dt=(Date.now()-lastTick)/1000;lastTick=Date.now();
+  if(!live){
+    if(Math.random()<.18){startJob();renderAll()} else {renderLive();renderKpis()}
+    renderFeedTimes();return;
+  }
+  var L=live, frac=L.pages/L.totalPages;
+  if(L.phase==='scan'){
+    if(L.willDrift&&!L.driftDone&&frac>=L.driftAt){
+      L.phase='drift';L.driftDone=true;L.tick=0;
+      log('<b>'+esc(L.src)+'</b> <span class="pill warn">! drift</span> selector bozuldu: <span class="mono">'+esc(L.field)+'</span>');
+      renderSrcs();
+    } else {
+      var inc=Math.max(1,Math.round(L.speed*dt*(.7+Math.random()*.6)/ (L.targetItems/L.totalPages)*1.6));
+      var pgAdd=Math.min(L.totalPages-L.pages,Math.random()<.7?1:0);
+      L.pages+=pgAdd;L.items=Math.min(L.targetItems,Math.round(L.pages/L.totalPages*L.targetItems));L.rate=L.speed*(.85+Math.random()*.3);
+      if(L.pages>=L.totalPages){finishJob(L.healed?'healed':(Math.random()<.06?'warn':'ok'));return}
+    }
+  } else if(L.phase==='drift'){
+    L.tick++; if(L.tick>=2){L.phase='heal';L.tick=0;L.healLeft=5+ri(0,3);L.rate=0}
+  } else if(L.phase==='heal'){
+    L.tick++;
+    if(L.tick>=L.healLeft){
+      var okk=Math.random()<.78;
+      var b=pick(SEL[L.field]), a=pick(SEL[L.field].filter(function(x){return x!==b}));
+      if(okk){
+        var h={id:uid++,src:L.src,time:Date.now(),field:L.field,before:b,after:a,status:'applied',model:'gemma-4-12b',run:null,tries:ri(1,2)};
+        heals.push(h);L.healed=h;L.phase='scan';
+        log('<b>'+esc(L.src)+'</b> <span class="pill heal">✦ LLM düzeltti</span> <span class="mono">'+esc(b)+' → '+esc(a)+'</span>');
+        renderHeals();
+      } else {
+        heals.push({id:uid++,src:L.src,time:Date.now(),field:L.field,before:b,after:'(çözüm bulunamadı)',status:'failed',model:'gemma-4-12b',run:null,tries:3});
+        cool[L.src]=Date.now()+90e3;
+        log('<b>'+esc(L.src)+'</b> <span class="pill bad">✕ düzeltme başarısız</span> 90 sn bekleme');
+        finishJob('bad','Selector bulunamadı: '+L.field);return;
+      }
+    }
+  }
+  renderLive();renderFeedTimes();
+},1000);
+function renderFeedTimes(){renderKpis();if(!renderFeedTimes.n)renderFeedTimes.n=0;if(++renderFeedTimes.n%5===0){renderSrcs();renderFeed()}}
+$('heals').addEventListener('click',function(e){
+  var id=e.target.getAttribute&&e.target.getAttribute('data-rb');if(!id)return;
+  var h=heals.filter(function(x){return x.id==+id})[0];h.status='rolled_back';
+  log('<b>'+esc(h.src)+'</b> <span class="pill warn">↶ geri alındı</span> <span class="mono">'+esc(h.field)+'</span>');
+  renderHeals();renderFeed();
+});
+renderAll();
+window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').addEventListener&&window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',renderAll);
+</script>
+</body>
+</html>

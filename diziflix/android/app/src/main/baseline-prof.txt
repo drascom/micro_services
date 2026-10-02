@@ -1,0 +1,57 @@
+# Elle yazılmış (joker karakterli) Baseline Profile. AGP bunu release APK'ya assets/dexopt/baseline.prof olarak
+# gömer; androidx.profileinstaller ilk açılışta ART'a işler (yan yüklemede de). Amaç: Compose temel sınıfları,
+# LazyList/Pager ve uygulama kodu JIT'i beklemeden derlenmiş olsun (ilk açılış + ilk kaydırma takılmaları).
+# Gerçek ölçümle üretilmiş profil değildir; emin olunan kapsamlı paketlerle sınırlıdır.
+# Biçim: [FLAGS]sınıf;->yöntem(imza)dönüş  ve  L sınıf;  (H=sıcak, S=açılış, P=açılış sonrası)
+
+# --- Compose runtime (kompozisyon motoru, snapshot durumu, efektler)
+HSPLandroidx/compose/runtime/**;->**(**)**
+Landroidx/compose/runtime/**;
+
+# --- Compose UI (yerleşim, çizim, modifier, giriş, metin)
+HSPLandroidx/compose/ui/**;->**(**)**
+Landroidx/compose/ui/**;
+
+# --- Compose foundation (LazyColumn/LazyRow/Pager/Canvas/clickable/background)
+HSPLandroidx/compose/foundation/**;->**(**)**
+Landroidx/compose/foundation/**;
+
+# --- Compose animation (ripple/geçişler için çekirdek)
+HSPLandroidx/compose/animation/**;->**(**)**
+Landroidx/compose/animation/**;
+
+# --- Material3 (Scaffold, NavigationBar, Button, Text, Icon, Surface)
+HSPLandroidx/compose/material3/**;->**(**)**
+Landroidx/compose/material3/**;
+HSPLandroidx/compose/material/ripple/**;->**(**)**
+Landroidx/compose/material/ripple/**;
+
+# --- Activity / Lifecycle / Navigation / ViewModel
+HSPLandroidx/activity/**;->**(**)**
+Landroidx/activity/**;
+HSPLandroidx/lifecycle/**;->**(**)**
+Landroidx/lifecycle/**;
+HSPLandroidx/navigation/**;->**(**)**
+Landroidx/navigation/**;
+
+# --- Coroutines ve serileştirme
+HSPLkotlinx/coroutines/**;->**(**)**
+Lkotlinx/coroutines/**;
+HSPLkotlinx/serialization/**;->**(**)**
+Lkotlinx/serialization/**;
+
+# --- Coil (görsel isteği/çözme/önbellek) ve OkHttp/Okio (ağ)
+HSPLcoil/**;->**(**)**
+Lcoil/**;
+HSPLokhttp3/**;->**(**)**
+Lokhttp3/**;
+HSPLokio/**;->**(**)**
+Lokio/**;
+
+# --- DataStore (ayarlar)
+HSPLandroidx/datastore/**;->**(**)**
+Landroidx/datastore/**;
+
+# --- Uygulamanın kendisi
+HSPLcom/diziflix/app/**;->**(**)**
+Lcom/diziflix/app/**;

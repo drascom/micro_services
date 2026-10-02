@@ -1,0 +1,216 @@
+{
+  "id": "dizi-umut",
+  "card_kind": "title",
+  "card_key": "title:dizi-umut",
+  "availability": {
+    "state": "unavailable",
+    "reason": "no_video_source",
+    "has_trailer": true
+  },
+  "type": "series",
+  "title": "Yeni Umut",
+  "year": 2026,
+  "card": "/img/dizi-umut/card?w=342&h=192",
+  "portrait": "/img/dizi-umut/portrait?w=300&h=450",
+  "backdrop": "/img/dizi-umut/backdrop?w=1280&h=720",
+  "has_backdrop": false,
+  "overview": "Bölüm listesi henüz gelmedi.",
+  "genres": [
+    "Dram"
+  ],
+  "rating": null,
+  "country": "US",
+  "followers": null,
+  "badge": null,
+  "sources": [
+    "yabancidizi"
+  ],
+  "tmdb_id": null,
+  "imdb_id": null,
+  "playback": "trailer",
+  "progress": null,
+  "cast": [],
+  "director": null,
+  "runtime": 0,
+  "in_mylist": false,
+  "seasons": [],
+  "resume": {
+    "episode_id": "dizi-umut",
+    "position": 0
+  },
+  "actions": [
+    {
+      "kind": "play_trailer",
+      "item_id": "dizi-umut"
+    }
+  ],
+  "similar": [
+    {
+      "id": "film-klasik",
+      "card_kind": "title",
+      "card_key": "title:film-klasik",
+      "availability": {
+        "state": "ready",
+        "reason": null,
+        "has_trailer": false
+      },
+      "type": "movie",
+      "title": "Eski Dostlar",
+      "year": 1985,
+      "card": "/img/film-klasik/card?w=342&h=192",
+      "portrait": "/img/film-klasik/portrait?w=300&h=450",
+      "backdrop": "/img/film-klasik/backdrop?w=1280&h=720",
+      "has_backdrop": false,
+      "overview": "Yıllar sonra bir araya gelen dostlar.",
+      "genres": [
+        "Dram"
+      ],
+      "rating": 8.6,
+      "country": "US",
+      "followers": null,
+      "badge": null,
+      "sources": [
+        "yabancidizi"
+      ],
+      "tmdb_id": null,
+      "imdb_id": null,
+      "playback": "video",
+      "progress": null
+    },
+    {
+      "id": "film-mavi",
+      "card_kind": "title",
+      "card_key": "title:film-mavi",
+      "availability": {
+        "state": "ready",
+        "reason": null,
+        "has_trailer": false
+      },
+      "type": "movie",
+      "title": "Mavi Liman Yolu",
+      "year": 2023,
+      "card": "/img/film-mavi/card?w=342&h=192",
+      "portrait": "/img/film-mavi/portrait?w=300&h=450",
+      "backdrop": "/img/film-mavi/backdrop?w=1280&h=720",
+      "has_backdrop": true,
+      "overview": "Bir liman kasabasında geçen sıcak bir hikaye.",
+      "genres": [
+        "Dram"
+      ],
+      "rating": 8.1,
+      "country": "US",
+      "followers": 90,
+      "badge": null,
+      "sources": [
+        "yabancidizi"
+      ],
+      "tmdb_id": null,
+      "imdb_id": null,
+      "playback": "video",
+      "progress": null
+    },
+    {
+      "id": "film-defter",
+      "card_kind": "title",
+      "card_key": "title:film-defter",
+      "availability": {
+        "state": "unavailable",
+        "reason": "no_video_source",
+        "has_trailer": false
+      },
+      "type": "movie",
+      "title": "Eski Defter",
+      "year": 1999,
+      "card": "/img/film-defter/card?w=342&h=192",
+      "portrait": "/img/film-defter/portrait?w=300&h=450",
+      "backdrop": "/img/film-defter/backdrop?w=1280&h=720",
+      "has_backdrop": false,
+      "overview": "Yalnızca katalog bilgisi.",
+      "genres": [
+        "Dram"
+      ],
+      "rating": 8.0,
+      "country": "US",
+      "followers": null,
+      "badge": null,
+      "sources": [
+        "yabancidizi"
+      ],
+      "tmdb_id": null,
+      "imdb_id": null,
+      "playback": "unavailable",
+      "progress": null
+    },
+    {
+      "id": "film-gece",
+      "card_kind": "title",
+      "card_key": "title:film-gece",
+      "availability": {
+        "state": "ready",
+        "reason": null,
+        "has_trailer": true
+      },
+      "type": "movie",
+      "title": "Gece Yarısı Treni",
+      "year": 2024,
+      "card": "/img/film-gece/card?w=342&h=192",
+      "portrait": "/img/film-gece/portrait?w=300&h=450",
+      "backdrop": "/img/film-gece/backdrop?w=1280&h=720",
+      "has_backdrop": true,
+      "overview": "Bir tren, bir bavul ve çözülmesi gereken bir gece.",
+      "genres": [
+        "Gerilim",
+        "Dram"
+      ],
+      "rating": 7.4,
+      "country": "US",
+      "followers": 310,
+      "badge": null,
+      "sources": [
+        "yabancidizi"
+      ],
+      "tmdb_id": 1001,
+      "imdb_id": "tt1000001",
+      "playback": "video",
+      "progress": {
+        "episode_id": "film-gece",
+        "position": 3000,
+        "duration": 6480,
+        "pct": 46
+      }
+    },
+    {
+      "id": "dizi-bozuk",
+      "card_kind": "title",
+      "card_key": "title:dizi-bozuk",
+      "availability": {
+        "state": "ready",
+        "reason": null,
+        "has_trailer": false
+      },
+      "type": "series",
+      "title": "Bozuk Son",
+      "year": 2026,
+      "card": "/img/dizi-bozuk/card?w=342&h=192",
+      "portrait": "/img/dizi-bozuk/portrait?w=300&h=450",
+      "backdrop": "/img/dizi-bozuk/backdrop?w=1280&h=720",
+      "has_backdrop": false,
+      "overview": "Son bölümün kaynağı çalışmıyor.",
+      "genres": [
+        "Dram"
+      ],
+      "rating": 6.5,
+      "country": "US",
+      "followers": null,
+      "badge": null,
+      "sources": [
+        "yabancidizi"
+      ],
+      "tmdb_id": null,
+      "imdb_id": null,
+      "playback": "video",
+      "progress": null
+    }
+  ],
+  "hydrating": false
+}

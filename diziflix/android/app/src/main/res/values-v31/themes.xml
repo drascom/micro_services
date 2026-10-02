@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ açılış (splash): koyu zemin + ortada yazısız DiziFlix karakteri (adaptive ikonun ön planı; 2/3 daire içinde kalır).
+         values/themes.xml ile aynı temel; yalnızca splash öğeleri eklidir. -->
+    <style name="Theme.Diziflix" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/dz_background</item>
+        <item name="android:statusBarColor">@color/dz_background</item>
+        <item name="android:navigationBarColor">@color/dz_background</item>
+        <item name="android:colorBackground">@color/dz_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowSplashScreenBackground">@color/dz_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+    </style>
+</resources>

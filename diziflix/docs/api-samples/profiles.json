@@ -1,0 +1,18 @@
+{
+  "profiles": [
+    {
+      "id": "p1",
+      "name": "İsmet",
+      "avatar_seed": "a1",
+      "avatar": "/img/avatar/a1?w=200&h=200",
+      "is_kids": false
+    },
+    {
+      "id": "p2",
+      "name": "Çocuk",
+      "avatar_seed": "a2",
+      "avatar": "/img/avatar/a2?w=200&h=200",
+      "is_kids": true
+    }
+  ]
+}

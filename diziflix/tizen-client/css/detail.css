@@ -1,0 +1,129 @@
+/* Detail screen */
+.detail{position:relative;width:var(--stage-w);}
+.detail-hero{position:relative;width:var(--stage-w);height:760px;overflow:hidden;background:#0b0b0b;}
+.detail-bg{
+  position:absolute;left:0;top:0;width:var(--stage-w);height:760px;
+  background-size:cover;background-position:center top;
+  opacity:0;transition:opacity .2s var(--ease);
+}
+.detail-bg.ready{opacity:1;}
+.detail-fade{
+  position:absolute;left:0;top:0;width:var(--stage-w);height:760px;
+  background:
+    /* px duraklar: 1920'de eski %38/%68 ile ayni (729.6 / 1305.6), genis sahnede golge solda kalir */
+    linear-gradient(to right,rgba(20,20,20,.96) 0,rgba(20,20,20,.72) 729.6px,rgba(20,20,20,0) 1305.6px),
+    linear-gradient(to top,#141414 0%,rgba(20,20,20,.5) 24%,rgba(20,20,20,0) 60%);
+}
+.detail-body{position:absolute;left:var(--safe);bottom:70px;width:1000px;}
+/* sol ust "← Geri" (fare/dokunma; js/ui/navigation.js backButton): hero gorseli ustunde okunur hap. z-index toast'in (overlay 10000+) ALTINDA */
+.detail .back-btn{
+  top:28px;z-index:40;color:#fff;background:rgba(0,0,0,.55);
+  border:2px solid rgba(255,255,255,.28);border-radius:999px;padding:8px 28px;
+}
+.detail .back-btn:hover{color:#000;background:var(--accent);border-color:var(--accent);}
+.detail-title{
+  font-size:64px;font-weight:900;line-height:1.05;margin-bottom:14px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.detail-kicker{font-size:24px;font-weight:700;color:var(--accent);margin-bottom:10px;}
+.detail-meta{font-size:24px;color:var(--fg-dim);margin-bottom:18px;}
+.detail-meta .dot{margin:0 12px;color:#555;}
+.detail-meta .score{color:var(--accent);font-weight:700;}
+.hydrating-note{color:var(--fg-dim);font-style:italic;}   /* "Detaylar yukleniyor…" yer tutucusu (odaksiz) */
+.detail-actions{display:flex;margin-bottom:20px;}
+.detail-overview{
+  font-size:24px;color:#e5e5e5;max-width:960px;line-height:1.35;
+  display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;
+  padding:6px 12px;border-radius:4px;
+  outline:4px solid transparent;outline-offset:0;
+  transition:outline-color .2s var(--ease),background-color .2s var(--ease);
+}
+.detail-overview.focused{outline-color:var(--accent);background:rgba(255,255,255,.06);color:#fff;}
+.ov-more{
+  font-size:20px;color:var(--fg-dim);margin:4px 0 14px 12px;opacity:0;
+  transition:opacity .2s var(--ease);
+}
+[data-nav-row="overview"] .detail-overview.focused ~ .ov-more{opacity:1;color:var(--accent);}
+.detail-credits{font-size:22px;color:var(--fg-dim);margin-bottom:0;}
+
+/* Film/dizi bilgisini bitirip benzer yapimlari yeni bir bolum gibi baslat. */
+.detail-similar{
+  margin-top:calc(var(--stage-h) * .035);   /* 1080'de 37.8px (eski vh tabanli deger); vh penceredir, sahne birimi degil */
+  padding-top:calc(var(--stage-h) * .02);
+  border-top:1px solid rgba(255,255,255,.12);
+}
+
+/* ---------- dizi: solda sezon listesi, sagda bolumler ----------
+   Listeler sabit yukseklikli goruntu alani + translate3d ile kayar; bolum satirlari
+   mutlak konumlu ve pencereli (yalnizca gorunen +-3 satir DOM'da). Yalnizca transform/opacity
+   gecisi; box-shadow/blur/filter yok. */
+.browser{position:relative;display:flex;padding:0 var(--safe);margin-bottom:40px;}
+.br-col{flex:none;}
+.br-seasons{width:440px;margin-right:40px;}
+.br-episodes{flex:1 1 auto;min-width:0;max-width:1800px;}   /* 1920'de 1320 (1800 - 440 - 40); genis sahnede buyur, en cok 1800 */
+.br-title{font-size:30px;font-weight:700;height:60px;line-height:60px;margin:0;}
+.br-view{position:relative;overflow:hidden;}
+.br-list{position:relative;transition:transform .2s var(--ease);will-change:transform;}
+.br-empty{position:absolute;left:0;top:0;padding:24px 0;font-size:26px;color:var(--fg-dim);}
+
+.season-row{position:absolute;left:0;right:0;height:124px;}
+.season{
+  display:flex;align-items:center;height:114px;padding:6px 16px 6px 6px;
+  background:var(--surface);border-radius:4px;border-left:6px solid transparent;
+  transition:background-color .28s ease,color .28s ease,border-left-color .28s ease;
+}
+.season.active{background:var(--accent-soft);border-left-color:var(--accent);}
+/* tum durumlar (koyu <-> soluk altin <-> canli sari) arasinda yumusak renk gecisi; yalnizca renk ozellikleri (GPU dostu).
+   .active gorsel vurgudur: odak sezon satirina gecince debounce'suz hemen tasinir (detail.js updateSeasonActive). */
+.season.focused{background:var(--accent);border-left-color:var(--accent);color:#111;}
+.season-poster{
+  position:relative;width:68px;height:102px;flex:none;margin-right:18px;border-radius:3px;overflow:hidden;
+  background:linear-gradient(135deg,#232323,#2e2e2e);
+}
+.season-poster img{width:68px;height:102px;display:block;opacity:0;transition:opacity .2s var(--ease);}
+.season-poster img.ready{opacity:1;}
+.season-txt{flex:1;min-width:0;padding-left:12px;}
+.season-poster + .season-txt{padding-left:0;}
+.season-name{font-size:28px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.season-count{font-size:21px;color:var(--fg-dim);margin-top:4px;transition:color .28s ease;}
+.season.active .season-count{color:#fff;}
+.season.focused .season-count{color:#3a3a3a;}
+
+.ep-row{position:absolute;left:0;right:0;height:172px;}
+.ep{
+  display:flex;align-items:stretch;height:162px;padding:12px;
+  background:var(--surface);border-radius:4px;
+  outline:4px solid transparent;outline-offset:-4px;
+  transition:outline-color .2s var(--ease),background-color .2s var(--ease);
+}
+.ep.focused{outline-color:var(--accent);background:var(--surface-2);}
+.ep-still{
+  position:relative;width:240px;height:135px;flex:none;margin-right:24px;border-radius:4px;overflow:hidden;
+  background:linear-gradient(135deg,#232323,#2e2e2e);
+}
+.ep-still.noimg:before{
+  content:'\25B6';position:absolute;left:0;top:0;width:240px;height:135px;
+  line-height:135px;text-align:center;font-size:40px;color:rgba(255,255,255,.16);
+}
+.ep-still img{width:240px;height:135px;display:block;opacity:0;transition:opacity .2s var(--ease);}
+.ep-still img.ready{opacity:1;}
+.ep-prog{position:absolute;left:0;bottom:0;width:100%;height:6px;background:rgba(255,255,255,.25);}
+.ep-prog i{display:block;height:100%;background:var(--accent);}
+.ep-info{flex:1;min-width:0;}
+.ep-head{display:flex;align-items:center;margin-bottom:6px;}
+.ep-num{font-size:30px;font-weight:900;color:var(--fg-dim);margin-right:16px;flex:none;}
+.ep-title{font-size:28px;font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ep.unaired .ep-title{color:#c8c8c8;}
+.ep-flag{flex:none;margin-left:16px;font-size:20px;font-weight:800;padding:2px 12px;border-radius:3px;white-space:nowrap;}
+.ep-flag.soon{background:var(--accent);color:#111;}
+.ep-flag.off{background:#3a3a3a;color:#ddd;}
+.ep-flag.check{background:#5a4a12;color:#f0d98a;}
+.ep-ov{
+  font-size:21px;line-height:28px;color:var(--fg-dim);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.ep-meta{font-size:20px;color:#8f8f8f;margin-top:6px;}
+
+/* bolum bilgisi olmayan dizi yer tutucusu */
+.episodes{padding:0 var(--safe);margin-bottom:40px;}
+.episodes h2{font-size:30px;font-weight:700;margin-bottom:12px;}

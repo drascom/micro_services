@@ -1,0 +1,14 @@
+[Unit]
+Description=diziflix catalogue API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/micro_services/diziflix/server
+EnvironmentFile=/opt/micro_services/diziflix/server/.env
+ExecStart=/opt/micro_services/diziflix/server/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8090
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

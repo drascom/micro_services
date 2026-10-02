@@ -1,0 +1,42 @@
+{
+  "items": [
+    {
+      "id": "film-gece",
+      "card_kind": "title",
+      "card_key": "title:film-gece",
+      "availability": {
+        "state": "ready",
+        "reason": null,
+        "has_trailer": true
+      },
+      "type": "movie",
+      "title": "Gece Yarısı Treni",
+      "year": 2024,
+      "card": "/img/film-gece/card?w=342&h=192",
+      "portrait": "/img/film-gece/portrait?w=300&h=450",
+      "backdrop": "/img/film-gece/backdrop?w=1280&h=720",
+      "has_backdrop": true,
+      "overview": "Bir tren, bir bavul ve çözülmesi gereken bir gece.",
+      "genres": [
+        "Gerilim",
+        "Dram"
+      ],
+      "rating": 7.4,
+      "country": "US",
+      "followers": 310,
+      "badge": null,
+      "sources": [
+        "yabancidizi"
+      ],
+      "tmdb_id": 1001,
+      "imdb_id": "tt1000001",
+      "playback": "video",
+      "progress": {
+        "episode_id": "film-gece",
+        "position": 3000,
+        "duration": 6480,
+        "pct": 46
+      }
+    }
+  ]
+}

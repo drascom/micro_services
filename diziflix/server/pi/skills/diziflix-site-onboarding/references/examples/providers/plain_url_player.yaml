@@ -1,0 +1,13 @@
+# A whole media URL sits in a script or JSON of the player page (`file:"https://.../master.m3u8"`, may be written with
+# escaped slashes `https:\/\/...`). Two rules, one per format: the URL's extension decides hls / mp4 (type stays auto).
+name: plain_url_player
+description: "Player pages of plainurl.example: the stream URL (m3u8 or mp4) is written out in an inline script."
+version: 1
+match:
+  host_regex: '(^|\.)plainurl\.example$'
+  path_regex: '^/player/'
+fetch: http
+referer: "{page_url}"
+extract:
+  - regex: 'https?:(?:\\?/){2}[^\s\x22\x27<>]+?\.m3u8[^\s\x22\x27<>]*'
+  - regex: 'https?:(?:\\?/){2}[^\s\x22\x27<>]+?\.mp4[^\s\x22\x27<>]*'

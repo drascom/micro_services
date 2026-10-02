@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="dz_background">#FF0F0F10</color>
+    <color name="dz_surface">#FF1A1A1D</color>
+    <color name="dz_primary">#FFE50914</color>
+</resources>

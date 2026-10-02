@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Kaynak küçültme (R8 shrinkResources) için cömert koruma: Media3 arayüz kaynakları (exo_*) yansıma/ad ile
+  de yüklenebilir; "safe" kip, kodda dize olarak geçen adlara benzeyen kaynakları da korur.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@layout/exo_*,@drawable/exo_*,@string/exo_*,@style/ExoStyledControls*,@id/exo_*,@color/exo_*,@dimen/exo_*,@integer/exo_*,@raw/keep"
+    tools:shrinkMode="safe" />

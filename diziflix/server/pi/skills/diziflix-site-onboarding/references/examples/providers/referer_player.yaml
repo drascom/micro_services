@@ -1,0 +1,12 @@
+# A Referer-protected player: the page is "404 Not Found" without the detail page as referer (and Cloudflare's "Just a
+# moment" for a plain client). `fetch: http` (Chrome TLS fingerprint) with `referer: "{page_url}"` is the default AND the fix.
+name: referer_player
+description: "Player pages of refererplayer.example: only served with the detail page as Referer; the media URL is in a sources array."
+version: 1
+match:
+  host_regex: '(^|\.)refererplayer\.example$'
+  path_regex: '^/player/oynat/'
+fetch: http
+referer: "{page_url}"
+extract:
+  - regex: 'sources\s*:\s*\[\s*\{\s*file\s*:\s*\x22([^\x22]+)\x22'

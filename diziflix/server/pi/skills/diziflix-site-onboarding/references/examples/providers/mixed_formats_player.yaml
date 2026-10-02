@@ -1,0 +1,12 @@
+# One player, several formats across titles (test_provider said partial / "varied hosts/types"): one extract rule per format
+# instead of one rule that fits only the page you looked at. HLS URLs are recognised by their .m3u8; the file hosts below hand
+# out extension-less mp4 URLs, so only that rule declares `type: mp4`.
+name: mixed_formats_player
+description: "Player pages of mixed.example: HLS for some titles, extension-less mp4 file-host URLs for others."
+version: 1
+match:
+  host_regex: '(^|\.)mixed\.example$'
+extract:
+  - regex: 'file\s*:\s*\x22(https?:(?:\\?/){2}[^\x22]+\.m3u8[^\x22]*)\x22'
+  - regex: 'file\s*:\s*\x22(https?:(?:\\?/){2}(?:downloader\.disk\.yandex\.[a-z]+|redirector\.googlevideo\.com)/[^\x22]*)\x22'
+    type: mp4

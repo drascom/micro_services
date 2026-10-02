@@ -1,0 +1,36 @@
+{
+  "streams": [
+    {
+      "audio_lang": null,
+      "sub_mode": "none",
+      "hard_lang": null,
+      "sub_known": false,
+      "site_lang_hint": null,
+      "mirror_of": null,
+      "url": "https://cdn.example/film/master.m3u8?t=REDACTED&e=REDACTED&s=REDACTED",
+      "type": "hls",
+      "quality": "auto",
+      "label": "yabancidizi · VidMolly",
+      "variant_id": "v_558bdc442492",
+      "source_id": "vs_dc5fb0765707fd1db798c80f",
+      "source": "yabancidizi",
+      "kind": "movie",
+      "attempt_token": "REDACTED",
+      "proxied": false
+    }
+  ],
+  "subtitles": [],
+  "audio": [
+    {
+      "id": "a_orig",
+      "lang": null,
+      "label": "Orijinal",
+      "stream_ids": [
+        "v_558bdc442492"
+      ],
+      "default": true
+    }
+  ],
+  "resume_position": 3000,
+  "duration": 0
+}

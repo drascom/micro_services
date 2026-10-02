@@ -1,0 +1,13 @@
+# Cloudflare in front and the media URL one iframe deeper: fetch with the browser engine (10+ s per page, use it only when
+# plain http with the referer is blocked), wait for the iframe, follow ONE hop, then read the inner page.
+name: nested_browser_player
+description: "Player pages of nested.example: a Cloudflare-protected page wraps an inner iframe that holds the HLS URL."
+version: 1
+match:
+  host_regex: '(^|\.)nested\.example$'
+fetch: browser
+wait_for: "iframe[src]"
+follow:
+  - {selector: "iframe[src]", attr: src}
+extract:
+  - regex: 'https?:(?:\\?/){2}[^\s\x22\x27<>]+?\.m3u8[^\s\x22\x27<>]*'

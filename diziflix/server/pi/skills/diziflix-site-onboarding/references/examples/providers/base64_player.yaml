@@ -1,0 +1,9 @@
+# atob("aHR0c...") holds the URL: capture the base64 text, `base64: true` decodes it (it must decode to a URL).
+name: base64_player
+description: "Player pages of base64.example: the media URL is a base64 string passed to atob()."
+version: 1
+match:
+  host_regex: '(^|\.)base64\.example$'
+extract:
+  - regex: 'atob\([\x22\x27]([A-Za-z0-9+/=_-]{16,})[\x22\x27]\)'
+    base64: true

@@ -1,0 +1,275 @@
+{
+  "id": "dizi-sinyal",
+  "card_kind": "title",
+  "card_key": "title:dizi-sinyal",
+  "availability": {
+    "state": "ready",
+    "reason": null,
+    "has_trailer": true
+  },
+  "type": "series",
+  "title": "Kayıp Sinyal",
+  "year": 2021,
+  "card": "/img/dizi-sinyal/card?w=342&h=192",
+  "portrait": "/img/dizi-sinyal/portrait?w=300&h=450",
+  "backdrop": "/img/dizi-sinyal/backdrop?w=1280&h=720",
+  "has_backdrop": true,
+  "overview": "Uzak bir istasyondan gelen sinyalin peşinde bir ekip.",
+  "genres": [
+    "Bilim Kurgu",
+    "Gizem"
+  ],
+  "rating": 8.3,
+  "country": "US",
+  "followers": 1172,
+  "badge": null,
+  "sources": [
+    "yabancidizi"
+  ],
+  "tmdb_id": 2001,
+  "imdb_id": "tt2000001",
+  "playback": "video",
+  "progress": {
+    "episode_id": "dizi-sinyal:s2:e1",
+    "position": 600,
+    "duration": 2700,
+    "pct": 22
+  },
+  "cast": [
+    "Deniz Arı"
+  ],
+  "director": null,
+  "runtime": 45,
+  "in_mylist": false,
+  "seasons": [
+    {
+      "season": 0,
+      "title": "0. Sezon",
+      "name": "0. Sezon",
+      "overview": "",
+      "air_date": null,
+      "poster_url": "/img/dizi-sinyal/portrait?w=300&h=450",
+      "has_poster": false,
+      "episode_count": 1,
+      "episodes": [
+        {
+          "id": "dizi-sinyal:s0:e1",
+          "season": 0,
+          "availability": {
+            "state": "ready",
+            "reason": null,
+            "has_trailer": false
+          },
+          "episode": 1,
+          "title": "Perde Arkası",
+          "overview": "",
+          "runtime": 0,
+          "still": "/img/dizi-sinyal:s0:e1/still?w=320&h=180",
+          "still_url": "/img/dizi-sinyal:s0:e1/still?w=320&h=180",
+          "has_still": false,
+          "air_date": "2021-06-01",
+          "progress": null
+        }
+      ]
+    },
+    {
+      "season": 1,
+      "title": "1. Sezon",
+      "name": "1. Sezon",
+      "overview": "",
+      "air_date": null,
+      "poster_url": "/img/dizi-sinyal/portrait?w=300&h=450",
+      "has_poster": false,
+      "episode_count": 2,
+      "episodes": [
+        {
+          "id": "dizi-sinyal:s1:e1",
+          "season": 1,
+          "availability": {
+            "state": "ready",
+            "reason": null,
+            "has_trailer": false
+          },
+          "episode": 1,
+          "title": "Bölüm 1-1",
+          "overview": "İlk sinyal.",
+          "runtime": 44,
+          "still": "/img/dizi-sinyal:s1:e1/still?w=320&h=180",
+          "still_url": "/img/dizi-sinyal:s1:e1/still?w=320&h=180",
+          "has_still": true,
+          "air_date": "2026-01-01",
+          "progress": null
+        },
+        {
+          "id": "dizi-sinyal:s1:e2",
+          "season": 1,
+          "availability": {
+            "state": "ready",
+            "reason": null,
+            "has_trailer": false
+          },
+          "episode": 2,
+          "title": "Bölüm 1-2",
+          "overview": "",
+          "runtime": 0,
+          "still": "/img/dizi-sinyal:s1:e2/still?w=320&h=180",
+          "still_url": "/img/dizi-sinyal:s1:e2/still?w=320&h=180",
+          "has_still": false,
+          "air_date": "2026-01-02",
+          "progress": null
+        }
+      ]
+    },
+    {
+      "season": 2,
+      "title": "2. Sezon",
+      "name": "2. Sezon",
+      "overview": "",
+      "air_date": null,
+      "poster_url": "/img/dizi-sinyal/portrait?w=300&h=450",
+      "has_poster": false,
+      "episode_count": 3,
+      "episodes": [
+        {
+          "id": "dizi-sinyal:s2:e1",
+          "season": 2,
+          "availability": {
+            "state": "ready",
+            "reason": null,
+            "has_trailer": false
+          },
+          "episode": 1,
+          "title": "1. Bölüm",
+          "overview": "",
+          "runtime": 0,
+          "still": "/img/dizi-sinyal:s2:e1/still?w=320&h=180",
+          "still_url": "/img/dizi-sinyal:s2:e1/still?w=320&h=180",
+          "has_still": false,
+          "air_date": "2026-02-01",
+          "progress": {
+            "position": 600,
+            "duration": 2700,
+            "pct": 22
+          }
+        },
+        {
+          "id": "dizi-sinyal:s2:e2",
+          "season": 2,
+          "availability": {
+            "state": "unavailable",
+            "reason": "sources_unavailable",
+            "has_trailer": false
+          },
+          "episode": 2,
+          "title": "Bölüm 2-2",
+          "overview": "",
+          "runtime": 0,
+          "still": "/img/dizi-sinyal:s2:e2/still?w=320&h=180",
+          "still_url": "/img/dizi-sinyal:s2:e2/still?w=320&h=180",
+          "has_still": false,
+          "air_date": "2026-02-02",
+          "progress": null
+        },
+        {
+          "id": "dizi-sinyal:s2:e3",
+          "season": 2,
+          "availability": {
+            "state": "check_required",
+            "reason": null,
+            "has_trailer": false
+          },
+          "episode": 3,
+          "title": "Bölüm 2-3",
+          "overview": "",
+          "runtime": 0,
+          "still": "/img/dizi-sinyal:s2:e3/still?w=320&h=180",
+          "still_url": "/img/dizi-sinyal:s2:e3/still?w=320&h=180",
+          "has_still": false,
+          "air_date": "2026-02-03",
+          "progress": null
+        }
+      ]
+    },
+    {
+      "season": 3,
+      "title": "3. Sezon",
+      "name": "3. Sezon",
+      "overview": "",
+      "air_date": null,
+      "poster_url": "/img/dizi-sinyal/portrait?w=300&h=450",
+      "has_poster": false,
+      "episode_count": 1,
+      "episodes": [
+        {
+          "id": "dizi-sinyal:s3:e1",
+          "season": 3,
+          "availability": {
+            "state": "ready",
+            "reason": null,
+            "has_trailer": false
+          },
+          "episode": 1,
+          "title": "Yankı",
+          "overview": "",
+          "runtime": 0,
+          "still": "/img/dizi-sinyal:s3:e1/still?w=320&h=180",
+          "still_url": "/img/dizi-sinyal:s3:e1/still?w=320&h=180",
+          "has_still": true,
+          "air_date": "2026-09-20",
+          "progress": null
+        }
+      ]
+    }
+  ],
+  "resume": {
+    "episode_id": "dizi-sinyal:s2:e1",
+    "position": 600
+  },
+  "actions": [
+    {
+      "kind": "resume_episode",
+      "item_id": "dizi-sinyal",
+      "episode_id": "dizi-sinyal:s2:e1",
+      "position": 600
+    },
+    {
+      "kind": "play_trailer",
+      "item_id": "dizi-sinyal"
+    }
+  ],
+  "similar": [
+    {
+      "id": "dizi-merdiven",
+      "card_kind": "title",
+      "card_key": "title:dizi-merdiven",
+      "availability": {
+        "state": "ready",
+        "reason": null,
+        "has_trailer": false
+      },
+      "type": "series",
+      "title": "Yedinci Merdiven",
+      "year": 2024,
+      "card": "/img/dizi-merdiven/card?w=342&h=192",
+      "portrait": "/img/dizi-merdiven/portrait?w=300&h=450",
+      "backdrop": "/img/dizi-merdiven/backdrop?w=1280&h=720",
+      "has_backdrop": true,
+      "overview": "Bir apartmanın yedinci katındaki sırlar.",
+      "genres": [
+        "Gizem"
+      ],
+      "rating": 8.0,
+      "country": "US",
+      "followers": 420,
+      "badge": null,
+      "sources": [
+        "yabancidizi"
+      ],
+      "tmdb_id": null,
+      "imdb_id": null,
+      "playback": "video",
+      "progress": null
+    }
+  ],
+  "hydrating": false
+}
