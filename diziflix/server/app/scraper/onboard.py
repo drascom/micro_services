@@ -275,6 +275,31 @@ def engine_gap_approval(text: str, draft: dict) -> Optional[dict]:
     return entry
 
 
+ENGINE_GAP_RESUME = ("\n\n[Sistem: bu taslakta onaylanmış ENGINE_GAP var ({fields}); sunucu güncellenmiş olabilir. Resolver kataloğunu YENİDEN oku "
+                     "(references/resolvers.md ya da test_config'in `resolvers:` tip hataları){new} ve engine_gap'in artık karşılanıp karşılanmadığını dene: "
+                     "karşılanıyorsa `resolvers:` yaz ve notes'taki ENGINE_GAP notunu kaldır; karşılanmıyorsa taslağı yine o notla bırak, soruyu tekrarlama.]")
+
+
+def _catalog_types() -> list[str]:
+    from .resolvers import TYPES
+    return list(TYPES)
+
+
+def engine_gap_resume(draft: dict) -> tuple[str, list[str]]:
+    """``(directive, catalog_types)`` for a message on a draft with a waiting ``engine_gaps`` entry: the agent's old pi session cannot know
+    what the server learned since, so it is told to re-read the resolver catalog; resolver types added after the draft last saw the catalog
+    (``draft["catalog_types"]``, written when the gap was approved / the last resume) are named (``catalog_changed``)."""
+    waiting = [g for g in (draft or {}).get("engine_gaps") or [] if isinstance(g, dict) and g.get("status") == "waiting_dev"]
+    if not waiting:
+        return "", []
+    types = _catalog_types()
+    seen = (draft or {}).get("catalog_types")
+    fresh = [t for t in types if isinstance(seen, list) and t not in seen]
+    note = (f"; katalogda yeni tipler var (catalog_changed): {', '.join(fresh)}" if fresh
+            else f"; güncel tipler: {', '.join(types)}" if not isinstance(seen, list) else "")
+    return ENGINE_GAP_RESUME.format(fields=", ".join(str(g.get("field")) for g in waiting)[:120], new=note), types
+
+
 def engine_gap_fields(draft: Optional[dict]) -> list[str]:
     raw = (draft or {}).get("engine_gaps")
     return [str(g.get("field")) for g in (raw if isinstance(raw, list) else []) if isinstance(g, dict) and g.get("field")]
@@ -286,7 +311,7 @@ def _note_answer(text: str, draft: dict) -> dict:
     gap = engine_gap_approval(text, draft)
     if gap is not None:
         kept = [g for g in (draft.get("engine_gaps") or []) if isinstance(g, dict) and g.get("field") != gap["field"]]
-        return {"engine_gaps": [*kept, gap][-10:]}
+        return {"engine_gaps": [*kept, gap][-10:], "catalog_types": _catalog_types()}
     found = _SKIP_RE.match(text or "")
     if not found:
         return {}
@@ -842,11 +867,15 @@ def message(draft_id: str, text: str, trigger: str = "admin") -> dict:
                 "status": "engine_gap", "at": gap["at"], "seconds": None, "turns": None, "passed": None,
                 "notes": _clip(f"ENGINE_GAP: {gap['field']}: {gap.get('proposal') or gap['text']}\nAjanın sorusu: {gap['text']}\n"
                                f"Kullanıcı onayı: {gap['answer']}\nDurum: geliştirici desteği bekleniyor", 500)})
+        resume, catalog = engine_gap_resume(draft) if gap is None else ("", [])   # an old session does not know what the server learned since
         # a message answers the open question (question_data) and gives the automatic rounds a fresh start; "Sitede yok, atla: x" is remembered
         draft = store.update_draft(draft_id, status="running", error=None, question=None, question_data=None, reason=None,
-                                   auto_round=0, auto_rounds=None, **_note_answer(text, draft))
+                                   auto_round=0, auto_rounds=None, **_note_answer(text, draft),
+                                   **({"catalog_types": catalog, "engine_gaps": [
+                                       {**g, "status": "resumed", "resumed_at": _now()} if g.get("status") == "waiting_dev" else g
+                                       for g in draft.get("engine_gaps") or [] if isinstance(g, dict)]} if resume else {}))
         state.activity_update(SLOT_SITE, SLOT_KIND, label="geri bildirim", phase="start", draft_id=draft_id)
-        _spawn(draft_id, text + (ENGINE_GAP_DIRECTIVE.format(field=gap["field"]) if gap is not None else ""), token)
+        _spawn(draft_id, text + (ENGINE_GAP_DIRECTIVE.format(field=gap["field"]) if gap is not None else resume), token)
     except BaseException:
         if token:
             sandbox.revoke_token(token)

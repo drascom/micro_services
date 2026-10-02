@@ -357,6 +357,40 @@ class EngineGapApprovalTest(Harness):
         self.assertEqual(proc.stdin.data, "Önerini uygula")
         self.assertFalse(draft.get("engine_gaps"))
 
+    def test_a_later_message_tells_the_old_session_to_reread_the_catalog(self):
+        self.queue.append(FakeProc(asking(GAP)))
+        first = onboard.start(URL)
+        self.assertTrue(onboard.join(first["id"], 10))
+        self.queue.append(FakeProc([msg_end("Bıraktım.")]))
+        onboard.message(first["id"], "onaylıyorum")
+        self.assertTrue(onboard.join(first["id"], 10))
+        draft = store.get_draft(first["id"])
+        self.assertEqual(draft["catalog_types"], onboard._catalog_types())
+        # the server learned a new resolver type since the gap was approved: the next message names it
+        store.update_draft(first["id"], catalog_types=[t for t in onboard._catalog_types() if t != "embedded_json"])
+        proc = FakeProc([msg_end("Yazdım.")])
+        self.queue.append(proc)
+        onboard.message(first["id"], "Ajan düzeltsin")
+        self.assertTrue(onboard.join(first["id"], 10))
+        for needle in ("YENİDEN oku", "ENGINE_GAP", "catalog_changed", "embedded_json", "json_sources"):
+            self.assertIn(needle, proc.stdin.data)
+        draft = store.get_draft(first["id"])
+        self.assertEqual(draft["engine_gaps"][0]["status"], "resumed")
+        self.assertEqual(draft["catalog_types"], onboard._catalog_types())
+        again = FakeProc([msg_end("ok")])
+        self.queue.append(again)
+        onboard.message(first["id"], "bir de şuna bak")
+        self.assertTrue(onboard.join(first["id"], 10))
+        self.assertEqual(again.stdin.data, "bir de şuna bak")   # told once: nothing waits any more
+
+    def test_a_draft_approved_before_the_catalog_was_stored_gets_the_current_types(self):
+        draft = {"engine_gaps": [{"field": "f", "status": "waiting_dev"}]}
+        text, types = onboard.engine_gap_resume(draft)
+        self.assertIn("güncel tipler", text)
+        self.assertIn("embedded_json", text)
+        self.assertEqual(onboard.engine_gap_resume({"engine_gaps": [{"field": "f", "status": "resumed"}]}), ("", []))
+        self.assertEqual(onboard.engine_gap_resume({}), ("", []))
+
     def test_asking_again_after_approval_shows_the_forwarded_status(self):
         self.queue.append(FakeProc(asking(GAP)))
         first = onboard.start(URL)
