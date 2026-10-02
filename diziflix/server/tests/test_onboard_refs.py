@@ -779,7 +779,7 @@ const wait = (ms) => new Promise((r) => realSetTimeout(r, ms));
 const clone = (x) => (x === undefined ? null : JSON.parse(JSON.stringify(x)));
 const IDS = ["ob-root", "ob-listv", "ob-detv", "ob-health", "ob-start", "ob-why", "ob-newbtn", "ob-newp", "ob-sites", "ob-drafts", "ob-estart", "ob-ewhy", "ob-ehint", "ob-rn",
   "ob-modal", "ob-purge-line", "ob-top", "ob-host", "ob-st", "ob-time", "ob-cancel", "ob-note",
-  "ob-headline", "ob-ask", "ob-ask-hint", "ob-steps", "ob-appw", "ob-app", "ob-log", "ob-yaml", "ob-fb", "ob-send", "ob-fbh", "ob-sv-info", "ob-sv-panel",
+  "ob-headline", "ob-ask", "ob-ask-hint", "ob-steps", "ob-log", "ob-yaml", "ob-fb", "ob-send", "ob-fbh", "ob-sv-info", "ob-sv-panel",
   "ob-sid", "ob-dn", "ob-en", "ob-scan", "ob-savebtn", "ob-savewhy", "ob-sid-err", "toasts"];
 async function run(sc) {
   const els = {}, listeners = {}, calls = [], copied = [], confirms = [];
@@ -1359,42 +1359,13 @@ class AdminOnboardPage(unittest.TestCase):
         self.assertEqual(again.count("<dl"), 1)
         self.assertIn("Ajan çalışıyor", got[3]["els"]["ob-headline"]["html"])
 
-    def test_app_rows_totals_and_note(self):
+    def test_the_app_preview_section_is_gone_from_the_page(self):
         got = self.draft_ui()["els"]
-        self.assertFalse(got["ob-appw"]["hidden"])
-        html = got["ob-app"]["html"]
-        for needle in ("Haftanın Trendleri", "Dikkate Değer Filmler", "Tüm Diziler", "<b>12</b>", "<b>30</b>", "Dizi", "<b>458</b>", "Film", "<b>0</b>", "Bölüm", "<b>120</b>",
-                       "Oynatılabilir", "<b>2/3</b>", "Her liste en çok 30 öğe alınır."):
-            self.assertIn(needle, html, needle)
-        self.assertEqual(html.count('class="obchip row"'), 3)
-        # collections without a row of their own: small grey chips under a "signal" label (an old draft without `signals` just has none)
-        self.assertEqual(html.count('class="obchip sig"'), 2)
-        for needle in ("Slider ve trend sıralaması için sinyal", "Yeni diziler", "<b>7</b>", "Öne çıkanlar", "<b>5</b>"):
-            self.assertIn(needle, html, needle)
-        old = ui_draft()
-        del old["pipeline"]["app"]["signals"]
-        self.assertNotIn("sinyal", self.draft_ui(old)["els"]["ob-app"]["html"])
-        self.assertIn("Uygulamada ne görünecek", got["ob-root"]["html"])
-        # a collection row and a main-list row may share a key ("movies"): both are drawn, told apart by `from`
-        dup = ui_draft()
-        dup["pipeline"]["app"]["rows"] = [{"key": "movies", "title": "Dikkate Değer Filmler", "count": 0, "from": "collection"},
-                                          {"key": "series", "title": "Tüm Diziler", "count": 30, "from": "list"},
-                                          {"key": "movies", "title": "Tüm Filmler", "count": 25, "from": "list"}]
-        both = self.draft_ui(dup)["els"]["ob-app"]["html"]
-        self.assertEqual(both.count('class="obchip row"'), 3)
-        self.assertIn('data-from="collection" data-key="movies"', both)
-        self.assertIn('data-from="list" data-key="movies"', both)
-        for needle in ("Dikkate Değer Filmler", "Tüm Filmler", "<b>25</b>", "<b>0</b>"):
-            self.assertIn(needle, both, needle)
-        self.assertNotIn("ingest_per_list", html)
-        # no home rows at all: said in plain words; no `app`: the section is gone
-        none = ui_draft(pipeline=pipe(["warn"] + ["pending"] * 5, state="warn", headline="x", problem_step="home"))
-        none["pipeline"]["app"] = {"rows": [], "totals": {"series": 0, "movies": 0, "episodes": 0, "ingest_per_list": 30, "playable": None}, "note": ""}
-        gone = ui_draft(pipeline=pipe(["pending"] * 6, app=False))
-        a, b = self.run_ui({"draft": none}, {"draft": gone})
-        self.assertIn("henüz ana ekran satırı bulunamadı", a["els"]["ob-app"]["html"])
-        self.assertNotIn("Oynatılabilir", a["els"]["ob-app"]["html"])    # null totals are left out
-        self.assertTrue(b["els"]["ob-appw"]["hidden"])
+        root = got["ob-root"]["html"]
+        for gone in ("Uygulamada ne görünecek", 'id="ob-appw"', 'id="ob-app"', "Slider ve trend"):
+            self.assertNotIn(gone, root, gone)
+        self.assertNotIn("ob-app", got)       # no element of it is drawn any more
+        self.assertIn("Alınacak:", self.draft_ui(actions=[{"click": {"act": "save"}}])["els"]["ob-sv-panel"]["html"])   # the confirmation still sums up the pipeline totals
 
     def test_an_old_draft_without_pipeline_says_so_in_one_line(self):
         old = ui_draft()
@@ -1403,7 +1374,6 @@ class AdminOnboardPage(unittest.TestCase):
         self.assertIn("İlerleme bilgisi yok (eski taslak)", got["ob-steps"]["html"])
         self.assertEqual(self.step_states(got["ob-steps"]["html"]), [])
         self.assertEqual(got["ob-headline"]["html"], "")
-        self.assertTrue(got["ob-appw"]["hidden"])
         self.assertIn("playback: video", got["ob-yaml"]["html"])         # the rest of the page still works
         self.assertFalse(got["ob-savebtn"]["disabled"])
 
@@ -1427,8 +1397,6 @@ class AdminOnboardPage(unittest.TestCase):
                 for n in s.get("numbers") or []:
                     self.assertIn(esc(n["value"]), html)
             self.assertIn(esc(p["overall"]["headline"]), g["els"]["ob-headline"]["html"])
-            for r in (p.get("app") or {}).get("rows") or []:
-                self.assertIn(esc(r["title"]), g["els"]["ob-app"]["html"])
 
     # --- log | yaml side by side, chat under the log ---------------------------------------------------------------------
 
@@ -1446,9 +1414,9 @@ class AdminOnboardPage(unittest.TestCase):
         self.assertIn("<textarea", root)
         css = (ADMIN_DIR / "style.css").read_text(encoding="utf-8")
         self.assertRegex(css, r"\.obpair\{display:grid;grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\)")
-        self.assertRegex(css, r"@media \(max-width:900px\)\{\s*\.obpair\{grid-template-columns:1fr")           # stacked on a narrow screen
+        self.assertRegex(css, r"@media \(max-width:1100px\)\{[\s\S]*?\.obpair\{grid-template-columns:1fr")           # stacked on a narrow screen
         self.assertRegex(css, r"\.obsteps\{display:grid;grid-template-columns:repeat\(6,")                  # steps: horizontal on a wide screen
-        self.assertRegex(css, r"@media \(max-width:1100px\)\{\.obsteps\{grid-template-columns:1fr\}")      # ... vertical on a narrow one
+        self.assertRegex(css, r"@media \(max-width:1100px\)\{\s*\.obsteps\{grid-template-columns:1fr\}")      # ... vertical on a narrow one
         self.assertRegex(css, r"\.oblog\{[^}]*user-select:text")                                          # the log stays selectable
 
     def test_the_log_renders_every_kind_of_event_and_the_yaml_is_read_only(self):

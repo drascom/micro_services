@@ -64,7 +64,6 @@ function stPill(s){
 var SS={pending:['pending','⏳','Bekliyor'],running:['running','◔','Çalışıyor'],ok:['ok','✓','Tamam'],warn:['warn','⚠','Dikkat'],fail:['fail','✗','Sorun var'],skipped:['skipped','–','Atlandı']};
 /* genel durum: [css, simge] */
 var OV={idle:['','⏳'],running:['run','◔'],ok:['ok','✓'],warn:['warn','⚠'],fail:['bad','✗']};
-var TOT=[['series','Dizi'],['movies','Film'],['episodes','Bölüm'],['playable','Oynatılabilir']];
 var BUSY={scan:'tarama',heal:'düzeltme',onboard:'site ekleme',finder:'kaynak arama'};
 var RUNST={success:['ok','Başarılı'],ok:['ok','Başarılı'],partial:['warn','Kısmi'],error:['bad','Hata'],failed:['bad','Hata'],running:['run','Çalışıyor']};
 
@@ -133,27 +132,26 @@ function build(){
   '<div id="ob-detv" class="hidden">'+
     '<div class="obtop" id="ob-top">'+
       '<div class="obbar"><button class="btn" id="ob-back" data-ob="back">‹ Liste</button>'+
-        '<div class="obbt"><b id="ob-host" class="obhost"></b><span id="ob-st"></span><span id="ob-time" class="mono num"></span></div>'+
-        '<button class="btn hidden" id="ob-cancel" data-ob="cancel">İptal</button></div>'+
-      '<div class="obsv" id="ob-sv">'+
-        '<div class="obsvf">'+
-          '<label class="obfl">Site kimliği (site_id)<input id="ob-sid" type="text" maxlength="32" placeholder="ornek_site" spellcheck="false" autocapitalize="off"></label>'+
-          '<label class="obfl">Görünen ad <small>(isteğe bağlı)</small><input id="ob-dn" type="text" maxlength="60" placeholder="Örnek Site"></label>'+
-          '<div class="obsvb"><button class="btn primary" id="ob-savebtn" data-ob="save" disabled>Kaydet</button><span id="ob-savewhy" class="hint"></span></div>'+
-        '</div>'+
-        '<div id="ob-sid-err" class="err hint"></div>'+
-        '<div id="ob-sv-panel" class="hidden"></div>'+
-        '<div id="ob-sv-info"></div>'+
-      '</div>'+
+        '<span class="grow"></span>'+
+        '<span id="ob-savewhy" class="hint obwhy"></span>'+
+        '<button class="btn hidden" id="ob-cancel" data-ob="cancel">İptal</button>'+
+        '<button class="btn primary" id="ob-savebtn" data-ob="save" disabled>Kaydet</button></div>'+
+      '<div id="ob-sv-panel" class="hidden"></div>'+
     '</div>'+
+    '<div class="obhd"><b id="ob-host" class="obhost"></b><span id="ob-st"></span><span id="ob-time" class="mono num dim"></span></div>'+
+    '<div class="obids">'+
+      '<label class="obfl">Site kimliği<input id="ob-sid" type="text" maxlength="32" placeholder="ornek_site" spellcheck="false" autocapitalize="off"></label>'+
+      '<label class="obfl">Görünen ad <small>(isteğe bağlı)</small><input id="ob-dn" type="text" maxlength="60" placeholder="Örnek Site"></label>'+
+    '</div>'+
+    '<div id="ob-sid-err" class="err hint"></div>'+
+    '<div id="ob-sv-info"></div>'+
     '<div id="ob-note"></div>'+
     '<div id="ob-ask"></div>'+
     '<div id="ob-headline"></div>'+
     '<section><h2>İlerleme</h2><div id="ob-steps"></div></section>'+
-    '<section id="ob-appw" class="hidden"><h2>Uygulamada ne görünecek</h2><div id="ob-app"></div></section>'+
     '<div class="obpair">'+
       '<section class="obcol">'+
-        '<div class="lhead"><h2 class="grow" style="margin:0">Ajan günlüğü</h2><button class="btn" id="ob-copylog" data-ob="copylog">Günlüğü kopyala</button></div>'+
+        '<div class="lhead"><h2 class="grow">Ajan günlüğü</h2><button class="btn" id="ob-copylog" data-ob="copylog">Günlüğü kopyala</button></div>'+
         '<div id="ob-log" class="oblog" role="log" aria-live="off" tabindex="0"></div>'+
         '<div class="obchat"><textarea id="ob-fb" rows="2" maxlength="2000" aria-label="Ajana mesaj" placeholder="Ajana yaz (Enter = gönder, Shift+Enter = yeni satır)"></textarea>'+
           '<button class="btn primary" id="ob-send" data-ob="send">Gönder</button></div>'+
@@ -437,8 +435,8 @@ function resetDetail(){
   svOpen=false;svErr='';forceSrv=false;opt={scan:true,enable:false};panelKey='';askKey='';
   $('ob-log').innerHTML='';$('ob-fb').value='';$('ob-sid').value='';$('ob-dn').value='';$('ob-sid').readOnly=false;$('ob-dn').disabled=false;
   $('ob-sid-err').textContent='';
-  ['ob-yaml','ob-steps','ob-app','ob-headline','ob-sv-info','ob-sv-panel','ob-note','ob-ask'].forEach(function(i){$(i).innerHTML=''});
-  $('ob-appw').classList.add('hidden');$('ob-sv-panel').classList.add('hidden');
+  ['ob-yaml','ob-steps','ob-headline','ob-sv-info','ob-sv-panel','ob-note','ob-ask'].forEach(function(i){$(i).innerHTML=''});
+  $('ob-sv-panel').classList.add('hidden');
   $('ob-savebtn').disabled=true;$('ob-savebtn').textContent='Kaydet';$('ob-savewhy').textContent='yükleniyor…';
   $('ob-host').textContent='';$('ob-st').innerHTML='';$('ob-time').textContent='';$('ob-cancel').classList.add('hidden');
 }
@@ -545,7 +543,7 @@ function renderDraft(){
   var s=sigOf(),changed=s!==sig;sig=s;
   renderHead();
   if(changed){
-    renderOverall();renderAsk();renderSteps();renderApp();
+    renderOverall();renderAsk();renderSteps();
     if(yamlKey!==(D.yaml_text||''))renderYaml();
   }
   renderControls();
@@ -680,26 +678,9 @@ function renderSteps(){
   var pid=p.overall&&p.overall.problem_step;
   el.innerHTML='<div class="obsteps">'+p.steps.map(function(s,i){return stepHtml(s,i,!!pid&&s.id===pid)}).join('')+'</div>';
 }
-function renderApp(){
-  var w=$('ob-appw'),el=$('ob-app'),p=pipeOf(D),a=p&&p.app;
-  if(!a||typeof a!=='object'){w.classList.add('hidden');el.innerHTML='';return}
-  w.classList.remove('hidden');
-  var rows=Array.isArray(a.rows)?a.rows:[],tot=a.totals||{};
-  var h='<div class="obchips">'+(rows.length?rows.map(function(r){
-    return '<span class="obchip row" data-from="'+esc(r.from||'')+'" data-key="'+esc(r.key||'')+'"><span>'+esc(r.title||r.key||'?')+'</span><b>'+esc(num(r.count))+'</b></span>'}).join('')
-    :'<span class="dim">Bu siteden henüz ana ekran satırı bulunamadı.</span>')+'</div>';
-  var ts=TOT.filter(function(t){return tot[t[0]]!=null&&tot[t[0]]!==''}).map(function(t){
-    var v=tot[t[0]];return '<span class="obchip tot"><span>'+esc(t[1])+'</span><b>'+esc(typeof v==='number'?num(v):v)+'</b></span>'});
-  if(ts.length)h+='<div class="obchips">'+ts.join('')+'</div>';
-  var sg=Array.isArray(a.signals)?a.signals:[];
-  if(sg.length)h+='<div class="obchips obsig"><span class="dim">Slider ve trend sıralaması için sinyal:</span>'+sg.map(function(r){
-    return '<span class="obchip sig" data-key="'+esc(r.key||'')+'"><span>'+esc(r.title||r.key||'?')+'</span><b>'+esc(num(r.count))+'</b></span>'}).join('')+'</div>';
-  if(a.note)h+='<div class="hint">'+esc(a.note)+'</div>';
-  el.innerHTML=h;
-}
 function renderYaml(){
   var y=D.yaml_text||'',el=$('ob-yaml');yamlKey=y;
-  el.innerHTML='<div class="lhead"><h2 class="grow" style="margin:0">YAML taslağı</h2>'+(y?'<button class="btn" data-ob="copy">Kopyala</button>':'')+'</div>'+
+  el.innerHTML='<div class="lhead"><h2 class="grow">YAML taslağı</h2>'+(y?'<button class="btn" data-ob="copy">Kopyala</button>':'')+'</div>'+
     (y?'<pre class="obyaml mono" tabindex="0">'+esc(y)+'</pre>':'<div class="pempty obyaml0">Henüz yaml yok</div>');
 }
 function copyText(t){
@@ -790,11 +771,11 @@ function panelHtml(){
 function infoHtml(saved){
   if(!saved)return recipeNote(false);
   var sid=D.saved_site_id||D.site_id||(savedInfo&&savedInfo.sid)||'',v=savedVer(),sc=savedInfo&&savedInfo.scan;
-  return '<div class="note ok obsaved"><span class="pill ok">Kaydedildi'+(v?' (v'+esc(v)+')':'')+'</span> '+(sid?'<b class="mono">'+esc(sid)+'</b> ':'')+
+  return '<div class="obsavedrow"><div class="note ok obsaved"><span class="pill ok">Kaydedildi'+(v?' (v'+esc(v)+')':'')+'</span> '+(sid?'<b class="mono">'+esc(sid)+'</b> ':'')+
     (isEdit()?'yeni sürüm olarak kaydedildi.':'siteye eklendi.')+
-    (sc?' Tarama başladı: ilerlemeyi Olay defterinde izleyebilirsin.':(savedInfo&&savedInfo.scan===false?' Tarama başlatılmadı; Ayarlar’dan “Şimdi tara” ile deneyebilirsin.':''))+'</div>'+recipeNote(true)+
+    (sc?' Tarama başladı: ilerlemeyi Olay defterinde izleyebilirsin.':(savedInfo&&savedInfo.scan===false?' Tarama başlatılmadı; Ayarlar’dan “Şimdi tara” ile deneyebilirsin.':''))+'</div>'+
     '<div class="act"><button class="btn primary" data-ob="back">Site listesine dön</button>'+
-    (sc?'<button class="btn" data-ob="goto-events">Olay defterinde izle</button>':'<button class="btn" data-ob="goto-settings">Ayarlar’a git</button>')+'</div>';
+    (sc?'<button class="btn" data-ob="goto-events">Olay defterinde izle</button>':'<button class="btn" data-ob="goto-settings">Ayarlar’a git</button>')+'</div></div>'+recipeNote(true);
 }
 function renderSave(){
   if(!D)return;
@@ -820,7 +801,7 @@ function renderSave(){
   var nv=nextVer(),btn=$('ob-savebtn');
   btn.textContent=saved?'Kaydedildi':edit?'Yeni sürüm olarak kaydet'+(nv?' (v'+nv+')':''):'Kaydet';
   btn.disabled=!!why;
-  $('ob-savewhy').textContent=why;
+  $('ob-savewhy').textContent=why;btn.title=why;
   checkSid();
   if(why)svOpen=false;
   var pnl=$('ob-sv-panel'),ph=svOpen?panelHtml():'';
