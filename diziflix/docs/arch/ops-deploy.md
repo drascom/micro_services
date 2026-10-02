@@ -26,7 +26,7 @@ Sunucuda (admin "Site ekle" ile) eklenen yeni siteler `REMOTEONLY` sınıfıdır
 
 ## Sunucu veritabanını sıfırlama
 
-Test için sunucu veritabanını SIFIRLAMA: `./clear-remote.sh [--cache] [--no-backup] [--keep N] [--yes]` (ya da `ssh root@192.168.0.61 'bash -s' < clear-remote.sh`): servisi durdurur, `data/diziflix.db*` -> `data/diziflix.db.bak.<ts>` yedekler, siler, servisi başlatıp `/api/health` bekler. Profiller/ilerleme/listem de gider. `.env`, `configs/`, `data/scraper_state/`, `ops_settings.json` DOKUNULMAZ (deploy.sh heal izine bakar). Yalnızca kullanıcı isterse çalıştırılır
+Test için sunucu veritabanını SIFIRLAMA: `./clear-remote.sh [--cache] [--no-backup] [--keep N] [--wipe-categories] [--yes]` (ya da `ssh root@192.168.0.61 'bash -s' < clear-remote.sh`): servisi durdurur, `data/diziflix.db*` -> `data/diziflix.db.bak.<ts>` yedekler, DOSYAYI SİLMEZ: `server/tools/reset_db_keep.py` (sunucuda deploy edilmiş olmalı) tek işlemde `KEEP_TABLES` (varsayılan `home_categories`: admin kategorileri + sistem iskelet satırları) dışındaki tüm tabloları boşaltır, VACUUM yapar; servisi başlatıp `/api/health` bekler. Kategoriler KORUNUR, `--wipe-categories` onları da siler; kategori üyeliği (`library_lists` category_*) silinir, scraper bir sonraki taramada yazar. Profiller/ilerleme/listem de gider. `.env`, `configs/`, `data/scraper_state/`, `ops_settings.json` DOKUNULMAZ (deploy.sh heal izine bakar). Yalnızca kullanıcı isterse çalıştırılır
 
 
 ## Yerel test
