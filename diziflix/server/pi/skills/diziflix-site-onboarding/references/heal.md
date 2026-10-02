@@ -71,6 +71,8 @@ host. When the real break is in another layer than the named one, say so in `not
 ## Workflow
 
 1. `load_site_config(site_id)`: the active yaml, `baseline.last_good`, the provider recipes (the yaml of the ones the site names; another via `recipe`).
+   It also returns `handoff`, the site's note (earlier findings, the admin's decisions, change history): read it, do not undo its decisions.
+   `submit_repair(handoff=...)` = ONE entry for that history (what broke, what you changed, result, <= 8 lines).
 2. **Reproduce.** `fetch_page` the failing `locator` (`http`; on 403 / 404 / "Just a moment" again with `referer`, then `browser`), `grep_page` the
    RAW page, compare with an `ok_examples` page.
 3. **Where is the break?** Confirm (and state) the named layer:

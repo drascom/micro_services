@@ -295,7 +295,7 @@ API (`app/routers/ops.py`): `GET /api/ops/overview` (site başına `recent` son 
 `kind` scan|heal|cooldown|rollback, `next_before` imleci, heal için `can_rollback`),
 `POST /api/ops/sites/{site}/scan|heal[?force=true]|rollback` (rollback bir `rolled_back`
 olayı kaydeder). Geçmiş `data/scraper_state/_ops.json` (son 200 run + 200 heal), aktif
-işler bellek içi. Bakım uçları `/api/admin/video-sources`, `/api/admin/identities`
+işler bellek içi. Site devir notu: `data/site_handoffs/<site>.md` (≤6 KB; düzenleme/heal ajanı bunu okur, `GET /api/ops/sites/{site}/handoff`, admin Siteler "Devir notu"; site silinince silinir). Bakım uçları `/api/admin/video-sources`, `/api/admin/identities`
 UI'sız korunur.
 
 ### Ayarlar sekmesi (`/admin#settings`)
@@ -691,7 +691,7 @@ server/
 │   └── scraper/        config.py runner.py parse.py schema.py fetch.py
 │       │               resolve.py drift.py heal.py state.py
 │       └── configs/    <site>.yaml (+ <site>.baseline.json)
-├── data/               fixture.json · diziflix.db · imgcache/ · scraper_state/
+├── data/               fixture.json · diziflix.db · imgcache/ · scraper_state/ · site_handoffs/<site>.md (devir notu)
 ├── tools/              gen_fixture.py ingest.py homepage_probe.py scraper_smoke.py
 └── requirements.txt · install.sh · diziflix.service · .env.example
 ```

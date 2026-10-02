@@ -406,6 +406,17 @@ class CollectionPosterTest(HardenCase):
         self.assertIn({"criterion": "collection_poster_fill", "field": "collection_poster"}, out["exempt"])
         self.assertTrue(onboard.skippable("collection_poster"))
 
+    def test_a_skipped_poster_the_yaml_defines_stays_defined_and_is_optional(self):
+        entry = self.WITH_POSTER.replace("img.thumb", "img.nope")   # defined, but the cards have no such picture: 0% filled
+        self.assertFalse(self.config(self.site(entry), collections=True)["criteria"]["collection_poster_fill"]["ok"])
+        self.skip("collection_poster")
+        yaml_text = self.site(entry)
+        out = self.config(yaml_text, collections=True)
+        self.assertNotIn("collection_poster_fill", out["criteria"])
+        self.assertIn({"criterion": "collection_poster_fill", "field": "collection_poster", "optional": True}, out["exempt"])
+        self.assertIn("img.nope", yaml_text)   # nothing removes it: the field stays in the yaml
+        self.assertFalse(any("poster_url" in f.get("criterion", "") for f in out.get("failing") or []))
+
     def test_without_the_collections_flag_nothing_is_judged(self):
         self.assertNotIn("collection_poster_fill", self.config(self.site(self.NO_POSTER))["criteria"])
 
@@ -457,6 +468,24 @@ class DetailInfoTest(HardenCase):
         self.assertNotIn("detail_info_defined", out["criteria"])
         self.assertEqual(out["exempt"][0]["criterion"], "detail_info_defined")
 
+    def test_a_skipped_group_the_yaml_defines_is_optional_not_required_and_listed(self):
+        second = RICH_DETAIL.replace('<span class="yr">2001</span>', "").replace('<p class="cast">Ali, Veli</p>', "")
+
+        def pages(cfg, url, **kw):
+            return tsb.bundle(second)
+
+        self.skip("year", "cast", "rating", "trailer_url", "poster_url")   # year / cast are defined but empty on the second page
+        list_id = self.page(tsb.list_html(12))
+        detail_id = self.page(RICH_DETAIL, "https://demo.example/film/100/film-0")
+        with tsb.public_dns(), patch.object(fetch, "page_bundle", side_effect=pages), tsb.vidmolly_resolves():
+            out = self.post("/test_config", {"yaml_text": rich_yaml(), "page_id": list_id, "detail_page_id": detail_id}).json()
+        self.assertEqual(out["criteria"]["detail_info_defined"], {"value": 2, "min": 2, "ok": True})   # synopsis + genres carry it
+        item = next(x for x in out["exempt"] if x["criterion"] == "detail_info_defined")
+        self.assertTrue(item["optional"])
+        self.assertEqual(sorted(item["field"].split(", ")), ["cast", "year"])   # still defined in the yaml, never removed
+        self.assertNotIn("removed_fields", out)
+        self.assertFalse(any(w.startswith("alan kaldırıldı") for w in out["warnings"]))
+
     def test_the_agent_cannot_skip_on_its_own(self):
         out = self.config(tsb.DRAFT_YAML + GATE)   # nothing in skipped_fields: the answer of the admin is the only way
         self.assertFalse(out["criteria"]["detail_info_defined"]["ok"])
@@ -504,6 +533,14 @@ class RemovedFieldsTest(HardenCase):
         self.assertNotIn("removed_fields", self.config(back, detail=RICH_DETAIL))   # year is back
         self.skip("year")
         self.assertNotIn("removed_fields", self.config(yaml_text))   # the admin said the site has none
+
+    def test_a_skipped_collection_poster_is_not_flagged_when_it_is_gone(self):
+        previous = {**self.PREVIOUS}
+        self.previous(previous)
+        self.skip("collection_poster")
+        out = self.config(tsb.DRAFT_YAML + GATE + self.COLLECTION, collections=True)   # collection: no poster_url any more
+        self.assertNotIn("poster_url", [x["field"] for x in out.get("removed_fields") or []])
+        self.assertFalse(any("poster_url (collections" in w for w in out["warnings"]))
 
     def test_nothing_is_flagged_without_a_previous_submission(self):
         out = self.config(tsb.DRAFT_YAML + GATE)

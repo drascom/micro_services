@@ -22,8 +22,8 @@
 | `series_signal_collection` | >= 3 | NEW series site, `collections: true`: the most usable items any `trending` / `latest_series` collection yields. Exempt after "Sitede yok, atla: `home_series_section`" |
 | `series_full_inventory` | >= 1 | NEW series site, `playback: video`: a `series_page:` inventory OR no card is ONE EPISODE's page. Exempt after "Sitede yok, atla: `series_inventory`" |
 | `home_path_is_canonical` | >= 1 | NEW site with a CERTAIN `redirect_hint` on the `list_url` page: 0 while `list_url` or a collection `path` still names the redirecting path |
-| `collection_poster_fill` | >= 0.8 | NEW site, `collections: true`: the LEAST `poster_url` fill over the collections of the roles `trending`, `latest_series`, `latest_movies`, `noteworthy_movies`, `featured`. Exempt after "Sitede yok, atla: `collection_poster`" |
-| `detail_info_defined` | >= 3 | NEW site: how many of the info groups `synopsis`, `year`, `cast`, `genres`, `rating`, `trailer_url`, `poster_url` the DETAIL fields define AND fill on EVERY parsed detail page (the `detail_page_id` page + a second one). Each group the admin answered "Sitede yok, atla: <field>" for leaves the bar; the agent never skips on its own |
+| `collection_poster_fill` | >= 0.8 | NEW site, `collections: true`: the LEAST `poster_url` fill over the collections of the roles `trending`, `latest_series`, `latest_movies`, `noteworthy_movies`, `featured`. Exempt after "Sitede yok, atla: `collection_poster`" (the poster field STAYS: taken where cards have it; `exempt[].optional`) |
+| `detail_info_defined` | >= 3 | NEW site: how many of the info groups `synopsis`, `year`, `cast`, `genres`, `rating`, `trailer_url`, `poster_url` the DETAIL fields define AND fill on EVERY parsed detail page (the `detail_page_id` page + a second one). Each group the admin answered "Sitede yok, atla: <field>" for ("Varsa al, yoksa atla") leaves the bar but its field is KEPT in the yaml (taken on the pages that have it, empty on the rest; listed in `exempt` as `optional`); the agent never skips on its own |
 | `series_inventory_ok` | >= 1 | with `playable: true` AND a `series_page:` block: the series pages of up to 3 DIFFERENT series are read (`series{}`); every one must give an episode (`skipped` not counted, none read = 0) |
 | `ingest_sample_ok` | >= 0.8 | NEW series site with a `series_page:` that has `series_url_regex`: up to 10 DIFFERENT series items of the list AND the collections (episode cards included) go through the production key / title cleanup and the series-page directory (`series-page.md`), up to 5 of their pages are read; the share that resolves to a series page with a non-empty inventory. Never skippable |
 
@@ -61,7 +61,7 @@ Every failing criterion also comes with a `hint` in `failing[]`; the `diagnostic
 (and ` izle`, ` HD`, `| Site`, `N. Bölüm` off titles) because your `key.regex` let them through: fix the regex to capture the show slug only.
 
 `removed_fields` (the FIRST warning "alan kaldırıldı: ..."): a detail / collection field that gave values in your previous submission is gone from
-the yaml; it stays reported until you put it back or the admin answers "Sitede yok, atla: <field>". Never drop a working field to get a criterion
+the yaml; it stays reported until you put it back or the admin answers "Sitede yok, atla: <field>" (then keep the field anyway: it is optional). Never drop a working field to get a criterion
 through. `warnings` do not fail a draft but still matter (`no collections: ...`, a `skipped` collection, `no search block: this site will not be
 searchable`, ...).
 

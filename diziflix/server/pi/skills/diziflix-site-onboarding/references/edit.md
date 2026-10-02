@@ -15,6 +15,10 @@ Edit-mode tools: `fetch_page`, `query_html`, `grep_page`, `outline_page`, `test_
 `load_site_config` can read ONLY the site being edited. `submit_draft` keeps the site id: whatever `site_id_suggestion` you send, the server
 uses the edited site's id (send that id).
 
+**Handoff note.** `load_site_config` returns `handoff`: the site's note (earlier findings and solutions, what the admin said and decided, results,
+change history). Read it first, do not undo its decisions, do not ask again what it already answers. `submit_draft(handoff=...)` = ONE entry for the
+history (what changed, why, result, <= 8 lines); the server adds the deterministic parts (the admin's messages, criteria) itself.
+
 ## Rules
 
 1. **The request is the scope.** Do what the request says and nothing else: no "tidying", no renamed keys, no extra sections you noticed. When it is

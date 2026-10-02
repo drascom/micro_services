@@ -15,7 +15,8 @@ this module (``STEP_TEXT``, ``ROLE_ROWS``, ``ROLE_SIGNALS``, ``CRITERIA_TEXT``, 
 
 ``actions`` (only on a ``warn`` / ``fail`` step; the page shows them as one-click buttons, a click sends ``message`` to the agent
 through the ordinary message endpoint): ``fix`` = "Ajan düzeltsin" (the problem + the matching ``report.diagnostics`` + what to do),
-``skip`` = "Sitede yok, atla" (``Sitede yok, atla: <field>``; only for information fields the site may simply not have: the
+``skip`` = "Varsa al, yoksa atla" for information fields (+ ``hint``: the field stays, taken where found, empty elsewhere), else
+"Sitede yok, atla" (the message is always ``Sitede yok, atla: <field>``; only for information fields the site may simply not have: the
 detail fields, the vertical poster, a home section, the search; never for the player / stream / list). The vertical poster is
 called "poster (dikey)" everywhere: the wide image (backdrop) comes from TMDB and is never expected from the site.
 ``report.blocked`` (``{count, rules, samples}``) and ``playable.samples[].blocked`` (copyright / access placeholders the engine
@@ -919,7 +920,9 @@ def _apply_hardening(steps: list, rep: dict) -> None:
     for item in _list(rep.get("exempt")):
         entry = HARDEN_TEXT.get(str(_dict(item).get("criterion")))
         if entry:
-            steps[STEP_IDS.index(entry[0])]["details"].append(_n("Atlandı (sitede yok)", entry[1]))
+            optional = bool(_dict(item).get("optional"))
+            steps[STEP_IDS.index(entry[0])]["details"].append(
+                _n("Opsiyonel (varsa alınır)" if optional else "Atlandı (sitede yok)", entry[1]))
 
 
 # --- one-click actions of a problem box -------------------------------------------------------------------------------------
@@ -942,6 +945,15 @@ def fix_message(step: dict, rep: dict) -> str:
     return text if len(text) <= MESSAGE_MAX else text[:MESSAGE_MAX - 1] + "…"
 
 
+SKIP_OPTIONAL_HINT = "Alan korunur: bulunan sayfalarda alınır, bulunamayanlarda boş kalır."
+
+
+def _optional_field(name: Any) -> bool:
+    """Is ``name`` an information field (detail field / vertical poster) that stays in the yaml when the admin skips it?"""
+    low = re.sub(r"[^a-z0-9_]+", "_", str(name or "").strip().lower()).strip("_")
+    return low == "collection_poster" or low in FIELD_NAMES
+
+
 def _attach_actions(steps: list, rep: dict) -> None:
     """``actions`` of every ``warn`` / ``fail`` step, and drop the private ``_skip`` of all of them."""
     for step in steps:
@@ -950,7 +962,12 @@ def _attach_actions(steps: list, rep: dict) -> None:
             continue
         step["actions"].append({"id": "fix", "label": "Ajan düzeltsin", "message": fix_message(step, rep)})
         if skip:
-            step["actions"].append({"id": "skip", "label": "Sitede yok, atla", "message": "Sitede yok, atla: " + ", ".join(skip)})
+            # information fields keep their yaml extraction ("Varsa al, yoksa atla": taken where found, empty elsewhere); the answer text
+            # is the same pattern for all (``onboard.ANSWER_ABSENT``)
+            optional = all(_optional_field(f) for f in skip)
+            step["actions"].append({"id": "skip", "label": "Varsa al, yoksa atla" if optional else "Sitede yok, atla",
+                                    "message": "Sitede yok, atla: " + ", ".join(skip),
+                                    **({"hint": SKIP_OPTIONAL_HINT} if optional else {})})
 
 
 # --- overall --------------------------------------------------------------------------------------------------------------

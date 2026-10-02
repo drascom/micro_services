@@ -6,6 +6,8 @@
                                           providers[], can_rollback, busy`` (``busy`` = scan | heal | onboard | finder | null)
 `GET    /api/ops/sites/{site}/config`     ``{site_id, version, yaml_text, versions[{version, updated_at, active}], baseline}``
                                           (secret-looking values masked; 404 for a site that is not registered)
+`GET    /api/ops/sites/{site}/handoff`    ``{site_id, text, bytes}``: the site's handoff note (``scraper/site_handoff.py``; Markdown, read-only; 404 for
+                                          a site that is not registered; ``text`` is "" when there is none yet)
 `POST   /api/ops/sites/{site}/rename`     ``{display_name}`` -> new config version ``{version, display_name}``
 `DELETE /api/ops/sites/{site}?purge=1`    ``{deleted, files, purged{...}, tombstone, hand_built, note?, kept_user_data, warnings?}``;
                                           409 ``busy`` while the site scans / heals / is being edited, 404 unknown site.
@@ -29,7 +31,7 @@ from pydantic import BaseModel, Field
 from .. import autoscan, db
 from ..errors import ApiError
 from ..library import purge
-from ..scraper import config as scfg, site_search, state as sstate
+from ..scraper import config as scfg, site_handoff, site_search, state as sstate
 
 router = APIRouter(prefix="/api/ops/sites")
 
@@ -219,6 +221,14 @@ def site_config(site: str) -> dict[str, Any]:
             "versions": _versions(site, cfg), "baseline": baseline}
 
 
+@router.get("/{site}/handoff")
+def handoff(site: str) -> dict[str, Any]:
+    """The handoff note of a registered site (what the next edit / repair agent reads), as text."""
+    _registered(site)
+    text = site_handoff.read(site)
+    return {"site_id": site, "text": text, "bytes": len(text.encode("utf-8"))}
+
+
 # --- write ------------------------------------------------------------------------------------------------------------
 
 @router.post("/{site}/rename")
@@ -233,7 +243,14 @@ def rename(site: str, body: RenameBody) -> dict[str, Any]:
         raise ApiError(409, "busy", f"site is busy ({kind})")
     data = copy.deepcopy(cfg.data)
     data["display_name"] = name
-    return {"version": scfg.save_new_version(site, data), "display_name": name}
+    old_name = str(cfg.data.get("display_name") or "").strip()
+    version = scfg.save_new_version(site, data)
+    if old_name != name:   # the handoff note keeps the change (a site id change would carry the note: ``site_handoff.move``)
+        try:
+            site_handoff.append_change(site, f"Görünen ad değişti: {old_name or site} -> {name}", title=f"Ad değişti v{version}")
+        except Exception:
+            pass
+    return {"version": version, "display_name": name}
 
 
 @router.delete("/{site}")

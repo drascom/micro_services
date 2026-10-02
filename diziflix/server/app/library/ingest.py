@@ -1015,6 +1015,12 @@ def ingest_source(site: str, trigger: str = "cli") -> dict[str, Any]:
             **({"coverage": result["coverage"]} if result.get("coverage") else {}),
             **({"warnings": result["warnings"]} if result.get("warnings") else {}),
         })
+        if not result.get("error"):
+            try:   # a measured line for the site's handoff note (the first scans, then at most daily on a change); never breaks the scan
+                from ..scraper import site_handoff
+                site_handoff.record_scan(site, result)
+            except Exception as exc:
+                log.warning("ingest %s: handoff scan findings skipped: %s", site, exc)
         if (result.get("coverage") is not None or result.get("series_crawl") is not None) and not result.get("error"):
             try:   # the "no sources" / "series pages unreadable" signals of this scan (at most one repair run per scan: playheal consumes it)
                 from ..scraper import playheal

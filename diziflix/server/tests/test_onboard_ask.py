@@ -122,7 +122,9 @@ class QuestionDataTest(unittest.TestCase):
         self.assertEqual(q["tried"], ASK["tried"])
         self.assertEqual([o["id"] for o in q["options"]], ["absent", "present", "apply"])
         absent, present, apply_ = q["options"]
-        self.assertEqual((absent["label"], absent["answer"]), ("Sitede yok, atla", "Sitede yok, atla: overview"))
+        self.assertEqual((absent["label"], absent["answer"]), ("Varsa al, yoksa atla", "Sitede yok, atla: overview"))   # the answer pattern is unchanged
+        other = onboard.question_data({**ASK, "field": "home_series_section"})["options"][0]
+        self.assertEqual((other["label"], other["answer"]), ("Sitede yok, atla", "Sitede yok, atla: home_series_section"))
         self.assertEqual((present["label"], present["input"], present["answer_prefix"]), ("Var, ben göstereyim", True, "Var: "))
         self.assertEqual((apply_["label"], apply_["answer"]), ("Önerilen: özeti fragman metninden al", "Önerini uygula"))
 
@@ -655,7 +657,7 @@ class AdminAskCards(unittest.TestCase):
     def test_a_question_is_a_card_with_the_three_answers(self):
         got = self.ui(question_draft())
         card = got["els"]["ob-ask"]["html"]
-        for needle in ("obask", "Ajan soruyor", "<b>özet</b>", esc(ASK["question"]), "Denediklerim (2)", "Sitede yok, atla", "Var, ben göstereyim",
+        for needle in ("obask", "Ajan soruyor", "<b>özet</b>", esc(ASK["question"]), "Denediklerim (2)", "Varsa al, yoksa atla", "Alan korunur: bulunan sayfalarda alınır", "Var, ben göstereyim",
                        esc("Önerilen: özeti fragman metninden al"), 'id="ob-ask-hint"', 'data-ob="askopt" data-id="absent"',
                        'data-ob="askopt" data-id="present"', 'data-ob="askopt" data-id="apply"'):
             self.assertIn(needle, card, needle)

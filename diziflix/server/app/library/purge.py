@@ -227,7 +227,7 @@ def delete_site(site: str, *, purge: bool = True, refresh: bool = True) -> dict[
     :class:`DeleteIncomplete` when a step after the database commit failed.
 
     Returns ``{"deleted": True, "files": [...], "purged": {...}|None, "tombstone": True, "hand_built": bool,
-    "settings_removed": bool, "kept_user_data": {...}, "note"?: str, "warnings": [...]}``."""
+    "settings_removed": bool, "handoff_removed": bool, "kept_user_data": {...}, "note"?: str, "warnings": [...]}``."""
     if not SITE_ID_RE.match(site or "") or site not in scfg.list_sites():
         raise LookupError(f"unknown scraper site {site!r}")
     hand_built = is_hand_built(site)
@@ -268,6 +268,12 @@ def delete_site(site: str, *, purge: bool = True, refresh: bool = True) -> dict[
     except Exception as exc:   # the site is gone anyway; a stale settings entry is harmless
         log.warning("site %s: settings entry not removed: %s", site, exc)
         result["warnings"].append(f"settings: {type(exc).__name__}")
+    try:   # the site's handoff note goes with it (a site added again later starts with a clean one)
+        from ..scraper import site_handoff
+        result["handoff_removed"] = site_handoff.delete(site)
+    except Exception as exc:
+        log.warning("site %s: handoff note not removed: %s", site, exc)
+        result["warnings"].append(f"handoff: {type(exc).__name__}")
     try:   # the removed yaml's image_hosts leave the artwork proxy allow-list at once
         from .. import images
         images._site_hosts_cache = (None, 0.0, [])

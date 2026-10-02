@@ -190,6 +190,7 @@ async function call(spec: ToolSpec, params: Json, outer?: AbortSignal): Promise<
 // --- the tools --------------------------------------------------------------------------------------------------
 
 const YAML_TEXT = str("The complete site yaml (plain text, no aliases).");
+const HANDOFF = str("Handoff note (Markdown). New site: problem, how found, solution (<= 25 lines). Edit / repair: ONE entry: change, why, result (<= 8 lines).");
 const PAGE_ID = str("page_id from fetch_page or test_config.");
 /** New provider recipes for the library (see the skill's providers reference); they join the providers IN MEMORY for the call. */
 const PROVIDER_RECIPES: Json = {
@@ -463,13 +464,13 @@ const TOOLS: ToolSpec[] = [
     label: "Submit draft",
     description:
       "Hand the finished draft in: the server re-tests it and stores it for the admin. Call it once at the end, after a final test_config. " +
-      "Returns passed, errors, warnings, criteria. New provider recipes go in provider_recipes (saved with the site); the draft id is added " +
-      "automatically.",
+      "Returns passed, errors, warnings, criteria. New provider recipes go in provider_recipes (saved with the site).",
     parameters: obj(
       {
         yaml_text: YAML_TEXT,
         site_id_suggestion: str("Lower-case letters, digits, underscore, starts with a letter, 2-32 chars."),
         notes: str("What was found, failing criteria, open problems."),
+        handoff: HANDOFF,
         page_id: str("Stored list page of the last test_config."),
         detail_page_id: str("Stored detail page of the last test_config."),
         provider_recipes: PROVIDER_RECIPES,
@@ -481,7 +482,7 @@ const TOOLS: ToolSpec[] = [
     body: (p) => {
       const draftId = process.env.DIZIFLIX_DRAFT_ID || "";
       if (!draftId) throw new Error("submit_draft: DIZIFLIX_DRAFT_ID is not set");
-      return { draft_id: draftId, ...pick(p, ["yaml_text", "site_id_suggestion", "notes", "page_id", "detail_page_id", "provider_recipes"]) };
+      return { draft_id: draftId, ...pick(p, ["yaml_text", "site_id_suggestion", "notes", "handoff", "page_id", "detail_page_id", "provider_recipes"]) };
     },
     modes: ["onboard", "edit"],
   },
@@ -490,9 +491,9 @@ const TOOLS: ToolSpec[] = [
     name: "load_site_config",
     label: "Load site config",
     description:
-      "Read-only: the ACTIVE yaml (secrets masked), version, baseline and provider recipes of the REGISTERED site being repaired or edited. " +
-      "Call it FIRST in repair and edit mode: submit this yaml with only the broken / requested part changed. In edit mode only the " +
-      "edited site can be read.",
+      "Read-only: the ACTIVE yaml (secrets masked), version, baseline, provider recipes and the HANDOFF note (earlier findings, the admin's " +
+      "decisions) of the REGISTERED site being repaired or edited. Call it FIRST in repair and edit mode: read the note, submit this yaml " +
+      "with only the broken / requested part changed. In edit mode only the edited site can be read.",
     parameters: obj(
       {
         site_id: str("The registered site id (in edit mode the site being edited)."),
@@ -508,8 +509,8 @@ const TOOLS: ToolSpec[] = [
     name: "submit_repair",
     label: "Submit repair",
     description:
-      "Hand in your repair PROPOSAL once, at the end, after test_config (baseline: true, playable: true) and test_provider passed on at " +
-      "least 3 different examples. Nothing is applied by this call: the server re-tests it and applies it only when all checks pass. " +
+      "Hand in your repair PROPOSAL once, at the end, after test_config (baseline: true, playable: true) and test_provider passed on " +
+      "3+ different examples. Nothing is applied by this call: the server re-tests it and applies it only when all checks pass. " +
       "yaml_text = the COMPLETE corrected yaml (omit when only a recipe changes); provider_recipes = a NEW recipe or the complete NEW " +
       "version of an existing one (same name). When yaml and recipes cannot fix it (a signature, cookie, TLS check, JavaScript API call) " +
       "submit NO yaml and NO recipe and write `needs code: <host>` plus the evidence in notes.",
@@ -519,12 +520,13 @@ const TOOLS: ToolSpec[] = [
         yaml_text: str("The complete corrected yaml; omit when only a recipe changes."),
         provider_recipes: PROVIDER_RECIPES,
         notes: str("What was wrong, what you changed, the examples verified; or `needs code: <host>` + evidence."),
+        handoff: HANDOFF,
       },
       ["site_id"],
     ),
     method: "POST",
     path: "/submit_repair",
-    body: (p) => pick(p, ["site_id", "yaml_text", "provider_recipes", "notes"]),
+    body: (p) => pick(p, ["site_id", "yaml_text", "provider_recipes", "notes", "handoff"]),
     modes: ["repair"],
   },
 ];

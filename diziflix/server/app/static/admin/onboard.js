@@ -1,11 +1,11 @@
 /* "Siteler" sekmesi (#onboard): site yönetimi + pi ajanıyla site ekleme/düzenleme (/api/ops/sites/*, /api/ops/onboard/*).
-   Ana ekran: site LİSTESİ (elle yapılmış olanlar dahil; Düzenle / YAML / Ad değiştir / Geri al / Ayarlar / Sil),
+   Ana ekran: site LİSTESİ (elle yapılmış olanlar dahil; Düzenle / YAML / Devir notu / Ad değiştir / Geri al / Ayarlar / Sil),
    "+ Yeni site" paneli (adres + not + Başlat), Taslaklar; sağlık kartı yalnız sorunda (çalışan iş varsa Aç / İptal).
    Taslak ekranı (#onboard/<id>): ÜSTTE yapışkan Kaydet şeridi (site_id, ad, Kaydet -> onay paneli: tara / otomatik tarama / force),
    genel durum + adım adım ilerleme (draft.pipeline) + "uygulamada ne görünecek", ajan günlüğü | yaml taslağı yan yana (altında sohbet).
    Ajan bir şey soruyorsa (draft.question_data) üstte "Ajan soruyor" kartı: düğmeler/ipucu girişi mevcut mesaj ucuna kalıp metin gönderir
    ("Sitede yok, atla: <alan>" / "Var: <ipucu>" / "Önerini uygula"); kind=engine_gap "Sistemde eksik özellik" kartı (kopyalanabilir).
-   Sorunlu adımlarda tek tıkla "Ajan düzeltsin" / "Sitede yok, atla" (step.actions[].message sunucudan hazır gelir).
+   Sorunlu adımlarda tek tıkla "Ajan düzeltsin" / "Varsa al, yoksa atla" (bilgi alanı korunur; gönderilen cevap "Sitede yok, atla: <alan>") (step.actions[].message sunucudan hazır gelir).
    Sekme gizliyken ağ isteği yok. */
 (function(){
 'use strict';
@@ -247,6 +247,7 @@ function siteRow(s){
   h+='<div class="obsa">'+
     '<button class="btn" data-ob="sedit" data-site="'+esc(id)+'"'+off+'>Düzenle</button>'+
     '<button class="btn" data-ob="syaml" data-site="'+esc(id)+'">YAML</button>'+
+    '<button class="btn" data-ob="shandoff" data-site="'+esc(id)+'">Devir notu</button>'+
     '<button class="btn" data-ob="srename" data-site="'+esc(id)+'"'+off+'>Ad değiştir</button>'+
     (s.can_rollback?'<button class="btn" data-ob="srollback" data-site="'+esc(id)+'"'+off+'>Geri al</button>':'')+
     '<button class="btn" data-ob="goto-settings">Ayarlar</button>'+
@@ -360,6 +361,12 @@ function openYaml(site){
     if(!M||M.kind!=='yaml'||M.site!==site)return;M.state='ok';M.cfg=j||{};renderModal();
   }).catch(function(e){if(!M||M.kind!=='yaml'||M.site!==site)return;M.state='err';M.err=msgOf(e);renderModal()});
 }
+function openHandoff(site){
+  M={kind:'handoff',site:site,state:'loading'};renderModal();
+  call(SITES+'/'+enc(site)+'/handoff').then(function(j){
+    if(!M||M.kind!=='handoff'||M.site!==site)return;M.state='ok';M.text=(j&&j.text)||'';renderModal();
+  }).catch(function(e){if(!M||M.kind!=='handoff'||M.site!==site)return;M.state='err';M.err=msgOf(e);renderModal()});
+}
 function openDel(site){M={kind:'del',site:site,purge:true,busy:false,err:''};renderModal()}
 function closeModal(){M=null;renderModal()}
 function modalHtml(){
@@ -374,6 +381,15 @@ function modalHtml(){
       if(vs.length)h+='<div class="hint">Sürümler: '+vs.map(function(v){return '<span class="obchip">v'+esc(v.version)+(v.updated_at?' · '+esc(when(v.updated_at)):'')+'</span>'}).join(' ')+'</div>';
       h+=c.yaml_text?'<pre class="obyaml obmy mono" tabindex="0">'+esc(c.yaml_text)+'</pre>':'<div class="pempty">Yaml boş</div>';
       h+='<div class="hint">Salt okunur; sırlar maskelidir. Değiştirmek için “Düzenle”yi kullan.</div>';
+    }
+  } else if(M.kind==='handoff'){
+    h='<div class="lhead"><h3 id="ob-mt" class="grow">'+esc(name)+' · devir notu</h3>'+
+      (M.state==='ok'&&M.text?'<button class="btn" data-ob="mcopyh">Kopyala</button>':'')+'<button class="btn" data-ob="mclose">Kapat</button></div>';
+    if(M.state==='loading')h+='<div class="empty">Yükleniyor…</div>';
+    else if(M.state==='err')h+='<div class="note bad">Devir notu alınamadı: '+esc(M.err)+'</div>';
+    else {
+      h+=M.text?'<pre class="obyaml obmy mono" tabindex="0">'+esc(M.text)+'</pre>':'<div class="pempty">Bu site için henüz devir notu yok. Yeni site kaydedilince, düzenleme veya onarım uygulanınca ve ilk taramalardan sonra oluşur.</div>';
+      h+='<div class="hint">Salt okunur. Düzenleme ve onarım ajanı geçmişi bu nottan okur; elle değiştirilmez.</div>';
     }
   } else {
     h='<h3 id="ob-mt">“'+esc(name)+'” silinsin mi?</h3>'+
@@ -559,7 +575,7 @@ function renderHead(){
     }
   }
   else if(D.status==='running'&&D.auto_round>0)n='<div class="note warn"><b>Otomatik düzeltme turu '+esc(D.auto_round)+'/'+esc(D.auto_rounds||'?')+':</b> ajan eksikleri kendi gideriyor; bitince sonucu burada görürsün.</div>';
-  else if(D.status==='ready'&&D.auto_round>0&&D.report&&D.report.passed===false)n='<div class="note warn">Ajan eksikleri kendi gidermeyi '+esc(D.auto_round)+' kez denedi, hâlâ eksik var. Sorunlu adımlardaki “Ajan düzeltsin” ya da “Sitede yok, atla” düğmelerini kullanabilirsin.</div>';
+  else if(D.status==='ready'&&D.auto_round>0&&D.report&&D.report.passed===false)n='<div class="note warn">Ajan eksikleri kendi gidermeyi '+esc(D.auto_round)+' kez denedi, hâlâ eksik var. Sorunlu adımlardaki “Ajan düzeltsin” ya da “Varsa al, yoksa atla” (alan korunur) düğmelerini kullanabilirsin.</div>';
   $('ob-note').innerHTML=n;
 }
 
@@ -600,6 +616,7 @@ function askHtml(q){
     '<div class="obaskh"><span class="tag warn">Ajan soruyor</span> <b>'+esc(askField(q.field))+'</b></div>'+
     '<div class="obaskq">'+esc(q.text)+'</div>'+tr+
     (btns?'<div class="obaskb">'+btns+'</div>':'')+inp+
+    (opts.some(function(o){return o&&o.id==='absent'&&o.label==='Varsa al, yoksa atla'})?'<div class="hint">Alan korunur: bulunan sayfalarda alınır, bulunamayanlarda boş kalır.</div>':'')+
     (kind==='decision'?'<div class="hint">İstersen taslağı olduğu gibi de kaydedebilirsin (üstteki Kaydet; “Yine de kaydet”).</div>':'')+'</div>';
 }
 function renderAsk(){
@@ -648,7 +665,8 @@ function stepHtml(s,i,prob){
   if(bad&&s.problem&&acts.length){
     var off=!D||D.status==='running'||D.status==='saved'?' disabled':'';
     h+='<div class="obfix">'+acts.map(function(a){
-      return '<button class="btn'+(a.id==='fix'?' primary':'')+'" data-ob="act" data-step="'+esc(s.id)+'" data-id="'+esc(a.id)+'"'+off+'>'+esc(a.label||a.id)+'</button>'}).join('')+'</div>';
+      return '<button class="btn'+(a.id==='fix'?' primary':'')+'" data-ob="act" data-step="'+esc(s.id)+'" data-id="'+esc(a.id)+'"'+(a.hint?' title="'+esc(a.hint)+'"':'')+off+'>'+esc(a.label||a.id)+'</button>'}).join('')+'</div>'+
+      acts.filter(function(a){return a.hint}).slice(0,1).map(function(a){return '<div class="hint">'+esc(a.hint)+'</div>'}).join('');
   }
   if(dets.length){
     h+='<button class="obdt" data-ob="tog" data-step="'+esc(s.id)+'" aria-expanded="'+(open?'true':'false')+'">Ayrıntılar ('+dets.length+') '+(open?'▴':'▾')+'</button>';
@@ -884,9 +902,11 @@ function bind(){
     else if(a==='rnsave'){doRename(site)}
     else if(a==='srollback'){rollbackSite(site)}
     else if(a==='syaml'){openYaml(site)}
+    else if(a==='shandoff'){openHandoff(site)}
     else if(a==='sdel'){openDel(site)}
     else if(a==='mclose'){closeModal()}
     else if(a==='mdel'){doDelete()}
+    else if(a==='mcopyh'){var ht=M&&M.text||'';copyText(ht).then(function(){toast('Devir notu kopyalandı')}).catch(function(){toast('Kopyalanamadı','bad')})}
     else if(a==='mcopy'){var y=M&&M.cfg&&M.cfg.yaml_text||'';copyText(y).then(function(){toast('YAML kopyalandı')}).catch(function(){toast('Kopyalanamadı','bad')})}
     else if(a==='cancel'){
       b.disabled=true;

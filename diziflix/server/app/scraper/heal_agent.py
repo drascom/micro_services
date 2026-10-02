@@ -466,14 +466,39 @@ def _tracked(site: str, evidence: dict, trigger: str) -> dict:
     outcome = heal.settle(site, result)
     extra = {k: trace[k] for k in ("agent", "layers", "touched_keys", "touched_paths", "recipes", "proposal", "regression", "verified")
              if trace.get(k)}
-    state.record_ops_heal({
+    entry = state.record_ops_heal({
         **base, "at": started_at, "outcome": outcome, "applied": bool(result.get("applied")),
         "new_version": result.get("new_version"), "error": result.get("reason"),
         "before": trace.get("before"), "after": trace.get("after"),
         "diff": heal.selector_diff(trace.get("before"), trace.get("after")),
         "duration": round(time.monotonic() - t0, 2), **extra,
     })
+    if result.get("applied"):
+        _note_handoff(site, result, trace, entry)
     return result
+
+
+def _note_handoff(site: str, result: dict, trace: dict, entry: Any) -> None:
+    """An APPLIED repair adds one change entry to the site's handoff note (the agent's ``handoff`` text, else its notes), titled with the heal
+    record id. Never raises."""
+    try:
+        from . import site_handoff
+        info = trace.get("handoff") or {}
+        layers = ", ".join(str(x) for x in (trace.get("layers") or [])[:4])
+        recipes = ", ".join(f"{r.get('name')} v{r.get('version')}" for r in (result.get("recipes") or [])[:3] if isinstance(r, dict))
+        text = "\n".join(x for x in (str(info.get("text") or ""), f"Katman: {layers}" if layers else "",
+                                     f"Tarif: {recipes}" if recipes else "") if x)
+        data = None
+        try:
+            cfg = scfg.load_site(site)
+            data, version = cfg.data, cfg.version
+        except Exception:
+            version = result.get("new_version")
+        rid = (entry or {}).get("id") if isinstance(entry, dict) else None
+        site_handoff.append_change(site, text or "(açıklama yok)", {"state": site_handoff.state_facts(data, version)} if data else None,
+                                   title=f"Heal {rid or info.get('job') or ''} v{version}".strip())
+    except Exception:
+        log.warning("heal_agent: handoff note of %s not written", site, exc_info=True)
 
 
 def _repair_impl(site: str, evidence: dict, trigger: str, trace: dict) -> dict:
@@ -616,6 +641,7 @@ def _gate_and_apply(cfg: scfg.SiteConfig, evidence: dict, record: dict, trace: d
     from ..routers import onboard_sandbox as sb
     site, kind = cfg.site_id, str(evidence.get("kind") or "playback")
     notes = pi_agent.clip(record.get("notes"), 600)
+    trace["handoff"] = {"text": str(record.get("handoff") or "") or notes, "job": record.get("job_id"), "kind": kind}   # -> the site handoff note when applied
     yaml_text = str(record.get("yaml_text") or "")
     items = [r for r in record.get("provider_recipes") or [] if isinstance(r, dict) and r.get("name")]
     if str(record.get("site_id") or site) != site:

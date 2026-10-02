@@ -212,11 +212,11 @@ def render_quality() -> str:
              ("home_path_is_canonical", ">= 1",
               "NEW site with a CERTAIN `redirect_hint` on the `list_url` page: 0 while `list_url` or a collection `path` still names the redirecting path"),
              ("collection_poster_fill", ">= %g" % sb.MIN_COLLECTION_POSTER_FILL,
-              "NEW site, `collections: true`: the LEAST `poster_url` fill over the collections of the roles %s. Exempt after \"Sitede yok, atla: `%s`\""
+              "NEW site, `collections: true`: the LEAST `poster_url` fill over the collections of the roles %s. Exempt after \"Sitede yok, atla: `%s`\" (the poster field STAYS: taken where cards have it; `exempt[].optional`)"
               % (", ".join("`%s`" % r for r in sb.POSTER_ROLES), sb.SKIP_COLLECTION_POSTER)),
              ("detail_info_defined", ">= %d" % sb.MIN_DETAIL_INFO,
               "NEW site: how many of the info groups %s the DETAIL fields define AND fill on EVERY parsed detail page (the `detail_page_id` page + "
-              "a second one). Each group the admin answered \"Sitede yok, atla: <field>\" for leaves the bar; the agent never skips on its own"
+              "a second one). Each group the admin answered \"Sitede yok, atla: <field>\" for (\"Varsa al, yoksa atla\") leaves the bar but its field is KEPT in the yaml (taken on the pages that have it, empty on the rest; listed in `exempt` as `optional`); the agent never skips on its own"
               % ", ".join("`%s`" % g for g in sb.INFO_FIELDS)),
              ("series_inventory_ok", ">= %g" % sb.MIN_SERIES_INVENTORY_RATIO,
               "with `playable: true` AND a `series_page:` block: the series pages of up to %d DIFFERENT series are read (`series{}`); every one must "

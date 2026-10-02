@@ -1071,7 +1071,8 @@ class ActionsTest(unittest.TestCase):
     def test_skip_only_for_information_the_site_may_not_have(self):
         view = build(self.poster_report())
         skip = self.action(view, "links", "skip")
-        self.assertEqual((skip["label"], skip["message"]), ("Sitede yok, atla", "Sitede yok, atla: poster_url"))
+        self.assertEqual((skip["label"], skip["message"]), ("Varsa al, yoksa atla", "Sitede yok, atla: poster_url"))   # the answer text stays
+        self.assertIn("Alan korunur", skip["hint"])
         # the title / link / identity failures of the list cannot be skipped
         report = good_report()
         report["list"]["field_fill"]["title"] = 0.5
@@ -1114,6 +1115,7 @@ class ActionsTest(unittest.TestCase):
         report["collections"] = [collection("trending", count=12), collection("featured", "error", 0, ["collections[featured_demo]: page not available (HTTP 404)"])]
         view = build(report)
         self.assertEqual(self.action(view, "search", "skip")["message"], "Sitede yok, atla: search")
+        self.assertEqual(self.action(view, "search", "skip")["label"], "Sitede yok, atla")   # a block / section: not an information field
         self.assertEqual(self.action(view, "home", "skip")["message"], "Sitede yok, atla: collection:featured")
         report["collections"] = []
         self.assertEqual(self.action(build(report), "home", "skip")["message"], "Sitede yok, atla: collections")

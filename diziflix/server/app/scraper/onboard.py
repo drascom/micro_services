@@ -149,7 +149,7 @@ QUESTION_CLIP = 600
 TRIED_MAX, TRIED_CLIP, PROPOSAL_CLIP, OPTIONS_MAX, OPTION_LABEL_CLIP = 8, 200, 400, 4, 80
 
 #: the admin's answers are plain messages; the skill (``Missing information protocol``) tells the agent how to read each one
-ANSWER_ABSENT = "Sitede yok, atla: {field}"      # the information is not on the site: drop the field, go on
+ANSWER_ABSENT = "Sitede yok, atla: {field}"      # not (always) on the site: an information field is KEPT (optional), go on
 ANSWER_PRESENT = "Var: "                          # + the admin's free-text hint where it is: search again with it
 ANSWER_APPLY = "Önerini uygula"                   # do what the agent proposed
 ANSWER_CHOICE = "Seçim: {label}"                  # a custom option of a "decision" question
@@ -202,7 +202,8 @@ def question_data(args: Any) -> Optional[dict]:
     proposal = _clip(given.get("proposal"), PROPOSAL_CLIP)
     options: list[dict] = []
     if kind == "missing_info":
-        options.append({"id": "absent", "label": "Sitede yok, atla", "answer": ANSWER_ABSENT.format(field=field)})
+        options.append({"id": "absent", "label": "Varsa al, yoksa atla" if onboard_pipeline._optional_field(field) else "Sitede yok, atla",
+                        "answer": ANSWER_ABSENT.format(field=field)})
         options.append({"id": "present", "label": "Var, ben göstereyim", "input": True, "answer_prefix": ANSWER_PRESENT})
         if proposal:
             options.append({"id": "apply", "label": _clip("Önerilen: " + proposal, OPTION_LABEL_CLIP + 12), "answer": ANSWER_APPLY})
@@ -655,6 +656,8 @@ def start(url: str = "", hint: str = "", trigger: str = "admin", mode: str = "ne
     token = ""
     try:
         draft = store.create_draft(url, site_id_suggestion=edit_cfg.site_id if edit_cfg is not None else "")
+        if edit_cfg is None and hint:   # the first request of a new site goes into its handoff note
+            draft = store.update_draft(draft["id"], hint=hint) or draft
         if edit_cfg is not None:
             try:
                 with open(edit_cfg.path, "r", encoding="utf-8") as fh:
@@ -930,6 +933,27 @@ def _restore_masked(new_text: str, old_text: str) -> str:
     return _MASKED_LINE.sub(fill, new_text)
 
 
+def _write_handoff(draft: dict, site_id: str, data: dict, report: dict, version: Any, edit_site: str, force: bool) -> bool:
+    """The site handoff note of a save (``scraper/site_handoff``): a NEW site gets its first note (the agent's ``handoff`` text, else its
+    ``notes``, + the deterministic parts the server builds from the draft), an EDIT adds one change entry. Never raises: a note that
+    cannot be written does not stop the save."""
+    try:
+        from . import site_handoff
+        facts = site_handoff.facts_from_draft(draft, data, version, force=force, report=report)
+        agent = str(draft.get("handoff") or "").strip()
+        if edit_site:
+            text = agent
+            if not text:   # no handoff from the agent: what the server knows
+                changed = ", ".join(str(k) for k in ((report.get("edit") or {}).get("changed_keys") or [])[:12])
+                text = "\n".join(x for x in (f"İstek: {draft.get('hint')}" if draft.get("hint") else "",
+                                              f"Değişen anahtarlar: {changed}" if changed else "", str((report or {}).get("notes") or "")[:300]) if x)
+            return site_handoff.append_change(site_id, text or "(açıklama yok)", facts, title="Düzenleme v%s" % version)
+        return site_handoff.write_initial(site_id, agent or str((report or {}).get("notes") or ""), facts)
+    except Exception:
+        log.exception("onboarding: handoff note of %s not written", site_id)
+        return False
+
+
 def _start_scan(site_id: str) -> bool:
     """Scan ``site_id`` in the background (what ``POST /api/ops/sites/{site}/scan`` runs: ingest + cache refresh), so the result of
     a save reaches the catalogue. False when a scan of the site is already running or the thread cannot start; never raises."""
@@ -1070,6 +1094,8 @@ def save(draft_id: str, site_id: str, display_name: Optional[str] = None, enable
             report["edit"] = {**edit_info, "to_version": version}
         draft = store.update_draft(draft_id, status="saved", saved_site_id=site_id, error=None, question=None,
                                    report=report)
+        if not _write_handoff(draft, site_id, data, report, version, edit_site, force):
+            warnings.append("handoff: devir notu yazılamadı")
         extra = (" + provider " + ", ".join(f"{w['name']} v{w['version']}" + (" (host eklendi)" if w.get("mode") == "update" else "") for w in written)) if written else ""
         add_event(draft_id, {"t": _now(), "kind": "status", "status": "saved", "text": f"{site_id} v{version} kaydedildi{extra}"})
         _record(draft, "saved", time.monotonic(), 0, f"{site_id} v{version}{extra}" + (" (force)" if force and not report.get("passed") else ""))

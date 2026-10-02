@@ -97,7 +97,7 @@ are small on purpose (they go to an LLM): text is clipped, lists are capped.
                                                                       for ``detail_url``, plus ``pages[]``: every page tried (``detail_urls``,
                                                                       else up to 2 more sampled from the list page of the draft yaml), one
                                                                       after the other; ``status`` resolved (all) / partial (some)
-``POST /submit``         {draft_id, yaml_text, site_id_suggestion, notes, page_id?, detail_page_id?, provider_recipes?}
+``POST /submit``         {draft_id, yaml_text, site_id_suggestion, notes, handoff?, page_id?, detail_page_id?, provider_recipes?}
                                                                       -> test_config again (always with collections AND playable), written
                                                                       to the draft, status=ready
 ``provider_recipes`` = ``[{name, yaml, mode?}]`` (at most 3): new provider recipes for the library; ``mode: "update"`` = a NEW VERSION of a recipe
@@ -113,10 +113,11 @@ its real id (``module_site``), so a hand-built site's own extractor is found.
 Repair mode (the heal agent, ``scraper/heal_agent.py``; the token belongs to a repair job ``rp_...``, not a draft):
 ``GET  /site_config/{site_id}?recipe=``                              -> the ACTIVE yaml text + version + baseline of a registered site and
                                                                       the approved provider recipes (yaml of the ones the site names, and of ``recipe``)
+                                                                      + ``handoff``: the site's handoff note (``scraper/site_handoff.py``)
 ``POST /test_config``    {..., baseline: true}                        -> + ``baseline {ok, reasons}`` and the criterion ``baseline_ok``: the yaml against the
                                                                       active config / baseline of its ``site_id`` (no field dropped, fill not clearly lower);
                                                                       in a repair run a ``provider_recipes`` name that is in the library UPDATES that recipe
-``POST /submit_repair``  {site_id, yaml_text?, provider_recipes?, notes}
+``POST /submit_repair``  {site_id, yaml_text?, provider_recipes?, notes, handoff?}
                                                                       -> records the PROPOSAL in ``DATA_DIR/onboard/repairs/<job_id>.json``; applies nothing
                                                                       (``scfg`` / ``configs`` are never written here)
 """
@@ -148,7 +149,7 @@ from selectolax.parser import HTMLParser
 from .. import config, netguard
 from ..errors import ApiError
 from ..scraper import collections as site_collections
-from ..scraper import blocked as sblocked, fetch, heal, onboard_store, parse, resolvers, schema, series_generic
+from ..scraper import blocked as sblocked, fetch, heal, onboard_store, parse, resolvers, schema, series_generic, site_handoff
 from ..scraper import config as scfg
 from ..scraper.providers import recipes, registry, trace
 
@@ -3186,6 +3187,8 @@ def _removed_fields(data: dict, previous: Any, skip: set) -> list[dict]:
     def gone(where: str, field: str) -> bool:
         if field.lower() in skip or ((_group_of(field) or "") in skip):
             return False
+        if where != "detail" and SKIP_COLLECTION_POSTER in skip and _group_of(field) == "poster_url":
+            return False   # "Varsa al, yoksa atla: collection_poster": a poster field that is gone is the admin's call
         if where == "detail":
             return field not in detail_fields
         names = _effective_fields(data, where[len("collections["):-1])
@@ -3235,7 +3238,8 @@ def _hardening(data: dict, norm: Optional[dict], pairs: list, collections_ran: b
     * ``collection_poster_fill`` (``collections: true``): every checked collection of a ``POSTER_ROLES`` role fills ``poster_url`` in
       >= ``MIN_COLLECTION_POSTER_FILL`` of its items (a collection that defines no poster field = 0). Exempt for ``collection_poster``.
     * ``detail_info_defined``: the detail page gives >= ``MIN_DETAIL_INFO`` of the ``INFO_FIELDS`` groups (defined AND filled in every
-      parsed sample page); each group is exempt when the admin said the site lacks it ("Sitede yok, atla: <field>").
+      parsed sample page); each group is exempt when the admin answered "Sitede yok, atla: <field>" (= "Varsa al, yoksa atla": the field is
+      NOT removed; a skipped field the yaml defines stays defined, is taken where the pages have it, and is listed in ``exempt`` as ``optional``).
 
     Returns (criteria, exempt [{criterion, field}], the redirect hint | None, ``detail_info`` facts | None)."""
     out: dict[str, dict] = {}
@@ -3261,17 +3265,30 @@ def _hardening(data: dict, norm: Optional[dict], pairs: list, collections_ran: b
             out["series_full_inventory"] = _criterion(1 if (data.get("series_page") or not _episode_cards(norm, pairs)) else 0, 1, "min")
     if collections_ran:
         if SKIP_COLLECTION_POSTER in skip:
-            exempt.append({"criterion": "collection_poster_fill", "field": SKIP_COLLECTION_POSTER})
+            item = {"criterion": "collection_poster_fill", "field": SKIP_COLLECTION_POSTER}
+            if any(_group_of(n) == "poster_url" for spec in data.get("collections") or [] if isinstance(spec, dict) and spec.get("role") in POSTER_ROLES
+                   for n in _effective_fields(data, spec.get("id")) or ()):
+                item["optional"] = True   # the poster field stays in the yaml: taken where the cards have it, empty where they do not
+            exempt.append(item)
         else:
             judged = [e for _spec, e in pairs if e.get("role") in POSTER_ROLES and e.get("status") != "skipped" and int(e.get("valid_count") or 0) > 0]
             if judged:   # one that yields no items at all is collections_valid_count's problem, not the poster's
                 out["collection_poster_fill"] = _criterion(min(float((e.get("field_fill") or {}).get("poster_url") or 0.0) for e in judged),
                                                            MIN_COLLECTION_POSTER_FILL, "min")
     info = _detail_info(data, detail, skip)
-    if info["state"] == "exempt":
-        exempt.append({"criterion": "detail_info_defined", "field": ", ".join(sorted(skip & {n for ns in INFO_FIELDS.values() for n in ns}))})
-    elif info["state"] == "judged":
+    if info["state"] == "judged":
         out["detail_info_defined"] = _criterion(len(info["good"]), info["required"], "min")
+    # a skipped info group whose field the yaml DEFINES is "optional": kept in the yaml, taken where the pages have it, empty elsewhere
+    # (no fill requirement, no warning); ``exempt`` lists it as ``optional``
+    detail_block = data.get("detail") if isinstance(data.get("detail"), dict) else {}
+    defined = set(detail_block.get("fields") or ()) if isinstance(detail_block.get("fields"), dict) else set()
+    optional = sorted(n for g, names in INFO_FIELDS.items() if skip & {g, *names} for n in names if n in defined)
+    skipped_info = sorted(skip & {n for ns in INFO_FIELDS.values() for n in ns})
+    if info["state"] == "exempt" or optional:
+        item = {"criterion": "detail_info_defined", "field": ", ".join(optional or skipped_info)}
+        if optional:
+            item["optional"] = True
+        exempt.append(item)
     home, hint = _home_path_criterion(data, html, meta)
     out.update(home)
     return out, exempt, hint, info
@@ -4091,8 +4108,9 @@ def _do_submit(body, *, deadline: float) -> dict:
     else:
         report["failing"] = _failing(report)   # the criteria changed above (config_errors): recompute
     report["notes"] = (body.notes or "")[:4000]
+    extra = {"handoff": site_handoff.clip_agent_text(body.handoff)} if (body.handoff or "").strip() else {}   # omitted = an earlier one stays
     onboard_store.update_draft(body.draft_id, status="ready", yaml_text=body.yaml_text, site_id_suggestion=suggestion,
-                               report=report, error=None, provider_recipes=asked)
+                               report=report, error=None, provider_recipes=asked, **extra)
     onboard_store.append_event(body.draft_id, {"type": "submit", "passed": report["passed"],
                                                "errors": len(report["errors"]), "warnings": len(report["warnings"])})
     return {"draft_id": body.draft_id, "status": "ready", "passed": report["passed"], "valid": report["valid"],
@@ -4208,6 +4226,8 @@ class SubmitBody(BaseModel):
     yaml_text: str = Field(..., max_length=100_000)
     site_id_suggestion: str = Field("", max_length=64)
     notes: str = Field("", max_length=4000)
+    handoff: str = Field("", max_length=4000, description="site handoff note for the next edit / repair agent (new site: findings and "
+                         "solutions, <= 25 lines; edit: ONE change entry, <= 8 lines); stored with the draft, written by save")
     page_id: Optional[str] = Field(None, max_length=32, description="stored list page (skips the re-fetch)")
     detail_page_id: Optional[str] = Field(None, max_length=32)
     provider_recipes: Optional[list[RecipeBody]] = Field(**RECIPES_FIELD)
@@ -4346,7 +4366,9 @@ def _do_site_config(site_id: str, recipe: str = "") -> dict:
             "baseline": {**{k: base[k] for k in ("min_items", "min_fill_ratio", "critical_field_fill") if k in base},
                          "last_good": {k: good[k] for k in ("valid_count", "fill_ratio", "field_fill", "field_fill_all", "at") if k in good}},
             "providers": cfg.providers, "provider_recipes": rows,
-            "note": "yaml_text is the active config (version above); a repair keeps site_id, schema and normalize.key"}
+            "handoff": site_handoff.read(site_id),
+            "note": "yaml_text is the active config (version above); a repair keeps site_id, schema and normalize.key; "
+                    "handoff = the site's handoff note (earlier findings, the admin's decisions, results): read it, keep its decisions, do not ask again"}
 
 
 class SubmitRepairBody(BaseModel):
@@ -4354,6 +4376,7 @@ class SubmitRepairBody(BaseModel):
     yaml_text: Optional[str] = Field(None, max_length=100_000, description="the COMPLETE corrected site yaml (omit when only a recipe changes)")
     provider_recipes: Optional[list[RecipeBody]] = Field(**RECIPES_FIELD)
     notes: str = Field("", max_length=4000)
+    handoff: str = Field("", max_length=2000, description="ONE change entry for the site handoff note (what changed, why, result; <= 8 lines)")
 
 
 def _do_submit_repair(job_id: str, body) -> dict:
@@ -4377,7 +4400,9 @@ def _do_submit_repair(job_id: str, body) -> dict:
     if items:
         problems += _prepare_recipes(items, replace=True).errors
     record = onboard_store.save_repair(job_id, {"site_id": site, "yaml_text": yaml_text, "provider_recipes": items,
-                                               "notes": (body.notes or "")[:4000], "problems": [_clip(p, 300) for p in problems[:10]]})
+                                               "notes": (body.notes or "")[:4000],
+                                               "handoff": site_handoff.clip_agent_text(getattr(body, "handoff", "")),
+                                               "problems": [_clip(p, 300) for p in problems[:10]]})
     return {"job_id": job_id, "status": "recorded", "site_id": site, "has_yaml": bool(yaml_text.strip()),
             "recipes": [r["name"] for r in items], "valid": not problems, "errors": [_clip(p, 300) for p in problems[:10]],
             "submissions": (record or {}).get("submissions", 1),

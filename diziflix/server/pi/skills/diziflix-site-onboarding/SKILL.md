@@ -8,17 +8,17 @@ description: Produce and verify a diziflix scraper site yaml for a new film/seri
 ## Repair mode
 
 If the first message starts with `REPAIR MODE` (a `site_id` instead of a URL), a REGISTERED site is broken: this is NOT an onboarding. Skip
-the workflow below, `read` `references/heal.md` and follow it: `load_site_config(site_id)` first, change only the broken part
-(never player logic in the yaml, never drop a field), finish with `submit_repair` (no `submit_draft`). A signature / cookie / TLS /
+the workflow below, `read` `references/heal.md` and follow it: `load_site_config(site_id)` first (read its `handoff` note: keep its decisions, never ask again what the admin already said),
+change only the broken part (never player logic in the yaml, never drop a field), finish with `submit_repair(..., handoff)` (no `submit_draft`). A signature / cookie / TLS /
 JavaScript API problem is `needs code: <host>`.
 
 ## Edit mode
 
 If the first message says `EDIT mode for site <site_id>. User request: <what to change>`, a REGISTERED site that works is changed on an
 admin's request: NOT an onboarding, NOT a repair. Skip the workflow below, `read` `references/edit.md` and follow it: `load_site_config(site_id)`
-first; the NARROWEST change the request needs (only the yaml keys of its layer, never a rewrite), checked with
-`test_config(playable: true, collections: true)` before and after; finish with `submit_draft(yaml_text, site_id_suggestion = <site_id>, notes)`
-(the admin saves it as a NEW VERSION).
+first (read its `handoff` note: keep its decisions, never ask again what the admin already said); the NARROWEST change the request needs (only the yaml keys of its layer, never a rewrite), checked with
+`test_config(playable: true, collections: true)` before and after; finish with `submit_draft(yaml_text, site_id_suggestion = <site_id>, notes, handoff)`
+(`handoff` = ONE change entry, <= 8 lines; the admin saves it as a NEW VERSION).
 
 ## Task
 
@@ -57,7 +57,7 @@ References: `read` them with an ABSOLUTE path (the skill directory is given at t
 | `match_providers(player_url, referer?)` | dry-run EVERY library provider on one player page, host ignored: `recommendation` `use_provider` / `add_host` (`recipe_yaml`) / `new_recipe` / `needs_code` |
 | `test_search(yaml_text, query?, page_id?, detail_page_id?)` | run `search:` on ONE live query |
 | `ask_user(field, question, tried?, proposal?, kind?, options?)` | ask the admin ONE question and END YOUR TURN |
-| `submit_draft(yaml_text, site_id_suggestion, notes?, page_id?, detail_page_id?, provider_recipes?)` | hand the draft in (`provider_recipes`: at most 3, saved with the site; `mode: "update"` = a library recipe gets a host) |
+| `submit_draft(yaml_text, site_id_suggestion, notes?, handoff?, page_id?, detail_page_id?, provider_recipes?)` | hand the draft in (`provider_recipes`: at most 3, saved with the site; `mode: "update"` = a library recipe gets a host) |
 | `read(path)` | open a reference file |
 
 ## Workflow
@@ -169,8 +169,11 @@ per call, in Turkish, plain words (no yaml keys, no selectors): what you did NOT
 - `engine_gap`: the engine / yaml schema cannot do what the site needs (`field` = the feature, `question` = the description): no skip button.
 
 **After the call write NO other tool call and at most one short closing sentence.** The answer arrives as your next message:
-- `Sitede yok, atla: <field>`: REMOVE that field from the yaml (collection role: the collection; search: the `search:` block), write
-  `sitede yok (kullanıcı): <field>` in `notes`, run `test_config` once, go on. Never ask about it again.
+- `Sitede yok, atla: <field>` (the button reads "Varsa al, yoksa atla"): a detail / card field (`synopsis`, `year`, `cast`, `genres`, `rating`,
+  `trailer_url`, `poster_url`) is NEVER removed: KEEP its existing extraction (taken on the pages that have it, empty on the others), write
+  `opsiyonel (kullanıcı): <field> (bulunan sayfalarda alınır)` in `notes`, run `test_config` once, go on; no extraction yet = stays undefined.
+  Other fields (collection role: that collection; search: the `search:` block): leave it undefined / drop the block, write
+  `sitede yok (kullanıcı): <field>` in `notes`. Never ask about it again.
 - `Var: <hint>`: search again with it (his words = the `grep_page` label / `query_html` place); nothing after 2 rounds: ask again.
 - `Önerini uygula`: do exactly your `proposal`, test, go on. `Seçim: <label>`: the option of a `decision`. Anything else: free text, do it first.
 
@@ -230,6 +233,7 @@ with rules. You never write code. The site yaml only finds the player URL and li
 
 ## Finish
 
-Two ways. (1) `submit_draft` with `passed: true` (or every remaining problem answered by the admin, with `sitede yok (kullanıcı): <field>` lines
+Two ways. (1) `submit_draft` (with `handoff`: <= 25 lines of Markdown for the next editor: problem -> how you found it -> solution, only what a
+later change needs, no secrets) with `passed: true` (or every remaining problem answered by the admin, with `sitede yok (kullanıcı): <field>` lines
 in `notes`): the last message, 3 to 6 lines: what you found (site, structure, fetch mode, player host, collection roles), the criteria result,
 what the admin decided. (2) `ask_user` with ONE question (no `submit_draft` after it).
