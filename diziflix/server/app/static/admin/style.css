@@ -411,3 +411,25 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
   .obyaml{flex:none;max-height:360px}
   .obyaml0{flex:none;min-height:80px}
 }
+
+/* Kategoriler sekmesi */
+.catw{max-width:920px}
+.catlead{color:var(--muted);font-size:14px;margin:0 0 12px}
+.catadd{display:flex;gap:8px;margin-bottom:14px}
+.catadd input{flex:1;min-width:0;font:inherit;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);min-height:36px}
+.catlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.catrow{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);flex-wrap:wrap}
+.catrow.off .catmain{opacity:.55}
+.catrow.dragging{opacity:.4;border-style:dashed}
+.cathandle{cursor:grab;user-select:none;color:var(--muted);font-size:18px;letter-spacing:-3px;padding:4px 6px;touch-action:none}
+.cathandle:active{cursor:grabbing}
+.catmove{display:flex;gap:4px}
+.catmove .btn{min-height:32px;padding:3px 8px;font-size:12px}
+.catmain{flex:1;min-width:180px;display:flex;flex-direction:column;gap:2px}
+.cattitle{all:unset;box-sizing:border-box;cursor:text;font:600 16px var(--serif);padding:2px 4px;border-radius:6px;align-self:flex-start}
+.cattitle:hover{background:var(--surface2)}
+.cattitle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cattitle-in{font:600 16px var(--serif);padding:2px 6px;border:1px solid var(--accent);border-radius:6px;background:var(--surface);color:var(--text);align-self:stretch}
+.catnote{font-size:12.5px;color:var(--muted);padding:0 4px}
+.catmin{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;white-space:nowrap}
+.catmin input{width:56px;font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)}

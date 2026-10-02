@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from .. import cache, rows as rowlib
 from ..deps import require_profile
 from ..errors import not_found
+from ..library import categories
 
 router = APIRouter(tags=["rows"])
 
@@ -29,6 +30,8 @@ def get_row(
     snap = cache.get()
     known = row_id in STATIC_ROWS or (
         row_id.startswith("genre_") and row_id[len("genre_") :] in snap.slug_genre
+    ) or (
+        row_id.startswith("cat_") and categories.exists(categories.slug_of_row(row_id) or "")
     )
     if not known:
         raise not_found("row")

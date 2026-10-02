@@ -15,6 +15,7 @@
   <nav class="tabs" role="tablist" aria-label="Bölümler">
     <button role="tab" id="tab-btn-events" data-tab="events" aria-selected="true" aria-controls="tab-events">Olay defteri</button>
     <button role="tab" id="tab-btn-library" data-tab="library" aria-selected="false" aria-controls="tab-library">Kütüphane</button>
+    <button role="tab" id="tab-btn-categories" data-tab="categories" aria-selected="false" aria-controls="tab-categories">Kategoriler</button>
     <button role="tab" id="tab-btn-settings" data-tab="settings" aria-selected="false" aria-controls="tab-settings">Ayarlar</button>
     <button role="tab" id="tab-btn-onboard" data-tab="onboard" aria-selected="false" aria-controls="tab-onboard">Siteler</button>
   </nav>
@@ -58,6 +59,9 @@
     </main>
     <aside id="ldetail" class="detail" aria-label="Öğe detayı" tabindex="-1"></aside>
   </div>
+  <div class="hidden" id="tab-categories" role="tabpanel" aria-labelledby="tab-btn-categories">
+    <div id="cat-root" class="catw"><div class="empty">Yükleniyor…</div></div>
+  </div>
   <div class="hidden" id="tab-settings" role="tabpanel" aria-labelledby="tab-btn-settings">
     <div id="set-root" class="sset"><div class="empty">Yükleniyor…</div></div>
   </div>
@@ -68,6 +72,7 @@
 <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
 <script src="/admin/app.js"></script>
 <script src="/admin/library.js"></script>
+<script src="/admin/categories.js"></script>
 <script src="/admin/settings.js"></script>
 <script src="/admin/onboard.js"></script>
 </body>

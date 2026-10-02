@@ -282,6 +282,10 @@ def row_title(snap: Snapshot, row_id: str) -> str:
     row_id = "movies" if row_id == "new_movies" else row_id   # DATA-CONTRACT-V1 name of the "movies" row
     if row_id in homelayout.TITLES:
         return homelayout.TITLES[row_id]
+    if row_id.startswith("cat_"):   # admin category row: its (editable) title
+        from .library import categories
+        slug = categories.slug_of_row(row_id)
+        return (slug and categories.title_of(slug)) or row_id
     if row_id == "new" and getattr(snap, "real_home", False):
         return NEW_TITLE_REAL
     if row_id == "yakinda":
@@ -406,7 +410,7 @@ def row_pool(snap: Snapshot, row_id: str, profile_id: str, pmap: dict) -> list[d
     from . import homelayout
     if row_id == "new_movies":  # DATA-CONTRACT-V1 name of the "movies" row
         row_id = "movies"
-    if row_id in homelayout.POOL_IDS:   # the tv-v1 home rows: series, movies, trending_series, trending_movies
+    if row_id in homelayout.POOL_IDS or row_id.startswith("cat_"):   # tv-v1 home rows (+ the admin's category rows)
         return homelayout.pool(snap, row_id, profile_id, pmap)
     if row_id in ("new_episodes", "latest_episodes"):  # latest_episodes: the previous id, kept as an alias
         return new_episode_entries(snap, profile_id)

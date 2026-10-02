@@ -1,8 +1,11 @@
 """Home screen of the tv-v1 boot: the hero carousel, the rows, and the score that ranks "trending".
 
 Layout (top to bottom): hero carousel (``HERO_SERIES`` series + ``HERO_MOVIES`` movies, alternating) ->
-``continue`` -> ``trending_series`` -> ``series`` -> ``trending_movies`` -> ``noteworthy_movies`` -> ``movies`` ->
-``mylist`` (see ``config.HOME_LAYOUT``; :func:`layout` is the one place that decides the row list, per profile).
+``continue`` -> ``trending_series`` -> the admin's category rows ``cat_<slug>`` (``library/categories.py``, admin order)
+-> ``series`` -> ``trending_movies`` -> ``noteworthy_movies`` -> ``movies`` -> ``mylist`` (see ``config.HOME_LAYOUT``;
+:func:`layout` is the one place that decides the row list, per profile). A ``cat_<slug>`` row = the ``category_<slug>_*``
+lists of all sites merged round-robin (playable only per ``HOME_ONLY_READY``); hidden while the category is off or has
+fewer playable titles than its ``min_items``.
 
 Classification: every canonical library item (all sites merged) belongs to its ``type`` (series | movie). The rows are
 type pools: ``series`` / ``movies`` = ALL titles of the type, newest added first; ``trending_<type>`` = the type's
@@ -27,6 +30,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from . import config, rows
+from .library import categories
 
 # ---- rows ---------------------------------------------------------------------------------------------------------
 TITLES = {
@@ -171,6 +175,10 @@ def layout(profile_id: str = "") -> list[str]:
     for row_id in config.HOME_LAYOUT:
         if row_id not in out:
             out.append(row_id)
+    cats = [categories.row_id(s) for s in categories.enabled_slugs()]
+    if cats:   # the admin's category rows: after the trending-series row, before "Tüm Diziler"
+        at = next((out.index(r) for r in ("series", "movies", "mylist") if r in out), len(out))
+        out[at:at] = cats
     return out
 
 
@@ -217,6 +225,9 @@ class Context:
             return self._trending("series" if row_id == "trending_series" else "movie")
         if row_id == "noteworthy_movies":
             return self._noteworthy()
+        slug = categories.slug_of_row(row_id)
+        if slug:
+            return self._category(slug)
         if row_id == "mylist":
             return [self.snap.by_id[i] for i in self.saved if i in self.snap.by_id]
         return rows.row_pool(self.snap, row_id, self.profile_id, self.pmap)   # continue, genre_*, the old row ids
@@ -237,6 +248,16 @@ class Context:
             scored.sort(key=lambda t: t[:3])
             pool += [t[3] for t in scored[:TREND_TARGET - len(pool)]]
         return pool
+
+    def _category(self, slug: str) -> list[dict]:
+        """A category row: the ``category_<slug>_*`` lists of every site (round-robin, no repeats, list order), playable
+        only per ``HOME_ONLY_READY``. ``[]`` (row hidden) when the category is gone or off, or has fewer playable titles
+        than its ``min_items``."""
+        cat = categories.get(slug)
+        if not cat or not cat["enabled"]:
+            return []
+        pool = [i for i in rows._round_robin(categories.member_lists(self.snap, slug)) if self.show(i)]
+        return pool if sum(1 for i in pool if is_ready(i)) >= cat["min_items"] else []
 
     def _noteworthy(self) -> list[dict]:
         """The sites' ``noteworthy_movies`` lists (movies, round-robin over the sites, list order), then the classics

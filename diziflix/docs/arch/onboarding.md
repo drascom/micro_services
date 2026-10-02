@@ -31,3 +31,7 @@
 ## pi skill/extension boyut bütçesi
 
 - pi skill/extension boyut bütçesi: `server/tests/test_pi_size_budget.py` (SKILL.md ≤ 26 KB, extension açıklamaları ≤ 9.5 KB, her referans ≤ 15 KB; tavanı yükseltme, önce kısalt: SKILL.md her pi koşusunda, açıklamalar her turda bağlamda)
+
+## Kategori koleksiyonları
+
+- Yaml `collections:` rol `category` + `category: <slug>` (zorunlu; liste kimliği `category_<slug>_<site_id>`, `scraper/collections.list_id(role, site, slug)`; `HOME_ROLES` DEĞİL: sinyal/puanlama vermez, yalnız kategorinin kendi satırı `library_lists`'i okur). Kategori kaydı `library/categories` (C1): yeni site doğrulamasında (`harden`) kayıtsız slug = hata + `ask_user` ipucu (`category:<slug>`); ingest'te kayıtsız/silinmiş kategori yine liste yazar. İlk mesaj `Mevcut kategoriler: <slug> (<başlık>), ...` (`onboard.categories_line`); kullanıcı notu yoksa ajan kategori koleksiyonu yazmaz. Test: `tests/test_category_collections.py`

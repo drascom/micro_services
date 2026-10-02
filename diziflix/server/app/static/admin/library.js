@@ -44,8 +44,8 @@ function diagPills(v){
 }
 
 /* ---- sekmeler ---- */
-var TABS=['events','library','settings','onboard'];
-var TITLES={events:'Olay Defteri',library:'Kütüphane',settings:'Ayarlar',onboard:'Siteler'};
+var TABS=['events','library','categories','settings','onboard'];
+var TITLES={events:'Olay Defteri',library:'Kütüphane',categories:'Kategoriler',settings:'Ayarlar',onboard:'Siteler'};
 function showTab(name){
   TABS.forEach(function(n){
     $('tab-'+n).classList.toggle('hidden',n!==name);
@@ -304,6 +304,7 @@ $('lview').addEventListener('click',function(ev){
   }
   renderDetail();
   if(location.hash==='#library')showTab('library');
+  else if(location.hash==='#categories')showTab('categories');
   else if(location.hash==='#settings')showTab('settings');
   else if(/^#onboard(\/|$)/.test(location.hash))showTab('onboard');
 })();

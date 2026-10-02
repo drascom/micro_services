@@ -377,8 +377,23 @@ def _routed_errors(rep: dict) -> dict:
 
 # --- steps --------------------------------------------------------------------------------------------------------------
 
+def _category_title(entry: dict) -> str:
+    """The admin's name of a category collection's category ("Kore Dizileri"; the slug itself when it is not registered any more)."""
+    slug = str(entry.get("category") or "")
+    try:
+        from . import collections as site_collections
+        for cat in site_collections.known_categories():
+            if isinstance(cat, dict) and cat.get("slug") == slug and str(cat.get("title") or "").strip():
+                return str(cat["title"]).strip()
+    except Exception:   # a view helper: never takes the pipeline down
+        pass
+    return slug or "Kategori"
+
+
 def _entry_title(entry: dict) -> str:
     role = str(entry.get("role") or "")
+    if role == "category":
+        return _category_title(entry)
     if role in ROLE_TITLES:
         return ROLE_TITLES[role]
     return OTHER_ROLES.get(role) or str(entry.get("id") or role or "bölüm")
@@ -825,6 +840,7 @@ def _app(rep: dict) -> dict:
     for role, (key, title) in ROLE_SIGNALS.items():
         if role in by_role:
             signals.append({"key": key, "title": title, "count": by_role[role]})
+    categories = [e for e in _list(rep.get("collections")) if isinstance(e, dict) and e.get("role") == "category"]
     lst = _dict(rep.get("list"))
     valid = _int(lst.get("valid_count"))
     take = _int(ingest.get("would_ingest")) if ingest and "would_ingest" in ingest else min(valid, limit)
@@ -835,6 +851,10 @@ def _app(rep: dict) -> dict:
             rows.append({"key": "series", "title": "Tüm Diziler", "count": pick(series), "from": "list"})
         if movies:
             rows.append({"key": "movies", "title": "Tüm Filmler", "count": pick(movies), "from": "list"})
+    for entry in categories:   # an admin-managed category: its own row ("Kore Dizileri · N"), the titles belong to that category
+        if entry.get("status") == "ok":
+            rows.append({"key": f"category_{entry.get('category') or ''}", "title": _category_title(entry),
+                         "count": _int(entry.get("would_ingest")), "from": "collection"})
     playable = _dict(rep.get("playable"))
     _s, episodes, _seasons = _series_blocks(rep)
     checked = _int(playable.get("checked"))

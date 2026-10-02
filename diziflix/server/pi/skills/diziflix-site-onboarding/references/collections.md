@@ -13,7 +13,7 @@ collection with >= 3 items (`series_signal_collection`); every `trending` / `lat
 `featured` collection needs `poster_url` in >= 80% of its cards (`collection_poster_fill`; with own `fields`, add it from the card's `<img>`).
 
 <!-- BEGIN GENERATED collection-roles (tools/gen_onboard_refs.py; do not edit by hand) -->
-A collection id is `<role>_<site_id>` (`collections.list_id`), e.g. `trending_ornekfilm`; one collection per role, at most 8 per site. The home screen merges the collections of the same role of EVERY site.
+A collection id is `<role>_<site_id>` (`collections.list_id`), e.g. `trending_ornekfilm`; one collection per role, at most 8 per site (role `category`: id `category_<slug>_<site_id>` + key `category: <slug>`, one per slug). The home screen merges the collections of the same role of EVERY site.
 
 | role | feeds | write it? |
 |---|---|---|
@@ -27,7 +27,25 @@ A collection id is `<role>_<site_id>` (`collections.list_id`), e.g. `trending_or
 | `new` | newest titles list | no |
 | `catalog` | plain catalogue list | no |
 | `genre` | genre row | no |
+| `category` | an admin-managed home category: the titles of the section belong to that category; no signal for the slider / trend rows | yes (not on the home screen) |
 <!-- END GENERATED collection-roles -->
+
+## Category collections (`role: category`)
+
+The admin keeps home categories ("Kore Dizileri", "Anime", ...; the first message lists them as `Mevcut kategoriler: <slug> (<title>), ...`). Write a
+`role: category` collection ONLY when the user's note maps a section / link of the site to a category ("bu bağlantıdaki diziler -> Anime"). Key
+`category: <slug>` (a slug of that list), id `category_<slug>_<site_id>`, `path` + `row_selector` as any section. Several categories = several
+collections (the same `path` may repeat with other slugs); a title may be in several. A slug that is not listed: `ask_user` (field
+`category:<slug>`, "kategori listede yok, admin'de eklensin mi?"); never invent a category or write one without a note. A category collection is
+no `trending` / `latest_series` signal, needs >= 3 items and `poster_url` like any section, and has its own row.
+
+```yaml
+site_id: ornekdizi
+base_url: https://ornekdizi.example
+list_url: /
+collections:
+  - {id: category_anime_ornekdizi, title: Anime, path: /anime, role: category, category: anime}
+```
 
 ## Section name -> role
 

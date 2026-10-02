@@ -199,9 +199,9 @@ MAX_EPISODE_LINKS = 5        # outline: episode-link groups listed
 EPISODE_LINK_MIN = 3          # outline: links of one shape that make a group
 # roles onboarding writes: sections of the home page / the site's "trending" and "newest" pages. ``new`` / ``catalog`` /
 # ``genre`` (whole catalogues) stay valid roles of ``scraper/collections`` but a draft gets a warning for them
-ONBOARD_ROLES = ("trending", "latest_episodes", "latest_series", "latest_movies", "noteworthy_movies", "featured", "upcoming")
+ONBOARD_ROLES = ("trending", "latest_episodes", "latest_series", "latest_movies", "noteworthy_movies", "featured", "upcoming", "category")
 COLLECTION_KEYS = frozenset({"id", "title", "path", "role", "row_selector", "fields", "required_fields", "excluded_fields",
-                             "sort_by", "sort_desc", "genre"})
+                             "sort_by", "sort_desc", "genre", "category"})
 NO_COLLECTIONS_WARNING = ("no collections: ana ekran satırları (trendler/yeni/dikkate değer) bu siteden dolmayacak; "
                           "ana sayfada ilgili bölümler varsa ekle")
 # Hardening criteria of a NEW site's onboarding (``_analyze(harden=True)``: ``test_config`` / ``submit`` / ``onboard.save`` of a new
@@ -214,7 +214,7 @@ SKIP_SERIES_INVENTORY = "series_inventory"                    # same, exempting 
 SKIP_COLLECTION_POSTER = "collection_poster"                  # same, exempting collection_poster_fill
 HARDEN_CRITERIA = ("availability_gate_defined", "series_signal_collection", "series_full_inventory", "home_path_is_canonical",
                    "collection_poster_fill", "detail_info_defined", "ingest_sample_ok")
-POSTER_ROLES = ("trending", "latest_series", "latest_movies", "noteworthy_movies", "featured")   # collections whose cards need a poster
+POSTER_ROLES = ("trending", "latest_series", "latest_movies", "noteworthy_movies", "featured", "category")   # collections whose cards need a poster
 MIN_COLLECTION_POSTER_FILL = 0.8                              # ``poster_url`` fill of every such collection (``collection_poster_fill``)
 #: the information a detail page gives a title (``detail_info_defined``): group -> the detail field names that count for it (and that an
 #: admin's "Sitede yok, atla: <name>" may name). A group is GOOD when one of its fields is defined AND filled in the sample pages.
@@ -714,6 +714,9 @@ def _failing_hint(name: str, c: dict, out: dict) -> str:
     if name == "search_ok":
         return "canlı arama sonuç vermedi ya da listedeki başlığı bulamadı: search.url / row_selector / fields'i diagnostics.search'e göre düzelt"
     if name.startswith("collections_"):
+        unknown = sorted({str(e.get("unknown_category")) for e in out.get("collections") or [] if isinstance(e, dict) and e.get("unknown_category")})
+        if unknown:
+            return f"kategori(ler) {', '.join(unknown)}: {UNKNOWN_CATEGORY_HINT}"
         return "bir koleksiyon yeterli öğe vermedi: collections[].path / row_selector'ı diagnostics.collections'a göre düzelt ya da koleksiyonu çıkar"
     if name == "baseline_ok":
         return "öneri mevcut yaml'ın alanlarını düşürüyor ya da doluluğu belirgin azaltıyor: report.baseline.reasons'a bak"
@@ -1714,9 +1717,11 @@ def _url_params_errors(data: dict) -> list[str]:
 # --- collections (home sections) ---------------------------------------------------------------------------------
 
 _GENRE_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
+UNKNOWN_CATEGORY_HINT = ("kategori listede yok: kullanıcıya sor (ask_user, field `category:<slug>`): admin'de eklensin mi? "
+                         "Başlangıç mesajındaki kategorilerden birini kullan; kategori icat etme")
 
 
-def _check_collection(index: int, c: Any, base: str) -> tuple[dict, dict]:
+def _check_collection(index: int, c: Any, base: str, strict_categories: bool = False) -> tuple[dict, dict]:
     """Syntax of one yaml ``collections:`` entry (no network: the page goes through the SSRF guard when it is fetched)."""
     spec = c if isinstance(c, dict) else {}
     entry: dict[str, Any] = {"id": str(spec.get("id") or f"#{index}"), "role": str(spec.get("role") or ""),
@@ -1764,10 +1769,23 @@ def _check_collection(index: int, c: Any, base: str) -> tuple[dict, dict]:
     if role == "genre":
         if not (isinstance(spec.get("genre"), str) and _GENRE_SLUG_RE.match(spec["genre"])):
             errors.append("genre: role genre needs a slug (genre: <slug>, lower-case letters, digits, - _)")
+    if role == site_collections.CATEGORY_ROLE:
+        slug = spec.get("category")
+        problem = site_collections.check_category_slug(slug)
+        if problem:
+            errors.append(problem)
+        elif strict_categories and not site_collections.category_exists(slug.strip()):
+            # a NEW site only (at run time a deleted category keeps its lists): the agent asks the user, never invents the category
+            entry["unknown_category"] = slug.strip()
+            errors.append(f"category: {slug.strip()!r} is not a registered category ({UNKNOWN_CATEGORY_HINT})")
+        if isinstance(slug, str):
+            entry["category"] = slug.strip()
+    elif spec.get("category") is not None:
+        errors.append("category: only for role category (drop the key)")
     return spec, entry
 
 
-def _check_collections(data: dict, site_hint: str) -> tuple[list[tuple[dict, dict]], list[str], list[str]]:
+def _check_collections(data: dict, site_hint: str, strict_categories: bool = False) -> tuple[list[tuple[dict, dict]], list[str], list[str]]:
     """Every ``collections:`` entry of the yaml checked (syntax; ids = ``collections.list_id(role, site_id)``).
 
     Returns ([(spec, entry)], errors, warnings); the errors are also in each entry's own ``errors`` (unprefixed)."""
@@ -1788,7 +1806,7 @@ def _check_collections(data: dict, site_hint: str) -> tuple[list[tuple[dict, dic
         warnings.append(f"collections: site_id {in_yaml!r} in the yaml differs from site_id_suggestion {hint!r}; "
                         f"the collection ids must end in the site id that is saved")
     base = str(data.get("base_url") or "")
-    pairs = [_check_collection(i, c, base) for i, c in enumerate(raw)]
+    pairs = [_check_collection(i, c, base, strict_categories) for i, c in enumerate(raw)]
     seen: dict[str, int] = {}
     derived: set[str] = set()
     for spec, entry in pairs:
@@ -1803,7 +1821,19 @@ def _check_collections(data: dict, site_hint: str) -> tuple[list[tuple[dict, dic
             elif seen[cid] > 2:
                 entry["errors"].append(f"id: {cid!r} is used more than twice")
             if role in site_collections.ROLES:
-                if site_id:
+                if role == site_collections.CATEGORY_ROLE:
+                    slug = site_collections.category_of(spec)
+                    if site_id and slug and not site_collections.check_category_slug(slug):
+                        want = site_collections.list_id(role, site_id, slug)
+                        if cid != want:
+                            entry["errors"].append(f"id: must be {want!r} (category_<slug>_<site_id>), got {cid!r}")
+                    elif not site_id:
+                        tail = cid[len(f"category_{slug}_"):] if slug and cid.startswith(f"category_{slug}_") else ""
+                        if SITE_ID_RE.match(tail):
+                            derived.add(tail)
+                        else:
+                            entry["errors"].append(f"id: must be category_<slug>_<site_id>, got {cid!r}")
+                elif site_id:
                     want = site_collections.list_id(role, site_id)
                     if cid != want:
                         entry["errors"].append(f"id: must be {want!r} (<role>_<site_id>), got {cid!r}")
@@ -3470,7 +3500,7 @@ def _analyze_report(yaml_text: str, page_id: Optional[str], detail_page_id: Opti
         warnings.append(NO_SEARCH_WARNING)
     pairs: list = []
     if collections:
-        pairs, col_errors, col_warnings = _check_collections(data, site_hint)
+        pairs, col_errors, col_warnings = _check_collections(data, site_hint, strict_categories=bool(harden and harden_enabled()))
         errors += col_errors
         warnings += col_warnings
         if not pairs and not col_errors:

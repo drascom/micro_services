@@ -25,6 +25,7 @@ router = APIRouter()
 
 ADMIN_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "admin")
 _ASSETS = {"app.js": "text/javascript", "library.js": "text/javascript", "settings.js": "text/javascript",
+           "categories.js": "text/javascript",
            "onboard.js": "text/javascript", "style.css": "text/css"}
 
 

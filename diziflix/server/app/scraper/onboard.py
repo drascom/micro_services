@@ -124,10 +124,28 @@ def build_command(draft_id: str, *, pi_bin: Optional[str] = None, model_name: Op
                                   extension=extension or EXTENSION_PATH, skill=skill or SKILL_DIR, session_dir=session_dir)
 
 
-def first_message(url: str, hint: str = "") -> str:
+CATEGORIES_MAX = 40
+
+
+def categories_line() -> str:
+    """``Mevcut kategoriler: kore-dizileri (Kore Dizileri), anime (Anime)`` (``library/categories``, enabled or not; ``yok`` when
+    there is none): the slugs a ``role: category`` collection may name. Never raises (a missing registry reads as none)."""
+    try:
+        from . import collections as site_collections
+        cats = [c for c in site_collections.known_categories() if isinstance(c, dict) and c.get("slug")]
+    except Exception:
+        cats = []
+    shown = ", ".join(f"{c['slug']} ({str(c.get('title') or c['slug']).strip()})" for c in cats[:CATEGORIES_MAX])
+    return f"Mevcut kategoriler: {shown or 'yok'}"
+
+
+def first_message(url: str, hint: str = "", categories: str = "") -> str:
     """Opening message: pi's ``/skill:<name> <text>`` command (verified in print/json mode from stdin, multi-line text
-    included: pi embeds the SKILL.md body in the first user message and appends ``<text>``). The user's note follows."""
+    included: pi embeds the SKILL.md body in the first user message and appends ``<text>``). ``categories`` (``categories_line()``)
+    follows, then the user's note."""
     lines = [f"/skill:{SKILL_NAME} {url}"]
+    if categories.strip():
+        lines.append(categories.strip())
     if hint.strip():
         lines.append(f"Kullanıcı notu: {hint.strip()}")
     return "\n".join(lines)
@@ -668,7 +686,7 @@ def start(url: str = "", hint: str = "", trigger: str = "admin", mode: str = "ne
                                        yaml_text=current, hint=hint) or draft
         token = sandbox.issue_token(draft["id"])
         state.activity_update(SLOT_SITE, SLOT_KIND, label=urlsplit(url).hostname or url, phase="start", draft_id=draft["id"])
-        _spawn(draft["id"], edit_first_message(edit_cfg.site_id, hint) if edit_cfg is not None else first_message(url, hint), token)
+        _spawn(draft["id"], edit_first_message(edit_cfg.site_id, hint) if edit_cfg is not None else first_message(url, hint, categories_line()), token)
     except BaseException:
         if token:
             sandbox.revoke_token(token)
@@ -861,7 +879,7 @@ def _site_taken(site_id: str) -> bool:
 def _rekey_collections(data: dict, site_id: str, old_sites: list[str]) -> list[tuple[str, str]]:
     """Rewrite, in place, the ``collections:`` ids of ``data`` to ``collections.list_id(role, site_id)`` (the id the
     ingest writes its list under, the home rows read by role, and the sandbox's collection check demands). Touched:
-    home roles (``collections.HOME_ROLES``) and any other role whose id is ``<role>_<old site>`` (``old_sites``: the
+    home roles (``collections.HOME_ROLES``), role ``category`` (``category_<slug>_<old site>``) and any other role whose id is ``<role>_<old site>`` (``old_sites``: the
     yaml's own ``site_id`` / the agent's suggestion; with none known, any ``<role>_<valid site id>``); every other id
     is left alone. Returns [(old id, new id)] of the ones changed."""
     from . import collections as site_collections
@@ -874,6 +892,20 @@ def _rekey_collections(data: dict, site_id: str, old_sites: list[str]) -> list[t
             continue
         role, cid = spec.get("role"), spec.get("id")
         if not isinstance(role, str) or not role or not isinstance(cid, str):
+            continue
+        if role == site_collections.CATEGORY_ROLE:   # category_<slug>_<site>: the slug stays, the site part follows
+            slug = site_collections.category_of(spec)
+            if site_collections.check_category_slug(slug):
+                continue
+            if old_sites:
+                if cid not in {site_collections.list_id(role, old, slug) for old in old_sites}:
+                    continue
+            elif not (cid.startswith(f"category_{slug}_") and SITE_ID_RE.match(cid[len(f"category_{slug}_"):])):
+                continue
+            want = site_collections.list_id(role, site_id, slug)
+            if cid != want:
+                spec["id"] = want
+                changed.append((cid, want))
             continue
         if role in site_collections.HOME_ROLES:
             pass

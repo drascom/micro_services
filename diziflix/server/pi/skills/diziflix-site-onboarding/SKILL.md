@@ -99,7 +99,9 @@ A user note or feedback message ("Kullanıcı notu" / a later user message) is d
       `latest_episodes` (Yeni eklenen BÖLÜMLER / Son bölümler: cards are EPISODES; never mix the two up: look at what the
       card is, a show or an episode), `latest_movies` (Yeni / Son eklenen filmler), `noteworthy_movies`
       (Dikkate değer / IMDb / Editörün seçimi), `featured` (the hero slider), `upcoming` (Yakında). Never write an
-      "all series / all films", genre or paged catalogue list.
+      "all series / all films", genre or paged catalogue list. The user's note maps a section / link to a category ("... -> Anime"): write a
+      `category` collection (`category: <slug>` (slug from `Mevcut kategoriler` in the first message; not listed = `ask_user`, field
+      `category:<slug>`, "eklensin mi?"), id `category_<slug>_<site_id>`; one per category. No note = NO category collection.
    b. Each: `id: <role>_<site_id>` (put `site_id:` in the yaml), `title`, `path` (`/` or a menu page of `nav_links`), `row_selector` (a
       `sections[].selector` / `blocks[].selector` is a good start). Own `fields` REPLACE the list's: then `title`, `detail_url` AND `poster_url`
       (`collection_poster_fill`: >= 80% of the cards). A series site needs a `trending` or `latest_series` collection with >= 3 items

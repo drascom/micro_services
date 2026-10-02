@@ -651,6 +651,14 @@ def _ingest_source(site: str) -> dict[str, Any]:
                 role = c.get("role")
                 if role == "featured":  # the hero list is always `featured_<site>` (what the home hero merges by role)
                     cid_list = scollections.list_id("featured", site)
+                elif role == scollections.CATEGORY_ROLE:  # `category_<slug>_<site>`; an unregistered (deleted) category still gets its list
+                    cslug = scollections.category_of(c)
+                    if scollections.check_category_slug(cslug):
+                        log.warning("ingest %s: category collection %s skipped: %s", site, cid_list,
+                                    scollections.check_category_slug(cslug))
+                        collection_errors.append({"list": cid_list, "error": "category slug missing or invalid"})
+                        continue
+                    cid_list = scollections.list_id(role, site, cslug)
                 gslug = c.get("genre") if role == "genre" else None
                 if parses_main_list(cfg, c):
                     items = _collection_items(result.items, c, limit)

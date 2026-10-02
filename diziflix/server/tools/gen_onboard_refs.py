@@ -237,7 +237,8 @@ def render_collection_roles() -> str:
     from app.scraper import collections as col
 
     out = ["A collection id is `<role>_<site_id>` (`collections.list_id`), e.g. `trending_ornekfilm`; one collection per role, at most %d "
-           "per site. The home screen merges the collections of the same role of EVERY site." % sb.MAX_COLLECTIONS,
+           "per site (role `category`: id `category_<slug>_<site_id>` + key `category: <slug>`, one per slug). The home screen merges the "
+           "collections of the same role of EVERY site." % sb.MAX_COLLECTIONS,
            "", "| role | feeds | write it? |", "|---|---|---|"]
     for role, feeds in col.ROLES.items():
         if role in sb.ONBOARD_ROLES:

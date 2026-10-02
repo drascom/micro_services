@@ -401,7 +401,7 @@ class RunTest(Harness):
         self.assertTrue(all(e.get("ts") for e in draft["events"]))
         # command, stdin, env
         self.assertTrue(proc.stdin.closed)
-        self.assertEqual(proc.stdin.data, f"/skill:diziflix-site-onboarding {URL}\nKullanıcı notu: alleen films")
+        self.assertEqual(proc.stdin.data, f"/skill:diziflix-site-onboarding {URL}\n{onboard.categories_line()}\nKullanıcı notu: alleen films")
         self.assertEqual(self.opt(proc, "--session-id"), draft["id"])
         self.assertEqual(proc.kw["env"]["DIZIFLIX_DRAFT_ID"], draft["id"])
         self.assertEqual(proc.kw["env"]["DIZIFLIX_SKILL_DIR"], onboard.SKILL_DIR)

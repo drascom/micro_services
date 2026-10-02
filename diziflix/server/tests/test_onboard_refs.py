@@ -691,7 +691,9 @@ class CollectionsReference(unittest.TestCase):
             for spec, entry in pairs:
                 self.assertEqual(entry["errors"], [])
                 roles.add(spec["role"])
-                self.assertEqual(spec["id"], "%s_%s" % (spec["role"], data["site_id"]))
+                want = ("category_%s_%s" % (spec["category"], data["site_id"]) if spec["role"] == "category"
+                        else "%s_%s" % (spec["role"], data["site_id"]))
+                self.assertEqual(spec["id"], want)
         self.assertEqual(roles, set(sb.ONBOARD_ROLES))   # between them the examples show every role onboarding writes
 
     def test_examples_do_not_teach_catalogue_roles(self):

@@ -113,6 +113,16 @@ SCHEMA = [
 
 
 SCHEMA += [
+    # Admin-managed home-screen categories (app/library/categories.py). Membership lives in library_lists
+    # (``category_<slug>_<site>``), so deleting a row here keeps the titles' membership.
+    """CREATE TABLE IF NOT EXISTS home_categories (
+        slug TEXT PRIMARY KEY, title TEXT NOT NULL, position INTEGER NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1, min_items INTEGER NOT NULL DEFAULT 6,
+        created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0)""",
+]
+
+
+SCHEMA += [
     "CREATE TABLE IF NOT EXISTS catalogue_aliases (alias TEXT PRIMARY KEY, canonical_id TEXT NOT NULL)",
     """CREATE TABLE IF NOT EXISTS external_ids (
         provider TEXT NOT NULL, media_type TEXT NOT NULL, external_id TEXT NOT NULL,
