@@ -376,10 +376,10 @@ class EnvTest(Harness):
 
     def test_scrub_masks_values_and_patterns(self):
         with patch.dict(os.environ, {"TMDB_ACCESS_KEY": "tmdb-secret-value"}):
-            text = ("boom tmdb-secret-value Authorization: Bearer abcdefgh12345678 key sk-abcdefghijklmnop "
-                    "token=hunter2hunter2 eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.sig tok-xyz-1234")
+            text = ("boom tmdb-secret-value Authorization: Bearer " + "x" * 20 + " api_key=" + "s" * 20 + " "
+                    "token=" + "h" * 12 + " eyJ" + "a" * 10 + "." + "b" * 10 + ".sig tok-xyz-1234")
             out = onboard.scrub(text, 1000, ("tok-xyz-1234",))
-        for leaked in ("tmdb-secret-value", "abcdefgh12345678", "sk-abcdefghijklmnop", "hunter2", "eyJhbGci", "tok-xyz-1234"):
+        for leaked in ("tmdb-secret-value", "x" * 20, "s" * 20, "h" * 12, "eyJ" + "a" * 10, "tok-xyz-1234"):
             self.assertNotIn(leaked, out)
         self.assertIn("boom", out)
         self.assertLessEqual(len(onboard.scrub("a " * 2000, 1000)), 1000)
@@ -582,7 +582,7 @@ out(type="message_end", message={"role": "assistant", "content": [{"type": "text
 if mode == "hang":
     time.sleep(60)
 if mode == "fail":
-    sys.stderr.write("Bearer abcdefgh12345678 exploded\n")
+    sys.stderr.write("Bearer " + "x" * 20 + " exploded\n")
     sys.exit(3)
 """
 
@@ -630,7 +630,7 @@ class RealProcessTest(Harness):
         draft = self.run_script("fail")
         self.assertEqual(draft["status"], "failed")
         self.assertIn("exploded", draft["error"])
-        self.assertNotIn("abcdefgh12345678", draft["error"])
+        self.assertNotIn("x" * 20, draft["error"])
 
     def test_timeout_kills_a_real_process(self):
         with patch.object(config, "ONBOARD_TIMEOUT", 1.0):

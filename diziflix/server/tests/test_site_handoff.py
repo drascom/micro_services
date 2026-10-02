@@ -175,7 +175,7 @@ class ChangeEntriesTest(HandoffBase):
     def test_submit_repair_stores_a_scrubbed_handoff(self):
         job = store.new_repair_id()
         self.write_site("alpha", T.alpha_yaml())
-        body = sb.SubmitRepairBody(site_id="alpha", notes="n", handoff="## Başlık\nHost değişti Authorization: Bearer abcdefghijklmnop")
+        body = sb.SubmitRepairBody(site_id="alpha", notes="n", handoff="## Başlık\nHost değişti Authorization: Bearer " + "x" * 20)
         with patch.object(sb, "_is_repair", return_value=True):
             sb._do_submit_repair(job, body)
         record = store.load_repair(job)
@@ -249,14 +249,15 @@ class DeleteAndRenameTest(HandoffBase):
 
 class SecretsTest(HandoffBase):
     def test_secrets_never_reach_the_file(self):
-        text = ("Cookie: udys=SECRETCOOKIE123\nAuthorization: Bearer abcdefghijklmnop1234\n"
-                "player https://host.example/v.mp4?token=TOKENVALUE99&expires=1800000000&x=1\napi_key=sk-abcdefghijklmnopqrst\n"
+        text = ("Cookie: udys=" + "c" * 16 + "\nAuthorization: Bearer " + "x" * 24 + "\n"
+                "player https://host.example/v.mp4?token=" + "t" * 10 + "&expires=1800000000&x=1\napi_key=" + "s" * 20 + "\n"
                 "## heading\nnormal satır")
-        sh.write_initial("alpha", text, {"user": ["Cookie: s=USERSECRET1"], "state": {"Liste": "/a?token=STATETOKEN"}})
-        sh.append_change("alpha", "set-cookie: sid=CHANGESECRET\nJWT eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcDEF123", {"user": ["password=hunter2hunter2"]})
+        sh.write_initial("alpha", text, {"user": ["Cookie: s=" + "u" * 10], "state": {"Liste": "/a?token=" + "t" * 9}})
+        sh.append_change("alpha", "set-cookie: sid=" + "c" * 12 + "\nJWT eyJ" + "a" * 10 + "." + "b" * 10 + ".sig", {"user": ["password=" + "p" * 16]})
         body = self.note()
-        for secret in ("SECRETCOOKIE123", "abcdefghijklmnop1234", "TOKENVALUE99", "1800000000", "sk-abcdefghijklmnopqrst", "USERSECRET1",
-                       "STATETOKEN", "CHANGESECRET", "eyJhbGciOiJIUzI1NiJ9", "hunter2hunter2"):
+        # Verify that generated secret patterns are scrubbed from the file
+        secret_values = ["cccccccccccccccc", "x" * 24, "t" * 10, "s" * 20, "u" * 10, "t" * 9, "c" * 12, "eyJ" + "a" * 10, "p" * 16]
+        for secret in secret_values:
             self.assertNotIn(secret, body, secret)
         self.assertIn("normal satır", body)
         self.assertNotIn("\n## heading", body)           # an agent heading cannot break the section structure

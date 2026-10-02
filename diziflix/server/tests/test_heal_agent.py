@@ -723,11 +723,11 @@ class AgentRunTest(Base):
         self.queue.append(FakeProc(provider_failure("model not supported")))
         self.assertIn("agent provider error: model not supported", self.run_heal()["reason"])
         state.set_heal_cooldown("play", None)
-        self.queue.append(FakeProc([tool_start("fetch_page", {})], rc=3, stderr="Bearer abcdefgh12345678 exploded\n"))
+        self.queue.append(FakeProc([tool_start("fetch_page", {})], rc=3, stderr="Bearer " + "x" * 20 + " exploded\n"))
         reason = self.run_heal()["reason"]
         self.assertIn("agent failed:", reason)
         self.assertIn("exploded", reason)
-        self.assertNotIn("abcdefgh12345678", reason)
+        self.assertNotIn("x" * 20, reason)
         state.set_heal_cooldown("play", None)
         self.queue.append(FileNotFoundError("pi"))
         with mock.patch.object(pi_agent.subprocess, "Popen", side_effect=FileNotFoundError("pi")):
