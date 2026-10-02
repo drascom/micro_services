@@ -46,6 +46,60 @@ def _warn_once(site_id: str, what: str, message: str) -> None:
         log.warning("site %s: %s: %s", site_id, what, message)
 
 
+# --- regex lint: the "double backslash" mistake -------------------------------------------------------------------------
+# In a SINGLE-quoted yaml scalar ``\\d`` is two real backslashes: the regex then looks for a literal "\" + "d" and matches no digit
+# (the trdiziizle onboarding case: every episode row rejected). Only the exact pair + a class / special letter is flagged, so an
+# intentional ``\\\\`` (four) stays untouched.
+
+_DOUBLE_BACKSLASH = re.compile(r"(?<!\\)\\\\(?!\\)([dDwWsSbB.])")
+
+
+def double_backslash_hint(regex: Any) -> Optional[str]:
+    """``"\\d"`` (the first suspicious pair found in the regex string), or None when the regex does not look like the mistake."""
+    if not isinstance(regex, str):
+        return None
+    found = _DOUBLE_BACKSLASH.search(regex)
+    return found.group(0) if found else None
+
+
+def _regex_values(node: Any, where: str):
+    """``(where, regex string)`` of every ``regex`` / ``*_regex`` key of a yaml tree (a string or a list of strings), recursively:
+    series_page, normalize.key, collection / list / detail fields, search, resolvers, blocked, ..."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            path = f"{where}.{key}" if where else str(key)
+            if isinstance(key, str) and (key == "regex" or key.endswith("_regex")):
+                if isinstance(value, str):
+                    yield path, value
+                elif isinstance(value, list):
+                    for index, item in enumerate(value):
+                        if isinstance(item, str):
+                            yield f"{path}[{index}]", item
+                continue
+            yield from _regex_values(value, path)
+    elif isinstance(node, list):
+        for index, item in enumerate(node):
+            yield from _regex_values(item, f"{where}[{index}]")
+
+
+def regex_lint(data: Any) -> list[str]:
+    """Problems of the regexes of a site yaml that look like the double-backslash mistake (empty = none). Never raises.
+
+    The onboarding sandbox turns these into config errors (a NEW site must not pass with a regex that cannot match); loading an
+    existing site only LOGS them (``load_site``), so a hand-built / server-healed config is never broken by this check."""
+    out: list[str] = []
+    try:
+        for where, text in _regex_values(data, ""):
+            pair = double_backslash_hint(text)
+            if pair:
+                out.append(f"{where}: regex çift ters eğik çizgi içeriyor (`{pair}`): tek tırnaklı yaml'da `{pair[1:]}` yaz "
+                           f"(çift tırnakta `{pair}`) / regex contains a double backslash (`{pair}`): write `{pair[1:]}` in a "
+                           "single-quoted yaml scalar")
+    except Exception:   # a lint must never take a site down
+        log.debug("regex_lint failed", exc_info=True)
+    return out
+
+
 @dataclass
 class SiteConfig:
     site_id: str
@@ -260,6 +314,8 @@ def load_site(site_id: str) -> SiteConfig:
         raise FileNotFoundError(f"no config for site {site_id!r} at {path}")
     with open(path, "r", encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
+    for message in regex_lint(data):   # only a log line: an existing site is never broken by the lint
+        _warn_once(site_id, "regex", message)
     return SiteConfig(site_id=site_id, data=data, path=path)
 
 
@@ -625,6 +681,32 @@ def save_recipe(name: str, data: dict[str, Any]) -> int:
         new_data["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         _atomic_dump(path, new_data)
         return new_version
+
+
+def recipe_snapshot(name: str) -> dict[str, Any]:
+    """What ``restore_recipe`` needs to undo a ``save_recipe`` of ``name``: ``{data (the active mapping or None), archives (versions)}``."""
+    try:
+        data: Optional[dict[str, Any]] = load_recipe(name)
+    except (FileNotFoundError, ValueError):
+        data = None
+    return {"data": data, "archives": recipe_archived_versions(name)}
+
+
+def restore_recipe(name: str, snapshot: dict[str, Any]) -> None:
+    """Put recipe ``name`` back to ``snapshot`` (:func:`recipe_snapshot`): the active file as it was (or removed when there was none)
+    and the archives written since gone. Undo of an onboarding save that failed after a recipe update."""
+    old = snapshot.get("data")
+    if old is None:
+        delete_recipe(name)
+        return
+    with _recipe_lock():
+        _atomic_dump(_recipe_path(name), old)
+        for version in recipe_archived_versions(name):
+            if version not in (snapshot.get("archives") or []):
+                try:
+                    os.unlink(_recipe_path(name, version))
+                except FileNotFoundError:
+                    pass
 
 
 def delete_recipe(name: str) -> None:

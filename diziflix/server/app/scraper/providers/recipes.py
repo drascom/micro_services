@@ -157,6 +157,60 @@ def validate_recipe(data: Any) -> list[str]:
     return errors
 
 
+# --- updating an existing recipe: only ``match.host_regex`` may widen --------------------------------------------------
+# A draft may carry ``{name, yaml, mode: "update"}`` for a recipe that is already in the library (``scraper/provider_match.py`` writes
+# the yaml: the same recipe with one more player host). The update is a NEW VERSION (``config.save_recipe``) and may change nothing but
+# ``match.host_regex``, which gets exact-host alternatives appended: ``(?:<old>)|(?:^(?:www\\.)?<host>$)``. Everything else must be
+# identical to the active recipe, so an update can never change how an existing host is read.
+_HOST_NAME = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$")
+_HOST_ALT_RE = r"\(\?:\^\(\?:www\\\.\)\?((?:[a-z0-9]|\\\.|\\-)+)\$\)"
+_HOST_ALTS = re.compile(rf"(?:{_HOST_ALT_RE})(?:\|(?:{_HOST_ALT_RE}))*")
+_HOST_ALT_ONE = re.compile(_HOST_ALT_RE)
+_UPDATE_IGNORED = frozenset({"version", "updated_at", "match"})
+
+
+def host_alternative(host: str) -> str:
+    """The regex alternative that matches exactly ``host`` (and its ``www.`` form): ``(?:^(?:www\\.)?player\\.example\\.tv$)``."""
+    return "(?:^(?:www\\.)?" + re.escape(host.lower().removeprefix("www.")) + "$)"
+
+
+def widen_host_regex(old: str, hosts: list) -> str:
+    """``old`` with an exact-host alternative per host appended (``(?:old)|(?:^...$)|...``)."""
+    return f"(?:{old})|" + "|".join(host_alternative(h) for h in hosts)
+
+
+def update_problems(active: Any, new: Any) -> list[str]:
+    """Why ``new`` (a parsed recipe mapping) is not a valid UPDATE of the library recipe ``active`` (empty = valid): every key but
+    ``version`` / ``updated_at`` / ``match`` equal, ``match.path_regex`` equal, ``match.host_regex`` = the old one + exact-host
+    alternatives of public host names that the old regex did not already match."""
+    if not isinstance(active, dict) or not isinstance(new, dict):
+        return ["update: no recipe to compare with"]
+    problems: list[str] = []
+    for key in sorted((set(active) | set(new)) - _UPDATE_IGNORED):
+        if active.get(key) != new.get(key):
+            problems.append(f"{key}: an update may only widen match.host_regex, but {key} differs from the library recipe")
+    old_match, new_match = active.get("match") or {}, new.get("match") or {}
+    if not isinstance(new_match, dict) or set(new_match) - MATCH_KEYS:
+        return problems + ["match: must be a mapping with host_regex (and the unchanged path_regex)"]
+    if old_match.get("path_regex") != new_match.get("path_regex"):
+        problems.append("match.path_regex: an update may not change it")
+    old, host = str(old_match.get("host_regex") or ""), str(new_match.get("host_regex") or "")
+    prefix = f"(?:{old})|"
+    if host == old:
+        problems.append("match.host_regex: unchanged (an update adds a host)")
+    elif not host.startswith(prefix) or not _HOST_ALTS.fullmatch(host[len(prefix):]):
+        problems.append("match.host_regex: an update must be the old regex plus exact-host alternatives, i.e. " + prefix
+                        + host_alternative("player.example.tv") + " (use the recipe_yaml of match_providers as it is)")
+    else:
+        hosts = [m.replace("\\.", ".").replace("\\-", "-") for m in _HOST_ALT_ONE.findall(host[len(prefix):])]
+        bad = [h for h in hosts if not _HOST_NAME.match(h) or re.fullmatch(r"[0-9.]+", h)]
+        if bad:
+            problems.append("match.host_regex: not a public host name: " + ", ".join(bad))
+        elif old and all(re.search(old, h, re.I) for h in hosts):
+            problems.append("match.host_regex: the recipe already matches " + ", ".join(hosts))
+    return problems
+
+
 # --- the provider -----------------------------------------------------------------------------------------------
 class RecipeProvider:
     """One recipe as a registry provider. ``fetch_api`` is the transport (default: the ``app.scraper.fetch`` module; tests and

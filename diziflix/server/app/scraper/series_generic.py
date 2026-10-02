@@ -44,6 +44,7 @@ from urllib.parse import urldefrag, urljoin, urlparse
 from selectolax.parser import HTMLParser
 
 from . import parse
+from .config import double_backslash_hint as double_backslash
 
 #: every key a generic ``series_page`` may carry (anything else is reported by ``validate_spec``)
 SPEC_KEYS = frozenset({
@@ -69,6 +70,8 @@ def _empty() -> dict[str, Any]:
 
 DIAG_ROWS = 2          # rows whose extracted values are shown
 DIAG_VALUE = 120       # characters of one extracted value
+REGEX_SHOWN = 300      # characters of ``episode_url_regex`` quoted whole in ``rejected_by``
+REJECT_MAX = 520       # characters of one ``rejected_by`` (the explanation is shortened, never the regex)
 
 
 def _clip(value: Any, limit: int = DIAG_VALUE) -> Any:
@@ -123,15 +126,18 @@ def _reject_reason(href: Optional[str], url: str, phrase: str, row, page_url: st
         return "satırda bağlantı yok (fields.url boş, satır <a> değil, satırda a[href] bulunamadı)"
     path = urlparse(url).path or "/"
     if regex.search(path) is None:
-        why = f"episode_url_regex '{_clip(regex_text, 80)}' yola '{_clip(path, 80)}' uymadı"
+        # the WHOLE regex (a cut regex hid the real cause once: a doubled backslash before d in a single-quoted yaml scalar); the explanation is what gets shortened
+        why = f"yol '{_clip(path, 80)}' episode_url_regex '{_clip(regex_text, REGEX_SHOWN)}' ile uymadı"
+        if double_backslash(regex_text):
+            why += " (çift ters eğik çizgi şüphesi: tek tırnaklı yaml'da `\\d` yaz, `\\\\d` değil)"
     else:
         why = "bölüm numarası (episode) okunamadı ya da 1'den küçük"
     _every, good = _row_links(row, page_url, regex, default_season)
     other = [u for u in good if u != url]
     if other:
-        return (f"{phrase}: '{_clip(href, 100)}' → {why}; aynı satırda uyan bir bağlantı var: '{other[0]}'; bölüm bağlantısını "
+        return (f"{phrase}: '{_clip(href, 80)}' → {why}; aynı satırda uyan bir bağlantı var: '{other[0]}'; bölüm bağlantısını "
                 "seçen bir seçici dene (örn. fields.url.selector: a[href*=\"bolum\"])")
-    return f"{phrase}: '{_clip(href, 100)}' → {why}; bölüm bağlantısını seçen bir seçici dene"
+    return f"{phrase}: '{_clip(href, 80)}' → {why}; bölüm bağlantısını seçen bir seçici dene"
 
 
 def is_generic_spec(spec: Any) -> bool:
@@ -424,7 +430,7 @@ def series_inventory(html: str, page_url: str, spec: Optional[dict] = None) -> d
             diag = {"raw": {**{name: _clip(value) for name, value in values.items()}, "href": _clip(href or "", 150)}}
             if found is None:
                 diag["rejected_by"] = _clip(_reject_reason(href, url, _href_phrase(source, fields.get("url")), row, page_url, regex,
-                                                           default_season, spec["episode_url_regex"]), 400)
+                                                           default_season, spec["episode_url_regex"]), REJECT_MAX)
             first_rows.append(diag)
         if found is None:
             continue

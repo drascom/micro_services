@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient
 
 from app import config, images, llm_health, settings
 from app.routers import onboard_sandbox as sb, ops, ops_onboard
-from app.scraper import config as scfg, onboard, onboard_store as store, fetch, state as sstate
+from app.scraper import config as scfg, onboard, onboard_store as store, fetch, pi_agent, state as sstate
 
 import test_onboard_sandbox as tsb   # helpers only (list_html, DRAFT_YAML, ...)
 
@@ -330,9 +330,9 @@ class CommandTest(Harness):
         self.assertNotIn("--api-key", cmd)   # an OAuth provider: --api-key stops pi with "No API key found" (spike)
         at = lambda flag: cmd[cmd.index(flag) + 1]
         self.assertEqual(at("--mode"), "json")
-        self.assertEqual(at("--tools"), "fetch_page,query_html,grep_page,outline_page,test_config,list_resolvers,"
-                                        "test_resolvers,test_provider,test_search,ask_user,submit_draft,read")   # one comma list: the 11 tools + the guarded read
-        self.assertEqual(len(onboard.TOOLS), 11)
+        self.assertEqual(at("--tools"), "discover_site,fetch_page,query_html,grep_page,outline_page,test_config,list_resolvers,"
+                                        "test_resolvers,test_provider,match_providers,test_search,ask_user,submit_draft,read")   # one comma list: the 13 tools + the guarded read
+        self.assertEqual(len(onboard.TOOLS), 13)
         self.assertTrue(at("-e").endswith(os.path.join("pi", "extensions", "diziflix-onboard.ts")))
         self.assertTrue(at("--skill").endswith(os.path.join("pi", "skills", "diziflix-site-onboarding")))
         self.assertEqual(at("--model"), "prov/test-model")
@@ -1401,7 +1401,7 @@ class EditStartTest(Harness):
         for needle in ('load_site_config("demo")', "references/edit.md", "test_config(playable: true, collections: true)", "submit_draft"):
             self.assertIn(needle, rest)
         self.assertEqual((proc.kw["env"]["DIZIFLIX_MODE"], proc.kw["env"]["DIZIFLIX_SITE_ID"]), ("edit", "demo"))
-        self.assertEqual(self.opt(proc, "--tools"), ",".join((*onboard.TOOLS, "load_site_config", "read")))
+        self.assertEqual(self.opt(proc, "--tools"), ",".join((*pi_agent.EDIT_TOOLS, "read")))
         self.assertEqual(self.opt(proc, "--session-id"), draft["id"])
         row = onboard.summary(draft)
         self.assertEqual((row["mode"], row["edit_site_id"]), ("edit", "demo"))
@@ -1430,7 +1430,7 @@ class EditStartTest(Harness):
         onboard.message(draft["id"], "de sectie Trendler")
         self.assertTrue(onboard.join(draft["id"], 10))
         self.assertEqual(second.kw["env"]["DIZIFLIX_MODE"], "edit")
-        self.assertEqual(self.opt(second, "--tools"), ",".join((*onboard.TOOLS, "load_site_config", "read")))
+        self.assertEqual(self.opt(second, "--tools"), ",".join((*pi_agent.EDIT_TOOLS, "read")))
         self.assertEqual(second.stdin.data, "de sectie Trendler")
 
     def test_validation(self):

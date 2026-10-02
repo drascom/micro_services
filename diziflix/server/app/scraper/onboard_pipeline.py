@@ -137,7 +137,8 @@ STREAM_TYPES = {"hls": "HLS", "mp4": "MP4", "dash": "DASH", "webm": "WebM"}
 # tool -> steps it works on while it runs (computing tools: only while in flight)
 _EXPLORE_TOOLS = frozenset({"fetch_page", "outline_page", "query_html", "grep_page"})
 _TOOL_STEPS = {"test_config": ("home", "links", "info", "player", "stream"), "submit_draft": STEP_IDS,
-               "test_resolvers": ("player", "stream"), "test_provider": ("player", "stream"), "test_search": ("search",)}
+               "test_resolvers": ("player", "stream"), "test_provider": ("player", "stream"), "test_search": ("search",),
+               "discover_site": ("home", "links", "info", "player"), "match_providers": ("player", "stream")}
 
 # --- English sandbox message -> Turkish (best effort; the original text is kept when nothing matches) ----------------------
 

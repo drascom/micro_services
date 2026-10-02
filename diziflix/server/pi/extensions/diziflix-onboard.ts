@@ -8,8 +8,9 @@
  * `read` guard below). The skill that tells the agent how to use them is server/pi/skills/diziflix-site-onboarding/SKILL.md
  * (onboarding) and its references/heal.md (repair mode).
  *
- * Onboarding runs get eleven tools (fetch_page ... test_search, ask_user, submit_draft). Edit runs (DIZIFLIX_MODE=edit, `onboard.start(mode="edit")`:
- * an admin asks to change a registered site) get those eleven plus the read-only `load_site_config`; the server locks their draft to
+ * Onboarding runs get thirteen tools (discover_site, fetch_page ... match_providers, test_search, ask_user, submit_draft). Edit runs
+ * (DIZIFLIX_MODE=edit, `onboard.start(mode="edit")`: an admin asks to change a registered site) get those minus `discover_site` plus the
+ * read-only `load_site_config`; the server locks their draft to
  * the edited site (site id suggestion, `load_site_config` reads only that site). Repair runs (DIZIFLIX_MODE=repair, started by
  * server/app/scraper/heal_agent.py through the shared runner server/app/scraper/pi_agent.py) get the page / test tools
  * plus `load_site_config` and `submit_repair`, and no `submit_draft` and no `ask_user` (nobody is there to answer); the pi `--tools`
@@ -198,6 +199,7 @@ const PROVIDER_RECIPES: Json = {
     {
       name: str("Lower-case letters, digits, underscore, 2-32 chars; same as `name:` in the yaml."),
       yaml: str("The complete provider recipe yaml."),
+      mode: { type: "string", enum: ["new", "update"], description: "update = new version of a library recipe, a host added: the recipe_yaml of match_providers." },
     },
     ["name", "yaml"],
   ),
@@ -205,6 +207,19 @@ const PROVIDER_RECIPES: Json = {
 };
 
 const TOOLS: ToolSpec[] = [
+  {
+    name: "discover_site",
+    label: "Discover site",
+    description:
+      "Build a DRAFT site yaml from the site's own pages by code (<= 8 page requests): home sections and roles, list, series page, detail " +
+      "fields, player candidates, normalize. Returns yaml_text, found, missing[] (not found, with what was tried), confidence, pages[] " +
+      "(page_id to reuse), notes, errors. Verify with test_config; ask_user about the gaps.",
+    parameters: obj({ url: str("The site's address (any page; its root page is read).") }, ["url"]),
+    method: "POST",
+    path: "/discover_site",
+    body: (p) => pick(p, ["url"]),
+    modes: ["onboard"],
+  },
   {
     name: "fetch_page",
     label: "Fetch page",
@@ -361,6 +376,23 @@ const TOOLS: ToolSpec[] = [
     method: "POST",
     path: "/test_provider",
     body: (p) => pick(p, ["recipe_yaml", "sample_url", "referer"]),
+  },
+  {
+    name: "match_providers",
+    label: "Match providers",
+    description:
+      "Dry-run EVERY provider of the library on one player page, host match ignored. Returns matches[] and recommendation: use_provider | " +
+      "add_host (recipe_yaml: hand it in as provider_recipes with mode update) | new_recipe | needs_code. Call it before writing a recipe.",
+    parameters: obj(
+      {
+        player_url: str("Absolute player (embed / iframe) URL."),
+        referer: str("The detail / episode page that embeds it."),
+      },
+      ["player_url"],
+    ),
+    method: "POST",
+    path: "/match_providers",
+    body: (p) => pick(p, ["player_url", "referer"]),
   },
   {
     name: "test_search",

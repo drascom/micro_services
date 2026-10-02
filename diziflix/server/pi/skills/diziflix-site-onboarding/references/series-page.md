@@ -42,6 +42,8 @@ normalize:
    the episode list.
 2. `episode_url_regex`: `shape` as a regex searched on the URL PATH, numbers as named groups `(?P<season>\d+)`, `(?P<episode>\d+)` (mandatory),
    the show part `(?P<slug>[^/]+?)`. No season in the URLs: leave `season` out, write `default_season: 1`, say so in `notes`.
+   In a SINGLE-quoted yaml scalar write `\d` (a double-quoted one needs `\\d`): `\\d` in single quotes = a literal backslash + `d`, matches no digit
+   (`rows_matched` > 0 but `rows_accepted: 0`; `config_errors` names it). `rejected_by` quotes the whole regex and the path it did not match.
 3. `row_selector`: the element holding ONE episode (`ul.episodes li`, `table.episodes tr`) or the episode links themselves; `query_html` must
    count exactly the page's episodes. A selector that matches nothing is not fatal (the engine scans every link, `structured: false`) but titles
    and dates are lost: fix it. Optional `fields` (`title`, `air_date`, `url`).

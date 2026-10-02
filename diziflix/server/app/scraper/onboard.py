@@ -898,8 +898,13 @@ def _recipe_conflicts(items: list[dict]) -> Optional[str]:
         seen.add(name)
         if name in recipes.CODE_NAMES:
             return f"provider recipe {name!r} is the name of a code provider"
+        if item.get("mode") == "update":   # a new version of a library recipe (host added): validated by ``_prepare_recipes``
+            if name not in scfg.recipe_names():
+                return f"provider recipe {name!r} is marked mode update but there is no such recipe in the library"
+            continue
         if name in scfg.recipe_names() or scfg.recipe_archived_versions(name):
-            return f"provider recipe {name!r} already exists in the library (reference it in providers: or choose another name)"
+            return (f"provider recipe {name!r} already exists in the library (reference it in providers:, update it with mode update to add a "
+                    "host, or choose another name)")
     return None
 
 
@@ -969,7 +974,9 @@ def save(draft_id: str, site_id: str, display_name: Optional[str] = None, enable
     The provider recipes the draft carries (``provider_recipes``) are written with it, each as ``configs/providers/<name>.yaml``
     v1. Everything is checked first (a name that is a code provider's or already in the library is a 409, an invalid recipe a
     422; ``force`` only skips the ``passed`` criteria, never these); then the recipes are written, then the site; when any
-    write fails the ones already written are removed again, so the library never gets a half-saved draft."""
+    write fails the ones already written are removed again, so the library never gets a half-saved draft. A recipe entry with ``mode:
+    "update"`` is a NEW VERSION of a library recipe (``<name>.vN.yaml`` archive like a site's): ``recipes.update_problems`` accepts only
+    the host widening ``match_providers`` proposes; on a failure it goes back to its previous version (``config.restore_recipe``)."""
     from ..routers import onboard_sandbox as sandbox
     site_id = (site_id or "").strip()
     if not SITE_ID_RE.match(site_id):
@@ -1024,16 +1031,20 @@ def save(draft_id: str, site_id: str, display_name: Optional[str] = None, enable
                                + "); " + _clip("; ".join(report.get("errors") or []), 300) + " (force=true saves it anyway)")
         warnings: list[str] = []
         written: list[dict] = []
+        snapshots: dict[str, dict] = {}
+        updates = {r["name"] for r in recipe_items if r.get("mode") == "update"}
         try:   # recipes first (they are what the site yaml's providers: names); any failure undoes the recipes written so far
             for provider in prepared.providers:
-                written.append({"name": provider.name, "version": scfg.save_recipe(provider.name, provider.data)})
+                snapshots[provider.name] = scfg.recipe_snapshot(provider.name)
+                version_written = scfg.save_recipe(provider.name, provider.data)
+                written.append({"name": provider.name, "version": version_written, **({"mode": "update"} if provider.name in updates else {})})
             version = scfg.save_new_version(site_id, data)
             limits = thresholds_from(report)
             scfg.write_baseline_thresholds(site_id, limits)
         except Exception:
-            for entry in written:
+            for entry in written:   # a new recipe is removed again, an updated one goes back to its previous version
                 try:
-                    scfg.delete_recipe(entry["name"])
+                    scfg.restore_recipe(entry["name"], snapshots[entry["name"]])
                 except Exception:
                     log.exception("onboarding: could not undo provider recipe %s", entry["name"])
             raise
@@ -1059,7 +1070,7 @@ def save(draft_id: str, site_id: str, display_name: Optional[str] = None, enable
             report["edit"] = {**edit_info, "to_version": version}
         draft = store.update_draft(draft_id, status="saved", saved_site_id=site_id, error=None, question=None,
                                    report=report)
-        extra = (" + provider " + ", ".join(f"{w['name']} v{w['version']}" for w in written)) if written else ""
+        extra = (" + provider " + ", ".join(f"{w['name']} v{w['version']}" + (" (host eklendi)" if w.get("mode") == "update" else "") for w in written)) if written else ""
         add_event(draft_id, {"t": _now(), "kind": "status", "status": "saved", "text": f"{site_id} v{version} kaydedildi{extra}"})
         _record(draft, "saved", time.monotonic(), 0, f"{site_id} v{version}{extra}" + (" (force)" if force and not report.get("passed") else ""))
     scan_started = _start_scan(site_id) if scan_now else False

@@ -36,18 +36,21 @@ EXTENSION_PATH = os.path.join(SERVER_DIR, "pi", "extensions", "diziflix-onboard.
 SKILL_NAME = "diziflix-site-onboarding"
 READ_TOOL = "read"   # pi's own file reader, allowed for the skill references only (extension guard, DIZIFLIX_SKILL_DIR)
 
-#: the eleven tools of an onboarding run (``test_search``: Faz 6, the yaml ``search:`` block; not a repair tool: a repair never
-#: touches ``search:``). ``ask_user`` is NOT a sandbox call: the extension answers it itself and the run ends ``needs_input`` (the
-#: question is read from the tool-call event, ``EventParser.ask``); a repair (the heal, no human) never asks.
-ONBOARD_TOOLS = ("fetch_page", "query_html", "grep_page", "outline_page", "test_config", "list_resolvers", "test_resolvers",
-                 "test_provider", "test_search", "ask_user", "submit_draft")
+#: the tools of an onboarding run: ``discover_site`` (a draft yaml built by code from the site's pages: onboarding only), the page / test tools,
+#: ``match_providers`` (the player page compared with the provider library), ``test_search`` (Faz 6, the yaml ``search:`` block; not a repair
+#: tool: a repair never touches ``search:``), ``ask_user`` and ``submit_draft``. ``ask_user`` is NOT a sandbox call: the extension answers it
+#: itself and the run ends ``needs_input`` (the question is read from the tool-call event, ``EventParser.ask``); a repair (the heal, no human)
+#: never asks.
+ONBOARD_TOOLS = ("discover_site", "fetch_page", "query_html", "grep_page", "outline_page", "test_config", "list_resolvers", "test_resolvers",
+                 "test_provider", "match_providers", "test_search", "ask_user", "submit_draft")
 #: repair mode: the onboarding tools that look at pages and test yaml / recipes, plus ``load_site_config`` and ``submit_repair``
-#: (no ``submit_draft``: a repair never creates a site)
-REPAIR_TOOLS = ("fetch_page", "query_html", "grep_page", "outline_page", "test_config", "test_resolvers", "test_provider",
+#: (no ``submit_draft``: a repair never creates a site; no ``discover_site``: the site exists)
+REPAIR_TOOLS = ("fetch_page", "query_html", "grep_page", "outline_page", "test_config", "test_resolvers", "test_provider", "match_providers",
                 "list_resolvers", "load_site_config", "submit_repair")
-#: edit mode (a registered site is changed on an admin's request, ``onboard.start(mode="edit")``): the onboarding tools + the read-only
-#: ``load_site_config`` (the extension locks ``submit_draft`` to the edited site; the sandbox only lets ``load_site_config`` read that site)
-EDIT_TOOLS = (*ONBOARD_TOOLS, "load_site_config")
+#: edit mode (a registered site is changed on an admin's request, ``onboard.start(mode="edit")``): the onboarding tools minus ``discover_site``
+#: + the read-only ``load_site_config`` (the extension locks ``submit_draft`` to the edited site; the sandbox only lets ``load_site_config``
+#: read that site)
+EDIT_TOOLS = (*(t for t in ONBOARD_TOOLS if t != "discover_site"), "load_site_config")
 MODES = {"onboard": ONBOARD_TOOLS, "repair": REPAIR_TOOLS, "edit": EDIT_TOOLS}
 
 SAY_CLIP = 1000

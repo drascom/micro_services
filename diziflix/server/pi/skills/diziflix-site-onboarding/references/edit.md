@@ -9,7 +9,7 @@ scanned again.
 The edit-mode tools are the onboarding tools plus `load_site_config`, and `read` for these references:
 
 <!-- BEGIN GENERATED edit-tools (tools/gen_onboard_refs.py; do not edit by hand) -->
-Edit-mode tools: `fetch_page`, `query_html`, `grep_page`, `outline_page`, `test_config`, `list_resolvers`, `test_resolvers`, `test_provider`, `test_search`, `ask_user`, `submit_draft`, `load_site_config` (+ `read`).
+Edit-mode tools: `fetch_page`, `query_html`, `grep_page`, `outline_page`, `test_config`, `list_resolvers`, `test_resolvers`, `test_provider`, `match_providers`, `test_search`, `ask_user`, `submit_draft`, `load_site_config` (+ `read`).
 <!-- END GENERATED edit-tools -->
 
 `load_site_config` can read ONLY the site being edited. `submit_draft` keeps the site id: whatever `site_id_suggestion` you send, the server

@@ -6,7 +6,9 @@ as possible. You hand in a PROPOSAL with `submit_repair`; the server tests it ag
 changed recipe) and applies it only when all of that passes.
 
 The repair-mode tools are `fetch_page`, `query_html`, `grep_page`, `outline_page`, `test_config`, `test_resolvers`, `test_provider`,
-`list_resolvers`, `load_site_config` and `submit_repair`, plus `read`. There is no `submit_draft`.
+`match_providers`, `list_resolvers`, `load_site_config` and `submit_repair`, plus `read`. There is no `submit_draft`.
+`match_providers(player_url, referer?)` dry-runs EVERY library provider on one player page: `recommendation.action` `add_host` gives the existing
+recipe with the new host added (`recipe_yaml`: hand it in as `provider_recipes` with the same name); `new_recipe` / `needs_code` as in onboarding.
 
 ## Input (the task message)
 

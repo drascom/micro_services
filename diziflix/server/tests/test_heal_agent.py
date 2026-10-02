@@ -677,7 +677,7 @@ class AgentRunTest(Base):
         proc = self.procs[0]
         self.assertEqual(proc.cmd[:2], ["pi", "-p"])
         self.assertEqual(proc.option("--tools"), "fetch_page,query_html,grep_page,outline_page,test_config,test_resolvers,test_provider,"
-                                                  "list_resolvers,load_site_config,submit_repair,read")
+                                                  "match_providers,list_resolvers,load_site_config,submit_repair,read")
         self.assertNotIn("submit_draft", proc.option("--tools"))
         self.assertEqual(proc.option("--model"), "prov/test")
         self.assertEqual(proc.option("--session-id"), proc.job_id)
@@ -987,7 +987,7 @@ class PiAgentTest(unittest.TestCase):
         self.assertIs(onboard.EventParser, pi_agent.EventParser)
         self.assertIs(onboard.scrub, pi_agent.scrub)
         self.assertEqual(onboard.TOOLS, pi_agent.ONBOARD_TOOLS)
-        self.assertEqual(len(pi_agent.ONBOARD_TOOLS), 11)
+        self.assertEqual(len(pi_agent.ONBOARD_TOOLS), 13)
         for flag in ("--mode", "--offline", "--no-builtin-tools", "--tools", "--no-extensions", "--no-skills", "--no-context-files",
                      "--no-prompt-templates", "--model", "--session-dir", "--session-id"):
             self.assertIn(flag, pi_agent.build_command("od_0123456789ab"))
@@ -1000,7 +1000,7 @@ class PiAgentTest(unittest.TestCase):
         extra = set(pi_agent.REPAIR_TOOLS) - set(pi_agent.ONBOARD_TOOLS)
         self.assertEqual(extra, {"load_site_config", "submit_repair"})
         self.assertNotIn("submit_draft", pi_agent.REPAIR_TOOLS)
-        self.assertEqual(set(pi_agent.ONBOARD_TOOLS) - set(pi_agent.REPAIR_TOOLS), {"submit_draft", "test_search", "ask_user"})   # a repair never touches search: and has nobody to ask
+        self.assertEqual(set(pi_agent.ONBOARD_TOOLS) - set(pi_agent.REPAIR_TOOLS), {"discover_site", "submit_draft", "test_search", "ask_user"})   # a repair never touches search:, the site exists (no discovery), nobody to ask
 
     def test_child_env(self):
         with mock.patch.dict(os.environ, {"TMDB_ACCESS_KEY": "t", "MY_TOKEN": "x", "KEEP_ME": "yes"}):

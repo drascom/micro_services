@@ -77,6 +77,15 @@ are small on purpose (they go to an LLM): text is clipped, lists are capped.
                                                                       taken from is among the results: its detail_url or normalize key),
                                                                       normalize_ok_ratio, ms: the draft's yaml ``search:`` block run on ONE
                                                                       live query in memory (``scraper/search_generic.py``; nothing is written)
+``POST /discover_site``  {url}                                       -> yaml_text, found, missing[{field, tried, ...}], confidence, pages_fetched, pages[{role, page_id,
+                                                                      ...}], notes, errors: the DRAFT site yaml built by code from <= 8 pages of the
+                                                                      site (``scraper/discover.py``: home sections + roles, list, series page,
+                                                                      detail fields, episode page, player candidates, normalize); it judges nothing:
+                                                                      what it is unsure of is in ``missing``; the pages are stored (``page_id``)
+``POST /match_providers`` {player_url, referer?, detail_url?}         -> matches[{provider, kind, host_match, ok, stream_type, stream_host, ms}],
+                                                                      page, recommendation {action: use_provider | add_host | new_recipe |
+                                                                      needs_code, recipe_yaml?, host_regex?}: every provider of the library dry-run on
+                                                                      one player page, host match ignored (``scraper/provider_match.py``; nothing is written)
 ``GET  /resolvers``                                                  -> resolver type + provider catalogs (code modules AND the data-driven
                                                                       provider recipes of ``configs/providers/``: ``kind`` code | recipe)
 ``POST /test_provider``  {recipe_yaml, sample_url, referer?}         -> valid, errors, matched, status (resolved | no_stream | no_match |
@@ -91,7 +100,8 @@ are small on purpose (they go to an LLM): text is clipped, lists are capped.
 ``POST /submit``         {draft_id, yaml_text, site_id_suggestion, notes, page_id?, detail_page_id?, provider_recipes?}
                                                                       -> test_config again (always with collections AND playable), written
                                                                       to the draft, status=ready
-``provider_recipes`` = ``[{name, yaml}]`` (at most 3): new provider recipes for the library. ``test_config`` / ``test_resolvers`` /
+``provider_recipes`` = ``[{name, yaml, mode?}]`` (at most 3): new provider recipes for the library; ``mode: "update"`` = a NEW VERSION of a recipe
+that is in the library, allowed to widen ``match.host_regex`` only (``recipes.update_problems``; the yaml comes from ``match_providers``). ``test_config`` / ``test_resolvers`` /
 ``submit`` take them (the draft's stored ones are always included) and add them IN MEMORY to the providers the site yaml may name in
 ``providers:``; nothing is written to ``configs/providers`` here (only ``onboard.save`` does).
 
@@ -153,6 +163,7 @@ MAX_DUPLICATE_KEY_RATIO = 0.1                                 # duplicated norma
 MIN_COLLECTION_COUNT = 3                                      # items a collection (home section) must yield (``collections: true``)
 MAX_COLLECTIONS = 8                                           # yaml ``collections:`` entries accepted
 MAX_PROVIDER_RECIPES = 3                                      # provider recipes one draft may carry
+DISCOVER_SECONDS = 60.0                                       # discover_site: longest one call (page requests stop NEED_SECONDS before it)
 # playability (``playable: true`` / always in submit): a few normalized items are followed from their playback page to a stream
 MIN_PLAYABLE_RATIO = 0.67                                     # resolved / checked samples (``skipped`` excluded; at least 1 resolved)
 MIN_SERIES_SOURCE_RATIO = 0.9                                 # series items that carry episode ``video_sources`` / series items
@@ -441,13 +452,29 @@ def _shrink(value: Any, width: int) -> Any:
     return value
 
 
+REJECT_KEEP = 520             # characters of the FIRST ``rejected_by`` (it names the whole regex: shortened last, never to the width of the rest)
+
+
 def _cap_entry(entry: Any, limit: int = DIAG_ENTRY_BYTES) -> Any:
-    """``entry`` shrunk until its JSON fits ``limit`` bytes (no secret / cookie / long html can get through)."""
+    """``entry`` shrunk until its JSON fits ``limit`` bytes (no secret / cookie / long html can get through). The first row's
+    ``rejected_by`` (why the episode regex did not match: the WHOLE regex + the path) is kept up to ``REJECT_KEEP`` characters while the rest
+    of the entry shrinks around it: the explanation is shortened, never the regex."""
+    keep = None
+    rows = entry.get("first_rows") if isinstance(entry, dict) else None
+    if isinstance(rows, list) and rows and isinstance(rows[0], dict) and isinstance(rows[0].get("rejected_by"), str):
+        keep = " ".join(rows[0]["rejected_by"].split())[:REJECT_KEEP]
+        entry = {**entry, "first_rows": [{**rows[0], "rejected_by": ""}, *rows[1:]]}
+
+    def put(shrunk: Any) -> Any:
+        if keep is not None and isinstance(shrunk, dict) and isinstance(shrunk.get("first_rows"), list) and shrunk["first_rows"]:
+            shrunk["first_rows"][0]["rejected_by"] = keep
+        return shrunk
+
     for width in (160, 100, 60, 30, 15):
-        shrunk = _shrink(entry, width)
+        shrunk = put(_shrink(entry, width))
         if len(json.dumps(shrunk, ensure_ascii=False)) <= limit:
             return shrunk
-    return _shrink(entry, 8)
+    return put(_shrink(entry, 8))
 
 
 def _diag_start() -> tuple[dict, Any]:
@@ -660,7 +687,9 @@ def _failing_hint(name: str, c: dict, out: dict) -> str:
     if name == "duplicate_key_ratio":
         return "normalize anahtarı birçok öğede aynı çıkıyor: key.from / regex daha ayırt edici olmalı (slug + yıl gibi)"
     if name == "config_errors":
-        return "yaml hataları var: errors listesinin ilk maddesinden başla"
+        lint = next((e for e in out.get("errors") or [] if "çift ters eğik çizgi" in str(e)), None)
+        return ((f"{_clip(str(lint), 300)}. " if lint else "")
+                + "yaml hataları var: errors listesinin ilk maddesinden başla")
     if name == "playable_ratio":
         first = next((s.get("error") for s in play.get("samples") or [] if s.get("error") and not s.get("blocked")), "")
         return (f"{play.get('resolved', 0)}/{play.get('checked', 0)} örnek akışa çözülmedi" + (f" (ilk hata: {_clip(first, 100)})" if first else "")
@@ -670,7 +699,7 @@ def _failing_hint(name: str, c: dict, out: dict) -> str:
     if name == "series_inventory_ok":
         why = next((((s.get("diagnostics") or {}).get("first_rows") or [{}])[0].get("rejected_by") for s in series.get("samples") or []
                     if not s.get("episodes") and not s.get("skipped") and not s.get("blocked")), None)
-        return "dizi sayfasından bölüm okunamadı" + (f": {_clip(why, 160)}" if why else ": series_page.row_selector / fields.url / episode_url_regex'i diagnostics.series'e göre düzelt")
+        return "dizi sayfasından bölüm okunamadı" + (f": {_clip(why, 450)}" if why else ": series_page.row_selector / fields.url / episode_url_regex'i diagnostics.series'e göre düzelt")
     if name == "ingest_sample_ok":
         sample = series.get("ingest_sample") or {}
         reasons = {k: n for k, n in (sample.get("reasons") or {}).items() if k != "key_mismatch"}
@@ -1098,6 +1127,7 @@ def _scoped_selector(tree, nodes: list, card_sel: str) -> tuple[str, int]:
     return card_sel, everywhere
 
 
+_ACTION_HREF = re.compile(r"^\?|wpfpaction|favori|favorite|wishlist|watchlist|bookmark|[?&]action=", re.I)   # add-to-favourites links are no content link
 _KIND_EPISODE = re.compile(r"(?:bolum|bölüm|episode|-ep-|/ep-?\d)", re.I)
 _KIND_FILM = re.compile(r"/(?:film|filmler|movie|movies)(?:/|-|$)", re.I)
 _KIND_SERIES = re.compile(r"/(?:dizi|diziler|series|show|shows|tv-show|tvshow)(?:/|-|$)", re.I)
@@ -1123,7 +1153,7 @@ def _block_facts(nodes: list, base: str) -> dict:
     pairs: list[tuple[str, str]] = []
     title = ""
     for node in nodes[:10]:
-        anchor = node if node.tag == "a" else node.css_first("a[href]")
+        anchor = node if node.tag == "a" else next((a for a in node.css("a[href]") if not _ACTION_HREF.search(a.attributes.get("href") or "")), None)
         href = (anchor.attributes.get("href") or "").strip() if anchor is not None else ""
         if not href or href.lower().startswith(_NO_LINK):
             continue
@@ -1391,6 +1421,12 @@ def _episode_links(tree, base: str) -> list[dict]:
 def _do_outline(body, *, deadline: float) -> dict:
     html, meta = _load_page(body.page_id)
     base = meta.get("final_url") or meta.get("url") or ""
+    return _outline_of(html, base, meta.get("url") or base, meta.get("final_url") or "")
+
+
+def _outline_of(html: str, base: str, requested: str, final: str = "") -> dict:
+    """The outline of a page's HTML (``/outline`` answer; also what ``scraper/discover.py`` reads): ``base`` = the page's final URL,
+    ``requested`` / ``final`` as ``_page_signals`` wants them."""
     tree = HTMLParser(html)
     groups: dict[tuple, list] = {}
     for node in tree.css("*"):
@@ -1435,7 +1471,7 @@ def _do_outline(body, *, deadline: float) -> dict:
            "repeating": found[:LIST_CAP], "iframe_hosts": _host_counts(iframes), "link_hosts": _host_counts(links),
            "nav_links": _nav_links(tree, base), "sections": sections, "blocks": _blocks(tree, groups, base, sections),
            "episode_links": _episode_links(tree, base)}
-    out.update(_page_signals(html, meta.get("url") or base, meta.get("final_url") or ""))
+    out.update(_page_signals(html, requested or base, final or ""))
     return out
 
 
@@ -2474,7 +2510,7 @@ def _series_sample(cfg, spec: dict, pick: dict, deadline: float, warnings: list,
     sample.update(episodes=len(entries), seasons=len({e.get("season") for e in entries}),
                   structured=bool(inventory.get("structured")), season_pages=len(inventory.get("season_pages") or []),
                   first=_episode_ref(entries[0]) if entries else None, last=_episode_ref(entries[-1]) if entries else None,
-                  warnings=[_clip(w, 200) for w in (inventory.get("warnings") or [])[:4]])
+                  warnings=[_clip(w, 600) for w in (inventory.get("warnings") or [])[:4]])
     if isinstance(inventory.get("diagnostics"), dict):
         sample["diagnostics"] = _cap_entry(inventory["diagnostics"])
     return sample, entries
@@ -3252,12 +3288,23 @@ class _Recipes(NamedTuple):
 
 
 def _recipe_dicts(items: Any) -> list[dict]:
-    """``[{name, yaml}]`` of request items (pydantic models or dicts)."""
+    """``[{name, yaml}]`` of request items (pydantic models or dicts); ``mode: "update"`` is kept (the only mode that is not the default)."""
     out = []
     for item in items or []:
         get = item.get if isinstance(item, dict) else lambda key, _i=item: getattr(_i, key, None)
-        out.append({"name": str(get("name") or "").strip(), "yaml": str(get("yaml") or "")})
+        entry = {"name": str(get("name") or "").strip(), "yaml": str(get("yaml") or "")}
+        if get("mode") == "update":
+            entry["mode"] = "update"
+        out.append(entry)
     return out
+
+
+def _active_recipe(name: str) -> Optional[dict]:
+    """The active library recipe ``name`` as a mapping (None when there is none or it is unreadable)."""
+    try:
+        return scfg.load_recipe(name)
+    except (OSError, ValueError):
+        return None
 
 
 def _prepare_recipes(items: Any, replace: bool = False) -> _Recipes:
@@ -3283,11 +3330,19 @@ def _prepare_recipes(items: Any, replace: bool = False) -> _Recipes:
             elif data["name"] != name:
                 problems.append(f"name: the yaml says {data['name']!r} but the entry is named {name!r}")
             problems += recipes.validate_recipe(data)
+            update = item.get("mode") == "update"
+            if update:
+                entry["mode"] = "update"
+                active = _active_recipe(name)
+                if active is None:
+                    problems.append(f"mode update: there is no provider recipe {name!r} in the library (a new recipe has no mode)")
+                else:
+                    problems += recipes.update_problems(active, data)
             if name in seen:
                 problems.append("name: listed twice")
-            elif name in taken and not replace:
+            elif name in taken and not replace and not update:
                 problems.append(f"name: a provider recipe {name!r} already exists in the library; choose another name "
-                                "(an existing recipe is used by listing it in providers:)")
+                                "(an existing recipe is used by listing it in providers:, or updated with mode update to add a host)")
             entry["description"] = str(data.get("description") or "")[:200]
         seen.add(name)
         if problems:
@@ -3390,6 +3445,7 @@ def _analyze_report(yaml_text: str, page_id: Optional[str], detail_page_id: Opti
     search_errors = _check_search(data)
     blocked_errors = _check_blocked_blocks(data)
     errors += core_errors + field_errors + play_errors + norm_errors + url_errors + series_errors + search_errors + blocked_errors
+    errors += scfg.regex_lint(data)   # `\\d` in a single-quoted yaml scalar: a regex that can never match (a NEW site must not pass)
     if draft_recipes:
         errors += draft_recipes.errors
     warnings += core_warnings + play_warnings
@@ -3768,7 +3824,7 @@ def _do_test_resolvers(body, *, deadline: float, repair: bool = False) -> dict:
     draft_recipes = _prepare_recipes(body.provider_recipes, replace=repair)
     play_errors, out["warnings"] = _check_playback(data, [p.name for p in draft_recipes.providers])
     errors += ([e for e in core_errors if e.startswith(("base_url", "fetch_mode"))] + play_errors + _url_params_errors(data)
-               + draft_recipes.errors)
+               + draft_recipes.errors + scfg.regex_lint(data))
     if not data.get("resolvers") and not errors:
         errors.append("resolvers: the yaml has no resolvers list (nothing to test)")
     if errors:
@@ -3939,6 +3995,37 @@ def _do_test_provider(body, *, deadline: float, repair: bool = False) -> dict:
     return out
 
 
+# --- discover_site / match_providers ------------------------------------------------------------------------------
+
+def _do_discover_site(body, *, deadline: float) -> dict:
+    """The draft site yaml of ``body.url`` built by code (``scraper/discover.py``): <= 8 pages, each through the sandbox fetch (``netguard``,
+    page store: the answer's ``pages[].page_id`` can be used with query_html / grep_page). Nothing is written."""
+    from ..scraper import discover
+    _check(body.url)
+    limit = min(deadline, time.monotonic() + DISCOVER_SECONDS)
+
+    def getter(url: str, role: str) -> "discover.Page":
+        try:
+            got = _fetch_store(url, "auto", "", limit)
+        except ApiError as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            raise discover.PageError(f"{detail.get('code', exc.status_code)}: {detail.get('message', '')}")
+        meta = got["meta"]
+        return discover.Page(url=url, final_url=meta["final_url"], html=got["html"], fetch_mode=meta["fetch_mode"], status=int(meta["status"]),
+                             page_id=meta["page_id"])
+
+    return discover.discover(body.url, getter, outline=_outline_of, deadline=limit)
+
+
+def _do_match_providers(body, *, deadline: float) -> dict:
+    """Every provider of the library dry-run on ONE player page, host match ignored (``scraper/provider_match.py``); nothing is written."""
+    from ..scraper import provider_match
+    url = _check(body.player_url)
+    referer = _clean_referer(body.referer) or _clean_referer(body.detail_url)
+    _check_deadline(deadline)
+    return provider_match.match(url, referer=referer, deadline=time.monotonic() + max(5.0, min(provider_match.MAX_SECONDS, deadline - time.monotonic() - 5.0)))
+
+
 # --- submit -----------------------------------------------------------------------------------------------------
 
 def _edit_summary(site_id: str, data: Optional[dict]) -> dict:
@@ -4058,10 +4145,22 @@ class GrepBody(BaseModel):
 class RecipeBody(BaseModel):
     name: str = Field(..., min_length=1, max_length=40, description="recipe name, ^[a-z][a-z0-9_]{1,31}$ (the yaml's own name: must be the same)")
     yaml: str = Field(..., max_length=recipes.MAX_RECIPE_BYTES, description="the provider recipe yaml")
+    mode: Optional[Literal["new", "update"]] = Field(None, description="update = a new version of a recipe that is in the library (only match.host_regex may "
+                                                     "widen: use the recipe_yaml of match_providers); default new")
 
 
 RECIPES_FIELD = dict(default=None, max_length=MAX_PROVIDER_RECIPES, description="new provider recipes [{name, yaml}] (at most 3) that join "
                      "the providers IN MEMORY: the site yaml may name them in providers:; the draft's stored recipes are always included")
+
+
+class DiscoverSiteBody(BaseModel):
+    url: str = Field(..., max_length=2048, description="the site's address (any page: the root page is read)")
+
+
+class MatchProvidersBody(BaseModel):
+    player_url: str = Field(..., max_length=2048, description="a player (embed / iframe) URL, e.g. a candidate url of test_resolvers / discover_site")
+    referer: Optional[str] = Field(None, max_length=2048, description="the detail / episode page that embeds the player")
+    detail_url: Optional[str] = Field(None, max_length=2048, description="same as referer (used when referer is empty)")
 
 
 class TestProviderBody(BaseModel):
@@ -4175,6 +4274,18 @@ async def sandbox_test_provider(body: TestProviderBody, draft_id: str = Depends(
     result = await _bounded(fn, body, hint="a recipe with fetch: browser is slow; try fetch: http with a referer")
     await _remember(draft_id, "test_provider", result)
     return result
+
+
+@router.post("/discover_site")
+async def sandbox_discover_site(body: DiscoverSiteBody, draft_id: str = Depends(_guard)) -> dict:
+    if _is_repair(draft_id) or _edit_site(draft_id):
+        raise ApiError(403, "forbidden", "discover_site belongs to onboarding a NEW site (a repair / edit run works on a registered site)")
+    return await _bounded(_do_discover_site, body, hint="the site is slow: fetch_page its pages by hand")
+
+
+@router.post("/match_providers")
+async def sandbox_match_providers(body: MatchProvidersBody, draft_id: str = Depends(_guard)) -> dict:
+    return await _bounded(_do_match_providers, body, hint="the player page is slow: use test_provider with one recipe")
 
 
 @router.post("/test_resolvers")

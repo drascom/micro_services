@@ -36,6 +36,7 @@ Every failing criterion also comes with a `hint` in `failing[]`; the `diagnostic
 
 | failing criterion | look at | typical cause / fix |
 |---|---|---|
+| `config_errors` > 0 with a regex message | `errors`, `failing[].hint` | a regex with a DOUBLE backslash (`\\d`): in a single-quoted yaml scalar write `\d` (double-quoted: `\\d`); `\\d` matches a literal backslash + d, never a digit |
 | `valid_count` low | `list.count`, `list.valid_count`, `errors` | `row_selector` matches too little (JavaScript-rendered page: `fetch_mode: browser`) or rows fail the schema (empty `title`, wrong type: add `cast`) |
 | `title_fill` / `detail_url_fill` | `list.field_fill`, `list.samples` | the selector misses some card variants (`fallback`), or `row_selector` also matches non-title blocks |
 | `poster_url_fill` | `list.field_fill.poster_url` | lazy images: `data-src` first, `src` last (`fallback`) |

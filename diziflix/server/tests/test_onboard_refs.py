@@ -41,8 +41,10 @@ PI = Path(__file__).resolve().parent.parent / "pi"
 SKILL_DIR = PI / "skills" / "diziflix-site-onboarding"
 REFS = SKILL_DIR / "references"
 EXTENSION = PI / "extensions" / "diziflix-onboard.ts"
-TOOLS = ["fetch_page", "query_html", "grep_page", "outline_page", "test_config", "list_resolvers", "test_resolvers", "test_provider",
-         "test_search", "ask_user", "submit_draft"]
+TOOLS = ["discover_site", "fetch_page", "query_html", "grep_page", "outline_page", "test_config", "list_resolvers", "test_resolvers",
+         "test_provider", "match_providers", "test_search", "ask_user", "submit_draft"]
+#: edit mode: the onboarding tools without ``discover_site`` (the site exists) + the read-only ``load_site_config``
+EDIT = [name for name in TOOLS if name != "discover_site"]
 #: tools the extension answers itself (no sandbox call): ``ask_user`` ends the run ``needs_input``, the server reads the question from pi's event
 LOCAL_TOOLS = ("ask_user",)
 HTTP_TOOLS = [name for name in TOOLS if name not in LOCAL_TOOLS]
@@ -56,6 +58,8 @@ ENDPOINTS = {
     "list_resolvers": ("GET", "/resolvers", None),
     "test_resolvers": ("POST", "/test_resolvers", sb.TestResolversBody),
     "test_provider": ("POST", "/test_provider", sb.TestProviderBody),
+    "match_providers": ("POST", "/match_providers", sb.MatchProvidersBody),
+    "discover_site": ("POST", "/discover_site", sb.DiscoverSiteBody),
     "test_search": ("POST", "/test_search", sb.TestSearchBody),
     "submit_draft": ("POST", "/submit", sb.SubmitBody),
 }
@@ -166,7 +170,7 @@ class SkillFiles(unittest.TestCase):
 
     def test_tool_names_are_the_extension_tool_names(self):
         source = EXTENSION.read_text(encoding="utf-8")
-        # the eleven onboarding tools (ten sandbox calls + the local ask_user), then the two repair-mode tools (registered only when DIZIFLIX_MODE=repair)
+        # the thirteen onboarding tools (twelve sandbox calls + the local ask_user), then the two repair-mode tools (registered only when DIZIFLIX_MODE=repair)
         self.assertEqual(re.findall(r'^    name: "(\w+)",$', source, re.M), TOOLS + ["load_site_config", "submit_repair"])
 
 
@@ -288,7 +292,8 @@ class EditModeSkill(unittest.TestCase):
         tools = text.split("BEGIN GENERATED edit-tools", 1)[1].split("END GENERATED edit-tools", 1)[0]
         for name in pi_agent.EDIT_TOOLS:
             self.assertIn("`%s`" % name, tools)
-        self.assertEqual(pi_agent.EDIT_TOOLS, (*pi_agent.ONBOARD_TOOLS, "load_site_config"))
+        self.assertEqual(list(pi_agent.EDIT_TOOLS), EDIT + ["load_site_config"])
+        self.assertNotIn("discover_site", pi_agent.EDIT_TOOLS)   # the site exists: nothing to discover
         self.assertNotIn("submit_repair", tools)
         layers = text.split("BEGIN GENERATED edit-layers", 1)[1].split("END GENERATED edit-layers", 1)[0]
         for name, (keys, _doc) in heal_agent.LAYERS.items():   # the same layers (and keys) as a repair's scope gate
@@ -2152,7 +2157,7 @@ class ExtensionUnderNode(unittest.TestCase):
                          else True if spec["type"] == "boolean" else ["v_" + name] if spec["type"] == "array" else "v_" + name)
         return out
 
-    def test_registers_the_eleven_tools(self):
+    def test_registers_the_onboarding_tools(self):
         got = self.run_node([])
         self.assertEqual(got["names"], TOOLS)
         for name, meta in got["meta"].items():
@@ -2163,7 +2168,7 @@ class ExtensionUnderNode(unittest.TestCase):
 
     def test_edit_mode_registers_the_onboarding_tools_plus_load_site_config(self):
         got = self.run_node([], DIZIFLIX_MODE="edit")
-        self.assertEqual(got["names"], TOOLS + ["load_site_config"])
+        self.assertEqual(got["names"], EDIT + ["load_site_config"])
         self.assertEqual(set(got["names"]), set(pi_agent.EDIT_TOOLS))
         self.assertNotIn("submit_repair", got["names"])
         self.assertEqual(got["meta"]["load_site_config"]["parameters"]["required"], ["site_id"])
