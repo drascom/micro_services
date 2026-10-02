@@ -672,7 +672,7 @@ class AdminAskCards(unittest.TestCase):
         self.assertIn("Ajan senin yanıtını bekliyor", got["els"]["ob-note"]["html"])
         self.assertIn("Liste sayfası hangisi?", got["els"]["ob-note"]["html"])
         self.assertTrue(got["els"]["ob-savebtn"]["disabled"])
-        self.assertEqual(got["els"]["ob-savewhy"]["text"], "ajan senin yanıtını bekliyor")
+        self.assertEqual(got["els"]["ob-savebtn"]["title"], "ajan senin yanıtını bekliyor")
 
     def test_the_card_is_gone_when_the_agent_runs_or_the_draft_is_ready(self):
         for status in ("running", "ready", "failed", "cancelled", "saved"):
@@ -770,12 +770,12 @@ class AdminAskCards(unittest.TestCase):
     def test_a_handed_in_draft_with_a_question_can_still_be_saved_as_it_is(self):
         got = self.ui(question_draft())
         self.assertFalse(got["els"]["ob-savebtn"]["disabled"])
-        self.assertEqual(got["els"]["ob-savewhy"]["text"], "")
+        self.assertEqual(got["els"]["ob-savebtn"]["title"], "")
         draft = question_draft()
         draft["report"] = None                                               # nothing was handed in: nothing to save
         got = self.ui(draft)
         self.assertTrue(got["els"]["ob-savebtn"]["disabled"])
-        self.assertEqual(got["els"]["ob-savewhy"]["text"], "ajan senin yanıtını bekliyor")
+        self.assertEqual(got["els"]["ob-savebtn"]["title"], "ajan senin yanıtını bekliyor")
 
     # --- the one-click buttons of a problem box -----------------------------------------------------------------------
 

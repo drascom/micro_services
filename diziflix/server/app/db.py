@@ -118,7 +118,8 @@ SCHEMA += [
     """CREATE TABLE IF NOT EXISTS home_categories (
         slug TEXT PRIMARY KEY, title TEXT NOT NULL, position INTEGER NOT NULL,
         enabled INTEGER NOT NULL DEFAULT 1, min_items INTEGER NOT NULL DEFAULT 6,
-        created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0)""",
+        created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0,
+        kind TEXT NOT NULL DEFAULT 'category')""",
 ]
 
 
@@ -328,6 +329,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
             if value:
                 conn.execute("INSERT OR IGNORE INTO external_ids VALUES (?,?,?,?)",
                              (provider, row["type"], str(value), row["id"]))
+    # home_categories.kind: 'system' = the home's fixed skeleton rows (library/categories.py ensure_system), 'category' = the admin's
+    hcols = {r["name"] for r in conn.execute("PRAGMA table_info(home_categories)")}
+    if hcols and "kind" not in hcols:
+        conn.execute("ALTER TABLE home_categories ADD COLUMN kind TEXT NOT NULL DEFAULT 'category'")
     pcols = {r["name"] for r in conn.execute("PRAGMA table_info(profiles)")}
     if pcols and "avatar_seed" not in pcols:
         conn.execute("ALTER TABLE profiles ADD COLUMN avatar_seed TEXT NOT NULL DEFAULT 'a'")

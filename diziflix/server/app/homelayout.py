@@ -1,8 +1,9 @@
 """Home screen of the tv-v1 boot: the hero carousel, the rows, and the score that ranks "trending".
 
-Layout (top to bottom): hero carousel (``HERO_SERIES`` series + ``HERO_MOVIES`` movies, alternating) ->
-``continue`` -> ``trending_series`` -> the admin's category rows ``cat_<slug>`` (``library/categories.py``, admin order)
--> ``series`` -> ``trending_movies`` -> ``noteworthy_movies`` -> ``movies`` -> ``mylist`` (see ``config.HOME_LAYOUT``;
+Layout (top to bottom): hero carousel (``HERO_SERIES`` series + ``HERO_MOVIES`` movies, alternating, fixed on top) ->
+the rows in the admin's order (``home_categories``): by default ``continue`` -> ``trending_series`` -> the admin's category
+rows ``cat_<slug>`` (``library/categories.py``) -> ``series`` -> ``trending_movies`` -> ``noteworthy_movies`` -> ``movies``
+-> ``mylist``; the skeleton rows can only be moved, categories can be put anywhere between them (see ``config.HOME_LAYOUT``;
 :func:`layout` is the one place that decides the row list, per profile). A ``cat_<slug>`` row = the ``category_<slug>_*``
 lists of all sites merged round-robin (playable only per ``HOME_ONLY_READY``); hidden while the category is off or has
 fewer playable titles than its ``min_items``.
@@ -166,11 +167,21 @@ def trend_score(item: dict, sig: Optional[Signals], now: Optional[float] = None,
 
 
 # ---- layout ---------------------------------------------------------------------------------------------------------------
-def layout(profile_id: str = "") -> list[str]:
-    """Row ids of the home screen, top to bottom, for ``profile_id`` (the single place that decides the row list).
+def skeleton_order() -> list[str]:
+    """The skeleton rows in the order the home had before the admin could move them: ``config.HOME_LAYOUT`` (known
+    skeleton ids only), any missing one in its default place."""
+    out = [r for r in config.HOME_LAYOUT if r in TITLES]
+    return list(dict.fromkeys(out + [r for r in categories.SYSTEM_DEFAULT if r not in out]))
 
-    Today: ``config.HOME_LAYOUT`` for everybody (repeats dropped). Genre rows (``genre_<slug>``, which :func:`pool`
-    already resolves) chosen from the profile's watch habits plug in HERE later; nothing else has to change."""
+
+def seed_skeleton() -> bool:
+    """Make sure the skeleton rows exist in ``home_categories`` (idempotent, keeps the admin's order)."""
+    return categories.ensure_system(TITLES, skeleton_order())
+
+
+def _fixed_layout() -> list[str]:
+    """``config.HOME_LAYOUT`` (repeats dropped) with the enabled category rows in front of ``series`` - the layout when
+    the table cannot be read."""
     out: list[str] = []
     for row_id in config.HOME_LAYOUT:
         if row_id not in out:
@@ -180,6 +191,38 @@ def layout(profile_id: str = "") -> list[str]:
         at = next((out.index(r) for r in ("series", "movies", "mylist") if r in out), len(out))
         out[at:at] = cats
     return out
+
+
+def layout(profile_id: str = "") -> list[str]:
+    """Row ids of the home screen, top to bottom, for ``profile_id`` (the single place that decides the row list).
+
+    The order is the admin's (``home_categories``: skeleton rows + category rows ``cat_<slug>``, disabled categories
+    left out; a skeleton row only while ``config.HOME_LAYOUT`` names it). Skeleton rows keep their own content rules (``continue``/``mylist`` show only when filled, ...), see
+    :meth:`Context._build`. Extra ids of ``config.HOME_LAYOUT`` (e.g. ``genre_<slug>``) stay after the row that precedes
+    them there. Table empty/unreadable: the fixed layout (:func:`_fixed_layout`, as before the skeleton was movable).
+    Genre rows chosen from the profile's watch habits plug in HERE later; nothing else has to change."""
+    try:
+        seed_skeleton()
+        table = categories.ordered_rows()
+    except Exception:   # noqa: BLE001 - the home must never fail because of the table
+        return _fixed_layout()
+    if not any(r["kind"] == "system" for r in table):
+        return _fixed_layout()
+    out: list[str] = []
+    for r in table:
+        if r["kind"] == "system":
+            if r["slug"] in config.HOME_LAYOUT:   # the HOME_LAYOUT env can still switch a skeleton row off
+                out.append(r["slug"])
+        elif r["enabled"]:
+            out.append(categories.row_id(r["slug"]))
+    prev = None
+    for row_id in config.HOME_LAYOUT:   # rows the table does not know (genre_*): keep them behind their predecessor
+        if row_id in out:
+            prev = row_id
+        elif row_id not in TITLES:
+            out.insert(out.index(prev) + 1 if prev in out else 0, row_id)
+            prev = row_id
+    return list(dict.fromkeys(out))
 
 
 class Context:

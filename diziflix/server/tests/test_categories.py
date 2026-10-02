@@ -146,7 +146,7 @@ class HomeRows(Base):
         self.trending("siteA", "s1", "s2")
         ids_ = self.row_ids(self.snap)
         self.assertEqual(ids_[:4], ["trending_series", "cat_kore", "cat_komedi", "series"])
-        cats.reorder(["komedi", "kore"])
+        cats.reorder(["continue", "trending_series", "komedi", "kore"])
         self.assertEqual(self.row_ids(self.snap)[:4], ["trending_series", "cat_komedi", "cat_kore", "series"])
         row = [r for r in self.compose(self.snap)["rows"] if r["id"] == "cat_kore"][0]
         self.assertEqual((row["title"], row["total"], row["loaded"]), ("Kore Dizileri", 6, True))
@@ -211,7 +211,7 @@ class HomeRows(Base):
 class AdminApi(Base):
     def test_endpoints_and_error_envelope(self):
         c = self.client
-        self.assertEqual(c.get("/api/ops/categories").json(), {"categories": []})
+        self.assertEqual([x["kind"] for x in c.get("/api/ops/categories").json()["categories"]], ["system"] * 7)   # skeleton only
         r = c.post("/api/ops/categories", json={"title": "Kore Dizileri"})
         self.assertEqual((r.status_code, r.json()["slug"]), (200, "kore-dizileri"))
         r = c.post("/api/ops/categories", json={"title": "Kore Dizileri"})
@@ -227,12 +227,13 @@ class AdminApi(Base):
         r = c.put("/api/ops/categories/yok", json={"title": "x"})
         self.assertEqual((r.status_code, r.json()["error"]["code"]), (404, "not_found"))
         r = c.put("/api/ops/categories-order", json={"order": ["komedi", "kore-dizileri"]})
-        self.assertEqual([x["slug"] for x in r.json()["categories"]], ["komedi", "kore-dizileri"])
+        self.assertEqual([x["slug"] for x in r.json()["categories"] if x["kind"] == "category"], ["komedi", "kore-dizileri"])
         self.assertEqual(c.put("/api/ops/categories-order", json={"order": ["zzz"]}).json()["error"]["code"], "unknown_slug")
         self.assertEqual(c.put("/api/ops/categories-order", json={"order": "x"}).status_code, 400)
-        listed = c.get("/api/ops/categories").json()["categories"]
+        listed = [x for x in c.get("/api/ops/categories").json()["categories"] if x["kind"] == "category"]
         self.assertEqual([x["slug"] for x in listed], ["komedi", "kore-dizileri"])
-        self.assertEqual(set(listed[0]), {"slug", "title", "position", "enabled", "min_items", "lists", "titles", "playable"})
+        self.assertEqual(set(listed[0]), {"slug", "title", "position", "enabled", "min_items", "kind", "lists", "titles",
+                                          "playable"})
         self.assertEqual(c.delete("/api/ops/categories/komedi").json(), {"deleted": "komedi"})
         self.assertEqual(c.delete("/api/ops/categories/komedi").status_code, 404)
 

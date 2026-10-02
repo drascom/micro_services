@@ -1,5 +1,6 @@
 /* Kategoriler sekmesi: ana ekranda gösterilen kategorileri yapılacaklar listesi gibi yönetir
    (/api/ops/categories: ekle, sil, başlık düzenle, aç/kapat, "en az öğe", sürükleyip sırala).
+   Ana ekranın sabit (iskelet) satırları da listede kilitli görünür: silinmez/gizlenmez/adı değişmez, yalnız sırası değişir.
    Sıra ana ekrandaki sırayla aynıdır; her değişiklik anında kaydolur, hata olursa eski hâline döner. */
 (function(){
 'use strict';
@@ -39,11 +40,20 @@ function note(c){
   if(c.enabled&&c.playable<c.min_items)t+=' · ana ekranda görünmüyor (en az '+c.min_items+' oynatılabilir başlık gerekir)';
   return t;
 }
-function rowHtml(c,i,n){
-  return '<li class="catrow'+(c.enabled?'':' off')+'" data-slug="'+esc(c.slug)+'">'+
-    '<span class="cathandle" draggable="true" title="Sürükleyerek sırala" aria-hidden="true">⋮⋮</span>'+
+function moveHtml(c,i,n){
+  return '<span class="cathandle" draggable="true" title="Sürükleyerek sırala" aria-hidden="true">⋮⋮</span>'+
     '<span class="catmove"><button class="btn" data-up="'+esc(c.slug)+'" aria-label="Yukarı taşı"'+(i===0?' disabled':'')+'>▲</button>'+
-    '<button class="btn" data-down="'+esc(c.slug)+'" aria-label="Aşağı taşı"'+(i===n-1?' disabled':'')+'>▼</button></span>'+
+    '<button class="btn" data-down="'+esc(c.slug)+'" aria-label="Aşağı taşı"'+(i===n-1?' disabled':'')+'>▼</button></span>';
+}
+function lockedRowHtml(c,i,n){
+  return '<li class="catrow locked" data-slug="'+esc(c.slug)+'">'+moveHtml(c,i,n)+
+    '<span class="catmain"><span class="cattitle fixed"><span class="catlock" title="Kilitli satır" aria-label="Kilitli">🔒</span> '+esc(c.title)+'</span>'+
+    '<span class="catnote">Ana ekranın sabit satırı</span></span></li>';
+}
+function rowHtml(c,i,n){
+  if(c.kind==='system'||c.locked)return lockedRowHtml(c,i,n);
+  return '<li class="catrow'+(c.enabled?'':' off')+'" data-slug="'+esc(c.slug)+'">'+
+    moveHtml(c,i,n)+
     '<span class="catmain"><button class="cattitle" data-edit="'+esc(c.slug)+'" title="Adı düzenlemek için tıklayın">'+esc(c.title)+'</button>'+
     '<span class="catnote">'+esc(note(c))+'</span></span>'+
     '<label class="catmin">En az <input type="number" min="1" max="100" value="'+c.min_items+'" data-min="'+esc(c.slug)+'" aria-label="En az öğe"> öğe</label>'+
@@ -53,13 +63,14 @@ function rowHtml(c,i,n){
 function render(){
   var root=$('cat-root');if(!root)return;
   var keep=$('cat-new')?$('cat-new').value:'';
-  var h='<section><h2>Ana ekran kategorileri</h2>'+
+  var h='<section><h2>Ana ekran satırları</h2>'+
     '<p class="catlead">Burada eklediğiniz kategoriler ana ekranda bu sırayla satır olarak görünür. Sırayı değiştirmek için ⋮⋮ tutamacını sürükleyin.</p>'+
+    '<p class="catlead">Kilitli satırlar silinemez, yalnız sırası değişir.</p>'+
     '<div class="catadd"><input id="cat-new" type="text" maxlength="60" placeholder="Yeni kategori adı (örn. Kore Dizileri)" aria-label="Yeni kategori adı" autocomplete="off">'+
     '<button class="btn" id="cat-add">Kategori ekle</button></div>';
   if(failed&&!C)h+='<div class="empty">Yüklenemedi: '+esc(failed)+'</div>';
   else if(!C)h+='<div class="empty">Yükleniyor…</div>';
-  else if(!C.length)h+='<div class="empty">Henüz kategori yok. Yukarıdan ilkini ekleyin.</div>';
+  else if(!C.some(function(c){return c.kind!=='system'&&!c.locked}))h+='<div class="empty">Henüz kategori yok. Yukarıdan ilkini ekleyin.</div>'+(C.length?'<ol class="catlist" id="cat-list">'+C.map(function(c,i){return rowHtml(c,i,C.length)}).join('')+'</ol>':'');
   else h+='<ol class="catlist" id="cat-list">'+C.map(function(c,i){return rowHtml(c,i,C.length)}).join('')+'</ol>';
   root.innerHTML=h+'</section>';
   var inp=$('cat-new');if(inp&&keep)inp.value=keep;

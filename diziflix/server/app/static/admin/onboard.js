@@ -123,7 +123,7 @@ function build(){
     '<section class="card hidden" id="ob-newp"><h2>Yeni site</h2>'+
       '<form id="ob-form" class="obf" autocomplete="off">'+
         '<label class="obfl">Site adresi<input id="ob-url" type="url" required placeholder="https://ornek-site.com" inputmode="url" spellcheck="false"></label>'+
-        '<label class="obfl">Not <small>(isteğe bağlı)</small><input id="ob-hint" type="text" maxlength="500" placeholder="örn. yalnızca filmler; liste sayfası /filmler"></label>'+
+        '<label class="obfl">Not <small>(isteğe bağlı)</small><textarea id="ob-hint" class="obnote" rows="4" maxlength="2000" placeholder="örn. yalnızca filmler; liste sayfası /filmler"></textarea><small>Enter = yeni satır · Ctrl/Cmd+Enter = Başlat</small></label>'+
         '<div class="srow"><button type="submit" class="btn primary" id="ob-start">Başlat</button><button type="button" class="btn" data-ob="newclose">Vazgeç</button><span id="ob-why" class="hint"></span></div>'+
       '</form></section>'+
     '<section><div id="ob-sites"></div></section>'+
@@ -133,7 +133,6 @@ function build(){
     '<div class="obtop" id="ob-top">'+
       '<div class="obbar"><button class="btn" id="ob-back" data-ob="back">‹ Liste</button>'+
         '<span class="grow"></span>'+
-        '<span id="ob-savewhy" class="hint obwhy"></span>'+
         '<button class="btn hidden" id="ob-cancel" data-ob="cancel">İptal</button>'+
         '<button class="btn primary" id="ob-savebtn" data-ob="save" disabled>Kaydet</button></div>'+
       '<div id="ob-sv-panel" class="hidden"></div>'+
@@ -141,7 +140,7 @@ function build(){
     '<div class="obhd"><b id="ob-host" class="obhost"></b><span id="ob-st"></span><span id="ob-time" class="mono num dim"></span></div>'+
     '<div class="obids">'+
       '<label class="obfl">Site kimliği<input id="ob-sid" type="text" maxlength="32" placeholder="ornek_site" spellcheck="false" autocapitalize="off"></label>'+
-      '<label class="obfl">Görünen ad <small>(isteğe bağlı)</small><input id="ob-dn" type="text" maxlength="60" placeholder="Örnek Site"></label>'+
+      '<label class="obfl">Görünen ad<input id="ob-dn" type="text" maxlength="60" placeholder="Görünen ad, isteğe bağlı" title="İsteğe bağlı"></label>'+
     '</div>'+
     '<div id="ob-sid-err" class="err hint"></div>'+
     '<div id="ob-sv-info"></div>'+
@@ -300,6 +299,9 @@ function startFailed(e){
   toast('Başlatılamadı: '+msgOf(e),'bad');
   if(e&&(e.code==='already_running'||e.status===409))loadHealth(); // çalışan işi kartta göster (Aç / İptal)
 }
+function autoGrow(t){ // not alanı yazdıkça büyür (CSS min/max-height sınırlar)
+  if(!t||!t.style)return;t.style.height='auto';if(t.scrollHeight)t.style.height=(t.scrollHeight+2)+'px';
+}
 function startJob(){
   var url=$('ob-url').value.trim(),hint=$('ob-hint').value.trim();
   if(url&&!/^[a-z][a-z0-9+.-]*:\/\//i.test(url))url='https://'+url;
@@ -307,7 +309,7 @@ function startJob(){
   starting=true;updateStart();
   post(BASE+'/',{url:url,hint:hint||undefined}).then(function(r){
     var d=r&&(r.draft||r);
-    if(d&&d.id){toast('Ajan başlatıldı');$('ob-url').value='';$('ob-hint').value='';newOpen=false;applyNew();openDraft(d.id)}
+    if(d&&d.id){toast('Ajan başlatıldı');$('ob-url').value='';$('ob-hint').value='';autoGrow($('ob-hint'));newOpen=false;applyNew();openDraft(d.id)}
     else if(r&&(r.started===false||r.reason==='already_running')){toast('Zaten çalışan bir site ekleme işi var','bad');loadHealth()}
     else toast('Başlatılamadı','bad');
   }).catch(startFailed).then(function(){starting=false;updateStart();loadList()});
@@ -437,7 +439,7 @@ function resetDetail(){
   $('ob-sid-err').textContent='';
   ['ob-yaml','ob-steps','ob-headline','ob-sv-info','ob-sv-panel','ob-note','ob-ask'].forEach(function(i){$(i).innerHTML=''});
   $('ob-sv-panel').classList.add('hidden');
-  $('ob-savebtn').disabled=true;$('ob-savebtn').textContent='Kaydet';$('ob-savewhy').textContent='yükleniyor…';
+  $('ob-savebtn').disabled=true;$('ob-savebtn').textContent='Kaydet';$('ob-savebtn').title='yükleniyor…';
   $('ob-host').textContent='';$('ob-st').innerHTML='';$('ob-time').textContent='';$('ob-cancel').classList.add('hidden');
 }
 function openDraft(id){
@@ -556,14 +558,20 @@ function renderTime(){
 }
 function isEdit(){return !!D&&D.mode==='edit'}
 function editSid(){return (D&&(D.edit_site_id||D.site_id_suggestion))||''}
+function stripText(){var o=overallOf(D);return pipeOf(D)&&o&&o.headline?String(o.headline):''}
+function hasStrip(){return !!stripText()}
 function renderHead(){
   var host=hostOf(D.url);
   $('ob-host').textContent=host||D.id;$('ob-host').title=D.url||'';
-  $('ob-st').innerHTML=stPill(D.status)+(isEdit()?' '+pill('heal','Düzenleme: '+editSid()):'');
+  var strip=hasStrip(),runOnStrip=strip&&D.status==='running'; // çalışırken durum şeridi aynı şeyi söyler: rozet gizlenir
+  $('ob-st').innerHTML=(runOnStrip?'':stPill(D.status))+(isEdit()?(runOnStrip?'':' ')+pill('heal','Düzenleme: '+editSid()):'');
   $('ob-cancel').classList.toggle('hidden',D.status!=='running');
   renderTime();
   var n='';
-  if(D.status==='failed')n='<div class="note bad"><b>Ajan başarısız oldu.</b>'+(D.error?'<br>'+esc(clip(str(D.error),1000)):'')+'</div>';
+  if(D.status==='failed'){
+    if(!strip)n='<div class="note bad"><b>Ajan başarısız oldu.</b>'+(D.error?'<br>'+esc(clip(str(D.error),1000)):'')+'</div>';
+    else if(D.error)n='<div class="note bad">'+esc(clip(str(D.error),1000))+'</div>'; // "başarısız oldu" cümlesini şerit söyler
+  }
   else if(D.status==='cancelled')n='<div class="note">İş iptal edildi. Aşağıdan mesaj yazarak aynı oturumdan devam edebilirsin.</div>';
   else if(D.status==='needs_input'){
     if(askOf(D))n=''; // soru kartı (ob-ask) gösterir
@@ -572,7 +580,7 @@ function renderHead(){
       n='<div class="note warn"><b>Ajan senin yanıtını bekliyor.</b>'+(q?'<span class="obq">'+esc(clip(q,1000))+'</span>':'')+'Yanıtını günlüğün altındaki kutuya yaz.</div>';
     }
   }
-  else if(D.status==='running'&&D.auto_round>0)n='<div class="note warn"><b>Otomatik düzeltme turu '+esc(D.auto_round)+'/'+esc(D.auto_rounds||'?')+':</b> ajan eksikleri kendi gideriyor; bitince sonucu burada görürsün.</div>';
+  else if(D.status==='running'&&D.auto_round>0&&!/otomatik düzeltme/i.test(stripText()))n='<div class="note warn"><b>Otomatik düzeltme turu '+esc(D.auto_round)+'/'+esc(D.auto_rounds||'?')+':</b> ajan eksikleri kendi gideriyor; bitince sonucu burada görürsün.</div>';
   else if(D.status==='ready'&&D.auto_round>0&&D.report&&D.report.passed===false)n='<div class="note warn">Ajan eksikleri kendi gidermeyi '+esc(D.auto_round)+' kez denedi, hâlâ eksik var. Sorunlu adımlardaki “Ajan düzeltsin” ya da “Varsa al, yoksa atla” (alan korunur) düğmelerini kullanabilirsin.</div>';
   $('ob-note').innerHTML=n;
 }
@@ -801,7 +809,7 @@ function renderSave(){
   var nv=nextVer(),btn=$('ob-savebtn');
   btn.textContent=saved?'Kaydedildi':edit?'Yeni sürüm olarak kaydet'+(nv?' (v'+nv+')':''):'Kaydet';
   btn.disabled=!!why;
-  $('ob-savewhy').textContent=why;btn.title=why;
+  btn.title=why;
   checkSid();
   if(why)svOpen=false;
   var pnl=$('ob-sv-panel'),ph=svOpen?panelHtml():'';
@@ -850,6 +858,7 @@ function bind(){
   $('ob-sid').addEventListener('input',function(){sidTouched=true;checkSid();if(D)renderSave()});
   $('ob-dn').addEventListener('input',function(){dnTouched=true});
   $('ob-root').addEventListener('change',onChange);
+  $('ob-root').addEventListener('input',function(ev){var t=ev.target;if(t&&(t.id==='ob-hint'||t.id==='ob-ehint'))autoGrow(t)});
   $('ob-root').addEventListener('keydown',function(ev){
     var t=ev.target,id=t&&t.id;
     if(ev.key==='Escape'){
@@ -857,6 +866,7 @@ function bind(){
       if(ui.edit||ui.rename){ui.edit=ui.rename=null;drawSites()}
       return;
     }
+    if(id==='ob-hint'&&ev.key==='Enter'&&(ev.ctrlKey||ev.metaKey)&&!ev.isComposing){ev.preventDefault();var sb=$('ob-start');if(sb&&!sb.disabled)startJob();return}
     if(ev.key!=='Enter'||ev.shiftKey||ev.isComposing)return;
     if(id==='ob-fb'){ev.preventDefault();sendFb()}
     else if(id==='ob-ask-hint'){ev.preventDefault();askSend('present')}

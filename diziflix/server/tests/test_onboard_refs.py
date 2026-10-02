@@ -780,7 +780,7 @@ const clone = (x) => (x === undefined ? null : JSON.parse(JSON.stringify(x)));
 const IDS = ["ob-root", "ob-listv", "ob-detv", "ob-health", "ob-start", "ob-why", "ob-newbtn", "ob-newp", "ob-sites", "ob-drafts", "ob-estart", "ob-ewhy", "ob-ehint", "ob-rn",
   "ob-modal", "ob-purge-line", "ob-top", "ob-host", "ob-st", "ob-time", "ob-cancel", "ob-note",
   "ob-headline", "ob-ask", "ob-ask-hint", "ob-steps", "ob-log", "ob-yaml", "ob-fb", "ob-send", "ob-fbh", "ob-sv-info", "ob-sv-panel",
-  "ob-sid", "ob-dn", "ob-en", "ob-scan", "ob-savebtn", "ob-savewhy", "ob-sid-err", "toasts"];
+  "ob-sid", "ob-dn", "ob-en", "ob-scan", "ob-savebtn", "ob-sid-err", "toasts"];
 async function run(sc) {
   const els = {}, listeners = {}, calls = [], copied = [], confirms = [];
   let tickFn = null, prevented = 0;
@@ -885,7 +885,7 @@ async function run(sc) {
   const snap = {};
   for (const id of IDS) {
     const e = els[id];
-    if (e) snap[id] = { html: e.innerHTML, text: e.textContent, value: e.value, disabled: e.disabled, checked: e.checked, readOnly: e.readOnly, attrs: e.attrs, scrollTop: e.scrollTop,
+    if (e) snap[id] = { html: e.innerHTML, text: e.textContent, value: e.value, disabled: e.disabled, checked: e.checked, readOnly: e.readOnly, title: e.title, attrs: e.attrs, scrollTop: e.scrollTop,
       hidden: e.classList.contains("hidden"), children: e.childNodes.map((c) => ({ cls: c.className, html: c.innerHTML, text: c.textContent })) };
   }
   return { els: snap, copied, confirms, prevented, status: server.draft && server.draft.status, toasts: els["toasts"] ? els["toasts"].childNodes.map((c) => c.textContent) : [],
@@ -1262,7 +1262,10 @@ class AdminOnboardPage(unittest.TestCase):
         names = {"running": "Çalışıyor", "ready": "Hazır", "needs_input": "Soru bekliyor", "failed": "Başarısız", "cancelled": "İptal", "saved": "Kaydedildi"}
         got = self.run_ui(*[{"draft": ui_draft(s)} for s in names])
         for (status, label), g in zip(names.items(), got):
-            self.assertIn(label, g["els"]["ob-st"]["html"], status)
+            if status == "running":
+                self.assertNotIn(label, g["els"]["ob-st"]["html"])   # the blue status strip says it; no second badge
+            else:
+                self.assertIn(label, g["els"]["ob-st"]["html"], status)
             self.assertEqual(g["els"]["ob-host"]["text"], "x.example")
             self.assertEqual(g["els"]["ob-cancel"]["hidden"], status != "running", status)   # only a running job can be cancelled
         self.assertEqual(got[1]["els"]["ob-time"]["text"], "1 dk 0 sn")
@@ -1279,7 +1282,6 @@ class AdminOnboardPage(unittest.TestCase):
             {"draft": ui_draft("failed", error="pi çıkış kodu 2 <boom>")},
             {"draft": ui_draft("cancelled")},
             {"draft": ui_draft("needs_input"), "events": [{"kind": "say", "text": "Liste sayfası hangisi?", "t": "2026-01-01T00:00:01Z"}]})
-        self.assertIn("Ajan başarısız oldu", failed["els"]["ob-note"]["html"])
         self.assertIn("pi çıkış kodu 2 &lt;boom&gt;", failed["els"]["ob-note"]["html"])
         self.assertIn("iptal edildi", cancelled["els"]["ob-note"]["html"])
         self.assertIn("Liste sayfası hangisi?", waiting["els"]["ob-note"]["html"])
@@ -1542,7 +1544,7 @@ class AdminOnboardPage(unittest.TestCase):
         self.assertLess(top, sv)
         for later in ('id="ob-headline"', 'id="ob-steps"', 'id="ob-log"', 'id="ob-yaml"', 'id="ob-send"'):
             self.assertLess(sv, root.index(later), later)                  # the one Kaydet is above everything else of the draft
-        for needle in ('id="ob-sid"', 'id="ob-dn"', 'id="ob-sv-panel"', 'id="ob-savewhy"', "Site kimliği", "Görünen ad"):
+        for needle in ('id="ob-sid"', 'id="ob-dn"', 'id="ob-sv-panel"', "Site kimliği", "Görünen ad"):
             self.assertIn(needle, root, needle)
         self.assertEqual(root.count('id="ob-savebtn"'), 1)
         for gone in ("Siteyi kaydet", 'class="card hidden obsave"', 'id="ob-save"', "ob-force", 'id="ob-sv-form"'):
@@ -1555,7 +1557,7 @@ class AdminOnboardPage(unittest.TestCase):
         names = ("running", "ready", "needs_input", "failed", "cancelled", "saved")
         got = self.run_ui(*[{"draft": ui_draft(s)} for s in names])
         self.assertEqual([g["els"]["ob-savebtn"]["disabled"] for g in got], [True, False, True, True, True, True])
-        why = [g["els"]["ob-savewhy"]["text"] for g in got]
+        why = [g["els"]["ob-savebtn"]["title"] for g in got]
         for text, needle in zip(why, ("ajan çalışıyor", "", "yanıtını bekliyor", "başarısız", "iptal", "kaydedildi")):
             self.assertIn(needle, text)
         self.assertEqual(why[1], "")
@@ -1571,13 +1573,13 @@ class AdminOnboardPage(unittest.TestCase):
         self.assertTrue(saved["ob-dn"]["disabled"])
         noyaml = self.draft_ui(ui_draft(yaml_text=""))["els"]
         self.assertTrue(noyaml["ob-savebtn"]["disabled"])
-        self.assertIn("yaml", noyaml["ob-savewhy"]["text"])
+        self.assertIn("yaml", noyaml["ob-savebtn"]["title"])
 
     def test_a_bad_site_id_turns_the_button_off_and_says_so(self):
         got = self.draft_ui(actions=[{"set": {"id": "ob-sid", "value": "Kötü Kimlik"}}, {"click": {"act": "save", "disabled": True}}])
         self.assertTrue(got["els"]["ob-savebtn"]["disabled"])
         self.assertIn("Küçük harfle başlamalı", got["els"]["ob-sid-err"]["text"])
-        self.assertIn("geçerli bir site kimliği", got["els"]["ob-savewhy"]["text"])
+        self.assertIn("geçerli bir site kimliği", got["els"]["ob-savebtn"]["title"])
         self.assertTrue(got["els"]["ob-sv-panel"]["hidden"])
         self.assertEqual(got["posts"], [])
         fixed = self.draft_ui(actions=[{"set": {"id": "ob-sid", "value": "Kötü Kimlik"}}, {"set": {"id": "ob-sid", "value": "ornek_site"}}])
