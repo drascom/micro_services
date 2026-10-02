@@ -67,6 +67,7 @@ if not ROOT:
         # a failed playback report probes the source's streams in the background (library/streamdiag.py): off in every test (no
         # test may reach a real host from a thread); tests of the diagnosis patch config.STREAM_DIAG and fake the HTTP client
         "STREAM_DIAG": "0",
+        "STREAM_PROBE_RANK": "0",
         # the hardening criteria of a NEW site's onboarding (onboard_sandbox.harden_enabled: availability_gate_defined, series_signal_collection,
         # series_full_inventory, home_path_is_canonical) are off by default so the older onboarding suites keep exercising their own subject;
         # tests/test_onboard_harden.py switches them on

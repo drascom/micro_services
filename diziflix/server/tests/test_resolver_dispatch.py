@@ -451,7 +451,7 @@ class OpsResolversEndpointTest(unittest.TestCase):
         body = self.client.get("/api/ops/resolvers").json()
         self.assertEqual(set(body), {"resolvers", "providers"})
         self.assertEqual([r["type"] for r in body["resolvers"]],
-                         ["iframe", "anchor_host", "data_attr_token", "ajax_handoff", "json_api", "player_page"])
+                         ["iframe", "anchor_host", "data_attr_token", "ajax_handoff", "json_api", "player_page", "embedded_json"])
         for r in body["resolvers"]:
             self.assertTrue(r["description"], r["type"])
             self.assertTrue(r["params"], r["type"])

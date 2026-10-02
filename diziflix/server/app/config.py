@@ -241,6 +241,9 @@ STREAM_PROXY_PLAYLIST_URIS = max(10, _int("STREAM_PROXY_PLAYLIST_URIS", 20000))
 # seconds per request) and stores the verdict in video_sources.last_diag; STREAM_DIAG=0 switches it off (the report still
 # updates the source's health as before).
 STREAM_DIAG = _int("STREAM_DIAG", 1) != 0
+# Content probe (library/streamprobe.py): when a resolution holds >= 2 different files and the episode's length is known, they are ordered by how
+# well their DURATION matches it (not by host); STREAM_PROBE_RANK = 0 switches the ordering (and its extra requests) off.
+STREAM_PROBE_RANK = _int("STREAM_PROBE_RANK", 1) != 0
 STREAM_DIAG_COOLDOWN = max(0.0, _float("STREAM_DIAG_COOLDOWN", 600.0))
 STREAM_DIAG_PARALLEL = max(1, _int("STREAM_DIAG_PARALLEL", 2))
 STREAM_DIAG_TIMEOUT = max(1.0, _float("STREAM_DIAG_TIMEOUT", 8.0))
@@ -324,6 +327,13 @@ SOURCEFINDER_MAX_SITES = max(1, _int("SOURCEFINDER_MAX_SITES", 4))
 SOURCEFINDER_DAILY_BUDGET = max(0, _int("SOURCEFINDER_DAILY_BUDGET", 10))
 # SOURCEFINDER_PROBE = 0 skips the quick look (<= 3 s) at a freshly resolved stream: with it on, a stream its host refuses (HTTP 403 /
 # an error page, also for the server's own probe) is NOT "found" (no notification), it is evidence for the repair step instead.
+# A finder job whose repair step finds the site's heal already RUNNING waits for it (SOURCEFINDER_HEAL_WAIT seconds at most, polled every
+# SOURCEFINDER_HEAL_POLL) and then resolves its sources again; a heal that is APPLIED for a site re-runs the finder jobs of that site that ended
+# "not found" within SOURCEFINDER_RERUN_HOURS (cooldown ignored, at most SOURCEFINDER_RERUN_MAX per heal).
+SOURCEFINDER_HEAL_WAIT = max(0, _int("SOURCEFINDER_HEAL_WAIT", 600))
+SOURCEFINDER_HEAL_POLL = max(1, _int("SOURCEFINDER_HEAL_POLL", 5))
+SOURCEFINDER_RERUN_HOURS = max(0, _int("SOURCEFINDER_RERUN_HOURS", 24))
+SOURCEFINDER_RERUN_MAX = max(0, _int("SOURCEFINDER_RERUN_MAX", 10))
 SOURCEFINDER_PROBE = _int("SOURCEFINDER_PROBE", 1) != 0
 
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)

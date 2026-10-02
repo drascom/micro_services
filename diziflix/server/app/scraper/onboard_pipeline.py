@@ -46,6 +46,8 @@ from urllib.parse import urlsplit
 
 import yaml
 
+from . import sitequality
+
 log = logging.getLogger("scraper.onboard_pipeline")
 
 STEP_IDS = ("home", "links", "info", "player", "stream", "search")
@@ -1068,7 +1070,11 @@ def build(report: Optional[dict], events: Optional[list], status: str, *, draft:
     _attach_actions(steps, rep)
     for step in steps:
         step.pop("_short", None)
-    return {"overall": overall, "steps": steps, "app": _app(rep)}
+    out = {"overall": overall, "steps": steps, "app": _app(rep)}
+    quality = sitequality.view(rep.get("site_quality"))   # informs only (not a criterion); absent for an older report
+    if quality:
+        out["quality"] = quality
+    return out
 
 
 def for_draft(draft: dict) -> dict:

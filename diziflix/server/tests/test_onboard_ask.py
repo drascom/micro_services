@@ -316,6 +316,59 @@ class AnswerTest(Harness):
         self.assertEqual((got.status_code, got.json()["detail"]["code"]), (409, "bad_state"))
 
 
+GAP = {"kind": "engine_gap", "field": "json_sources", "question": "Kaynak URL'leri yalnızca gömülü JSON'da; JSON kaynak resolver'ı eklensin mi?",
+       "tried": ["iframe", "player_page"], "proposal": "embedded_json resolver"}
+
+
+class EngineGapApprovalTest(Harness):
+    ask_then = AnswerTest.ask_then
+
+    def test_approval_is_recorded_forwarded_and_the_agent_is_told_not_to_ask_again(self):
+        self.queue.append(FakeProc(asking(GAP)))
+        first = onboard.start(URL)
+        self.assertTrue(onboard.join(first["id"], 10))
+        self.assertEqual(store.get_draft(first["id"])["question_data"]["kind"], "engine_gap")
+        proc = FakeProc([msg_end("Taslağı engine_gap notuyla bıraktım.")])
+        self.queue.append(proc)
+        onboard.message(first["id"], "onaylıyorum")
+        self.assertTrue(onboard.join(first["id"], 10))
+        draft = store.get_draft(first["id"])
+        self.assertTrue(proc.stdin.data.startswith("onaylıyorum"))
+        for needle in ("ENGINE_GAP onaylandı (json_sources)", "senin işin DEĞİL", "TEKRARLAMA"):
+            self.assertIn(needle, proc.stdin.data)
+        self.assertEqual([e["text"] for e in draft["events"] if e["kind"] == "user"], ["onaylıyorum"])   # the log shows the user's own words
+        gap = draft["engine_gaps"][0]
+        self.assertEqual((gap["field"], gap["status"], gap["proposal"], gap["answer"]), ("json_sources", "waiting_dev", "embedded_json resolver", "onaylıyorum"))
+        self.assertIn(onboard.ENGINE_GAP_STATUS, [e.get("text") for e in draft["events"] if e.get("status") == "engine_gap"])
+        rec = next(r for r in sstate.list_ops("onboard") if r["status"] == "engine_gap")
+        self.assertEqual((rec["kind"] if "kind" in rec else "onboard", rec["draft_id"], rec["site"]), ("onboard", first["id"], "onboard"))
+        self.assertTrue(rec["notes"].startswith("ENGINE_GAP: json_sources: embedded_json resolver"))
+        self.assertIn("geliştirici desteği bekleniyor", rec["notes"])
+
+    def test_a_refusal_or_another_kind_of_question_records_nothing(self):
+        self.queue.append(FakeProc(asking(GAP)))
+        first = onboard.start(URL)
+        self.assertTrue(onboard.join(first["id"], 10))
+        self.queue.append(FakeProc([msg_end("ok")]))
+        onboard.message(first["id"], "hayır, gerek yok")
+        self.assertTrue(onboard.join(first["id"], 10))
+        self.assertFalse(store.get_draft(first["id"]).get("engine_gaps"))
+        draft, proc = self.ask_then("Önerini uygula")   # a missing_info question: no gap, no directive
+        self.assertEqual(proc.stdin.data, "Önerini uygula")
+        self.assertFalse(draft.get("engine_gaps"))
+
+    def test_asking_again_after_approval_shows_the_forwarded_status(self):
+        self.queue.append(FakeProc(asking(GAP)))
+        first = onboard.start(URL)
+        self.assertTrue(onboard.join(first["id"], 10))
+        self.queue.append(FakeProc(asking(GAP, call="c10")))
+        onboard.message(first["id"], "Onaylıyorum")
+        self.assertTrue(onboard.join(first["id"], 10))
+        draft = store.get_draft(first["id"])
+        self.assertEqual(draft["question_data"]["status_text"], onboard.ENGINE_GAP_STATUS)
+        self.assertEqual(len(draft["engine_gaps"]), 1)   # one entry per field
+
+
 # --- the automatic correction rounds ---------------------------------------------------------------------------------
 
 class AutoRoundSettingTest(unittest.TestCase):

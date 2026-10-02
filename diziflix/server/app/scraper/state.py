@@ -266,7 +266,14 @@ def record_ops_run(entry: dict[str, Any]) -> dict[str, Any]:
 
 
 def record_ops_heal(entry: dict[str, Any]) -> dict[str, Any]:
-    return _ops_append("heals", entry)
+    saved = _ops_append("heals", entry)
+    if entry.get("applied") and entry.get("outcome") == "fixed" and entry.get("site"):   # a repair that CHANGED the site: the finder retries what it gave up on
+        try:
+            from ..library import sourcefinder
+            sourcefinder.rerun_for_site(str(entry["site"]))
+        except Exception:  # telemetry must never break healing
+            pass
+    return saved
 
 
 def record_ops_tmdb(entry: dict[str, Any]) -> dict[str, Any]:

@@ -240,7 +240,7 @@ class AccessTest(SandboxCase):
         self.assertEqual(got.status_code, 200)
         body = got.json()
         self.assertEqual({r["type"] for r in body["resolvers"]},
-                         {"iframe", "anchor_host", "data_attr_token", "ajax_handoff", "json_api", "player_page"})
+                         {"iframe", "anchor_host", "data_attr_token", "ajax_handoff", "json_api", "player_page", "embedded_json"})
         self.assertIn("vidmolly", {p["name"] for p in body["providers"]})
 
     def test_missing_or_wrong_token_is_403(self):

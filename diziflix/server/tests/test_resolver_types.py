@@ -418,7 +418,7 @@ class ValidateCatalogTests(unittest.TestCase):
     def test_catalog_shape(self):
         catalog = resolvers.catalog()
         self.assertEqual([c["type"] for c in catalog],
-                         ["iframe", "anchor_host", "data_attr_token", "ajax_handoff", "json_api", "player_page"])
+                         ["iframe", "anchor_host", "data_attr_token", "ajax_handoff", "json_api", "player_page", "embedded_json"])
         self.assertEqual(list(resolvers.TYPES), [c["type"] for c in catalog])
         for entry in catalog:
             self.assertEqual(set(entry), {"type", "description", "params"})

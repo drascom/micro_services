@@ -118,6 +118,20 @@ Opens the player page the detail page points to (typically an iframe on the site
 | `stream_headers` | - | as in `json_api` |
 | `cache_ttl` | - | as in `json_api` |
 
+### `embedded_json`
+
+Reads provider URLs from JSON embedded in the page itself (no extra request): a <script type="application/json"> / __NEXT_DATA__ document or Next.js flight chunks (self.__next_f.push). json_path (dotted, '[*]' for lists) names the list of source objects, e.g. 'chapterContent.sources[*]', url_field / label_field pick the URL and its label inside each object (or the path may end in a string field itself).
+
+| parameter | default | meaning |
+|---|---|---|
+| `json_path` | **required** | dotted path with '[*]' / '[n]' |
+| `source` | `"auto"` | where the JSON lives: 'auto' (json scripts, then flight chunks), 'json_script' (<script type=application/json>, __NEXT_DATA__) or 'flight' (self.__next_f.push chunks) |
+| `url_field` | `"url"` | field of a source object holding the URL (ignored when json_path ends in strings) |
+| `label_field` | `"name"` | field of a source object holding its label (default: the URL's host) |
+| `label` | - | constant candidate label |
+| `host_regex` | - | keep only URLs whose whole hostname matches this regex (full match, case-insensitive) |
+| `lang` | - | constant language code of the candidates |
+
 ### Providers (`providers:` names; a provider turns a player URL into streams)
 
 `code` = a server module (listed here); `recipe` = a provider-library recipe (`configs/providers/<name>.yaml`; the library grows, so call `list_resolvers` for the recipes that exist now: `hosts` = `[host_regex, path_regex?]`).

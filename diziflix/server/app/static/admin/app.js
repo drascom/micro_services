@@ -26,12 +26,12 @@ var HL={fixed:'Düzeltildi',not_applied:'Uygulanmadı',failed:'İşe yaramadı',
 var HC={fixed:'heal',not_applied:'bad',failed:'bad',skipped_cooldown:'warn',rolled_back:'warn'};
 var HI={fixed:'✦',not_applied:'✕',failed:'✕',skipped_cooldown:'⏸',rolled_back:'↶'};
 /* "Site ekle" (onboarding) olayları */
-var OL={running:'Çalışıyor',needs_input:'Yanıt bekliyor',ready:'Hazır',failed:'Başarısız',cancelled:'İptal edildi',saved:'Kaydedildi'};
+var OL={running:'Çalışıyor',needs_input:'Yanıt bekliyor',ready:'Hazır',failed:'Başarısız',cancelled:'İptal edildi',saved:'Kaydedildi',engine_gap:'Geliştirici desteği bekleniyor'};
 /* Kaynak bulucu (Faz 6): oynatma kaynağı yokken arka planda arama */
 var FL={found:'Bulundu',not_found:'Bulunamadı'};
 var FM={retry:'kaynak yeniden çözüldü',search:'başka sitede bulundu',heal:'ajan onarımı'};
 function finLabel(e){return (e.title||e.canonical_id||'?')+(e.season!=null&&e.episode!=null?' · S'+(e.season<10?'0':'')+e.season+' B'+(e.episode<10?'0':'')+e.episode:'')}
-function onbCls(e){return e.status==='failed'?'bad':e.status==='needs_input'||(e.passed===false&&e.status!=='cancelled')?'warn':e.status==='saved'||e.status==='ready'?'ok':''}
+function onbCls(e){return e.status==='failed'?'bad':e.status==='needs_input'||e.status==='engine_gap'||(e.passed===false&&e.status!=='cancelled')?'warn':e.status==='saved'||e.status==='ready'?'ok':''}
 function pill(cls,txt){return '<span class="pill '+cls+'">'+esc(txt)+'</span>'}
 function pbiLabel(e){return (e.title||e.canonical_id||'?')+(e.season!=null&&e.episode!=null?' · S'+(e.season<10?'0':'')+e.season+' B'+(e.episode<10?'0':'')+e.episode:'')}
 function evPill(e){
@@ -186,7 +186,7 @@ function evHtml(e){
   if(e.kind==='onboard'){
     cls='scan '+onbCls(e);
     title='Site ekle · '+esc(hostOf(e.url)||e.site_id||'?')+' '+evPill(e);
-    meta=esc(OL[e.status]||e.status||'?')+(e.site_id?' · '+esc(e.site_id):'')+(e.turns!=null?' · '+num(e.turns)+' tur':'')+(e.passed===false?' · kriterler sağlanmadı':'')+(e.seconds!=null?' · '+dur(e.seconds):'');
+    meta=esc(OL[e.status]||e.status||'?')+(e.site_id?' · '+esc(e.site_id):'')+(e.turns!=null?' · '+num(e.turns)+' tur':'')+(e.passed===false?' · kriterler sağlanmadı':'')+(e.seconds!=null?' · '+dur(e.seconds):'')+(e.site_quality&&e.site_quality.grade?' · kalite: '+esc(e.site_quality.grade):'');
   } else if(e.kind==='playback_issue'){
     cls='scan '+(e.heal_class?'bad':'warn');
     title='Oynatma sorunu · '+esc(e.site)+' '+evPill(e);
@@ -269,6 +269,9 @@ function renderDetail(){
       '<div class="kv">'+kv(esc(OL[e.status]||e.status||'?'),'Durum')+kv(e.site_id?esc(e.site_id):'-','Site kimliği')+kv(num(e.turns),'tur')+kv(dur(e.seconds),'Süre')+'</div>';
     if(e.url)h+='<div class="note" style="border-color:var(--muted)"><span class="mono" style="overflow-wrap:anywhere">'+esc(e.url)+'</span></div>';
     if(e.passed===false)h+='<div class="note" style="border-color:var(--warn)">Kabul kriterleri sağlanmamıştı.</div>';
+    if(e.site_quality&&e.site_quality.grade){var q=e.site_quality,qb=q.grade==='standart'?'var(--ok)':q.grade==='bilinmiyor'?'var(--muted)':'var(--warn)';
+      h+='<h2 class="sec">Site kalitesi: '+esc(q.grade)+'</h2><div class="note" style="border-color:'+qb+'">'+(Array.isArray(q.reasons)?q.reasons.map(function(r){return '· '+esc(r)}).join('<br>'):'')+(q.note?'<br><b>'+esc(q.note)+'</b>':'')+
+        (q.hosts&&Object.keys(q.hosts).length?'<br><span class="mono">'+Object.keys(q.hosts).map(function(k){return esc(k)+' ×'+esc(q.hosts[k])}).join(' · ')+'</span>':'')+'</div>';}
     if(e.error)h+='<div class="note" style="border-color:var(--bad)">'+esc(e.error)+'</div>';
     if(e.notes)h+='<h2 class="sec">Ajan notları</h2><div class="note" style="white-space:pre-wrap">'+esc(typeof e.notes==='string'?e.notes:JSON.stringify(e.notes))+'</div>';
     h+='<div class="act">'+(e.draft_id?'<a class="btn" href="#onboard/'+esc(e.draft_id)+'">Taslağı aç</a>':'<button data-goto="onboard">Siteler sekmesi</button>')+'</div>';
@@ -287,7 +290,7 @@ function renderDetail(){
     h+='<div class="act"><button data-do="heal-playback" data-site="'+esc(e.site)+'"'+(s.healing?' disabled':'')+'>Ajan düzeltsin</button></div>'+
       (e.heal_class?'':'<div class="note" style="border-color:var(--muted)">Bu sınıf için ajan düzeltmesi anlamlı olmayabilir; yine de oynatma kanıtıyla çalıştırılabilir.</div>');
   } else if(e.kind==='finder'){
-    h+=evPill(e)+' '+pill('heal','Kaynak bulucu')+'<h3>'+esc(finLabel(e))+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+(e.trigger?' · '+esc(e.trigger):'')+'</div>'+
+    h+=evPill(e)+' '+pill('heal','Kaynak bulucu')+'<h3>'+esc(finLabel(e))+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+(e.trigger?' · '+esc(({heal_rerun:'heal sonrası yeniden deneme',playback_failed:'oynatma hatası',play:'oynatma'})[e.trigger]||e.trigger):'')+'</div>'+
       '<div class="kv">'+kv(esc(FL[e.state]||e.state||'?'),'Sonuç')+kv(e.method?esc(FM[e.method]||e.method):'-','Yöntem')+kv(e.site?esc(e.site):'-','Site')+kv(dur(e.seconds),'Süre')+'</div>';
     if(e.error)h+='<div class="note" style="border-color:var(--bad)">'+esc(e.error)+'</div>';
     h+='<h2 class="sec">Adımlar</h2>'+((e.steps||[]).map(function(st){

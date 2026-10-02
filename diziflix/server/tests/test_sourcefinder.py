@@ -420,12 +420,13 @@ class HealStepTests(Case):
         db.execute("UPDATE finder_jobs SET finished_at=finished_at-9999")
         self.assertTrue(playheal._reserve("siteA"))
         try:
-            gates.append(self.finish())
+            with patch.object(app_config, "SOURCEFINDER_HEAL_WAIT", 0):   # a running heal is waited for (tests: not at all)
+                gates.append(self.finish())
         finally:
             playheal._release("siteA")
         self.assertEqual(self.heal_calls, [])
         notes = [self.heal_note(g) for g in gates]
-        for want, note in zip(("heal kapalı", "LLM hesabı hazır değil: expired", "bütçe", "cooldown", "zaten çalışıyor"), notes):
+        for want, note in zip(("heal kapalı", "LLM hesabı hazır değil: expired", "bütçe", "cooldown", "bitmedi"), notes):
             self.assertIn(want, note)
         self.assertTrue(all(g["state"] == "not_found" for g in gates))
 

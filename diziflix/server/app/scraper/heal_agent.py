@@ -290,7 +290,7 @@ def _slim_evidence(evidence: dict) -> dict:
     for f in (evidence.get("failing") or [])[:8]:
         if not isinstance(f, dict):
             continue
-        entry = {k: f.get(k) for k in ("kind", "episode_id", "locator", "error", "stage", "host") if f.get(k)}
+        entry = {k: f.get(k) for k in ("kind", "episode_id", "locator", "error", "stage", "host", "probe") if f.get(k)}
         cands = [{k: c.get(k) for k in ("label", "provider", "ok", "stage", "host", "error") if c.get(k) not in (None, "")}
                  for c in (f.get("candidates") or [])[:4] if isinstance(c, dict)]
         if cands:
@@ -344,8 +344,8 @@ def repair_message(cfg: scfg.SiteConfig, evidence: dict, trigger: str) -> str:
         problem = (f"{issue.get('sources')} different sources (episodes) of this site could not be played by real users "
                    f"(`{issue.get('code')}`: {issue.get('label')}; stream host `{issue.get('host') or '?'}` ({issue.get('stream_type') or '?'}), "
                    f"provider `{issue.get('provider') or '?'}`; the server's own note: {issue.get('note')}). The page and the resolution "
-                   "worked (a stream was found), so the stream the recipe returns is the suspect: a WRONG stream (an unrelated host such as a "
-                   "social-media video, an ad, an analytics URL: fix the recipe's `extract` / `follow` so it picks the player's own file), a "
+                   "worked (a stream was found), so the stream the recipe returns is the suspect: a WRONG stream (a promo clip / ad / "
+                   "other video than the episode: check the media's duration against the episode; fix the recipe's `extract` / `follow` so it picks the episode file), a "
                    "stream the host refuses without a Referer / Origin (`stream_headers`, `stream_proxy: true`), or a changed host. Fetch one "
                    "failing player page (`locator`) with fetch_page and look at which media URLs it holds. Verify with test_provider on >= 3 "
                    "examples; the gate checks that the failing examples resolve" + (" and that the stream answers." if evidence.get("probe") else ".")
@@ -355,6 +355,12 @@ def repair_message(cfg: scfg.SiteConfig, evidence: dict, trigger: str) -> str:
                    "(stage / host / error in the evidence). The failing examples are playback pages (`locator`); ok_examples still "
                    "play. Find out whether the PAGE structure changed (site yaml: resolvers / selectors) or the VIDEO HOST changed "
                    "(provider recipe), or whether it needs code.")
+    probes = [f.get("probe") for f in evidence.get("failing") or [] if isinstance(f, dict) and isinstance(f.get("probe"), dict)]
+    if probes:   # content, not host: what the server measured on the failing streams
+        problem += (" `failing[].probe` = what the server measured on the stream of that example (duration_min vs expected_min, duration_match "
+                    "ok|short|long|unknown, segments, encrypted, needs_referer). `short` = a clip / ad / trailer: pick another media URL. "
+                    + ("A probe with `duration_match: ok` is the REAL episode: if it is rejected / refused / not picked, write the rule / recipe "
+                       "that accepts it BEFORE you consider `needs code`." if any(p.get("duration_match") == "ok" for p in probes) else ""))
     layers = layers_of(evidence, cfg)
     scope = (f"Diagnosed layer(s): {', '.join(layers)}. State the layer you diagnose in your first message. You may change ONLY these "
              f"top-level keys of the site yaml: {', '.join(sorted(allowed_keys(layers)))}."
@@ -526,6 +532,11 @@ def _repair_impl(site: str, evidence: dict, trigger: str, trace: dict) -> dict:
     if str(evidence.get("kind") or "playback") != NO_SOURCES and not [f for f in evidence.get("failing") or [] if isinstance(f, dict)]:
         return heal._fail("no evidence to repair from: the evidence has no failing example")   # no agent run (and no LLM cost) for nothing
     trace["layers"] = layers_of(evidence, cfg)
+    try:   # what the server MEASURED on the failing examples' streams (duration vs the episode's length): content, not host, says if it is the episode
+        from ..library import streamprobe
+        streamprobe.attach_probes(evidence)
+    except Exception:
+        log.warning("heal_agent: probes not attached", exc_info=True)
     run = run_agent(site, repair_message(cfg, evidence, trigger), heal.agent_timeout())
     trace["agent"] = agent_block(run)
     if run.record is None:

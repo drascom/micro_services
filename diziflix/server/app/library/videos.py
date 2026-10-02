@@ -8,7 +8,7 @@ import time
 import uuid
 from urllib.parse import urljoin, urlparse
 from .. import config as app_config, db
-from . import streamdiag, streamlife, tracks
+from . import streamdiag, streamlife, streamprobe, tracks
 from ..scraper import badhosts
 
 TTL=6*3600  # legacy trailer cache on source_items; resolved payloads follow config.RESOLVE_CACHE_TTL
@@ -210,12 +210,12 @@ def _resolve_candidate(row,cfg,raw,locator,frame_pages,load_cookies,use_neg):
         out['duration']=resolved.get('duration',0)
         out['cache_ttl']=streamlife.provider_ttl(resolved.get('cache_ttl'))   # the provider's own "reuse for N seconds" (recipe/resolver ``cache_ttl``)
         found=[{**s,'url':_url(s.get('url')),'provider':provider} for s in resolved['streams'] if _url(s.get('url'))]
-        unrelated=sorted({h for h in (badhosts.bad_stream_host(s['url']) for s in found) if h})
-        if unrelated:   # a stream on a social-media / ad / analytics host is never the video: dropped here, whatever resolver found it
+        trackers=sorted({h for h in (badhosts.bad_stream_host(s['url']) for s in found) if h})
+        if trackers:   # a non-media URL on an ad / analytics host is never the video: dropped here, whatever resolver found it
             found=[s for s in found if not badhosts.bad_stream_host(s['url'])]
             if not found:
-                trace.note('stream_host',unrelated[0],False,started,'ilgisiz akış sunucusu: '+', '.join(unrelated))
-                raise ValueError('sağlayıcı ilgisiz bir sunucuda akış verdi ('+', '.join(unrelated)+')')
+                trace.note('stream_host',trackers[0],False,started,'reklam/izleyici adresi, video değil: '+', '.join(trackers))
+                raise ValueError('sağlayıcı yalnız reklam/izleyici adresi verdi ('+', '.join(trackers)+')')
         if not found: raise ValueError('sağlayıcı geçerli akış vermedi')
         # One provider file = one variant: its soft subtitle tracks and what the page says about its languages.
         soft=[t for t in (resolved.get('subtitles') or []) if isinstance(t,dict) and _url(t.get('url'))]
@@ -444,6 +444,8 @@ def _resolve_page(row,force):
             seen_subs.add(identity)
             result['subtitles'].append(sub)
         result['duration']=result['duration'] or outcome['duration']
+    if app_config.STREAM_PROBE_RANK and row['kind']!='trailer':   # several different files: the one whose DURATION fits the episode first (library/streamprobe.py)
+        result['streams']=streamprobe.rank_streams(result['streams'],streamprobe.expected_runtime(row['canonical_id'],row['episode_id'] or ''),row['locator'])
     tracks.share_audio(result['streams'])
     result['streams']=tracks.link_mirrors(result['streams'])   # a spare copy of a stream (other CDN host/path) follows it
     ttls=[o['cache_ttl'] for o in outcomes if o and o.get('streams') and o.get('cache_ttl')]

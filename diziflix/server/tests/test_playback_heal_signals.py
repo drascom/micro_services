@@ -2,7 +2,7 @@
 
 (A) a stream host that answers 403 to a plain request but 200 to the source page's Referer is LEARNED (``proxy_headers``), ``/api/streams``
 sends the Referer through the proxy token; a host that refuses everything stays refused; a stream that plays without it is not touched.
-(B) a stream on a social-media / ad host (twimg ...) is never chosen by ``player_page.extract`` (the player's own file is) and never served
+(B) a non-media URL on an ad / analytics host is never chosen by ``player_page.extract`` and never served; media URLs are accepted on ANY host (twimg)
 (candidate refused, cached payload dropped). (C) a client's failure report lands in ``playback_issues`` (admin ``playback_issue`` event),
 the server diagnosis joins it, two different sources with one heal class start ONE playback heal (evidence ``issue``), the cooldown dedups
 it, a heal that cannot start says why (``last_skip``), a success clears the row; ``failure_counted`` semantics are unchanged.
@@ -99,48 +99,57 @@ class RefererLearningTests(sd.DbBase):
         self.assertEqual((verdict["code"], verdict["learn"]), ("reachable", False))
 
 
-# ---- B: unrelated stream hosts --------------------------------------------------------------------------------------------
+# ---- B: tracker hosts (twimg is a REAL media host: see test_twimg_...) --------------------------------------------------------------------------------------------
 TWIMG = "https://video.twimg.com/amplify_video/2105029117351473152/pl/pOkcwQiQ0637iZNF.m3u8?tag=29"
 REAL = "https://streambox.xyz/hls/abc/master.txt?s=2&d="
 
 
-class UnrelatedHostTests(unittest.TestCase):
+class TrackerHostTests(unittest.TestCase):
     RULE = [{"regex": r'file:"([^"]+)"', "type": "hls"}]
+    PIXEL = "https://stats.doubleclick.net/pixel?id=1"
 
-    def test_the_host_list(self):
-        for url in (TWIMG, "https://pbs.twimg.com/x.mp4", "https://t.co/a", "https://x.com/i/v.m3u8", "https://www.facebook.com/v.mp4"):
+    def test_the_host_list_is_trackers_only_and_media_urls_are_never_refused(self):
+        for url in (self.PIXEL, "https://www.google-analytics.com/collect", "https://x.googletagmanager.com/gtm.js"):
             self.assertTrue(badhosts.bad_stream_host(url), url)
-        for url in (REAL, "https://box.com/a.mp4", "https://downloader.disk.yandex.ru/disk/abc", "https://redirector.googlevideo.com/videoplayback"):
+        for url in (TWIMG, "https://pbs.twimg.com/x.mp4", "https://x.com/i/v.m3u8", "https://fbcdn.net/a.mp4", REAL, "https://box.com/a.mp4",
+                    "https://downloader.disk.yandex.ru/disk/abc", "https://redirector.googlevideo.com/videoplayback",
+                    "https://stats.doubleclick.net/ad/master.m3u8"):                       # a media URL: whatever the host
             self.assertIsNone(badhosts.bad_stream_host(url), url)
 
-    def test_extract_skips_the_promo_video_and_takes_the_players_file(self):
+    def test_twimg_m3u8_is_accepted_the_real_anne_yarisi_stream(self):
+        got = player_page.extract(f'player.setup({{file:"{TWIMG}"}});', "https://www.site.example/player/oynat/1", self.RULE)
+        self.assertEqual([(s["url"], s["type"]) for s in got], [(TWIMG, "hls")])
+        both = player_page.extract(f'file:"{TWIMG}" file:"{REAL}"', "https://www.site.example/p", self.RULE)
+        self.assertEqual([s["url"] for s in both], [TWIMG, REAL])                          # nothing dropped, page order kept
+
+    def test_extract_skips_a_tracker_url_and_takes_the_players_file(self):
         notes = []
-        body = f'player.setup({{file:"{TWIMG}"}}); other.setup({{file:"{REAL}"}});'
+        body = f'a.setup({{file:"{self.PIXEL}"}}); other.setup({{file:"{REAL}"}});'
         got = player_page.extract(body, "https://www.site.example/player/oynat/1", self.RULE, notes)
         self.assertEqual([s["url"] for s in got], [REAL])
-        self.assertTrue(any("twimg.com" in n for n in notes))
-        self.assertEqual(player_page.extract(f'file:"{TWIMG}"', "https://www.site.example/p", self.RULE), [])   # only an unrelated one = no stream
+        self.assertTrue(any("doubleclick.net" in n for n in notes))
 
-    def test_the_players_own_site_comes_first_within_a_rule(self):
+    def test_the_players_own_site_comes_first_within_a_rule_and_nothing_is_dropped(self):
         body = 'file:"https://cdn.other.example/a.m3u8" file:"https://media.site.example/b.m3u8"'
         got = player_page.extract(body, "https://www.site.example/player/1", self.RULE)
         self.assertEqual([s["url"] for s in got], ["https://media.site.example/b.m3u8", "https://cdn.other.example/a.m3u8"])
 
-    def test_a_candidate_with_only_an_unrelated_stream_fails_and_a_cached_one_is_dropped(self):
+    def test_a_candidate_with_a_twimg_stream_resolves_and_a_tracker_only_one_fails(self):
         row = {"id": "vs1", "source": SITE, "kind": "episode", "episode_id": "", "locator": PAGE, "resolver": "page"}
         cfg = SimpleNamespace(resolvers=[], providers=None, stream_resolver=None)
         cand = {"url": "https://www.site.example/player/1", "stream": {"provider": "P", "streams": [{"url": TWIMG, "type": "hls", "quality": "auto"}]}}
         with patch("app.scraper.site_extractors.resolve_candidate", return_value=cand):
             out = videos._resolve_candidate(row, cfg, {"url": cand["url"]}, PAGE, {}, lambda: {}, False)
-        self.assertEqual(out["streams"], [])
-        self.assertIn("ilgisiz", out["error"])
-        self.assertTrue(any(e["stage"] == "stream_host" and e["host"] == "twimg.com" for e in out["events"]))
-        cand["stream"]["streams"].append({"url": REAL, "type": "hls", "quality": "auto"})
+        self.assertEqual([s["url"] for s in out["streams"]], [TWIMG])
+        cand["stream"]["streams"] = [{"url": self.PIXEL, "type": "mp4", "quality": "auto"}]
         with patch("app.scraper.site_extractors.resolve_candidate", return_value=cand):
             out = videos._resolve_candidate(row, cfg, {"url": cand["url"]}, PAGE, {}, lambda: {}, False)
-        self.assertEqual([s["url"] for s in out["streams"]], [REAL])
-        payload = json.dumps({"streams": [{"url": TWIMG}], "resolver_version": videos.RESOLVER_VERSION, "valid_until": time.time() + 999})
+        self.assertEqual(out["streams"], [])
+        self.assertTrue(any(e["stage"] == "stream_host" and e["host"] == "doubleclick.net" for e in out["events"]))
+        payload = json.dumps({"streams": [{"url": self.PIXEL}], "resolver_version": videos.RESOLVER_VERSION, "valid_until": time.time() + 999})
         self.assertIsNone(videos._cached({"resolver": "page", "resolved_payload": payload, "resolved_at": int(time.time())}))
+        ok = json.dumps({"streams": [{"url": TWIMG}], "resolver_version": videos.RESOLVER_VERSION, "valid_until": time.time() + 999})
+        self.assertIsNotNone(videos._cached({"resolver": "page", "resolved_payload": ok, "resolved_at": int(time.time())}))
 
 
 # ---- C: ledger -> feed -> heal ----------------------------------------------------------------------------------------------
@@ -465,6 +474,106 @@ class HostRuleTests(sd.DbBase):
         row = self.row("vsA")
         self.assertEqual((row["proxy_required"], bool(row["resolved_payload"])), (1, True))   # the fresh resolution stays
         self.assertEqual(hostrules.get("streambox.example")["headers"], {"Referer": "https://www.site.example/"})
+
+
+class HealWaitTests(FinderTests):
+    """A finder job whose repair step finds the site's heal RUNNING waits for it instead of giving up; an applied heal re-runs what ended not-found."""
+
+    NEW = {"streams": [stream("https://other.example/new/master.m3u8")], "duration": 0}
+
+    def setUp(self):
+        super().setUp()
+        self.sleeps = []
+        self.during = []
+        p = patch.object(sourcefinder, "_sleep", self.sleep)
+        p.start()
+        self.addCleanup(p.stop)
+        self.on_sleep = None
+        self.addCleanup(playheal._release, SITE)
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.during.append(sourcefinder.status("c1", "c1:s1:e1"))
+        if self.on_sleep:
+            self.on_sleep()
+
+    def test_busy_heal_is_waited_for_then_the_retry_finds_the_new_stream_and_notifies(self):
+        sid = self.source(1)
+        self.resolved[sid] = {"streams": [stream(provider="trdizi_player")], "duration": 0}     # the same stream a client could not play
+        self.assertTrue(playheal._reserve(SITE))                                                # a heal of the site runs
+
+        def heal_done():
+            playheal._release(SITE)
+            self.resolved[sid] = self.NEW
+        self.on_sleep = heal_done
+        self.fail_report(sid)
+        self.assertEqual(len(self.sleeps), 1)
+        live = self.during[0]                                                                    # while waiting: still "searching", with the note
+        self.assertEqual(live["state"], "searching")
+        self.assertIn("heal sürüyor, sonucu bekleniyor", live["steps"][-1]["note"])
+        job = self.job("c1:s1:e1")
+        self.assertEqual((job["state"], job["method"]), ("found", "heal"))
+        self.assertIn("heal bitince", json.loads(job["steps"])[-1]["note"])
+        self.assertEqual(db.query_one("SELECT COUNT(*) FROM notifications WHERE kind='source_found' AND profile_id='p1'")[0], 1)
+        self.assertEqual(self.heal.calls, [])                                                    # the finder did not start a second heal
+
+    def test_a_failed_heal_ends_not_found_with_a_clear_note_and_a_stuck_heal_is_not_waited_for_forever(self):
+        sid = self.source(1)
+        self.resolved[sid] = {"streams": [stream(provider="trdizi_player")], "duration": 0}
+        self.assertTrue(playheal._reserve(SITE))
+        self.on_sleep = lambda: playheal._release(SITE)                                          # the heal ends, nothing changed
+        self.fail_report(sid)
+        job = self.job("c1:s1:e1")
+        self.assertEqual(job["state"], "not_found")
+        self.assertIn("heal bitti, akış yine yok", json.loads(job["steps"])[-1]["note"])
+        s2 = self.source(2)
+        self.resolved[s2] = {"streams": [stream("https://streambox.example/hls/2/master.txt", provider="trdizi_player")], "duration": 0}
+        self.assertTrue(playheal._reserve(SITE))
+        self.on_sleep = None
+        with patch.object(app_config, "SOURCEFINDER_HEAL_WAIT", 0):
+            self.fail_report(s2)
+        self.assertIn("bitmedi", json.loads(self.job("c1:s1:e2")["steps"])[-1]["note"])
+
+    def test_an_applied_heal_reruns_the_not_found_jobs_of_its_site_ignoring_the_cooldown(self):
+        sid = self.source(1)
+        self.resolved[sid] = {"streams": [stream(provider="trdizi_player")], "duration": 0}
+        with patch.object(sheal, "_enabled", return_value=False):                                # no heal step: the job ends not found
+            self.fail_report(sid)
+        self.assertEqual(self.job("c1:s1:e1")["state"], "not_found")
+        self.assertEqual(sourcefinder.request("c1", "c1:s1:e1", "p1")["reason"], "cooldown")    # the cooldown holds a normal request
+        self.assertEqual(db.query_one("SELECT COUNT(*) FROM notifications")[0], 0)
+        # the heal changed the recipe (same stream URL, now playable): the finder offers it again and tells the profile
+        state.record_ops_heal({"site": SITE, "applied": True, "outcome": "fixed", "trigger": "playback"})
+        job = self.job("c1:s1:e1")
+        self.assertEqual((job["state"], job["trigger"], job["method"]), ("found", "heal_rerun", "retry"))
+        self.assertEqual(db.query_one("SELECT COUNT(*) FROM notifications WHERE kind='source_found' AND profile_id='p1'")[0], 1)
+        self.assertIn("heal sonrası", json.loads(job["steps"])[0]["note"])
+        # not applied / another site / a running job: nothing re-runs, and a second heal does not repeat a found job
+        before = db.query_one("SELECT COUNT(*) FROM finder_jobs")[0]
+        state.record_ops_heal({"site": SITE, "applied": False, "outcome": "not_applied"})
+        state.record_ops_heal({"site": "othersite", "applied": True, "outcome": "fixed"})
+        state.record_ops_heal({"site": SITE, "applied": True, "outcome": "fixed"})
+        self.assertEqual(db.query_one("SELECT COUNT(*) FROM finder_jobs")[0], before)
+
+    def test_a_running_job_is_not_started_twice_by_a_rerun(self):
+        self.inline = False
+        sid = self.source(1)
+        self.resolved[sid] = {"streams": [stream()], "duration": 0}
+        self.fail_report(sid)                                                                    # queued, not run: the latest job is "searching"
+        self.assertEqual(sourcefinder.rerun_for_site(SITE), 0)
+        self.assertEqual(db.query_one("SELECT COUNT(*) FROM finder_jobs")[0], 1)
+
+    def test_the_heal_evidence_carries_the_other_waiting_titles(self):
+        for n, cid in enumerate(("c2", "c3", "c4"), start=2):
+            db.execute("INSERT INTO library_items(id,type,title,added_at,updated_at) VALUES (?,?,?,1,1)", (cid, "series", cid))
+            self.add_source(f"vx{n}", streams=None, media_type="hls", status="suspect")
+            db.execute("UPDATE video_sources SET canonical_id=?,episode_id=?,episode=1 WHERE id=?", (cid, f"{cid}:s1:e1", f"vx{n}"))
+            db.execute("INSERT INTO finder_jobs(canonical_id,episode_id,profile_id,state,trigger,started_at,finished_at) VALUES (?,?,?,?,?,?,?)",
+                       (cid, f"{cid}:s1:e1", "p1", "not_found", "play", int(time.time()) - 60, int(time.time()) - 30))
+        mine = {"source_id": "mine", "kind": "episode", "episode_id": "c1:s1:e1", "locator": PAGE, "error": "akış yok", "stage": "", "host": "", "candidates": []}
+        evidence = sourcefinder._evidence(SITE, [mine])
+        self.assertEqual(sorted({f["episode_id"] for f in evidence["failing"]}), ["c1:s1:e1", "c2:s1:e1", "c3:s1:e1", "c4:s1:e1"])
+        self.assertLessEqual(len(evidence["failing"]), sourcefinder.EXAMPLES)
 
 
 if __name__ == "__main__":

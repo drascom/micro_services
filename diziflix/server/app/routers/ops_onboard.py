@@ -8,7 +8,7 @@
 `GET  /api/ops/onboard`              ``{drafts: [summary]}`` (newest first; each row + ``overall`` = {state, headline, problem_step})
 `GET  /api/ops/onboard/{id}`         ``{draft, events, events_total}``; ``?events_after=<n>`` = only the events after the
                                      first n ones (poll with the previous ``events_total``; positions never shift).
-                                     ``draft.pipeline`` = the step view ({overall, steps[6], app}, ``scraper/onboard_pipeline.py``),
+                                     ``draft.pipeline`` = the step view ({overall, steps[6], app, quality?}, ``scraper/onboard_pipeline.py``),
                                      built from the final report and, while the agent works, its latest test results
 `POST /api/ops/onboard/{id}/message` ``{text}`` feedback: the same pi session runs again (409 while running)
 `POST /api/ops/onboard/{id}/cancel`  stop a running draft

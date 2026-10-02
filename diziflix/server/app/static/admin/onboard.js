@@ -609,7 +609,7 @@ function askHtml(q){
   if(kind==='engine_gap')return '<div class="obask gap" data-kind="engine_gap">'+
     '<div class="obaskh"><span class="tag bad">Sistemde eksik özellik</span> <b>'+esc(askField(q.field))+'</b></div>'+
     '<div class="obaskq">'+esc(q.text)+'</div>'+tr+
-    '<div class="hint">Bu, ajanın site tarifiyle çözemediği bir şey: sistemin bu özelliği desteklemesi gerekir. Metni kopyalayıp iletebilirsin; ajana yine de günlüğün altındaki kutudan yazabilirsin.</div>'+
+    '<div class="hint">'+(q.status_text?esc(q.status_text):'Bu, ajanın site tarifiyle çözemediği bir şey: sistemin bu özelliği desteklemesi gerekir. Onaylarsan (günlüğün altındaki kutuya “onaylıyorum” yaz) geliştiriciye iletilir; metni kopyalayıp da iletebilirsin.')+'</div>'+
     '<div class="act"><button class="btn" data-ob="askcopy">Metni kopyala</button></div></div>';
   var btns='',inp='';
   opts.forEach(function(o){
@@ -680,11 +680,21 @@ function stepHtml(s,i,prob){
   }
   return h+'</div>';
 }
+/* Site kalitesi özeti (draft.pipeline.quality: standart | karışık | zayıf | bilinmiyor; bilgi, kriter değil) */
+function qualityHtml(q){
+  if(!q||!q.line)return '';
+  var cls=q.grade==='standart'?'ok':q.grade==='bilinmiyor'?'':'warn',dets=Array.isArray(q.details)?q.details:[],open=!!openSteps.quality;
+  return '<div class="obq"><div class="obov '+cls+'"><b>'+esc(q.line)+'</b></div>'+
+    (Array.isArray(q.reasons)&&q.reasons.length?'<ul class="obaskt">'+q.reasons.map(function(r){return '<li>'+esc(r)+'</li>'}).join('')+'</ul>':'')+
+    (q.note?'<div class="note warn">'+esc(q.note)+'</div>':'')+
+    (dets.length?'<button class="obdt" data-ob="tog" data-step="quality" aria-expanded="'+(open?'true':'false')+'">Ayrıntı '+(open?'▴':'▾')+'</button>'+
+      (open?'<dl class="obdl">'+dets.map(function(d){return '<dt>'+esc(d.label||'')+'</dt><dd>'+esc(str(d.value))+'</dd>'}).join('')+'</dl>':''):'')+'</div>';
+}
 function renderSteps(){
   var el=$('ob-steps'),p=pipeOf(D);
   if(!p){el.innerHTML='<div class="pempty">İlerleme bilgisi yok (eski taslak)</div>';return}
   var pid=p.overall&&p.overall.problem_step;
-  el.innerHTML='<div class="obsteps">'+p.steps.map(function(s,i){return stepHtml(s,i,!!pid&&s.id===pid)}).join('')+'</div>';
+  el.innerHTML=qualityHtml(p.quality)+'<div class="obsteps">'+p.steps.map(function(s,i){return stepHtml(s,i,!!pid&&s.id===pid)}).join('')+'</div>';
 }
 function renderYaml(){
   var y=D.yaml_text||'',el=$('ob-yaml');yamlKey=y;

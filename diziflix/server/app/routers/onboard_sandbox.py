@@ -56,6 +56,8 @@ are small on purpose (they go to an LLM): text is clipped, lists are capped.
                                                                         yok, atla" answers (draft ``skipped_fields``) covered, ``redirect_hint``,
                                                                         ``detail_info {good, missing, required}``, ``removed_fields`` (a field that
                                                                         gave values in the draft's previous submission is gone).
+                                                                      * ``site_quality`` = ``{grade standart|karışık|zayıf|bilinmiyor, reasons[], note, hosts{}, known_ratio, resolved_ratio,
+                                                                        mixed_ratio, challenge_ratio, ...}`` (``playable`` runs; ``scraper/sitequality.py``; informs only, NOT a criterion).
                                                                       * ``blocked`` = ``{count, rules, samples[{url, reason}]}`` (``playable``
                                                                         runs): content that is not public (a ``blocked:`` rule matched or the
                                                                         ``availability_gate`` found no player): series / pages production would
@@ -149,7 +151,7 @@ from selectolax.parser import HTMLParser
 from .. import config, netguard
 from ..errors import ApiError
 from ..scraper import collections as site_collections
-from ..scraper import blocked as sblocked, fetch, heal, onboard_store, parse, resolvers, schema, series_generic, site_handoff
+from ..scraper import blocked as sblocked, fetch, heal, onboard_store, parse, resolvers, schema, series_generic, site_handoff, sitequality
 from ..scraper import config as scfg
 from ..scraper.providers import recipes, registry, trace
 
@@ -2337,6 +2339,7 @@ def _follow_playback(cfg, locator: str, deadline: float, site_id: str = DRAFT_SI
             if not outcome.get("streams") and outcome.get("error") and outcome["error"] not in problems:
                 problems.append(outcome["error"])
         out["ok"] = bool(out["streams"])
+        out["sources"] = sitequality.source_rows(candidates, outcomes, sitequality.provider_pool(getattr(cfg, "extra_providers", None)), final)
         if not out["ok"]:
             out["error"] = _clip(("no stream: " + "; ".join(problems[:2])) if problems else "no stream", 300)
     except Exception as exc:
@@ -2406,13 +2409,18 @@ def _playable_stage(cfg, items: list, deadline: float, warnings: list, inventori
                     if pick["kind"] != "episode":
                         gate.record(pick["locator"], "movie", verdict)
             if not skip and not sample["error"]:
-                found = _follow_playback(cfg, pick["locator"], sample_deadline, **({"got": got} if got else {}))
+                raw_streams: list = []
+                found = _follow_playback(cfg, pick["locator"], sample_deadline, **({"raw": raw_streams} if config.STREAM_PROBE_RANK else {}),
+                                        **({"got": got} if got else {}))
                 skip = found["timeout"] and sample_deadline >= deadline - 0.01   # the CALL ran out, not the sample's own time
                 if not skip:
                     sample.update({k: found[k] for k in ("ok", "streams", "error", "candidates", "ms")})
                     sample["providers"] = list(found.get("providers") or [])   # who produced the streams (provider recipes' usage)
+                    sample["sources"] = list(found.get("sources") or [])        # per candidate {host, resolver_type, known, ok, challenge}: ``site_quality``
                     if not sample["ok"]:
                         _player_diagnostic(sample, found, gate, warnings)
+                    else:
+                        _sample_probe(sample, raw_streams, warnings)
         if skip:
             sample.update(skipped=True, error="not checked: the call ran out of time")
             out["skipped"] += 1
@@ -2427,6 +2435,27 @@ def _playable_stage(cfg, items: list, deadline: float, warnings: list, inventori
         warnings.append(f"playable: {out['blocked']} sample(s) are blocked content (leaving them out of the ratio): "
                         + "; ".join(f"{s['locator']} ({s['reason']})" for s in out["samples"] if s.get("blocked"))[:300])
     return out
+
+
+def _sample_probe(sample: dict, raw: list, warnings: list) -> None:
+    """A playable sample that resolved: the content probe of its best stream (``library/streamprobe.py``). A duration that does not fit the episode is a
+    WARNING ("oynatılabilir ama süre uyuşmuyor"), never a criterion. Never raises."""
+    try:
+        from .. import config as app_config, db
+        from ..library import streamprobe
+        if not app_config.STREAM_PROBE_RANK or not raw or not isinstance(raw[0], dict) or not raw[0].get("url"):
+            return
+        stream = raw[0]
+        row = db.query_one("SELECT canonical_id,episode_id FROM video_sources WHERE locator=? LIMIT 1", (sample["locator"],))
+        expected = streamprobe.expected_runtime(row["canonical_id"], row["episode_id"] or "") if row else None
+        probe = streamprobe.summarize(stream["url"], stream.get("request_headers"), stream.get("type") if stream.get("type") in ("hls", "mp4") else None,
+                                      sample["locator"], expected)
+        sample["probe"] = probe
+        if probe.get("duration_match") in ("short", "long"):
+            warnings.append(f"playable: {sample['locator']}: oynatılabilir ama süre uyuşmuyor ({probe.get('duration_min')} dk, beklenen "
+                            f"{probe.get('expected_min')} dk: {probe['duration_match']}); doğru medya adresini seçtiğinden emin ol")
+    except Exception:
+        pass
 
 
 def _player_diagnostic(sample: dict, found: dict, gate: Optional["_GateRun"], warnings: list) -> None:
@@ -3605,6 +3634,11 @@ def _analyze_report(yaml_text: str, page_id: Optional[str], detail_page_id: Opti
                     warnings.append(f"provider_recipes: no playable sample resolved through the recipe {entry['name']!r}; its match / "
                                     "rules were not exercised end to end (test_provider on a real player URL, and make the site "
                                     "yaml's providers: list it)")
+    if playable:   # informs, never judges: not a criterion (``sitequality``)
+        try:
+            out["site_quality"] = sitequality.assess(out.get("playable"), data, warnings)
+        except Exception:   # pragma: no cover - an informative block must never break the report
+            log.exception("site quality of the draft failed")
     out["valid"] = not errors
     out["passed"] = all(c["ok"] for c in out["criteria"].values())
     return out
@@ -4149,6 +4183,8 @@ def _do_submit(body, *, deadline: float) -> dict:
             **({"series": {k: report["series"].get(k) for k in ("checked", "with_episodes", "skipped", "hint") if k in report["series"]}}
                if report.get("series") else {}),
             "ingest": report.get("ingest"),
+            **({"site_quality": {k: report["site_quality"].get(k) for k in ("grade", "reasons", "note", "hosts", "known_ratio", "resolved_ratio",
+                                                                              "mixed_ratio", "challenge_ratio")}} if report.get("site_quality") else {}),
             **({"blocked": report["blocked"]} if report.get("blocked") else {}),
             **({"gate": report["gate"]} if report.get("gate") else {}),
             **({"failing": report["failing"]} if report.get("failing") else {}),

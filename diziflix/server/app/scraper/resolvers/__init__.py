@@ -17,7 +17,7 @@ from typing import Any
 
 from selectolax.parser import HTMLParser
 
-from . import ajax_handoff, anchor_host, data_attr_token, iframe, json_api, player_page
+from . import ajax_handoff, anchor_host, data_attr_token, embedded_json, iframe, json_api, player_page
 
 
 @dataclass
@@ -35,7 +35,7 @@ def make_ctx(cfg) -> Ctx:
 
 
 TYPES: dict[str, Any] = {   # type name -> module exposing NAME, DESCRIPTION, PARAMS, discover, resolve_candidate
-    module.NAME: module for module in (iframe, anchor_host, data_attr_token, ajax_handoff, json_api, player_page)}
+    module.NAME: module for module in (iframe, anchor_host, data_attr_token, ajax_handoff, json_api, player_page, embedded_json)}
 
 _PYTHON_TYPES = {"str": str, "int": int, "bool": bool, "list": list, "dict": dict}
 

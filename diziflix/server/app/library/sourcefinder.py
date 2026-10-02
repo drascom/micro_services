@@ -114,7 +114,10 @@ def request(canonical_id: str, episode_id: str = "", profile_id: str = "", trigg
         return _state("idle", reason="error")
 
 
-def _request(cid: str, ep: str, profile_id: str, trigger: str) -> dict:
+def _request(cid: str, ep: str, profile_id: str, trigger: str, *, force: bool = False, only: Optional[tuple] = None,
+             inline: bool = False) -> dict:
+    """``force`` ignores the cooldown and the job limit (a re-run after a repair, :func:`rerun_for_site`); ``only`` = the steps to run;
+    ``inline`` runs the job in the calling thread (the re-run thread)."""
     if not app_config.SOURCEFINDER_ENABLED:
         return _state("idle", reason="disabled")
     if ep == cid:
@@ -139,18 +142,21 @@ def _request(cid: str, ep: str, profile_id: str, trigger: str) -> dict:
         cooldown = app_config.SOURCEFINDER_COOLDOWN
         last = db.query_one("SELECT state,finished_at FROM finder_jobs WHERE canonical_id=? AND episode_id=? "
                             "AND state IN ('found','not_found') ORDER BY id DESC LIMIT 1", (cid, ep))
-        if cooldown > 0 and last and last["finished_at"] and _now() - int(last["finished_at"]) < cooldown:
+        if not force and cooldown > 0 and last and last["finished_at"] and _now() - int(last["finished_at"]) < cooldown:
             return _state(last["state"], reason="cooldown")
-        if len(_inflight) >= app_config.SOURCEFINDER_MAX_JOBS:
+        if not force and len(_inflight) >= app_config.SOURCEFINDER_MAX_JOBS:
             return _state("idle", reason="busy")
         db.execute("INSERT INTO finder_jobs(canonical_id,episode_id,profile_id,state,trigger,started_at) VALUES (?,?,?,?,?,?)",
                    (cid, ep, profile_id, "searching", trigger[:20], _now()))
         job_id = int(db.query_one("SELECT MAX(id) AS id FROM finder_jobs WHERE canonical_id=? AND episode_id=?", (cid, ep))["id"])
         job = {"job_id": job_id, "key": key, "cid": cid, "ep": ep, "profile": profile_id, "profiles": [profile_id], "title": item["title"],
-               "type": item["type"], "steps": [], "started": time.monotonic(), "updated_at": _now()}
+               "type": item["type"], "steps": [], "started": time.monotonic(), "updated_at": _now(), "only": only}
         numbers = _episode_numbers(cid, ep) if ep else None
         job["season"], job["episode"] = numbers if numbers else (None, None)
         _inflight[key] = job
+    if inline:
+        _run(job)
+        return _state("searching", started=True, job_id=job_id)
     try:
         _start_background(f"finder-{job_id}", lambda: _run(job))
     except Exception as exc:   # the thread could not start: no job happened, leave no row (and no cooldown) behind
@@ -169,7 +175,7 @@ def _run(job: dict) -> None:
     found: Optional[dict] = None
     error = ""
     try:
-        for name in STEPS:
+        for name in (job.get("only") or STEPS):
             started = time.monotonic()
             try:
                 out = globals()["_step_" + name](job) or {}   # looked up by name: tests replace a step
@@ -363,7 +369,7 @@ def _step_retry(job: dict) -> dict:
     rows = _episode_rows(job["cid"], job["ep"], only_page=True)
     if not rows:
         return {"note": "bu bölüm için sayfa kaynağı kaydı yok"}
-    return _resolve_found(job, rows, "retry")
+    return _resolve_found(job, rows, "retry", "heal sonrası: " if job.get("only") else "")
 
 
 # --- step 2: search other sites ---------------------------------------------------------------------------------
@@ -502,8 +508,37 @@ def _entry_of(job_row: dict, site: str) -> dict:
     return entry
 
 
+EXAMPLES = 5   # distinct failing examples (titles first) the repair agent gets: one episode must not make it overfit
+
+
+def _pending_entries(site: str, exclude: set, limit: int) -> list[dict]:
+    """Failing examples of OTHER episodes that wait for a repair of ``site`` (finder jobs that ended "not found" within ``SOURCEFINDER_RERUN_HOURS``,
+    other running jobs' failed sources): distinct titles first, at most ``limit``."""
+    seen_titles: set = set()
+    picked: list[dict] = []
+    cutoff = _now() - max(1, app_config.SOURCEFINDER_RERUN_HOURS) * 3600
+    rows = list(db.query("""SELECT vs.* FROM finder_jobs j JOIN video_sources vs ON vs.canonical_id=j.canonical_id AND vs.episode_id=j.episode_id
+        WHERE j.state='not_found' AND j.finished_at>=? AND vs.source=? AND vs.resolver='page' AND vs.kind!='trailer'
+        AND vs.status IN ('suspect','broken','unknown') ORDER BY j.id DESC LIMIT 60""", (cutoff, site)))
+    with _lock:
+        for other in _inflight.values():
+            rows += [i["row"] for i in (other.get("failed") or {}).values() if i["row"]["source"] == site]
+    for distinct in (True, False):   # first one per title, then the rest
+        for row in rows:
+            if len(picked) >= limit:
+                break
+            if row["id"] in exclude or any(p["source_id"] == row["id"] for p in picked):
+                continue
+            if distinct and row["canonical_id"] in seen_titles:
+                continue
+            seen_titles.add(row["canonical_id"])
+            picked.append(_entry_of({"row": row, "error": _short(row["last_error"] or "çözülemedi (bekleyen bölüm)", 200)}, site))
+    return picked
+
+
 def _evidence(site: str, entries: list[dict]) -> dict:
-    """The ``heal.heal_site_playback`` evidence of this episode's failed sources of ``site`` (the shape ``playheal.evaluate`` hands over)."""
+    """The ``heal.heal_site_playback`` evidence of this episode's failed sources of ``site`` (the shape ``playheal.evaluate`` hands over). Without a
+    refused-stream group it also carries the other waiting episodes of the site (``_pending_entries``, <= ``EXAMPLES`` examples in all)."""
     from ..scraper import playheal
     keep = ("source_id", "kind", "episode_id", "locator", "error", "stage", "host", "candidates")
     refused = {e["source_id"] for e in entries if isinstance(e.get("stream"), dict)}
@@ -517,9 +552,69 @@ def _evidence(site: str, entries: list[dict]) -> dict:
         group = [{**e["stream"], "source_id": e["source_id"], "kind": e.get("kind"), "episode_id": e.get("episode_id"),
                   "locator": e.get("locator"), "stream_type": e["stream"].get("type"), "http": e["stream"].get("http")} for e in entries]
         return playheal.blocked_evidence(site, group, examples)
+    entries = list(entries)
+    try:
+        entries += _pending_entries(site, {e["source_id"] for e in entries}, max(0, EXAMPLES - len(entries)))
+    except Exception as exc:
+        log.warning("source finder: pending examples not added: %s", exc)
     return {"site": site, "window": {"n": len(entries) + len(examples), "failed": len(entries)},
-            "failing": [{k: e.get(k) for k in keep + (("stream",) if e.get("stream") else ())} for e in entries[:playheal.MAX_FAILING]],
+            "failing": [{k: e.get(k) for k in keep + (("stream",) if e.get("stream") else ())} for e in entries[:EXAMPLES]],
             "ok_examples": examples}
+
+
+_sleep = time.sleep   # tests replace it
+
+
+def _wait_for_heal(job: dict, site: str) -> bool:
+    """Wait (at most ``SOURCEFINDER_HEAL_WAIT`` seconds) until no heal of ``site`` runs. While it waits the job stays ``searching`` and its status shows
+    the step note "<site>: heal sürüyor, sonucu bekleniyor". True = the heal finished (whatever its outcome)."""
+    deadline = time.monotonic() + app_config.SOURCEFINDER_HEAL_WAIT
+    from ..scraper import playheal
+    with _lock:
+        job["wait_note"] = f"{site}: heal sürüyor, sonucu bekleniyor"
+        job["updated_at"] = _now()
+    try:
+        while playheal.is_busy(site) and time.monotonic() < deadline:
+            _sleep(app_config.SOURCEFINDER_HEAL_POLL)
+        return not playheal.is_busy(site)
+    finally:
+        with _lock:
+            job.pop("wait_note", None)
+            job["updated_at"] = _now()
+
+
+def rerun_for_site(site: str) -> int:
+    """A repair was APPLIED for ``site``: the finder jobs of that site that ended "not found" within ``SOURCEFINDER_RERUN_HOURS`` (the latest job of each
+    title + episode; a running job waits for the repair itself) are run again, the cooldown ignored: the ``retry`` step resolves their sources
+    afresh and a found one becomes a ``source_found`` notification for the profile that asked (trigger ``heal_rerun``, at most
+    ``SOURCEFINDER_RERUN_MAX`` per repair, one after the other in one background thread). Returns how many were queued. Never raises."""
+    try:
+        from . import playissues
+        playissues.forget_streams(site)
+        hours, limit = app_config.SOURCEFINDER_RERUN_HOURS, app_config.SOURCEFINDER_RERUN_MAX
+        if not app_config.SOURCEFINDER_ENABLED or hours <= 0 or limit <= 0:
+            return 0
+        cutoff = _now() - hours * 3600
+        rows = db.query("""SELECT j.canonical_id,j.episode_id,j.profile_id FROM finder_jobs j WHERE j.state='not_found' AND j.finished_at>=?
+            AND j.id=(SELECT MAX(k.id) FROM finder_jobs k WHERE k.canonical_id=j.canonical_id AND k.episode_id=j.episode_id) ORDER BY j.id DESC""", (cutoff,))
+        pick = [r for r in rows if db.query_one(
+            "SELECT 1 FROM video_sources WHERE canonical_id=? AND episode_id=? AND source=? AND resolver='page' AND kind!='trailer' "
+            "AND status NOT IN ('disabled','blocked') LIMIT 1", (r["canonical_id"], r["episode_id"], site))][:limit]
+        if not pick:
+            return 0
+        queue = [(r["canonical_id"], r["episode_id"], r["profile_id"]) for r in pick]
+
+        def work() -> None:
+            for cid, ep, profile in queue:
+                try:
+                    _request(cid, ep, profile or "", "heal_rerun", force=True, only=("retry",), inline=True)
+                except Exception as exc:
+                    log.warning("source finder re-run of %s failed: %s", (cid, ep), exc)
+        _start_background(f"finder-rerun-{site}", work)
+        return len(queue)
+    except Exception as exc:
+        log.warning("source finder re-run for %s failed: %s", site, exc)
+        return 0
 
 
 def heal_runs_today() -> int:
@@ -562,6 +657,16 @@ def _step_heal(job: dict) -> dict:
         return {"note": f"LLM hesabı hazır değil: {status or 'bilinmiyor'} (atlandı)"}
     notes: list[str] = []
     for site in sites:
+        site_rows = [i["row"] for i in failed.values() if i["row"]["source"] == site]
+        if playheal.is_busy(site):   # a repair of this site is already running (another job's / the playback trigger's): wait for it, then resolve again
+            if not _wait_for_heal(job, site):
+                notes.append(f"{site}: heal {app_config.SOURCEFINDER_HEAL_WAIT} sn içinde bitmedi")
+                continue
+            out = _resolve_found(job, site_rows, "heal", f"{site}: heal bitince ")
+            if out.get("found"):
+                return out
+            notes.append(f"{site}: heal bitti, akış yine yok")
+            continue
         if state.get_heal_cooldown(site):
             notes.append(f"{site}: heal cooldown")
             continue
@@ -570,8 +675,11 @@ def _step_heal(job: dict) -> dict:
             break
         from . import playissues
         issue_ids = [i["row"]["id"] for i in failed.values() if i["row"]["source"] == site and i.get("issue")]
-        if issue_ids and playissues.recently_triggered(site, issue_ids):
-            notes.append(f"{site}: oynatma heal'i zaten başlatıldı")   # one repair per issue: the playback trigger already runs / ran it
+        if issue_ids and playissues.recently_triggered(site, issue_ids):   # one repair per issue: the playback trigger already ran it
+            out = _resolve_found(job, site_rows, "heal", f"{site}: oynatma heal'i sonrası ")
+            if out.get("found"):
+                return out
+            notes.append(f"{site}: oynatma heal'i zaten başlatıldı, akış yine yok")
             continue
         if not playheal._reserve(site):
             notes.append(f"{site}: heal zaten çalışıyor")
@@ -619,7 +727,10 @@ def status(canonical_id: str, episode_id: Optional[str] = None) -> dict:
     with _lock:
         live = next((j for k, j in _inflight.items() if k[0] == cid and (ep is None or k[1] == ep)), None)
         if live is not None:
-            return {"state": "searching", "steps": [dict(s) for s in live["steps"]][-MAX_STEPS:], "updated_at": int(live["updated_at"])}
+            steps = [dict(s) for s in live["steps"]]
+            if live.get("wait_note"):   # the repair step is waiting for a running heal: the user-visible state stays "searching"
+                steps.append({"name": "heal", "ok": False, "ms": 0, "note": _short(live["wait_note"])})
+            return {"state": "searching", "steps": steps[-MAX_STEPS:], "updated_at": int(live["updated_at"])}
     row = (db.query_one("SELECT * FROM finder_jobs WHERE canonical_id=? ORDER BY id DESC LIMIT 1", (cid,)) if ep is None else
            db.query_one("SELECT * FROM finder_jobs WHERE canonical_id=? AND episode_id=? ORDER BY id DESC LIMIT 1", (cid, ep)))
     if row is None or row["state"] not in ("found", "not_found"):   # no job, or one that was cut off by a restart

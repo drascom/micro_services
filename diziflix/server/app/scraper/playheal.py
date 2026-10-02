@@ -546,6 +546,15 @@ def _reserve(site: str) -> bool:
         return True
 
 
+def is_busy(site: str) -> bool:
+    """A playback heal of ``site`` is reserved, or any heal of it runs (the same test :func:`_reserve` fails on)."""
+    from . import state
+    with _lock:
+        if site in _inflight:
+            return True
+    return any(a["site"] == site and a["kind"] == "heal" for a in state.activity_list())
+
+
 def _release(site: str) -> None:
     with _lock:
         _inflight.discard(site)

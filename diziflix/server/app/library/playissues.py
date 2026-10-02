@@ -112,7 +112,7 @@ def _stream_facts(job: Optional[dict]) -> dict:
         return {}
     from .. import streamproxy
     return {"host": _host(first.get("url")), "stream_type": _s(first.get("type"), 10), "provider": _s(first.get("provider"), 60),
-            "stream_group": streamproxy.group_of(first["url"])}
+            "stream_group": streamproxy.group_of(first["url"]), "stream_url": str(first["url"])[:1000]}
 
 
 def record_failure(token: str, code: str, engine: str = "", detail: str = "", job: Optional[dict] = None) -> str:
@@ -140,6 +140,7 @@ def record_failure(token: str, code: str, engine: str = "", detail: str = "", jo
                       "host": facts.get("host") or (old["host"] if old else ""), "provider": facts.get("provider") or (old["provider"] if old else ""),
                       "stream_type": facts.get("stream_type") or (old["stream_type"] if old else source["media_type"] or ""),
                       "stream_group": facts.get("stream_group") or (old["stream_group"] if old else ""),
+                      "stream_url": facts.get("stream_url") or (old["stream_url"] if old else ""),
                       "http": diag.get("http") if diag_code else None, "engine": _s(engine, 30), "last_at": now}
             if old is None:
                 values.update(source_id=source["id"], reports=1, first_at=now)
@@ -212,6 +213,15 @@ def failing_entry(row) -> dict:
             "error": f"{label(cls)} ({row['reports']} rapor)", "stage": "stream", "host": "",
             "stream": {"host": row["host"], "type": row["stream_type"], "code": cls, "http": row["http"], "ct": "", "body": _s(row["note"], 80),
                        "sent": {}, "proxied": False}, "candidates": []}
+
+
+def forget_streams(site: str) -> None:
+    """A repair was applied for ``site``: what a client could not play before says nothing about the changed recipe, so the finder may offer
+    the same file again (it forgets the recorded stream group; the issue rows stay as the record). Never raises."""
+    try:
+        db.execute("UPDATE playback_issues SET stream_group='' WHERE site=?", (site,))
+    except Exception:
+        pass
 
 
 def clear(source_id: str) -> None:

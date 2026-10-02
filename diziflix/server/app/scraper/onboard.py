@@ -251,8 +251,42 @@ def skipped_fields(draft: Optional[dict]) -> list[str]:
     return [str(f).strip().lower() for f in (raw if isinstance(raw, list) else []) if str(f).strip()]
 
 
+#: the admin's answer to an ``engine_gap`` question: approval = "the engine should get this feature". It is the DEVELOPER's job, never the
+#: agent's: the approval is kept on the draft (``engine_gaps``) + the ops feed, and the agent is told to carry on with what exists
+ENGINE_GAP_STATUS = ("Bu yetenek motorda yok; geliştiriciye iletildi. Motora eklendiğinde 'Ajan düzeltsin' ile devam edebilirsin.")
+ENGINE_GAP_DIRECTIVE = ("\n\n[Sistem: ENGINE_GAP onaylandı ({field}) ve geliştiriciye iletildi. Motor / resolver değişikliği senin işin DEĞİL: "
+                        "mevcut resolver'larla elinden geleni yap ya da taslağı notes'ta 'ENGINE_GAP: {field}: <öneri>' ile bırak; bu soruyu TEKRARLAMA.]")
+_APPROVE_RE = re.compile(r"onay|evet|tamam|olur|kabul|ekle|yes|\bok\b|devam", re.I)
+_DENY_RE = re.compile(r"hay[ıi]r|vazge[çc]|istemiyorum|gerek yok|\bno\b|\bdon'?t\b", re.I)
+
+
+def engine_gap_approval(text: str, draft: dict) -> Optional[dict]:
+    """The ``engine_gaps`` entry a message approves: the open question is an ``engine_gap`` and ``text`` approves it (not a refusal);
+    else None. ``{field, text, proposal?, answer, at, status: "waiting_dev"}``."""
+    question = (draft or {}).get("question_data")
+    if not isinstance(question, dict) or question.get("kind") != "engine_gap":
+        return None
+    if _DENY_RE.search(text or "") or not _APPROVE_RE.search(text or ""):
+        return None
+    entry = {"field": _clip(question.get("field"), 60) or "?", "text": _clip(question.get("text"), QUESTION_CLIP),
+             "answer": _clip(text, 200), "at": _now(), "status": "waiting_dev"}
+    if question.get("proposal"):
+        entry["proposal"] = _clip(question["proposal"], PROPOSAL_CLIP)
+    return entry
+
+
+def engine_gap_fields(draft: Optional[dict]) -> list[str]:
+    raw = (draft or {}).get("engine_gaps")
+    return [str(g.get("field")) for g in (raw if isinstance(raw, list) else []) if isinstance(g, dict) and g.get("field")]
+
+
 def _note_answer(text: str, draft: dict) -> dict:
-    """Draft fields a message of the admin adds: ``skipped_fields`` grows when it is "Sitede yok, atla: a, b"."""
+    """Draft fields a message of the admin adds: ``skipped_fields`` grows when it is "Sitede yok, atla: a, b"; ``engine_gaps`` grows
+    when it approves an ``engine_gap`` question."""
+    gap = engine_gap_approval(text, draft)
+    if gap is not None:
+        kept = [g for g in (draft.get("engine_gaps") or []) if isinstance(g, dict) and g.get("field") != gap["field"]]
+        return {"engine_gaps": [*kept, gap][-10:]}
     found = _SKIP_RE.match(text or "")
     if not found:
         return {}
@@ -447,7 +481,9 @@ def add_event(draft_id: str, event: dict) -> None:
 
 def _record(draft: dict, status: str, started: float, turns: int, notes: str = "") -> None:
     report = draft.get("report") or {}
-    state.record_ops_onboard({
+    quality = report.get("site_quality") if isinstance(report.get("site_quality"), dict) else None
+    state.record_ops_onboard({**({"site_quality": {k: quality.get(k) for k in ("grade", "reasons", "note", "hosts", "known_ratio", "resolved_ratio",
+                                                                              "mixed_ratio", "challenge_ratio")}} if quality else {}),
         "draft_id": draft.get("id"), "url": draft.get("url"), "site_id": draft.get("saved_site_id") or draft.get("site_id_suggestion") or None,
         "site": "onboard", "status": status, "at": _now(), "seconds": round(time.monotonic() - started, 1),
         "turns": turns, "passed": report.get("passed") if report else None,
@@ -587,6 +623,8 @@ def _finish(draft_id: str, started: float, parser: EventParser, exit_code: Optio
         if draft is None:
             return None
         asked = question_data(parser.ask) if parser.asking else None   # the agent's last word is ask_user
+        if asked is not None and asked["kind"] == "engine_gap" and asked["field"] in engine_gap_fields(draft):
+            asked["status_text"] = ENGINE_GAP_STATUS   # approved already: the panel says "forwarded", the agent was told not to ask again
         if cancelled or draft.get("status") == "cancelled":
             status, notes = "cancelled", ""
             store.update_draft(draft_id, status="cancelled", error=None)
@@ -796,11 +834,19 @@ def message(draft_id: str, text: str, trigger: str = "admin") -> dict:
     try:
         token = sandbox.issue_token(draft_id)
         add_event(draft_id, {"t": _now(), "kind": "user", "text": text[:SAY_CLIP]})
+        gap = engine_gap_approval(text, draft)
+        if gap is not None:   # visible to the developer (ops feed ``kind=onboard``) and to the user (draft log), not an agent task
+            add_event(draft_id, {"t": _now(), "kind": "status", "status": "engine_gap", "text": ENGINE_GAP_STATUS})
+            state.record_ops_onboard({
+                "draft_id": draft_id, "url": draft.get("url"), "site_id": draft.get("site_id_suggestion") or None, "site": "onboard",
+                "status": "engine_gap", "at": gap["at"], "seconds": None, "turns": None, "passed": None,
+                "notes": _clip(f"ENGINE_GAP: {gap['field']}: {gap.get('proposal') or gap['text']}\nAjanın sorusu: {gap['text']}\n"
+                               f"Kullanıcı onayı: {gap['answer']}\nDurum: geliştirici desteği bekleniyor", 500)})
         # a message answers the open question (question_data) and gives the automatic rounds a fresh start; "Sitede yok, atla: x" is remembered
         draft = store.update_draft(draft_id, status="running", error=None, question=None, question_data=None, reason=None,
                                    auto_round=0, auto_rounds=None, **_note_answer(text, draft))
         state.activity_update(SLOT_SITE, SLOT_KIND, label="geri bildirim", phase="start", draft_id=draft_id)
-        _spawn(draft_id, text, token)
+        _spawn(draft_id, text + (ENGINE_GAP_DIRECTIVE.format(field=gap["field"]) if gap is not None else ""), token)
     except BaseException:
         if token:
             sandbox.revoke_token(token)

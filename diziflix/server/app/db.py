@@ -198,7 +198,7 @@ SCHEMA += [
         kind TEXT NOT NULL DEFAULT '', locator TEXT NOT NULL DEFAULT '', client_code TEXT NOT NULL DEFAULT '',
         diag_code TEXT NOT NULL DEFAULT '', issue_class TEXT NOT NULL, note TEXT NOT NULL DEFAULT '',
         host TEXT NOT NULL DEFAULT '', provider TEXT NOT NULL DEFAULT '', stream_type TEXT NOT NULL DEFAULT '',
-        stream_group TEXT NOT NULL DEFAULT '', http INTEGER, engine TEXT NOT NULL DEFAULT '', reports INTEGER NOT NULL DEFAULT 1,
+        stream_group TEXT NOT NULL DEFAULT '', stream_url TEXT NOT NULL DEFAULT '', http INTEGER, engine TEXT NOT NULL DEFAULT '', reports INTEGER NOT NULL DEFAULT 1,
         first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, triggered_at INTEGER)""",
     "CREATE INDEX IF NOT EXISTS idx_issue_site ON playback_issues(site, last_at)",
 ]

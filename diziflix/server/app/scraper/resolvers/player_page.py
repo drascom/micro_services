@@ -387,9 +387,9 @@ def _quality_number(text: str) -> int:
 def extract(body: str, base: str, rules: list[dict], notes: Optional[list] = None) -> list[dict]:
     """The streams ``[{url, type, quality, label}]`` the ``rules`` find in ``body`` (de-duplicated, at most
     :data:`MAX_STREAMS`). Order: the rule order; but as soon as one stream got its quality from a ``quality_group`` the
-    list is sorted best quality first (highest number; ``auto`` / unlabelled last, stable). A URL on an unrelated host
-    (``badhosts``: social media, ads, analytics) is never a stream (a note says so), and within one rule the streams on the player's
-    OWN site come before foreign ones (a promo video earlier in the page must not beat the player's file). Pure function: no network;
+    list is sorted best quality first (highest number; ``auto`` / unlabelled last, stable). A non-media URL on an ad / analytics host
+    (``badhosts``; a media URL is never refused whatever its host, e.g. video.twimg.com) is skipped (a note says so), and within one rule the streams
+    on the player's OWN site come before foreign ones (ORDER only: nothing else is dropped). Pure function: no network;
     warnings (a URL that contradicts its declared type, a skipped DASH stream) are appended to ``notes`` when given."""
     streams: list[dict] = []
     index: dict[str, dict] = {}
@@ -410,8 +410,8 @@ def extract(body: str, base: str, rules: list[dict], notes: Optional[list] = Non
                 continue
             bad = badhosts.bad_stream_host(url)
             if bad:
-                if notes is not None and f"skipped a stream on an unrelated host ({bad})" not in notes:
-                    notes.append(f"skipped a stream on an unrelated host ({bad})")
+                if notes is not None and f"skipped a non-media URL on a tracker host ({bad})" not in notes:
+                    notes.append(f"skipped a non-media URL on a tracker host ({bad})")
                 continue
             known = index.get(url)
             if known is not None:   # the same URL again: only a real quality improves an unlabelled earlier find

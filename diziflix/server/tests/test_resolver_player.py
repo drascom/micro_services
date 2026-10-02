@@ -773,8 +773,8 @@ class ValidateTests(unittest.TestCase):
         self.assertIn("Chrome", params["fetch"]["help"])
         self.assertIn("Cloudflare", params["fetch"]["help"])
         self.assertEqual(params["follow"]["default"], [])
-        self.assertEqual(list(resolvers.TYPES)[-1], "player_page")
-        self.assertEqual(len(resolvers.TYPES), 6)
+        self.assertIn("player_page", resolvers.TYPES)
+        self.assertIn("player_page", [c["type"] for c in resolvers.catalog()])
         for name, spec in params.items():
             self.assertTrue(spec["help"], name)
         json.dumps(entry)
