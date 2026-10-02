@@ -1,0 +1,119 @@
+display_name: TR Dizi Izle
+site_id: trdiziizle
+base_url: https://www.trdiziizle.tv
+list_url: /dizi-arsivi-01/
+fetch_mode: http
+schema: MovieItem
+playback: video
+availability_gate:
+  probe: 2
+  require: player
+item_limit: 30
+list:
+  row_selector: div.single-item
+  fields:
+    title:
+      selector: div.cat-title a
+      replace:
+        ' izle': ''
+    detail_url:
+      selector: div.cat-title a
+      attr: href
+    poster_url:
+      fallback:
+      - selector: img[data-src]
+        attr: data-src
+      - selector: img[src]
+        attr: src
+detail:
+  fields:
+    synopsis:
+      selector: '#icerikcatright'
+      regex: ^(.*?)(?=Yapım Yılı)
+    year:
+      selector: '#icerikcatright'
+      regex: Yapım Yılı\s*:\s*(\d{4})
+      cast: int
+    cast:
+      selector: '#icerikcatright'
+      regex: Oyuncular\s*:\s*(.*?)(?=Tür\s*:|$)
+      split: ','
+      multi: true
+    genres:
+      selector: '#icerikcatright'
+      regex: Tür\s*:\s*(.*?)$
+      split: ','
+      multi: true
+    rating:
+      selector: .imedebe
+      regex: (\d+(?:[.,]\d+)?)
+      cast: float
+    poster_url:
+      fallback:
+      - selector: meta[property='og:image']
+        attr: content
+      - selector: '#icerikcatleft img[data-src]'
+        attr: data-src
+      - selector: '#icerikcatleft img[src]'
+        attr: src
+resolvers:
+- type: iframe
+  selector: iframe[src*="/player/oynat/"]
+providers:
+- trdizi_player
+normalize:
+  host: www.trdiziizle.tv
+  base_url: https://www.trdiziizle.tv/
+  key:
+    from:
+    - detail_url
+    regex:
+    - ^/diziler/(?P<slug>.+?)-(?:son-bolum-izle|izle)(?:-[^/]+)?/?$
+    - ^/(?P<slug>.+?)-(?P<episode>\d+)-bolum[^/]*/?$
+    template: '{slug}'
+  type: series
+collections:
+- id: latest_series_trdiziizle
+  title: Son Eklenen Diziler
+  path: /tr2/
+  role: latest_series
+  row_selector: div.cat-img-main
+  fields:
+    title:
+      selector: a[href]
+      attr: href
+      regex: /diziler/([^/]+)
+    detail_url:
+      selector: a[href]
+      attr: href
+    poster_url:
+      fallback:
+      - selector: img[data-src]
+        attr: data-src
+      - selector: img[src]
+        attr: src
+series_page:
+  row_selector: div.bolumust
+  fields:
+    url:
+      selector: a:not(.wpfp-link)
+      attr: href
+  episode_url_regex: ^/(?P<slug>[^/]+?)-(?P<episode>\d+)-bolum
+  default_season: 1
+  series_url_regex: ^/diziler/
+  series_slug_regex: ^/diziler/(?P<slug>.+?)-(?:son-bolum-izle|izle)(?:-[^/]+)?/?$
+  same_series_regex: ^/{slug}-\d+-bolum
+search:
+  url: /?s={query}
+  fetch: http
+  row_selector: div.listepisodes
+  fields:
+    title:
+      selector: 'div.bolum-alt #dizi-ismi a'
+    detail_url:
+      selector: div.bolum-alt a
+      attr: href
+notes: Home only uses Son Eklenen Diziler; Son Eklenen Bölümler intentionally excluded.
+  The archive is the list and series pages provide episodes. Synopsis is taken from
+version: 1
+updated_at: '2026-10-02T15:24:30Z'

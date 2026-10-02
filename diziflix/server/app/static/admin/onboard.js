@@ -668,7 +668,7 @@ function stepHtml(s,i,prob){
   }
   if(dets.length){
     h+='<button class="obdt" data-ob="tog" data-step="'+esc(s.id)+'" aria-expanded="'+(open?'true':'false')+'">Ayrıntılar ('+dets.length+') '+(open?'▴':'▾')+'</button>';
-    if(open)h+='<dl class="obdl">'+dets.map(function(d){return '<dt>'+esc(d.label||'')+'</dt><dd>'+esc(str(d.value))+'</dd>'}).join('')+'</dl>';
+    if(open)h+='<dl class="obdl">'+dets.map(function(d){return '<dt>'+esc(d.label||'')+'</dt><dd'+(/^[\d\s.,:\/%+-]{1,14}$/.test(str(d.value))?' class="num"':'')+'>'+esc(str(d.value))+'</dd>'}).join('')+'</dl>';
   }
   return h+'</div>';
 }
