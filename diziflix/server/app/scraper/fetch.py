@@ -375,9 +375,12 @@ def fetch(url: str, *, timeout: float = 25.0, retries: int = 3) -> str:
     raise FetchError(f"failed to fetch {url}: {last_exc}")
 
 
-def page(cfg, url: str, *, wait_for: str = "") -> str:
-    """Every configured HTML page uses the shared browser transport."""
+def page(cfg, url: str, *, wait_for: str = "", method: str = "GET", data=None) -> str:
+    """Every configured HTML page uses the shared browser transport. ``method="POST"`` (+ ``data`` = form fields, ``{}`` = empty body)
+    is for a yaml collection that says so: http mode and the site's own host only (``transport._post_job``)."""
     from .transport import fetch_page
+    if (method or "GET").upper() == "POST":
+        return fetch_page(cfg, url, wait_for=wait_for, method="POST", data=data)
     return fetch_page(cfg, url, wait_for=wait_for)
 
 
@@ -392,9 +395,11 @@ def browser_page(cfg, url: str, *, wait_for: str = "") -> str:
     return fetch_page(SimpleNamespace(fetch_mode="browser", data=data), url, wait_for=wait_for)
 
 
-def page_bundle(cfg, url: str, *, wait_for: str = "") -> dict:
-    """Fetch a page and return rendered HTML plus same-session assets."""
+def page_bundle(cfg, url: str, *, wait_for: str = "", method: str = "GET", data=None) -> dict:
+    """Fetch a page and return rendered HTML plus same-session assets (``method`` / ``data``: see :func:`page`)."""
     from .transport import fetch_page_bundle
+    if (method or "GET").upper() == "POST":
+        return fetch_page_bundle(cfg, url, wait_for=wait_for, method="POST", data=data)
     return fetch_page_bundle(cfg, url, wait_for=wait_for)
 
 

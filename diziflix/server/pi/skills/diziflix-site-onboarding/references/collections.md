@@ -76,6 +76,7 @@ catalogue (`?page=2`); a site without such sections gets fewer collections (or n
 | `fields` | optional: own field specs; they REPLACE `list.fields` completely (so they need `title` and `detail_url`) |
 | `required_fields` / `excluded_fields` | keep only cards where these fields are filled / empty (e.g. `required_fields: [season, episode]`) |
 | `sort_by` / `sort_desc` | order by a parsed numeric field, e.g. a score |
+| `method` / `data` | optional: a page that opens only with a form POST (GET is empty / 502): `method: POST` + `data: {field: value}` (<= 20 plain fields, `{}` = empty POST); needs `fetch_mode: http`, the site's own host. Look at it with `fetch_page(url, method: POST, data: {...})`; default GET |
 
 `path` is fetched and parsed with `list.row_selector` + `list.fields` unless the collection has its own. Each card must normalize with the SAME
 `normalize:` rules as the list. At most 8 collections, each with at least 3 usable items (`collections_valid_count`); each ingests at most

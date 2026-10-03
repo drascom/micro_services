@@ -225,23 +225,25 @@ const TOOLS: ToolSpec[] = [
     name: "fetch_page",
     label: "Fetch page",
     description:
-      "Download a page of the site and store it: page_id, fetch_mode used (copy http / browser to the yaml fetch_mode), html_excerpt " +
-      "(scripts stripped: use grep_page). A page that is really ANOTHER path (meta refresh, JavaScript jump, canonical url) also gives " +
-      "canonical_url and redirect_hint {kind, target, note}: fetch the target and use it as list_url / collection path. A player / " +
-      "iframe URL that answers 404, 403 or 'Just a moment' wants the page it sits in as Referer: fetch it again with referer=<the detail page " +
-      "URL> (Chrome TLS fingerprint, passes Cloudflare's TLS check; fetch_mode 'chrome' is NOT a yaml fetch_mode).",
+      "Download a site page, store it: page_id, fetch_mode used (copy http / browser to the yaml fetch_mode), html_excerpt " +
+      "(scripts stripped: grep_page). A page that is really ANOTHER path (refresh / JS jump / canonical) also gives " +
+      "canonical_url + redirect_hint {kind, target, note}: fetch the target, use it as list_url / collection path. A player / " +
+      "iframe URL that answers 404, 403 or 'Just a moment' wants its page as Referer: refetch with referer=<detail page URL> (Chrome TLS, passes Cloudflare; " +
+      "mode 'chrome' is NOT a yaml fetch_mode). POST + data: form POST (collection `method: POST`; http only).",
     parameters: obj(
       {
         url: str("Absolute http(s) URL."),
-        mode: { type: "string", enum: ["auto", "http", "browser", "chrome"], description: "Default auto. 'browser' = slow, for JS pages; 'chrome' = Chrome TLS fingerprint over http (implied by referer)." },
+        mode: { type: "string", enum: ["auto", "http", "browser", "chrome"], description: "Default auto. 'browser' = slow, for JS pages; 'chrome' = Chrome TLS fingerprint (implied by referer)." },
         wait_for: str("CSS selector the browser waits for (browser mode)."),
         referer: str("Absolute URL of the detail page that embeds this player / iframe URL (mode chrome)."),
+        method: { type: "string", enum: ["GET", "POST"] },
+        data: { type: "object", description: "Form fields {name: value}; {} = empty POST." },
       },
       ["url"],
     ),
     method: "POST",
     path: "/fetch",
-    body: (p) => pick(p, ["url", "mode", "wait_for", "referer"]),
+    body: (p) => pick(p, ["url", "mode", "wait_for", "referer", "method", "data"]),
   },
   {
     name: "query_html",

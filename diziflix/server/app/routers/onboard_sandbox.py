@@ -9,13 +9,14 @@ that ``issue_token(draft_id)`` handed out (tokens live in memory only; ``revoke_
 through ``netguard.check_url`` (SSRF), before the fetch and, when the transport reports it, after redirects. Answers
 are small on purpose (they go to an LLM): text is clipped, lists are capped.
 
-``POST /fetch``          {url, mode: auto|http|browser|chrome, wait_for?, referer?}
+``POST /fetch``          {url, mode: auto|http|browser|chrome, wait_for?, referer?, method?: GET|POST, data?: {field: value}}
                                                                       -> page_id, final_url, fetch_mode, status, bytes, title, html_excerpt
                                                                       (+ ``canonical_url`` and ``redirect_hint {kind, target, note}`` when the page is
                                                                       really ANOTHER path of the site: http / meta refresh / bare JS jump /
                                                                       the root's canonical or JSON-LD WebPage url; ``_page_signals``)
                                                                       (``chrome`` / a ``referer`` = Chrome TLS fingerprint + Referer through
                                                                       ``fetch.impersonated_get``: Cloudflare-safe player pages that 404 without it)
+                                                                      (``method: POST``: a form POST like a yaml collection's, http only, the draft site's own host)
 ``POST /query``          {page_id, selector, attr?, limit}           -> count, items[{text, attr_value?, outer_html}]
 ``POST /grep``           {page_id, pattern, context=120, limit=10, flags?} -> count, matches[{offset, text}] (regex on the RAW page text)
 ``POST /outline``        {page_id}                                   -> title, repeating card candidates, iframe/link host counts,
@@ -203,7 +204,7 @@ EPISODE_LINK_MIN = 3          # outline: links of one shape that make a group
 # ``genre`` (whole catalogues) stay valid roles of ``scraper/collections`` but a draft gets a warning for them
 ONBOARD_ROLES = ("trending", "latest_episodes", "latest_series", "latest_movies", "noteworthy_movies", "featured", "upcoming", "category")
 COLLECTION_KEYS = frozenset({"id", "title", "path", "role", "row_selector", "fields", "required_fields", "excluded_fields",
-                             "sort_by", "sort_desc", "genre", "category"})
+                             "sort_by", "sort_desc", "genre", "category", "method", "data"})
 NO_COLLECTIONS_WARNING = ("no collections: ana ekran satırları (trendler/yeni/dikkate değer) bu siteden dolmayacak; "
                           "ana sayfada ilgili bölümler varsa ekle")
 # Hardening criteria of a NEW site's onboarding (``_analyze(harden=True)``: ``test_config`` / ``submit`` / ``onboard.save`` of a new
@@ -800,7 +801,11 @@ def _clean_referer(referer: Optional[str]) -> str:
     return value
 
 
-def _fetch_once(url: str, mode: str, wait_for: str, referer: str = "", deadline: Optional[float] = None) -> dict:
+def _fetch_once(url: str, mode: str, wait_for: str, referer: str = "", deadline: Optional[float] = None,
+                method: str = "GET", data: Optional[dict] = None, base_url: str = "") -> dict:
+    if method == "POST":   # a declarative form POST (collections: method / data): the engine's http transport, the site's own host only
+        bundle = fetch.page_bundle(_draft_cfg({"fetch_mode": "http", "base_url": base_url}), url, wait_for=wait_for, method="POST", data=data or {})
+        return bundle if isinstance(bundle, dict) else {"html": str(bundle or "")}
     if mode == "chrome":
         left = CHROME_TIMEOUT if deadline is None else max(1.0, min(CHROME_TIMEOUT, deadline - time.monotonic()))
         page = fetch.impersonated_get(url, headers={"Referer": referer} if referer else {}, timeout=left,
@@ -810,13 +815,28 @@ def _fetch_once(url: str, mode: str, wait_for: str, referer: str = "", deadline:
     return bundle if isinstance(bundle, dict) else {"html": str(bundle or "")}
 
 
-def _fetch_store(url: str, mode: str, wait_for: str, deadline: float, referer: str = "") -> dict:
+def _fetch_store(url: str, mode: str, wait_for: str, deadline: float, referer: str = "", method: str = "GET",
+                 data: Optional[dict] = None, base_url: str = "") -> dict:
     """Fetch ``url`` (``mode`` auto = http first, browser on a challenge / thin page; ``chrome`` or a ``referer`` = the
     Chrome-fingerprint transport with that Referer, no escalation), keep it in the page store.
+
+    ``method="POST"`` (+ ``data`` form fields, ``{}`` = empty body) is the yaml collection POST: http only (auto reads as http; browser /
+    chrome / a referer are refused, never turned into a GET), the host of ``base_url`` only, a small body (``collections.check_request``).
 
     Returns ``{meta, html, bundle, attempts}``. ``ApiError`` for a refused URL (400), a failed fetch (502) or time (504)."""
     url = _check(url)
     referer = _clean_referer(referer)
+    post = (method or "GET").upper() == "POST"
+    if post:
+        problems = site_collections.check_request({"method": "POST", "data": data if data is not None else {}})
+        if problems:
+            raise ApiError(400, "bad_post", "; ".join(problems))
+        if mode in ("browser", "chrome") or referer:
+            raise ApiError(400, "post_unsupported", "POST works over the http transport only (mode auto / http, no referer): the browser and "
+                                                    "chrome transports cannot send a POST body, and a POST is never turned into a GET")
+        if not base_url or _host_key(url) != _host_key(base_url):
+            raise ApiError(400, "post_host", f"POST only to the site's own host ({_host_key(base_url) or 'unknown'}), not {_host_key(url)}")
+        mode = "http"
     if referer:
         mode = "chrome"
     modes = ["http", "browser"] if mode == "auto" else [mode]
@@ -826,7 +846,7 @@ def _fetch_store(url: str, mode: str, wait_for: str, deadline: float, referer: s
     for index, current in enumerate(modes):
         _check_deadline(deadline)
         try:
-            bundle = _fetch_once(url, current, wait_for, referer, deadline)
+            bundle = _fetch_once(url, current, wait_for, referer, deadline, "POST" if post else "GET", data, base_url)
         except fetch.FetchError as exc:
             attempts.append(f"{current}: {' '.join(str(exc).split())[:200]}")
             if mode == "auto" and index == 0 and _escalate(exc):
@@ -851,7 +871,8 @@ def _fetch_store(url: str, mode: str, wait_for: str, deadline: float, referer: s
     html = bundle.get("html") or ""
     final = _check(str(bundle.get("final_url") or url))   # redirects (when the transport reports them) are re-checked
     status = int(bundle.get("status") or 200)
-    meta = onboard_store.save_page(url, final, used, status, html, referer=referer if used == "chrome" else "")
+    meta = onboard_store.save_page(url, final, used, status, html, referer=referer if used == "chrome" else "",
+                                   post=site_collections.form_body(data) if post else None)
     onboard_store.maybe_prune()
     return {"meta": meta, "html": html, "bundle": bundle, "attempts": attempts}
 
@@ -986,13 +1007,37 @@ def _page_signals(html: str, requested: str, final: str = "") -> dict:
     return out
 
 
-def _do_fetch(body, *, deadline: float) -> dict:
-    got = _fetch_store(body.url, body.mode, body.wait_for or "", deadline, body.referer or "")
+def _post_base(draft_id: str) -> str:
+    """The site origin a POST of this draft may go to: the registered site of an edit draft, else the URL the onboarding started from."""
+    if not onboard_store.valid_draft_id(draft_id):
+        return ""
+    site = _edit_site(draft_id)
+    if site:
+        try:
+            return scfg.load_site(site).base_url
+        except Exception:
+            return ""
+    start = str((onboard_store.get_draft(draft_id) or {}).get("url") or "")
+    parts = urlsplit(start)
+    return f"{parts.scheme}://{parts.netloc}" if parts.scheme in ("http", "https") and parts.netloc else ""
+
+
+def _do_fetch(body, draft_id: str = "", *, deadline: float) -> dict:
+    method = (body.method or "GET").upper()
+    if method == "POST" or body.data is not None:
+        problems = site_collections.check_request({"method": method, "data": body.data})
+        if problems:
+            raise ApiError(400, "bad_post", "; ".join(problems))
+    post = method == "POST"
+    got = _fetch_store(body.url, body.mode, body.wait_for or "", deadline, body.referer or "", method,
+                       body.data if post else None, _post_base(draft_id) if post else "")
     meta, html = got["meta"], got["html"]
     out = {"page_id": meta["page_id"], "final_url": meta["final_url"], "fetch_mode": meta["fetch_mode"],
            "status": meta["status"], "bytes": meta["bytes"], "title": _title_of(html),
            "html_excerpt": heal._clean_html(html, limit=EXCERPT_CHARS)}
     out.update(_page_signals(html, meta.get("url") or body.url, meta.get("final_url") or ""))
+    if post:
+        out["method"] = "POST"
     if meta["fetch_mode"] == "chrome":
         out["hint"] = ("fetch_mode 'chrome' is a diagnostic transport (Chrome TLS fingerprint + the Referer): it is NOT a "
                        "valid yaml fetch_mode. To read this page at playback time use a player_page resolver "
@@ -1723,7 +1768,7 @@ UNKNOWN_CATEGORY_HINT = ("kategori listede yok: kullanıcıya sor (ask_user, fie
                          "Başlangıç mesajındaki kategorilerden birini kullan; kategori icat etme")
 
 
-def _check_collection(index: int, c: Any, base: str, strict_categories: bool = False) -> tuple[dict, dict]:
+def _check_collection(index: int, c: Any, base: str, strict_categories: bool = False, fetch_mode: str = "http") -> tuple[dict, dict]:
     """Syntax of one yaml ``collections:`` entry (no network: the page goes through the SSRF guard when it is fetched)."""
     spec = c if isinstance(c, dict) else {}
     entry: dict[str, Any] = {"id": str(spec.get("id") or f"#{index}"), "role": str(spec.get("role") or ""),
@@ -1748,6 +1793,9 @@ def _check_collection(index: int, c: Any, base: str, strict_categories: bool = F
         url = urljoin(base, path.strip())
         if urlsplit(url).scheme not in ("http", "https") or _host_key(url) != _host_key(base):
             errors.append(f"path: {path!r} must stay on the site's own host ({urlsplit(base).hostname})")
+    errors += site_collections.check_request(spec)
+    if site_collections.method_of(spec) == "POST" and fetch_mode == "browser":
+        errors.append("method: POST needs fetch_mode: http (the browser engine cannot send a POST body)")
     if spec.get("row_selector") is not None:
         problem = _check_selector(spec["row_selector"])
         if problem:
@@ -1808,7 +1856,8 @@ def _check_collections(data: dict, site_hint: str, strict_categories: bool = Fal
         warnings.append(f"collections: site_id {in_yaml!r} in the yaml differs from site_id_suggestion {hint!r}; "
                         f"the collection ids must end in the site id that is saved")
     base = str(data.get("base_url") or "")
-    pairs = [_check_collection(i, c, base, strict_categories) for i, c in enumerate(raw)]
+    mode = str(data.get("fetch_mode") or "http")
+    pairs = [_check_collection(i, c, base, strict_categories, mode) for i, c in enumerate(raw)]
     seen: dict[str, int] = {}
     derived: set[str] = set()
     for spec, entry in pairs:
@@ -1879,11 +1928,11 @@ def _collections_stage(cfg, pairs: list, main: Optional[tuple[str, str, list, in
     nothing: the list stage has those rows already)."""
     from ..library import ingest, normalize as nrm
     limit = _item_limit(cfg.data)
-    pages: dict[str, tuple[str, str]] = {}   # url -> (html, page id): two collections on one page fetch it once
+    pages: dict[tuple, tuple[str, str]] = {}   # (url, method, POST body) -> (html, page id): two collections on one page fetch it once
     if main:
         found = onboard_store.load_page(main[1])
         if found:
-            pages[main[0]] = (found[0], main[1])
+            pages[(main[0], "GET", "")] = (found[0], main[1])
     skipped: list[str] = []
     for spec, entry in pairs:
         if entry["errors"]:
@@ -1902,14 +1951,17 @@ def _collections_stage(cfg, pairs: list, main: Optional[tuple[str, str, list, in
                                           "problem": f"the list page's {len(main[2])} valid item(s) gave {len(items)} after required_fields / excluded_fields",
                                           "list_items_missing_required_field": missing or None})
             else:
-                if url not in pages:
+                method, form = site_collections.request_of(spec)
+                page_key = (url, *site_collections.request_key(spec))   # the same URL with another POST body is another page
+                if page_key not in pages:
                     if deadline - time.monotonic() < COLLECTION_NEEDS.get(cfg.fetch_mode, 15.0):
                         entry["status"] = "skipped"
                         skipped.append(entry["id"])
                         continue
-                    got = _fetch_store(url, cfg.fetch_mode, spec.get("row_selector") or cfg.row_selector, deadline)
-                    pages[url] = (got["html"], got["meta"]["page_id"])
-                html, entry["page_id"] = pages[url]
+                    got = _fetch_store(url, cfg.fetch_mode, spec.get("row_selector") or cfg.row_selector, deadline,
+                                       method=method, data=form, base_url=cfg.base_url)
+                    pages[page_key] = (got["html"], got["meta"]["page_id"])
+                html, entry["page_id"] = pages[page_key]
                 count, items, fill = _parse_collection(cfg, spec, html, limit, rows_out)
                 if not count or len(items) < MIN_COLLECTION_COUNT or any(fill.get(n, 0.0) == 0.0 for n in ("title", "detail_url")):
                     _rows_diagnostics(html, spec.get("row_selector") or cfg.row_selector, spec.get("fields") or cfg.list_fields,
@@ -4205,6 +4257,9 @@ class FetchBody(BaseModel):
     referer: Optional[str] = Field(None, max_length=2048, description="Referer header (an http(s) URL, usually the detail "
                                    "page); setting it (or mode chrome) fetches with the Chrome TLS fingerprint instead of "
                                    "crawlee / the browser")
+    method: Literal["GET", "POST"] = Field("GET", description="POST = a form POST like a yaml collection's `method: POST` (http only, the "
+                                           "site's own host)")
+    data: Optional[dict] = Field(None, description="POST form fields {name: string | number}; {} = an empty POST")
 
 
 class QueryBody(BaseModel):
@@ -4301,7 +4356,7 @@ class SubmitBody(BaseModel):
 
 @router.post("/fetch")
 async def sandbox_fetch(body: FetchBody, _draft: str = Depends(_guard)) -> dict:
-    return await _bounded(_do_fetch, body)
+    return await _bounded(_do_fetch, body, _draft)
 
 
 @router.post("/query")

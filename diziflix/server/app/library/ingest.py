@@ -228,7 +228,9 @@ def _fetch_collection(cfg: scfg.SiteConfig, collection: dict, limit: int) -> lis
     path = collection["path"]
     row_selector = collection.get("row_selector") or cfg.row_selector
     fields = collection.get("fields") or cfg.list_fields
-    html = fetch.page(cfg, urljoin(cfg.base_url, path), wait_for=row_selector)
+    method, form = scollections.request_of(collection)
+    post = {"method": method, "data": form} if method == "POST" else {}   # yaml ``method: POST``; GET calls stay exactly as they were
+    html = fetch.page(cfg, urljoin(cfg.base_url, path), wait_for=row_selector, **post)
     raw = parse.parse_list(html, row_selector, fields)
     valid, metrics = schema.validate_items(cfg.schema, raw)
     verdict = drift.detect(metrics, {"min_fill_ratio": cfg.baseline().get("min_fill_ratio", .5)})
@@ -244,6 +246,8 @@ def parses_main_list(cfg: scfg.SiteConfig, collection: dict) -> bool:
     """True when ``collection`` reads the MAIN list page (``list_url``) with the main parse rules: its items are then
     filtered out of the already-fetched main result (no second fetch). A collection on that same path with its own
     ``row_selector`` or ``fields`` (different from the main ones) needs a parse of its own (``_fetch_collection``)."""
+    if scollections.method_of(collection) == "POST":   # a POSTed page is never the main (GET) list page
+        return False
     if urljoin(cfg.base_url, collection["path"]) != urljoin(cfg.base_url, cfg.list_url):
         return False
     row_selector, fields = collection.get("row_selector"), collection.get("fields")

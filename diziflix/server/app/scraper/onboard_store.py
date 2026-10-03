@@ -81,9 +81,9 @@ def valid_draft_id(draft_id: Any) -> bool:
 
 # --- pages ------------------------------------------------------------------------------------------------------
 
-def save_page(url: str, final_url: str, fetch_mode: str, status: int, html: str, referer: str = "") -> dict:
+def save_page(url: str, final_url: str, fetch_mode: str, status: int, html: str, referer: str = "", post: Optional[str] = None) -> dict:
     """Store a fetched page (HTML cut at ``ONBOARD_MAX_PAGE_BYTES``) and return its meta, ``page_id`` included
-    (``referer`` is recorded only when the page was fetched with one)."""
+    (``referer`` is recorded only when the page was fetched with one; ``post`` = the urlencoded body of a POST fetch, ``""`` = empty POST)."""
     raw = (html or "").encode("utf-8", errors="replace")
     truncated = len(raw) > config.ONBOARD_MAX_PAGE_BYTES
     if truncated:
@@ -93,6 +93,8 @@ def save_page(url: str, final_url: str, fetch_mode: str, status: int, html: str,
             "bytes": len(raw), "truncated": truncated, "fetched_at": _now()}
     if referer:
         meta["referer"] = referer
+    if post is not None:
+        meta["method"], meta["post_data"] = "POST", post
     pages = _dir("pages")
     _atomic_write(os.path.join(pages, page_id + ".html"), raw)
     _write_json(os.path.join(pages, page_id + ".json"), meta)

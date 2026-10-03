@@ -17,8 +17,9 @@ async def crawl(job: dict) -> dict:
     if job.get("mode") != "http":
         raise ValueError("Crawlee worker only supports HTTP-mode jobs")
 
+    post = str(job.get("method") or "GET").upper() == "POST"
     result = {"error": "request_not_processed (check robots.txt/access)", "html": "",
-              "engine": "crawlee-http"}
+              "engine": "crawlee-http", "method": "POST" if post else "GET"}   # the parent checks it: an old worker would GET silently
     crawler = HttpCrawler(
         max_requests_per_crawl=1,
         max_request_retries=0,
@@ -46,7 +47,15 @@ async def crawl(job: dict) -> dict:
     async def failed(context, error):
         result["error"] = str(error)[:1500]
 
-    await asyncio.wait_for(crawler.run([job["url"]]), timeout=85)
+    target = job["url"]
+    if post:   # a form POST (yaml collection ``method: POST``); the parent has already limited host, body size and mode
+        from crawlee import Request
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        for name, key in (("Referer", "referer"), ("Origin", "origin")):
+            if job.get(key):
+                headers[name] = str(job[key])
+        target = Request.from_url(job["url"], method="POST", payload=str(job.get("form") or "").encode("utf-8"), headers=headers)
+    await asyncio.wait_for(crawler.run([target]), timeout=85)
     return result
 
 

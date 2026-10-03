@@ -12,14 +12,42 @@ import sys
 import tempfile
 import threading
 import time
+from urllib.parse import urlsplit
 
 from .fetch import FetchError
+from .collections import MAX_POST_BYTES, form_body
 
 _lock = threading.Lock()
 
 
-def _worker_result(cfg, url: str, *, wait_for: str = "", capture: str = "page") -> dict:
+def _host_key(url: str) -> str:
+    host = (urlsplit(url).hostname or "").lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+def _post_job(cfg, url: str, data) -> dict:
+    """The POST part of a worker job (``method`` / ``form`` / ``referer`` / ``origin``). Declarative list fetches only: HTTP mode, the
+    site's OWN host (``cfg.base_url``; no side-effecting submit to anywhere else), a small urlencoded body. Never falls back to GET."""
+    if cfg.fetch_mode != "http":
+        raise FetchError("POST needs fetch_mode: http (the browser engine cannot send a POST body)")
+    base = str(cfg.data.get("base_url") or "")
+    if not base or not _host_key(base) or _host_key(url) != _host_key(base):
+        raise FetchError(f"POST only to the site's own host ({_host_key(base) or 'base_url missing'}), not {_host_key(url) or url!r}")
+    if urlsplit(url).scheme not in ("http", "https"):
+        raise FetchError(f"POST needs an http(s) URL, not {url!r}")
+    form = form_body(data)
+    if len(form.encode("utf-8")) > MAX_POST_BYTES:
+        raise FetchError(f"POST body is over {MAX_POST_BYTES} bytes")
+    origin = f"{urlsplit(base).scheme}://{urlsplit(base).netloc}"
+    return {"method": "POST", "form": form, "referer": origin + "/", "origin": origin}
+
+
+def _worker_result(cfg, url: str, *, wait_for: str = "", capture: str = "page", method: str = "GET", data=None) -> dict:
     mode = cfg.fetch_mode
+    post = (method or "GET").upper() == "POST"
+    if post and capture != "page":
+        raise FetchError("POST is for page fetches only")
+    post_job = _post_job(cfg, url, data) if post else {}
     engine = "obscura" if mode == "browser" else "crawlee-http"
     worker_name = "obscura_worker.py" if mode == "browser" else "crawlee_worker.py"
     worker_env = "SCRAPER_OBSCURA_WORKER" if mode == "browser" else "SCRAPER_CRAWLEE_WORKER"
@@ -52,6 +80,7 @@ def _worker_result(cfg, url: str, *, wait_for: str = "", capture: str = "page") 
         "stealth": bool(cfg.data.get("obscura_stealth", True)),
         "obey_robots": True,
         "settle_seconds": int(cfg.data.get("obscura_settle_seconds", 1)),
+        **post_job,
     }
     lock_path = (
         os.environ.get("SCRAPER_WORKER_LOCK")
@@ -81,6 +110,8 @@ def _worker_result(cfg, url: str, *, wait_for: str = "", capture: str = "page") 
         if result.get("error"):
             raise FetchError(
                 f"{engine} {mode}: {result.get('error')} for {url}")
+        if post and result.get("method") != "POST":   # an older installed worker would have sent a GET: never accept that silently
+            raise FetchError(f"{engine} runtime cannot POST (it still runs the old worker): reinstall it with tools/install_crawler.sh")
         if capture == "cookies":
             if mode != "browser" or not isinstance(result.get("cookies"), list):
                 raise FetchError(f"invalid {engine} cookie response for {url}")
@@ -94,12 +125,12 @@ def _worker_result(cfg, url: str, *, wait_for: str = "", capture: str = "page") 
         return result
 
 
-def fetch_page_bundle(cfg, url: str, *, wait_for: str = "") -> dict:
-    return _worker_result(cfg, url, wait_for=wait_for)
+def fetch_page_bundle(cfg, url: str, *, wait_for: str = "", method: str = "GET", data=None) -> dict:
+    return _worker_result(cfg, url, wait_for=wait_for, method=method, data=data)
 
 
-def fetch_page(cfg, url: str, *, wait_for: str = "") -> str:
-    return fetch_page_bundle(cfg, url, wait_for=wait_for)["html"]
+def fetch_page(cfg, url: str, *, wait_for: str = "", method: str = "GET", data=None) -> str:
+    return fetch_page_bundle(cfg, url, wait_for=wait_for, method=method, data=data)["html"]
 
 
 def fetch_cookies(cfg, url: str) -> list[dict]:
