@@ -221,6 +221,12 @@
       ]
     }
   ],
+  "source_names": [
+    {
+      "id": "yabancidizi",
+      "name": "Yabancı Dizi"
+    }
+  ],
   "resume": {
     "episode_id": "dizi-sinyal:s2:e1",
     "position": 600

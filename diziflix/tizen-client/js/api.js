@@ -181,7 +181,7 @@
         '&offset=' + (offset || 0) + '&limit=' + (limit || 20) + sourceQuery());
     },
     /* opts.poll: `?poll=1` yoklamasi (js/hydrate_watch.js) - sunucu ASLA is baslatmaz, yalniz `hydrating` durumunu yansitir;
-       kisa zaman asimi. Imza geriye uyumlu: opts yoksa eski davranis. */
+       kisa zaman asimi. Imza geriye uyumlu: opts yoksa eski davranis. Yanit EK alani `source_names:[{id,name}]` (kaynak site adlari) aynen gecer. */
     detail: function (itemId, pid, opts) {
       var path = '/api/detail/' + enc(itemId) + '?profile=' + enc(pid);
       if (opts && opts.poll) return request(path + '&poll=1', { timeout: 15000 });

@@ -47,6 +47,22 @@
     return h > 0 ? (h + ' sa ' + m + ' dk') : (m + ' dk');
   }
 
+  var SOURCE_MAX = 4;        /* detayda en cok bu kadar site etiketi, kalani "+N" */
+  function sourceLabel(list) {
+    if (!list || !list.length) return null;
+    var names = [];
+    for (var i = 0; i < list.length; i++) {
+      var n = list[i] && (list[i].name || list[i].id);
+      if (n) names.push(String(n));
+    }
+    if (!names.length) return null;
+    var box = mk('div', 'detail-sources');
+    box.appendChild(mk('span', 'src-label', 'Kaynak:'));
+    names.slice(0, SOURCE_MAX).forEach(function (n) { box.appendChild(mk('span', 'src-tag', n)); });
+    if (names.length > SOURCE_MAX) box.appendChild(mk('span', 'src-tag more', '+' + (names.length - SOURCE_MAX)));
+    return box;
+  }
+
   function truncate(text, limit) {
     var value = String(text || '').replace(/\s+/g, ' ').trim();
     if (value.length <= limit) return value;
@@ -766,6 +782,9 @@
       meta.appendChild(mk('span', 'score', 'Puan ' + d.rating));
     }
     body.appendChild(meta);
+    /* "Kaynak: A · B": icerigin geldigi site(ler) (sunucu `source_names`; yoksa/bos ise hic cizilmez - eski sunucu). Salt metin, odaklanmaz. */
+    var srcRow = sourceLabel(d.source_names);
+    if (srcRow) body.appendChild(srcRow);
     var status = d.availability || {};
     if (status.state === 'unavailable') {
       var emptySeriesNow = d.type === 'series' && !(d.seasons && d.seasons.length);

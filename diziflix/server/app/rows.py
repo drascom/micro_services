@@ -579,6 +579,23 @@ def detail_actions(data: dict[str, Any]) -> list[dict[str, Any]]:
     return actions
 
 
+def source_names(site_ids) -> list[dict[str, str]]:
+    """``[{"id", "name"}]`` for the sites a title comes from (``name`` = the site yaml's ``display_name``; the id itself
+    for a site that is unknown/removed or whose config cannot be read). Never raises."""
+    out = []
+    for sid in site_ids or []:
+        if not isinstance(sid, str) or not sid:
+            continue
+        name = sid
+        try:
+            from .scraper import config as scfg
+            name = str(scfg.load_site(sid).data.get("display_name") or sid)
+        except Exception:
+            pass
+        out.append({"id": sid, "name": name})
+    return out
+
+
 def detail(item_id: str, profile_id: str) -> Optional[dict[str, Any]]:
     snap = get_cache()
     item = snap.by_id.get(item_id)
@@ -599,6 +616,7 @@ def detail(item_id: str, profile_id: str) -> Optional[dict[str, Any]]:
         )
     )
     out["seasons"] = [season_json(item_id, s, eprog) for s in item.get("seasons", [])]
+    out["source_names"] = source_names(out.get("sources"))
 
     prog = pmap.get(item_id)
     if item["type"] == "movie":

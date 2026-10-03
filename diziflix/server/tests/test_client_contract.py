@@ -255,6 +255,7 @@ class DetailTests(Base):
         self.assertTrue(d["in_mylist"])
         self.assertEqual([a["kind"] for a in d["actions"]], ["resume_movie", "play_trailer"])
         self.assertEqual(d["actions"][0]["position"], 3000)
+        self.assertEqual([n["id"] for n in d["source_names"]], d["sources"], "source_names = display names of sources")
         self.assertEqual(self.detail(FILM, "p2")["actions"][0], {"kind": "play_movie", "item_id": FILM})
 
     def test_film_without_poster_overview_year_rating(self):

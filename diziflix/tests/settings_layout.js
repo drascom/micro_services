@@ -227,8 +227,8 @@ const checked = g => g.children.filter(b => b.getAttribute('aria-checked') === '
   assert(!/(width|height):\s*(1920|1080)px/.test(code), 'no fixed stage-size boxes (responsive stage)');
   assert(!/\.set-(row|label|last)\b/.test(read('css/base.css')), 'old settings rules removed from base.css');
   const html = read('index.html');
-  assert(/css\/settings\.css\?v=responsive-v34/.test(html), 'settings.css linked');
-  assert(!/responsive-v31/.test(html) && (html.match(/responsive-v34/g) || []).length === (html.match(/\?v=/g) || []).length, 'one cache-bust version everywhere');
+  assert(/css\/settings\.css\?v=responsive-v35/.test(html), 'settings.css linked');
+  assert(!/responsive-v31/.test(html) && (html.match(/responsive-v35/g) || []).length === (html.match(/\?v=/g) || []).length, 'one cache-bust version everywhere');
 
   console.log('Settings layout: embedded test button, Kaydet after the input, two radio cards, no bottom Geri, top-right Profil değiştir, D-pad focus map: OK');
 })().catch(e => { console.error(e); process.exitCode = 1; });

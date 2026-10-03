@@ -34,6 +34,12 @@
   "runtime": 0,
   "in_mylist": false,
   "seasons": [],
+  "source_names": [
+    {
+      "id": "yabancidizi",
+      "name": "Yabancı Dizi"
+    }
+  ],
   "resume": {
     "episode_id": "dizi-umut",
     "position": 0

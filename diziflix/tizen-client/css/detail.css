@@ -29,6 +29,9 @@
 .detail-meta{font-size:24px;color:var(--fg-dim);margin-bottom:18px;}
 .detail-meta .dot{margin:0 12px;color:#555;}
 .detail-meta .score{color:var(--accent);font-weight:700;}
+/* "Kaynak: <site>" etiketleri (arama kartindaki .src-tag stili, home.css); odaklanmaz, uzun ad kisaltilir */
+.detail-sources{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:-6px 0 18px;font-size:20px;color:var(--fg-dim);}
+.detail-sources .src-tag{max-width:260px;font-size:20px;line-height:28px;}
 .hydrating-note{color:var(--fg-dim);font-style:italic;}   /* "Detaylar yukleniyor…" yer tutucusu (odaksiz) */
 .detail-actions{display:flex;margin-bottom:20px;}
 .detail-overview{

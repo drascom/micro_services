@@ -43,6 +43,12 @@
   "runtime": 108,
   "in_mylist": true,
   "seasons": [],
+  "source_names": [
+    {
+      "id": "yabancidizi",
+      "name": "Yabancı Dizi"
+    }
+  ],
   "resume": {
     "episode_id": "film-gece",
     "position": 3000

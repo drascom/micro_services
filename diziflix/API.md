@@ -437,6 +437,10 @@ Boot yanıtında `source` ve `sources`; kart/detay yanıtlarında `sources` (kay
 kimlikleri) ve `playback` (`video`, `trailer`, `unavailable`) bulunur. `trailer`,
 fragman sağlayıcısını belirtir; her fragmanın çözüleceğini garanti etmez.
 
+`GET /api/detail/{item_id}` yanıtında EK alan `source_names`: `[{"id":"yabancidizi","name":"Yabancı Dizi"}]` = `sources`
+kimliklerinin görünen adları (aynı sıra; site yaml'ının `display_name`'i, site kayıtsız/silinmişse `name` = `id`).
+İstemci detayda "Kaynak: A · B" etiketi gösterir; alan yoksa (eski sunucu) hiçbir şey çizmez.
+
 ### Tarama raporları
 
 Tarama/heal geçmişi `GET /api/ops/runs` ve `GET /api/ops/heals` ile okunur (her biri

@@ -89,7 +89,7 @@ ACTION = {"kind": enum("play_movie", "resume_movie", "play_episode", "resume_epi
           "item_id": "str"}
 DETAIL = dict(ITEM, cast=lst("str"), director=opt("str"), runtime="int", in_mylist="bool", seasons=lst(SEASON),
               similar=lst(ITEM), resume={"episode_id": "str", "position": "int"}, actions=lst(ACTION),
-              hydrating="bool")
+              hydrating="bool", source_names=lst({"id": "str", "name": "str"}))
 DETAIL_TRAILER = {"state": "str"}  # availability.trailer (only with a trailer source): checked separately
 
 # track fields (js/tracks.js): present on EVERY stream; sub_known / site_lang_hint / mirror_of were added later (additive),
