@@ -35,3 +35,7 @@ HANDOFF*.md
 .DS_Store
 .vscode/
 .idea/
+
+# --- site scraper configs: the SERVER (61) is the reference, the local dir is only a mirror (pull-configs / deploy); the provider library is code and stays tracked ---
+/server/app/scraper/configs/*.yaml
+/server/app/scraper/configs/*.baseline.json

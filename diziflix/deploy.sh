@@ -94,7 +94,7 @@ Scraper configs kararı (site bazında; yaml + .baseline.json birlikte; md5 fark
   "providers/<ad>" olarak listelenir: sunucu sürümü yerelden yüksek / heal-arşiv izi var -> KORU; sunucuda var, yerelde yok -> ÇEK
   ("yerele çekildi: provider <ad> (vN)"); yerel daha yeni ve iz yok -> EZ; yalnız yerelde -> GÖNDER. providers/ altındaki
   kalıba uymayan dosyalar tanınmayan dosya sayılır (KORU). Tarifin .baseline.json'u yoktur.
-  Çekme yönü yalnız sunucu -> yerel; çekilen dosyalar git'te görünür (kontrol edip commit edin). --local-only'de REMOTEONLY hesaplanamaz.
+  Çekme yönü yalnız sunucu -> yerel; çekilen config'ler git dışıdır (sunucu referans; yalnız providers/ izlenir). --local-only'de REMOTEONLY hesaplanamaz.
   Sunucuda admin panelinden SİLİNMİŞ site (sunucudaki data/deleted_sites.json, salt-okunur okunur; deploy ve --pull-configs'te)
                                                                                        -> SİL: yerel <site>.yaml/.baseline.json/.v*.yaml
                                                                                           deploy-backups/local-removed-<ts>/ altına TAŞINIR ("yerelden kaldırıldı:
@@ -928,7 +928,7 @@ cfg_pull_step() {
 cfg_pull_hints() { # yerel aynada değişiklik olduysa git ipucu
   if [ -n "$PULLED_SITES" ]; then
     info "yerele çekilen/eşitlenen configs:$PULLED_SITES"
-    info "git'te kontrol et ve commit et:  git status -- server/app/scraper/configs   (yedek: deploy-backups/ commit edilmez)"
+    info "config'ler git dışıdır (sunucu referans; providers/ izlenir); yedek: deploy-backups/ da git dışı"
   fi
   if [ -n "$REMOVED_SITES" ]; then
     info "yerelden kaldırılan (sunucuda silinmiş) siteler:$REMOVED_SITES (dosyalar deploy-backups/local-removed-*/ altında; git'te kontrol et)"

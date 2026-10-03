@@ -21,7 +21,7 @@ Yedek budama (varsayılan AÇIK): başarılı deploy'un sonunda (restart + tüm 
 
 ## REMOTEONLY / `--pull-configs`
 
-Sunucuda (admin "Site ekle" ile) eklenen yeni siteler `REMOTEONLY` sınıfıdır: deploy'da yerel `configs/`'e otomatik çekilir (`yerele çekildi: <site> (vN)`) ve o tar'dan dışlanır (`server/pi/` ise normal kod gibi gider, yerel kazanır). `./deploy.sh --pull-configs [--dry-run] [--sync-configs]`: deploy yok, sunucuya yazmaz; yalnız sunucu configs'ini indirir/yedekler ve REMOTEONLY siteleri çeker. `--sync-configs` (varsayılan KAPALI) KORU kararlı sitelerin sunucu dosyalarını da yerele kopyalar, AYNI sitelerdeki yalnız-sunucu dosyalarını (heal arşivi) ekler; yerel daha yeni siteye dokunmaz. Çekilenler git'te görünür: kontrol edip commit et. Test: `bash tests/deploy_configs_test.sh`
+Sunucuda (admin "Site ekle" ile) eklenen yeni siteler `REMOTEONLY` sınıfıdır: deploy'da yerel `configs/`'e otomatik çekilir (`yerele çekildi: <site> (vN)`) ve o tar'dan dışlanır (`server/pi/` ise normal kod gibi gider, yerel kazanır). `./deploy.sh --pull-configs [--dry-run] [--sync-configs]`: deploy yok, sunucuya yazmaz; yalnız sunucu configs'ini indirir/yedekler ve REMOTEONLY siteleri çeker. `--sync-configs` (varsayılan KAPALI) KORU kararlı sitelerin sunucu dosyalarını da yerele kopyalar, AYNI sitelerdeki yalnız-sunucu dosyalarını (heal arşivi) ekler; yerel daha yeni siteye dokunmaz. Çekilen config'ler git'te izlenmez (sunucu referans, yerel ayna; `providers/` izlenir). Test: `bash tests/deploy_configs_test.sh`
 
 
 ## Sunucu veritabanını sıfırlama
@@ -31,7 +31,7 @@ Test için sunucu veritabanını SIFIRLAMA: `./clear-remote.sh [--cache] [--no-b
 
 ## Yerel test
 
-Yerel test (sunucuya bağlanmaz): `./deploy.sh --local-only -v` (gönderilecek dosya listesi); yedekler `/root/diziflix-server-bak-<ts>.tgz`, indirilen sunucu configs `./deploy-backups/` altına (commit etme)
+Yerel test (sunucuya bağlanmaz): `./deploy.sh --local-only -v` (gönderilecek dosya listesi); yedekler `/root/diziflix-server-bak-<ts>.tgz`, indirilen sunucu configs `./deploy-backups/` altına (git dışı)
 
 
 ## Scraper config referansı sunucudur (61)
