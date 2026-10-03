@@ -404,6 +404,9 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .obsd{margin:0;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:3px 14px;font-size:13.5px}
 .obsd dt{color:var(--muted)} .obsd dd{margin:0;overflow-wrap:anywhere}
 .obsf{display:flex;flex-direction:column;gap:8px;padding:10px 12px;background:var(--surface2);border-radius:10px}
+.obscan{display:flex;flex-direction:column;gap:8px;padding:8px 12px;background:var(--surface2);border-radius:10px}
+.obscan .srow b{color:var(--text);font-size:14px}
+.obscanh{margin-top:2px;font-size:12.5px;color:var(--muted)}
 .obsa{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:2px}
 .btn.obdanger{color:var(--bad);border-color:var(--bad)}
 .btn.obdanger:hover{background:var(--bad-bg)}

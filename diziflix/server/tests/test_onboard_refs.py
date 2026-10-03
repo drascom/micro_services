@@ -795,7 +795,7 @@ async function run(sc) {
       appendChild(c) { c.parentNode = e; e.childNodes.push(c); },
       removeChild(c) { const i = e.childNodes.indexOf(c); if (i >= 0) e.childNodes.splice(i, 1); c.parentNode = null; },
       get firstChild() { return e.childNodes[0]; },
-      closest() { return null; }, select() {}, setAttribute(n, v) { e.attrs[n] = v; }, getAttribute() { return null; },
+      closest() { return null; }, select() {}, querySelectorAll() { return []; }, querySelector() { return null; }, contains() { return false; }, setAttribute(n, v) { e.attrs[n] = v; }, getAttribute() { return null; },
     };
     return e;
   };
@@ -1011,12 +1011,16 @@ class AdminOnboardPage(unittest.TestCase):
         rows = html.split('<li class="obs')[1:]
         self.assertEqual(len(rows), 2)
         a, b = rows
-        for needle in ("Yabancı Dizi", "yabancidizi · yabancidizi.example", ">v7<", "elle yapılmış", "arama var", "açık · her 6 sa", "sonraki", "Başarılı", "120 çekildi", "118 işlendi",
+        for needle in ("Yabancı Dizi", "yabancidizi · yabancidizi.example", ">v7<", "elle yapılmış", "arama var", "Başarılı", "120 çekildi", "118 işlendi",
                        "458 dizi · 12 film · 320 bölüm · 280 kaynaklı", "vidmolly", "okru", 'data-ob="sedit" data-site="yabancidizi"', 'data-ob="syaml" data-site="yabancidizi"',
-                       'data-ob="srename" data-site="yabancidizi"', 'data-ob="srollback" data-site="yabancidizi"', 'data-ob="goto-settings"', 'data-ob="sdel" data-site="yabancidizi"',
-                       "Düzenle", "YAML", "Ad değiştir", "Geri al", "Ayarlar", "Sil"):
+                       'data-ob="srename" data-site="yabancidizi"', 'data-ob="srollback" data-site="yabancidizi"', 'data-ob="sdel" data-site="yabancidizi"',
+                       "Düzenle", "YAML", "Ad değiştir", "Geri al", "Şimdi tara", "Sil",
+                       # otomatik tarama kartı (Ayarlar'dan taşındı): rozet, anahtar, aralık seçimi, sonraki tarama, Şimdi tara
+                       "Otomatik tarama", 'pill ok">Açık<', 'data-enable="yabancidizi"', "checked", 'data-interval="yabancidizi"', '<option value="6" selected>6 saat</option>',
+                       'value="custom">Özel…', "Sonraki tarama", 'data-next="2099-01-01T00:00:00Z"', 'data-ob="sscan" data-site="yabancidizi"'):
             self.assertIn(needle, a, needle)
-        for needle in ("X Example", "arama yok", "kapalı", "henüz tarama yok", ">v3<", 'data-ob="sdel" data-site="x_example"'):
+        self.assertNotIn("goto-settings", a + b)                        # the "Ayarlar" button is gone
+        for needle in ("X Example", "arama yok", 'pill ">Kapalı<', "planlı değil", "henüz tarama yok", ">v3<", 'data-ob="sdel" data-site="x_example"'):
             self.assertIn(needle, b, needle)
         self.assertNotIn("elle yapılmış", b)
         self.assertNotIn("srollback", b)                                # nothing to roll back
@@ -1033,7 +1037,8 @@ class AdminOnboardPage(unittest.TestCase):
         for act in ("sedit", "srename", "srollback", "sdel"):
             self.assertRegex(html, r'data-ob="%s" data-site="x_example" disabled' % act)
         self.assertNotRegex(html, r'data-ob="syaml" data-site="x_example" disabled')
-        self.assertNotRegex(html, r'data-ob="goto-settings" disabled')
+        self.assertRegex(html, r'data-ob="sscan" data-site="x_example" disabled')        # no second scan while one runs
+        self.assertIn("Taranıyor", html)
         names = [self.run_ui({"hash": "", "sites": [site_row(busy=b)]})[0]["els"]["ob-sites"]["html"] for b in ("heal", "onboard", "finder")]
         for html, word in zip(names, ("düzeltme", "site ekleme", "kaynak arama")):
             self.assertIn("çalışıyor: " + word, html)
@@ -2309,6 +2314,8 @@ class ExtensionUnderNode(unittest.TestCase):
         for needle in ("404", "403", "referer=", "Cloudflare", "Chrome TLS", "NOT a yaml fetch_mode"):
             self.assertIn(needle, meta["description"], needle)
         self.assertIn("detail page", props["referer"]["description"])
+        self.assertEqual((props["method"]["enum"], props["data"]["type"]), (["GET", "POST"], "object"))   # the collection POST (yaml method / data)
+        self.assertEqual(set(sb.FetchBody.model_json_schema()["properties"]) - {"url", "mode", "wait_for", "referer"}, {"method", "data"})
         detail = "https://demo.example/film/100/film-0"
         got = self.run_node([{"tool": "fetch_page", "params": {"url": "https://demo.example/player/oynat/abc", "referer": detail}},
                              {"tool": "fetch_page", "params": {"url": "https://demo.example/player/oynat/abc", "mode": "chrome",

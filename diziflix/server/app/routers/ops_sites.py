@@ -1,7 +1,8 @@
 """Admin "Siteler" tab: list every registered site (hand-built ones included), view its yaml, rename, delete.
 
-`GET    /api/ops/sites/manage`            ``{sites: [row]}``: ``site_id, display_name, base_url, version, hand_built,
-                                          auto_scan{enabled, interval_hours, next_scan_at}, last_run{at, status, scraped,
+`GET    /api/ops/sites/manage`            ``{sites: [row], any_enabled, limits{min_interval_hours, max_interval_hours}, tick_seconds}``:
+                                          ``site_id, display_name, base_url, version, hand_built, heal_cooldown_until,
+                                          auto_scan{enabled, interval_hours, next_scan_at, source, running, last_run_at}, last_run{at, status, scraped,
                                           ingested}|null, counts{titles, series, movies, episodes, with_sources}, search,
                                           providers[], can_rollback, busy`` (``busy`` = scan | heal | onboard | finder | null)
 `GET    /api/ops/sites/{site}/config`     ``{site_id, version, yaml_text, versions[{version, updated_at, active}], baseline}``
@@ -28,7 +29,7 @@ import yaml
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-from .. import autoscan, db
+from .. import autoscan, db, settings
 from ..errors import ApiError
 from ..library import purge
 from ..scraper import config as scfg, site_handoff, site_search, state as sstate
@@ -128,16 +129,25 @@ def _auto_scan(site: str) -> dict[str, Any]:
     try:
         st = autoscan.site_status(site)
         return {"enabled": bool(st["enabled"]), "interval_hours": _interval(st["interval_hours"]),
-                "next_scan_at": st["next_scan_at"]}
+                "next_scan_at": st["next_scan_at"], "source": st.get("source"), "running": bool(st.get("running")),
+                "last_run_at": st.get("last_run_at")}
     except Exception:
-        return {"enabled": False, "interval_hours": None, "next_scan_at": None}
+        return {"enabled": False, "interval_hours": None, "next_scan_at": None, "source": None, "running": False,
+                "last_run_at": None}
+
+
+def _heal_cooldown(site: str) -> Any:
+    try:
+        return (sstate.get_heal_cooldown(site) or {}).get("until_at")
+    except Exception:
+        return None
 
 
 def _row(site: str, last_runs: dict[str, dict], counts: dict, busy: dict) -> dict[str, Any]:
     run = last_runs.get(site)
     row: dict[str, Any] = {
         "site_id": site, "display_name": site, "base_url": "", "version": None, "hand_built": False,
-        "auto_scan": _auto_scan(site),
+        "auto_scan": _auto_scan(site), "heal_cooldown_until": _heal_cooldown(site),
         "last_run": ({"at": run.get("started_at"), "status": run.get("status"), "scraped": run.get("scraped"),
                       "ingested": run.get("ingested")} if run else None),
         "counts": counts.get(site) or {"titles": 0, "series": 0, "movies": 0, "episodes": 0, "with_sources": 0},
@@ -176,7 +186,10 @@ def manage() -> dict[str, Any]:
     for run in sstate.list_ops("runs", None, 1000):   # newest first: the first run seen of a site is its last one
         last_runs.setdefault(str(run.get("site")), run)
     counts, busy = _counts(), _busy_map()
-    return {"sites": [_row(site, last_runs, counts, busy) for site in scfg.list_sites()]}
+    rows = [_row(site, last_runs, counts, busy) for site in scfg.list_sites()]
+    return {"sites": rows, "any_enabled": any(r["auto_scan"]["enabled"] for r in rows),
+            "limits": {"min_interval_hours": settings.MIN_INTERVAL_HOURS, "max_interval_hours": settings.MAX_INTERVAL_HOURS},
+            "tick_seconds": autoscan.TICK_SECONDS}
 
 
 def _iso(value: Any, path: str) -> Optional[str]:

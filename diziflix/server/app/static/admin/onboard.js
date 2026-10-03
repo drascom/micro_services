@@ -1,5 +1,7 @@
 /* "Siteler" sekmesi (#onboard): site yönetimi + pi ajanıyla site ekleme/düzenleme (/api/ops/sites/*, /api/ops/onboard/*).
-   Ana ekran: site LİSTESİ (elle yapılmış olanlar dahil; Düzenle / YAML / Devir notu / Ad değiştir / Geri al / Ayarlar / Sil),
+   Ana ekran: site LİSTESİ (elle yapılmış olanlar dahil; Düzenle / YAML / Devir notu / Ad değiştir / Geri al / Sil) + site başına
+   otomatik tarama (açma-kapama, aralık preset/özel, sonraki/son tarama, Şimdi tara, heal cooldown ipucu; Ayarlar sekmesinden taşındı;
+   yazma = PUT /api/ops/settings sites.<site>, okuma = GET /api/ops/sites/manage auto_scan + limits/any_enabled/tick_seconds),
    "+ Yeni site" paneli (adres + not + Başlat), Taslaklar; sağlık kartı yalnız sorunda (çalışan iş varsa Aç / İptal).
    Taslak ekranı (#onboard/<id>): ÜSTTE yapışkan Kaydet şeridi (site_id, ad, Kaydet -> onay paneli: tara / otomatik tarama / force),
    genel durum + adım adım ilerleme (draft.pipeline) + "uygulamada ne görünecek", ajan günlüğü | yaml taslağı yan yana (altında sohbet).
@@ -12,6 +14,7 @@
 var $=function(i){return document.getElementById(i)};
 var BASE='/api/ops/onboard',SITES='/api/ops/sites';
 var ID_RE=/^od_[0-9a-f]{12}$/,SITE_RE=/^[a-z][a-z0-9_]{1,31}$/;
+var PRESETS=[[0.25,'15 dk'],[1,'1 saat'],[3,'3 saat'],[6,'6 saat'],[12,'12 saat'],[24,'24 saat']],customOpen={},sMeta={};
 var built=false,H=null,hFail=false,hAt=0,drafts=null,dFail=false,sites=null,sFail=false,sLoading=false,newOpen=false,ui={edit:null,rename:null},M=null;
 var cur=null,D=null,evs=[],evN=0,sig='',yamlKey=null,fetching=false,fetchP=null,tickN=0,timer=null;
 var sidTouched=false,dnTouched=false,savedInfo=null,starting=false,estarting=false,sending=false,saving=false,openSteps={};
@@ -27,6 +30,13 @@ function until(t){if(!T(t))return '';var d=(T(t)-Date.now())/1000;
   if(d<86400)return Math.round(d/3600)+' sa sonra';return Math.round(d/86400)+' g sonra'}
 function when(t){return T(t)?new Date(t).toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'-'}
 function dur(s){if(s==null)return '-';s=+s;if(s<60)return (Math.round(s*10)/10)+' sn';return Math.floor(s/60)+' dk '+Math.round(s%60)+' sn'}
+function hoursText(h){h=+h;if(h<1)return Math.round(h*60)+' dk';return (Math.round(h*100)/100)+' saat'}
+function countdown(t){
+  var s=Math.floor((T(t)-Date.now())/1000);
+  if(s<=0)return 'birazdan (dakikada bir kontrol)';
+  var h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;
+  return (h?h+' sa ':'')+(h||m?m+' dk ':'')+(x<10&&(h||m)?'0':'')+x+' sn';
+}
 function num(n){return n==null?'-':(+n).toLocaleString('tr-TR')}
 function pill(cls,txt){return '<span class="pill '+cls+'">'+esc(txt)+'</span>'}
 function clip(s,n){s=String(s==null?'':s);return s.length>n?s.slice(0,n-1)+'…':s}
@@ -203,11 +213,30 @@ function countsLine(c){
   c=c||{};
   return num(c.series||0)+' dizi · '+num(c.movies||0)+' film · '+num(c.episodes||0)+' bölüm · '+num(c.with_sources||0)+' kaynaklı';
 }
-function autoLine(a){
-  a=a||{};
-  if(!a.enabled)return 'kapalı';
-  var h=+a.interval_hours,iv=h>0?(h<1?Math.round(h*60)+' dk':(Math.round(h*10)/10)+' sa'):'';
-  return 'açık'+(iv?' · her '+iv:'')+(a.next_scan_at?' · sonraki '+when(a.next_scan_at)+' ('+until(a.next_scan_at)+')':'');
+function sw(id,checked,label,attrs){
+  return '<label class="sw"><input type="checkbox" role="switch" id="'+id+'" '+(checked?'checked ':'')+(attrs||'')+' aria-label="'+esc(label)+'"><span class="knob"></span></label>';
+}
+function intervalControl(id,a){
+  var h=+a.interval_hours,preset=PRESETS.some(function(p){return Math.abs(p[0]-h)<1e-9});
+  var custom=!!customOpen[id]||!preset;
+  var sel='<select data-interval="'+esc(id)+'" aria-label="'+esc(id)+' tarama aralığı">'+PRESETS.map(function(p){
+    return '<option value="'+p[0]+'"'+(!custom&&Math.abs(p[0]-h)<1e-9?' selected':'')+'>'+p[1]+'</option>'}).join('')+
+    '<option value="custom"'+(custom?' selected':'')+'>Özel…</option></select>';
+  var lim=sMeta.limits||{};
+  var inp=custom?'<input type="number" data-custom="'+esc(id)+'" value="'+esc(a.interval_hours)+'" min="'+esc(lim.min_interval_hours)+'" max="'+esc(lim.max_interval_hours)+'" step="0.25" aria-label="Özel aralık (saat)"> saat':'';
+  return '<div class="srow"><span>Aralık</span>'+sel+inp+'</div>';
+}
+function scanHtml(s){
+  var id=s.site_id,a=s.auto_scan||{},running=!!a.running||s.busy==='scan';
+  var st=running?pill('run','Taranıyor…'):a.enabled?pill('ok','Açık'):pill('','Kapalı');
+  var next=!a.enabled?'planlı değil':running?'çalışıyor…':
+    '<span data-next="'+esc(a.next_scan_at)+'">'+esc(countdown(a.next_scan_at))+'</span> <span class="dim">'+esc(when(a.next_scan_at))+'</span>';
+  var cd=s.heal_cooldown_until&&T(s.heal_cooldown_until)>Date.now()?'<div class="hint">Heal şu an cooldown: <b>'+esc(id)+'</b> ('+esc(when(s.heal_cooldown_until))+' sonrası)</div>':'';
+  return '<div class="obscan"><div class="srow"><b>Otomatik tarama</b>'+st+
+      sw('en-'+esc(id),!!a.enabled,id+' otomatik tarama','data-enable="'+esc(id)+'"')+'</div>'+
+    (a.interval_hours!=null?intervalControl(id,a):'')+
+    '<div class="srow"><span>Sonraki tarama</span><span>'+next+'</span></div>'+
+    (a.source==='env'?'<div class="hint">Ayar henüz kaydedilmedi; .env varsayılanı kullanılıyor.</div>':'')+cd+'</div>';
 }
 function lastRunHtml(r){
   if(!r||!T(r.at))return '<span class="dim">henüz tarama yok</span>';
@@ -225,8 +254,8 @@ function siteRow(s){
     (busy?'<span class="pill run"><span class="dot pulse"></span>çalışıyor: '+esc(bz)+'</span>':'')+
     (s.search?pill('ok','🔎 arama var'):'<span class="hint">arama yok</span>')+'</div>'+
     '<div class="hint mono obsu">'+esc(id)+(s.base_url?' · '+esc(hostOf(s.base_url)):'')+'</div>'+
+    scanHtml(s)+
     '<dl class="obsd">'+
-      '<dt>Otomatik tarama</dt><dd>'+esc(autoLine(s.auto_scan))+'</dd>'+
       '<dt>Son tarama</dt><dd>'+lastRunHtml(s.last_run)+'</dd>'+
       '<dt>İçerik</dt><dd>'+esc(countsLine(s.counts))+'</dd>'+
       ((s.providers&&s.providers.length)?'<dt>Oynatıcılar</dt><dd>'+s.providers.map(function(p){return '<span class="obchip">'+esc(p)+'</span>'}).join(' ')+'</dd>':'')+
@@ -247,7 +276,7 @@ function siteRow(s){
     '<button class="btn" data-ob="shandoff" data-site="'+esc(id)+'">Devir notu</button>'+
     '<button class="btn" data-ob="srename" data-site="'+esc(id)+'"'+off+'>Ad değiştir</button>'+
     (s.can_rollback?'<button class="btn" data-ob="srollback" data-site="'+esc(id)+'"'+off+'>Geri al</button>':'')+
-    '<button class="btn" data-ob="goto-settings">Ayarlar</button>'+
+    '<button class="btn" data-ob="sscan" data-site="'+esc(id)+'"'+((s.auto_scan&&s.auto_scan.running)||busy?' disabled':'')+'>Şimdi tara</button>'+
     '<button class="btn obdanger" data-ob="sdel" data-site="'+esc(id)+'"'+off+'>Sil</button>'+
     (busy?'<span class="hint">'+esc(why)+'</span>':'')+
   '</div></li>';
@@ -260,14 +289,19 @@ function drawSites(){
     return;
   }
   if(!sites.length){el.innerHTML='<div class="pempty">Kayıtlı site yok. “+ Yeni site” ile bir adres ekleyerek başla.</div>';return}
-  el.innerHTML='<ul class="obsl">'+sites.map(siteRow).join('')+'</ul>';
+  var warn=sMeta.any_enabled===false?'<div class="note warnbar" role="alert"><b>Otomatik tarama kapalı</b>Hiçbir kaynak kendiliğinden taranmıyor; yeni içerik yalnızca elle “Şimdi tara” ile gelir. Aşağıdan bir kaynağı açın.</div>':'';
+  var lim=sMeta.limits;
+  var hint='<div class="hint obscanh">Kontrol '+esc(sMeta.tick_seconds||60)+' sn’de bir yapılır; değişiklikler yeniden başlatma gerektirmez.'+
+    (lim?' Aralıklar '+esc(hoursText(lim.min_interval_hours))+' – '+esc(hoursText(lim.max_interval_hours))+' arasındadır.':'')+'</div>';
+  el.innerHTML=warn+'<ul class="obsl">'+sites.map(siteRow).join('')+'</ul>'+hint;
   updateStart();
 }
 /* satır içi form açıkken yazılanı silmemek için yoklama yeniden çizmez */
-function renderSites(){if(ui.edit||ui.rename)return;drawSites()}
+function scanEditing(){var a=document.activeElement,r=$('ob-sites');return !!(a&&r&&r.contains(a)&&a.matches('select,input[type=number]'))}
+function renderSites(){if(ui.edit||ui.rename||scanEditing())return;drawSites()}
 function loadSites(){
   sLoading=true;
-  return call(SITES+'/manage').then(function(d){sites=(d&&d.sites)||[];sFail=false}).catch(function(e){sFail=msgOf(e)})
+  return call(SITES+'/manage').then(function(d){sites=(d&&d.sites)||[];sMeta={any_enabled:d&&d.any_enabled,limits:d&&d.limits,tick_seconds:d&&d.tick_seconds};sFail=false}).catch(function(e){sFail=msgOf(e)})
     .then(function(){sLoading=false;renderSites()});
 }
 
@@ -338,6 +372,20 @@ function cancelRunning(id){
 }
 
 /* ---- site eylemleri: yeniden adlandır, geri al, YAML, sil ---- */
+function patchSite(site,fields,msg){
+  var p={sites:{}};p.sites[site]=fields;
+  return call('/api/ops/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)})
+    .then(function(){toast(msg||'Kaydedildi');changed()})
+    .catch(function(e){toast('Kaydedilemedi: '+msgOf(e),'bad')}).then(loadSites);
+}
+function scanNow(site,b){
+  b.disabled=true;
+  call(SITES+'/'+enc(site)+'/scan',{method:'POST'}).then(function(r){
+    if(r&&r.started===false)toast(site+': zaten çalışıyor','bad');
+    else toast(site+': tarama başlatıldı');
+    return loadSites();
+  }).catch(function(e){toast('Başlatılamadı: '+msgOf(e),'bad');b.disabled=false});
+}
 function doRename(site){
   var dn=$('ob-rn').value.trim();
   if(!dn){toast('Bir ad yaz','bad');return}
@@ -858,7 +906,22 @@ function doSave(){
 
 /* ---- olaylar ---- */
 function onChange(ev){
-  var t=ev&&ev.target;if(!t||!t.id)return;
+  var t=ev&&ev.target;if(!t)return;
+  if(t.dataset&&t.dataset.enable){var on=t.checked;patchSite(t.dataset.enable,{enabled:on},t.dataset.enable+': otomatik tarama '+(on?'açıldı':'kapatıldı'));return}
+  if(t.dataset&&t.dataset.interval){
+    var site=t.dataset.interval;
+    if(t.value==='custom'){customOpen[site]=true;drawSites();var i=$('ob-sites').querySelector('[data-custom="'+site+'"]');if(i){i.focus();i.select()}return}
+    delete customOpen[site];
+    patchSite(site,{interval_hours:parseFloat(t.value)},site+': aralık '+hoursText(t.value));return;
+  }
+  if(t.dataset&&t.dataset.custom){
+    var s2=t.dataset.custom,val=parseFloat(t.value),lim=sMeta.limits||{};
+    if(!isFinite(val)||val<lim.min_interval_hours||val>lim.max_interval_hours){
+      toast('Aralık '+hoursText(lim.min_interval_hours)+' – '+hoursText(lim.max_interval_hours)+' arasında olmalı','bad');drawSites();return}
+    delete customOpen[s2];
+    patchSite(s2,{interval_hours:val},s2+': aralık '+hoursText(val));return;
+  }
+  if(!t.id)return;
   if(t.id==='ob-purge'&&M&&M.kind==='del'){M.purge=!!t.checked;$('ob-purge-line').textContent=purgeLine(siteById(M.site),M.purge)}
   else if(t.id==='ob-scan'){opt.scan=!!t.checked}
   else if(t.id==='ob-en'){opt.enable=!!t.checked}
@@ -902,6 +965,7 @@ function bind(){
     else if(a==='rncancel'){ui.rename=null;drawSites()}
     else if(a==='rnsave'){doRename(site)}
     else if(a==='srollback'){rollbackSite(site)}
+    else if(a==='sscan'){scanNow(site,b)}
     else if(a==='syaml'){openYaml(site)}
     else if(a==='shandoff'){openHandoff(site)}
     else if(a==='sdel'){openDel(site)}
@@ -930,7 +994,6 @@ function bind(){
     else if(a==='confirm'){doSave()}
     else if(a==='copy'){copyText(D&&D.yaml_text||'').then(function(){toast('YAML kopyalandı')}).catch(function(){toast('Kopyalanamadı','bad')})}
     else if(a==='copylog'){var t=logText();if(!t){toast('Günlük boş','bad');return}copyText(t).then(function(){toast('Günlük kopyalandı')}).catch(function(){toast('Kopyalanamadı','bad')})}
-    else if(a==='goto-settings'){var tb=$('tab-btn-settings');if(tb)tb.click()}
     else if(a==='goto-events'){var te=$('tab-btn-events');if(te)te.click()}
   });
 }
@@ -941,8 +1004,13 @@ function tick(){
   if(cur){
     renderTime();
     if(tickN%2===0&&D&&D.status==='running')loadDraft();
-  } else if(tickN%4===0){
-    if(sites&&sites.some(function(s){return s.busy})&&!M)loadSites();
+  } else {
+    var nx=$('ob-sites')&&$('ob-sites').querySelectorAll('[data-next]');
+    if(nx)nx.forEach(function(el){var t=countdown(el.getAttribute('data-next'));if(el.textContent!==t)el.textContent=t});
+  }
+  if(!cur&&tickN%20===0&&!M&&!sLoading)loadSites(); // sonraki/son tarama ve ayar değişiklikleri tazelenir
+  if(!cur&&tickN%4===0){
+    if(sites&&sites.some(function(s){return s.busy||(s.auto_scan&&s.auto_scan.running)})&&!M&&!sLoading)loadSites();
     if(drafts&&drafts.some(function(d){return d.status==='running'}))loadList();
     if(H&&runningOf(H))loadHealth(); // iş bitince sağlık kartı kendiliğinden kalkar (yarış kilidi olmasın)
   }

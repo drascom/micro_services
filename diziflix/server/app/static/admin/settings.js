@@ -1,11 +1,11 @@
-/* Ayarlar sekmesi: /api/ops/settings (otomatik tarama + heal + TMDB anahtarları), /api/ops/llm/health
+/* Ayarlar sekmesi: /api/ops/settings (heal + TMDB anahtarları; site otomatik tarama ayarları "Siteler" sekmesine taşındı), /api/ops/llm/health
    ve "TMDB zenginleştirme" kartı (/api/ops/tmdb/status|preview|backfill; tür seçicideki "Sezon ve bölüm görselleri"
    = kind=series + scope=seasons: dizi sezon posterleri + bölüm başlık/özet/görsel).
    Değişiklik anında kaydedilir (PUT) ve yeniden başlatma gerektirmez. */
 (function(){
 'use strict';
 var $=function(i){return document.getElementById(i)};
-var D=null,failed=false,llm=null,llmBusy=false,customOpen={},cdTimer=null,pollTimer=null;
+var D=null,failed=false,llm=null,llmBusy=false,pollTimer=null;
 var TS=null,tFail=false,tKind='movie',tDec='',tOff=0,tPrev=null,tPrevBusy=false,tStarting=false,tLast='',tTimer=null,tTicks=0,tWatch=false,tLastId=null;
 var PG=20,KL={movie:'film',series:'dizi',seasons:'dizi (sezon/bölüm)'},KLG={movie:'filmden',series:'diziden'},KLP={movie:'Film',series:'Dizi',seasons:'Sezon ve bölüm görselleri'};
 var DECL={auto:['ok','Otomatik'],review:['warn','İnceleme'],unmatched:['','Eşleşmedi'],error:['bad','Hata'],deferred:['','Ertelendi']};
@@ -15,7 +15,6 @@ var SDECS=[['','Hepsi'],['auto','Bulundu'],['empty','TMDB’de yok'],['error','H
 function isSeasons(){return tKind==='seasons'}
 function scopeBody(dry){return isSeasons()?{kind:'series',scope:'seasons',dry_run:!!dry}:{kind:tKind,dry_run:!!dry}}
 function curSum(){return TS&&(isSeasons()?TS.season_preview:TS.preview)}
-var PRESETS=[[0.25,'15 dk'],[1,'1 saat'],[3,'3 saat'],[6,'6 saat'],[12,'12 saat'],[24,'24 saat']];
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function T(t){return t?new Date(t).getTime():0}
@@ -23,15 +22,8 @@ function ago(t){if(!T(t))return '-';var d=Math.max(0,(Date.now()-T(t))/1000);
   if(d<60)return Math.floor(d)+' sn önce';if(d<3600)return Math.floor(d/60)+' dk önce';
   if(d<86400)return Math.floor(d/3600)+' sa önce';return Math.floor(d/86400)+' g önce'}
 function when(t){return T(t)?new Date(t).toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'-'}
-function hoursText(h){h=+h;if(h<1)return Math.round(h*60)+' dk';return (Math.round(h*100)/100)+' saat'}
 function secText(s){s=Math.max(0,Math.round(s));var h=Math.floor(s/3600),m=Math.floor(s%3600/60);
   return h?h+' sa'+(m?' '+m+' dk':''):m?m+' dk':s+' sn'}
-function countdown(t){
-  var s=Math.floor((T(t)-Date.now())/1000);
-  if(s<=0)return 'birazdan (dakikada bir kontrol)';
-  var h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;
-  return (h?h+' sa ':'')+(h||m?m+' dk ':'')+(x<10&&(h||m)?'0':'')+x+' sn';
-}
 function num(n){return n==null?'-':(+n).toLocaleString('tr-TR')}
 function pill(cls,txt,extra){return '<span class="pill '+cls+'"'+(extra||'')+'>'+esc(txt)+'</span>'}
 
@@ -254,28 +246,6 @@ function tmdbTick(){
 function sw(id,checked,label,attrs){
   return '<label class="sw"><input type="checkbox" role="switch" id="'+id+'" '+(checked?'checked ':'')+(attrs||'')+' aria-label="'+esc(label)+'"><span class="knob"></span></label>';
 }
-function intervalControl(s){
-  var preset=PRESETS.some(function(p){return Math.abs(p[0]-s.interval_hours)<1e-9});
-  var custom=!!customOpen[s.site]||!preset;
-  var sel='<select data-interval="'+esc(s.site)+'" aria-label="'+esc(s.site)+' tarama aralığı">'+PRESETS.map(function(p){
-    return '<option value="'+p[0]+'"'+(!custom&&Math.abs(p[0]-s.interval_hours)<1e-9?' selected':'')+'>'+p[1]+'</option>'}).join('')+
-    '<option value="custom"'+(custom?' selected':'')+'>Özel…</option></select>';
-  var lim=D.limits||{};
-  var inp=custom?'<input type="number" data-custom="'+esc(s.site)+'" value="'+esc(s.interval_hours)+'" min="'+esc(lim.min_interval_hours)+'" max="'+esc(lim.max_interval_hours)+'" step="0.25" aria-label="Özel aralık (saat)"> saat':'';
-  return '<div class="srow"><span>Aralık</span>'+sel+inp+'</div>';
-}
-function siteCard(s){
-  var st=s.running?pill('run','Taranıyor…'):s.enabled?pill('ok','Açık'):pill('','Kapalı');
-  var next=!s.enabled?'<dd>planlı değil</dd>':s.running?'<dd>çalışıyor…</dd>':
-    '<dd data-next="'+esc(s.next_scan_at)+'">'+esc(countdown(s.next_scan_at))+'<small>'+esc(when(s.next_scan_at))+'</small></dd>';
-  var last=s.last_run_at?'<dd data-last="'+esc(s.last_run_at)+'">'+esc(ago(s.last_run_at))+'<small>'+esc(when(s.last_run_at))+'</small></dd>':'<dd>henüz yok</dd>';
-  return '<div class="card'+(s.enabled?'':' off')+'" data-site="'+esc(s.site)+'">'+
-    '<div class="sh"><span class="sname">'+esc(s.site)+'</span>'+st+sw('en-'+esc(s.site),s.enabled,s.site+' otomatik tarama','data-enable="'+esc(s.site)+'"')+'</div>'+
-    intervalControl(s)+
-    '<dl class="skv"><div><dt>Son çalışma</dt>'+last+'</div><div><dt>Sonraki tarama</dt>'+next+'</div></dl>'+
-    (s.source==='env'?'<div class="hint">Ayar henüz kaydedilmedi; .env varsayılanı kullanılıyor.</div>':'')+
-    '<div class="act" style="margin-top:0"><button class="btn" data-scan="'+esc(s.site)+'"'+(s.running?' disabled':'')+'>Şimdi tara</button></div></div>';
-}
 function llmBadge(){
   if(llmBusy&&!llm)return pill('run','Kontrol ediliyor…');
   if(!llm)return pill('','Bilinmiyor');
@@ -302,7 +272,6 @@ function llmHtml(){
 function renderLlm(){var el=$('llm-card');if(el)el.innerHTML=llmHtml()}
 function healHtml(){
   var h=D.heal||{};
-  var cds=(D.sites||[]).filter(function(s){return s.heal_cooldown_until&&T(s.heal_cooldown_until)>Date.now()});
   return '<section><h2>Kendi kendini düzeltme (LLM)</h2><div class="scards">'+
     '<div class="card"><div class="sh"><span class="sname" style="font-size:16px">Düzeltmeyi otomatik uygula</span>'+
       sw('heal-auto',!!h.autoapply,'Düzeltmeyi otomatik uygula','data-autoapply="1"')+'</div>'+
@@ -311,7 +280,6 @@ function healHtml(){
       '<div><dt>Sağlayıcı</dt><dd>'+esc(h.provider||'-')+'</dd></div>'+
       '<div><dt>Model</dt><dd style="font-size:12.5px">'+esc(h.model||'varsayılan')+'</dd></div>'+
       '<div><dt>Cooldown</dt><dd>'+esc(secText(h.cooldown_seconds||0))+'<small>başarısız denemeden sonra</small></dd></div></dl>'+
-      (cds.length?'<div class="hint">Şu an cooldown: '+cds.map(function(s){return '<b>'+esc(s.site)+'</b> ('+esc(when(s.heal_cooldown_until))+' sonrası)'}).join(', ')+'</div>':'')+
     '</div>'+
     '<div class="card" id="llm-card">'+llmHtml()+'</div></div></section>';
 }
@@ -319,42 +287,23 @@ function render(){
   var root=$('set-root');if(!root)return;
   if(!D){root.innerHTML=failed?'<div class="empty">Ayarlar yüklenemedi: '+esc(failed)+'<br><button class="btn" id="set-retry">Yeniden dene</button></div>':'<div class="empty">Yükleniyor…</div>';return}
   var h='';
-  if(!D.any_enabled)h+='<div class="note warnbar" role="alert"><b>Otomatik tarama kapalı</b>Hiçbir kaynak kendiliğinden taranmıyor; yeni içerik yalnızca elle “Şimdi tara” ile gelir. Aşağıdan bir kaynağı açın.</div>';
-  h+='<section><h2>Otomatik tarama</h2><div class="scards">'+(D.sites||[]).map(siteCard).join('')+'</div>'+
-    '<div class="hint" style="margin-top:8px;font-size:12.5px;color:var(--muted)">Kontrol '+esc(D.tick_seconds||60)+' sn’de bir yapılır; değişiklikler yeniden başlatma gerektirmez. Aralıklar '+esc(hoursText(D.limits.min_interval_hours))+' – '+esc(hoursText(D.limits.max_interval_hours))+' arasındadır.</div></section>';
-  h+='<section><h2>TMDB zenginleştirme</h2><div class="card tmdb" id="tmdb-card"></div></section>';
+  h+='<section><h2>TMDB zenginleştirme</h2><div class=”card tmdb” id=”tmdb-card”></div></section>';
   h+=healHtml();
   root.innerHTML=h;
   tLast='';renderTmdb();
 }
 
-/* ---- canlı geri sayım (metin güncelle, DOM'u yeniden kurma) ---- */
-function tickText(){
-  var root=$('set-root');if(!root||$('tab-settings').classList.contains('hidden'))return;
-  root.querySelectorAll('[data-next]').forEach(function(el){
-    var n=el.firstChild;var t=countdown(el.getAttribute('data-next'));
-    if(n&&n.nodeType===3){if(n.nodeValue!==t)n.nodeValue=t}
-  });
-  root.querySelectorAll('[data-last]').forEach(function(el){
-    var n=el.firstChild;var t=ago(el.getAttribute('data-last'));
-    if(n&&n.nodeType===3&&n.nodeValue!==t)n.nodeValue=t;
-  });
-}
-function editing(){var a=document.activeElement;return !!(a&&$('set-root').contains(a)&&a.matches('select,input[type=number]'))}
+/* ---- yenileme ---- */
 function poll(){
-  if($('tab-settings').classList.contains('hidden')||document.hidden||editing())return;
+  if($('tab-settings').classList.contains('hidden')||document.hidden)return;
   load();
 }
 
 /* ---- etkileşim ---- */
-function patchSite(site,fields,msg){var p={sites:{}};p.sites[site]=fields;return save(p,msg)}
 var root=$('set-root');
 root.addEventListener('change',function(ev){
   var t=ev.target;
-  if(t.dataset.enable){
-    var on=t.checked;
-    patchSite(t.dataset.enable,{enabled:on},t.dataset.enable+': otomatik tarama '+(on?'açıldı':'kapatıldı'));
-  } else if(t.dataset.tmdbAuto){
+  if(t.dataset.tmdbAuto){
     var a=t.checked;
     save({tmdb:{auto:a}},'TMDB otomatik zenginleştirme '+(a?'açıldı':'kapatıldı'));
   } else if(t.dataset.tmdbType){
@@ -363,20 +312,11 @@ root.addEventListener('change',function(ev){
   } else if(t.dataset.autoapply){
     var v=t.checked;
     save({heal_autoapply:v},'Otomatik uygulama '+(v?'açıldı':'kapatıldı'));
-  } else if(t.dataset.interval){
-    var site=t.dataset.interval;
-    if(t.value==='custom'){customOpen[site]=true;render();var i=root.querySelector('[data-custom="'+site+'"]');if(i){i.focus();i.select()}return}
-    delete customOpen[site];
-    patchSite(site,{interval_hours:parseFloat(t.value)},site+': aralık '+hoursText(t.value));
-  } else if(t.dataset.custom){
-    var site2=t.dataset.custom,val=parseFloat(t.value),lim=D.limits||{};
-    if(!isFinite(val)||val<lim.min_interval_hours||val>lim.max_interval_hours){
-      toast('Aralık '+hoursText(lim.min_interval_hours)+' – '+hoursText(lim.max_interval_hours)+' arasında olmalı','bad');render();return}
-    delete customOpen[site2];
-    patchSite(site2,{interval_hours:val},site2+': aralık '+hoursText(val));
   }
 });
 root.addEventListener('click',function(ev){
+  var g=ev.target.closest('a[data-goto]');
+  if(g){var tb=$('tab-btn-'+g.getAttribute('data-goto'));if(tb){ev.preventDefault();tb.click()}return}
   var b=ev.target.closest('button');if(!b)return;
   if(b.id==='llm-test'){loadLlm(true);return}
   if(b.id==='set-retry'){load();return}
@@ -390,14 +330,6 @@ root.addEventListener('click',function(ev){
   if(b.dataset.tpg){
     var off=tOff+PG*parseInt(b.dataset.tpg,10);
     tOff=Math.max(0,off);tmdbPreview(false);return}
-  if(b.dataset.scan){
-    b.disabled=true;
-    call('/api/ops/sites/'+encodeURIComponent(b.dataset.scan)+'/scan',{method:'POST'}).then(function(r){
-      if(r&&r.started===false)toast(b.dataset.scan+': zaten çalışıyor','bad');
-      else toast(b.dataset.scan+': tarama başlatıldı');
-      return load();
-    }).catch(function(e){toast('Başlatılamadı: '+(e&&e.message||e),'bad');b.disabled=false});
-  }
 });
 
 /* ---- sekme kancası ---- */
@@ -405,7 +337,6 @@ function onShow(){
   load().then(tmdbLoad);
   if(!llm||Date.now()-T(llm.checked_at)>60000)loadLlm(false);
   if(!tTimer)tTimer=setInterval(tmdbTick,2500);
-  if(!cdTimer)cdTimer=setInterval(tickText,1000);
   if(!pollTimer)pollTimer=setInterval(poll,20000);
 }
 window.dzTabHooks=window.dzTabHooks||{};

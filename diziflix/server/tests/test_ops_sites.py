@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 
 from app import autoscan, config, db, settings
 from app.library import purge
-from app.routers import ops, ops_sites
+from app.routers import ops, ops_settings, ops_sites
 from app.scraper import config as scfg, site_search, state as sstate
 
 NOW = 1_800_000_000
@@ -132,7 +132,7 @@ class ManageTest(Base):
         self.assertEqual(sorted(rows), ["alpha", "beta", "yabancidizi"])
         a = rows["alpha"]
         self.assertEqual(set(a), {"site_id", "display_name", "base_url", "version", "hand_built", "auto_scan", "last_run", "counts",
-                                  "search", "providers", "can_rollback", "busy"})
+                                  "search", "providers", "can_rollback", "busy", "heal_cooldown_until"})
         self.assertEqual((a["display_name"], a["base_url"], a["version"], a["providers"]), ("Alpha Dizi", "https://alpha.example", 2, ["vidmolly"]))
         self.assertEqual(a["counts"], {"titles": 4, "series": 2, "movies": 2, "episodes": 2, "with_sources": 2})
         self.assertEqual(rows["beta"]["counts"], {"titles": 2, "series": 1, "movies": 1, "episodes": 1, "with_sources": 1})
@@ -169,7 +169,8 @@ class ManageTest(Base):
         self.assertIsInstance(rows["alpha"]["auto_scan"]["next_scan_at"], str)
         self.assertEqual(rows["alpha"]["last_run"], {"at": "2026-10-01T09:00:00Z", "status": "partial", "scraped": 130, "ingested": 100})
         self.assertEqual(rows["beta"]["last_run"]["status"], "error")
-        self.assertEqual(rows["beta"]["auto_scan"], {"enabled": False, "interval_hours": 6, "next_scan_at": None})
+        beta = rows["beta"]["auto_scan"]
+        self.assertEqual((beta["enabled"], beta["interval_hours"], beta["next_scan_at"], beta["running"]), (False, 6, None, False))
 
     def test_busy_kinds(self):
         self.assertTrue(sstate.activity_start("alpha", "heal", "manual"))
@@ -201,7 +202,33 @@ class ManageTest(Base):
     def test_empty_registry(self):
         for name in self.files():
             os.unlink(os.path.join(self.cfg_dir, name))
-        self.assertEqual(self.c.get("/api/ops/sites/manage").json(), {"sites": []})
+        out = self.c.get("/api/ops/sites/manage").json()
+        self.assertEqual(out["sites"], [])
+        self.assertFalse(out["any_enabled"])
+
+    def test_auto_scan_controls_fields(self):
+        """Siteler sekmesi tarama ayarlarını buradan çizer (Ayarlar'dan taşındı): aralık sınırları, kontrol aralığı, any_enabled,
+        satır başına açık/aralık/sonraki/son/çalışıyor/kaynak/heal cooldown; yazma yine PUT /api/ops/settings (sites.<site>)."""
+        out = self.c.get("/api/ops/sites/manage").json()
+        self.assertEqual(out["limits"], {"min_interval_hours": settings.MIN_INTERVAL_HOURS, "max_interval_hours": settings.MAX_INTERVAL_HOURS})
+        self.assertEqual(out["tick_seconds"], autoscan.TICK_SECONDS)
+        self.assertFalse(out["any_enabled"])
+        a = {r["site_id"]: r for r in out["sites"]}["alpha"]
+        self.assertEqual(set(a["auto_scan"]), {"enabled", "interval_hours", "next_scan_at", "source", "running", "last_run_at"})
+        self.assertFalse(a["auto_scan"]["running"])
+        self.assertIsNone(a["heal_cooldown_until"])
+        app = FastAPI()
+        app.include_router(ops_settings.router)
+        put = TestClient(app).put("/api/ops/settings", json={"sites": {"alpha": {"enabled": True, "interval_hours": 0.25}}})
+        self.assertEqual(put.status_code, 200)
+        self.assertEqual(settings._load()["sites"]["alpha"], {"enabled": True, "interval_hours": 0.25})
+        out = self.c.get("/api/ops/sites/manage").json()
+        a = {r["site_id"]: r for r in out["sites"]}["alpha"]
+        self.assertTrue(out["any_enabled"])
+        self.assertEqual((a["auto_scan"]["enabled"], a["auto_scan"]["interval_hours"], a["auto_scan"]["source"]), (True, 0.25, "admin"))
+        self.assertTrue(a["auto_scan"]["next_scan_at"])
+        bad = TestClient(app).put("/api/ops/settings", json={"sites": {"alpha": {"interval_hours": 0.001}}})
+        self.assertEqual(bad.status_code, 422)
 
 
 class ConfigViewTest(Base):
