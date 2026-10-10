@@ -58,6 +58,8 @@ final class AdminModel {
     var mailAvailableError = ""
     var mailMessage = ""
     var remindersEnabled = false
+    var tasksEnabled = false
+    var tasksList = "Asistan"
     private var polling: Task<Void, Never>?
 
     init(backend: BackendClient, ring: RingModel) { self.backend = backend; self.ring = ring }
@@ -170,18 +172,25 @@ final class AdminModel {
             await loadMailAccounts(); mailMessage = text
         }
     }
-    func loadReminders() async {
-        let data = try? await backend.admin("admin/reminders")
-        if let data, let value = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["enabled"] as? Bool { remindersEnabled = value }
+    private func applyReminders(_ data: Data) {
+        guard let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        if let on = value["enabled"] as? Bool { remindersEnabled = on }
+        if let on = value["tasks_enabled"] as? Bool { tasksEnabled = on }
+        if let list = value["tasks_list"] as? String { tasksList = list }
     }
-    /// Off: the reminders tool is not offered to the model from the next request.
-    func setReminders(_ enabled: Bool) async {
-        remindersEnabled = enabled
+    func loadReminders() async {
+        if let data = try? await backend.admin("admin/reminders") { applyReminders(data) }
+    }
+    /// Off: the reminders tool is not offered to the model from the next request (assistant tasks stop too).
+    func setReminders(_ enabled: Bool) async { remindersEnabled = enabled; await saveReminders(["enabled": enabled]) }
+    func setTasks(_ enabled: Bool) async { tasksEnabled = enabled; await saveReminders(["tasks_enabled": enabled]) }
+    func setTasksList(_ name: String) async { await saveReminders(["tasks_list": name]) }
+    private func saveReminders(_ body: [String: Any]) async {
         do {
-            let data = try await backend.admin("admin/reminders/save", json: ["enabled": enabled])
-            if let value = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["enabled"] as? Bool { remindersEnabled = value }
-            mailMessage = ""
-        } catch { await loadReminders(); mailMessage = error.localizedDescription }
+            let json = try JSONSerialization.data(withJSONObject: body)
+            applyReminders(try await backend.admin("admin/reminders/save", data: json)); mailMessage = ""
+        }
+        catch { await loadReminders(); mailMessage = error.localizedDescription }
     }
     func createExtension(name: String) async {
         do {
@@ -296,6 +305,11 @@ private struct SettingsTab: View {
                 Toggle("Sesli yanıt / Read aloud", isOn: $ring.readAloud)
                 Toggle("Menü çubuğu simgesi / Menu bar icon", isOn: Binding(get: { admin.menuBarIcon }, set: { admin.actions.setMenuBarIcon($0) }))
                 Toggle("Reminders", isOn: Binding(get: { admin.remindersEnabled }, set: { on in Task { await admin.setReminders(on) } }))
+                Toggle("Asistan görevleri / Assistant tasks", isOn: Binding(get: { admin.tasksEnabled }, set: { on in Task { await admin.setTasks(on) } }))
+                    .disabled(!admin.remindersEnabled)
+                TextField("Görev listesi / Task list", text: $admin.tasksList)
+                    .onSubmit { Task { await admin.setTasksList(admin.tasksList) } }
+                    .disabled(!admin.remindersEnabled || !admin.tasksEnabled)
             }
             MailAccountsSection(admin: admin, removing: $removing)
             Section("Uygulama / Application") {

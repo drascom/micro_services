@@ -25,6 +25,8 @@
   "piper_speed_tr": 1.25,
   "piper_speed_en": 1.25,
   "reminders_enabled": false,
+  "tasks_enabled": false,
+  "tasks_list": "Asistan",
   "mail_accounts": [],
   "mail_max_age_days": 30,
   "mail_max_list_results": 25,

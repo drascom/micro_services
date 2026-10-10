@@ -115,7 +115,7 @@ const PRIORITY = { none: 0, high: 1, medium: 5, low: 9 } as const;
 const priorityName = (value: number) => value <= 0 ? undefined : value <= 4 ? 'high' : value === 5 ? 'medium' : 'low';
 
 const isObject = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-function parse(raw: string): Record<string, unknown> {
+export function parse(raw: string): Record<string, unknown> {
   let value: unknown;
   try { value = JSON.parse(raw); } catch { throw new RemindersError('invalid_response'); }
   if (!isObject(value)) throw new RemindersError('invalid_response');
@@ -126,7 +126,7 @@ function parse(raw: string): Record<string, unknown> {
   if (value.ok !== true) throw new RemindersError('invalid_response');
   return value;
 }
-function bridgeReminder(value: unknown): BridgeReminder {
+export function bridgeReminder(value: unknown): BridgeReminder {
   if (!isObject(value) || typeof value.id !== 'string' || !value.id || value.id.length > 300 || typeof value.title !== 'string' ||
       typeof value.notes !== 'string' || (value.due !== null && (typeof value.due !== 'string' || !Number.isFinite(Date.parse(value.due)))) ||
       typeof value.all_day !== 'boolean' || !Number.isInteger(value.priority) || typeof value.completed !== 'boolean' ||

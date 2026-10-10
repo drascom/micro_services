@@ -14,7 +14,7 @@ import type { MailTransport } from '../.pi/extensions/macos-mail/client.ts';
 import { MAIL_TOOL_NAMES } from '../.pi/extensions/macos-mail/schemas.ts';
 import { appleReminders } from '../.pi/extensions/apple-reminders/index.ts';
 import type { RemindersTransport } from '../.pi/extensions/apple-reminders/client.ts';
-import { confirmations, newTurn, type ConfirmationStore } from '../.pi/extensions/apple-reminders/confirmations.ts';
+import { ConfirmationStore, confirmations, newTurn } from '../.pi/extensions/apple-reminders/confirmations.ts';
 import { REMINDERS_TOOL_NAMES } from '../.pi/extensions/apple-reminders/schemas.ts';
 
 const SKILL_TOOLS: Record<HarnessSkill, readonly string[]> = {
@@ -30,6 +30,9 @@ export function harnessTools(skill: HarnessSkill | undefined, offline: boolean, 
   return ['read', ...(offline ? [] : ['web_search', 'web_read']), ...MAIL_TOOL_NAMES, ...(reminders ? REMINDERS_TOOL_NAMES : [])];
 }
 
+/** Automated Reminders tasks: read-only and safe tools only (reminders delete is blocked by the permissions extension). */
+export const TASK_TOOLS: readonly string[] = ['read', 'web_search', 'web_read', 'fetch_content', ...MAIL_TOOL_NAMES, ...REMINDERS_TOOL_NAMES];
+
 /** Relative reminder dates ("tomorrow 9", "in an hour") need local wall-clock time and zone. */
 function localTime(date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -42,6 +45,7 @@ export async function createHarnessSession(options: {
   root: string; config: Config; context: Context; model: Model<any>; runtime: ModelRuntime;
   offline: boolean; skill?: HarnessSkill; briefNews?: boolean; extensionPaths?: string[]; extensionFactories?: ExtensionFactory[];
   mailTransport?: MailTransport; turn?: number; remindersTransport?: RemindersTransport; remindersStore?: ConfirmationStore;
+  automated?: boolean;
 }) {
   const settings = SettingsManager.inMemory({ transport: 'sse', retry: { enabled: false },
     compaction: { enabled: false }, cacheWarming: 'off' });
@@ -50,10 +54,12 @@ export async function createHarnessSession(options: {
     .filter(entry => !['permissions.ts', 'request-workflow.ts', 'macos-mail', 'apple-reminders'].includes(entry.name) && (entry.isDirectory() || /\.(ts|js)$/.test(entry.name)))
     .map(entry => path.join(directory, entry.name));
   const reminders = options.config.reminders_enabled, turn = options.turn ?? newTurn();
-  const store = options.remindersStore ?? confirmations;
+  const automated = options.automated === true;
+  // A task never sees or touches the user's pending deletion.
+  const store = options.remindersStore ?? (automated ? new ConfirmationStore() : confirmations);
   // A deletion asked in the previous turn: this turn's reply may confirm it, so the tool must be reachable.
-  const pending = reminders ? store.pending(turn) : undefined;
-  const tools = harnessTools(options.skill, options.offline, reminders);
+  const pending = reminders && !automated ? store.pending(turn) : undefined;
+  const tools = harnessTools(options.skill, options.offline, reminders).filter(tool => !automated || TASK_TOOLS.includes(tool));
   if (pending && !tools.includes('reminders')) tools.push('reminders');
   const loader = new DefaultResourceLoader({
     cwd: options.root, agentDir: path.join(options.root, '.pi/agent'), settingsManager: settings,
@@ -74,7 +80,7 @@ export async function createHarnessSession(options: {
     ],
     extensionFactories: [...(options.extensionFactories || []),
       macosMail({ settings: options.config, ...(options.mailTransport ? { transport: options.mailTransport } : {}) }),
-      appleReminders({ settings: options.config, turn, store, ...(options.remindersTransport ? { transport: options.remindersTransport } : {}) }), requestWorkflow({ skill: options.skill, briefNews: options.briefNews }), permissionsExtension({ root: options.root, offline: options.offline })]
+      appleReminders({ settings: options.config, turn, store, ...(options.remindersTransport ? { transport: options.remindersTransport } : {}) }), requestWorkflow({ skill: options.skill, briefNews: options.briefNews }), permissionsExtension({ root: options.root, offline: options.offline, automated })]
   });
   await loader.reload();
   const errors = loader.getExtensions().errors;
@@ -103,13 +109,13 @@ export class PiHarnessChat extends PiChat {
       return runtime;
     });
   }
-  override async complete(context: Context, signal: AbortSignal, options?: { offline: boolean; skill?: HarnessSkill; briefNews?: boolean; turn?: number }): Promise<AssistantMessage> {
+  override async complete(context: Context, signal: AbortSignal, options?: { offline: boolean; skill?: HarnessSkill; briefNews?: boolean; turn?: number; automated?: boolean }): Promise<AssistantMessage> {
     signal.throwIfAborted();
     const model = await this.resolveModel(); // Preserves subscription-only auth and global Pi model choice.
     const runtime = await this.getRuntime();
     signal.throwIfAborted();
     const session = await createHarnessSession({ root, config: this.config, context, model, runtime,
-      offline: options?.offline ?? false, skill: options?.skill, briefNews: options?.briefNews, turn: options?.turn });
+      offline: options?.offline ?? false, skill: options?.skill, briefNews: options?.briefNews, turn: options?.turn, automated: options?.automated });
     activity('harness_ready', { provider: model.provider, model: model.id });
     let round = 0; let turnStart = 0;
     const unsubscribe = session.subscribe(event => {

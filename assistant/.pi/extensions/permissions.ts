@@ -20,7 +20,10 @@ async function within(directory: string, filename: string, allowMissing = false)
   }
 }
 
-export function permissionsExtension(options: { root: string; offline: boolean }) {
+/** Same list as TASK_TOOLS in src/harness.ts (kept here so Pi CLI sessions load without the app). */
+const TASK_ALLOWED = /^(read|web_search|web_read|fetch_content|mail_[a-z_]+|reminders)$/;
+
+export function permissionsExtension(options: { root: string; offline: boolean; automated?: boolean }) {
   return (pi: ExtensionAPI) => {
     let calls = 0;
     // Read-only Apple Mail: per-request budgets inside the overall 12-call limit.
@@ -29,6 +32,12 @@ export function permissionsExtension(options: { root: string; offline: boolean }
     let reminderCalls = 0;
     const check = async (event: ToolCallEvent): Promise<ToolCallEventResult | undefined> => {
       if (++calls > 12) return { block: true, reason: 'Tool budget exhausted. Finish with the evidence already retrieved.', terminate: true };
+      // Automated Reminders task: no user can confirm, so only read-only/safe tools and never a deletion.
+      if (options.automated) {
+        if (!TASK_ALLOWED.test(event.toolName)) return { block: true, reason: 'Not available in automated tasks.' };
+        if (event.toolName === 'reminders' && (event.input as { action?: string }).action === 'delete')
+          return { block: true, reason: 'Deleting reminders is not available in automated tasks.' };
+      }
       if (event.toolName === 'read') {
         try {
           const input = event.input as { path?: string };

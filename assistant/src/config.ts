@@ -27,7 +27,7 @@ const scalars = {
   piper_speed_tr: 1.25, piper_speed_en: 1.25,
   voice_tr: 'Yelda (Turkish (Türkiye))', voice_en: 'Daniel',
   language_detector: 'runtime/detect-language',
-  reminders_enabled: false,
+  reminders_enabled: false, tasks_enabled: false, tasks_list: 'Asistan',
   mail_max_age_days: 30, mail_max_list_results: 25, mail_max_body_chars: 8000,
   system_prompt: 'Concise personal assistant. Reply in the language of the latest message (Turkish or English); keep technical terms. No emoji. ' +
     'Calendar is not connected. Email is read-only via the Mail tools; never claim to send, move, delete or mark email.'
@@ -99,6 +99,8 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
     throw Error('mail_max_list_results must be an integer between 1 and 25');
   if (!Number.isInteger(config.mail_max_body_chars) || config.mail_max_body_chars < 500 || config.mail_max_body_chars > 8000)
     throw Error('mail_max_body_chars must be an integer between 500 and 8000');
+  if (!config.tasks_list.trim() || config.tasks_list.length > 100 || /[\u0000-\u001f\u007f]/.test(config.tasks_list))
+    throw Error('tasks_list must be a Reminders list name (1-100 characters)');
   const local = new URL(config.local_url);
   if (local.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(local.hostname) ||
       !local.port || local.pathname.replace(/\/$/, '') !== '/v1' || local.username || local.search || local.hash)

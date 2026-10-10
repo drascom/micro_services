@@ -163,11 +163,18 @@ test('admin Reminders switch: token required, saved in config.json with other se
   try {
     await writeFile(f.configPath, JSON.stringify({ language: 'tr' }));
     assert.equal((await f.call('/admin/reminders/save', { enabled: true }, 'bad')).status, 403);
-    assert.deepEqual((await f.call('/admin/reminders')).body, { enabled: false });
+    const off = { enabled: false, tasks_enabled: false, tasks_list: 'Asistan' };
+    assert.deepEqual((await f.call('/admin/reminders')).body, off);
     assert.equal((await f.call('/admin/reminders/save', { enabled: 'yes' })).status, 400);
-    assert.deepEqual((await f.call('/admin/reminders/save', { enabled: true })).body, { enabled: true });
+    assert.deepEqual((await f.call('/admin/reminders/save', { enabled: true })).body, { ...off, enabled: true });
     assert.deepEqual(JSON.parse(await readFile(f.configPath, 'utf8')), { language: 'tr', reminders_enabled: true });
     assert.equal(f.config.reminders_enabled, true);
-    assert.deepEqual((await f.call('/admin/reminders')).body, { enabled: true });
+    // Assistant tasks: switch + list name; an invalid name is rejected and nothing changes.
+    assert.equal((await f.call('/admin/reminders/save', { tasks_list: '  ' })).status, 400);
+    assert.deepEqual((await f.call('/admin/reminders/save', { tasks_enabled: true, tasks_list: ' İşler ' })).body,
+      { enabled: true, tasks_enabled: true, tasks_list: 'İşler' });
+    assert.deepEqual(JSON.parse(await readFile(f.configPath, 'utf8')), { language: 'tr', reminders_enabled: true, tasks_enabled: true, tasks_list: 'İşler' });
+    assert.equal(f.config.tasks_list, 'İşler');
+    assert.deepEqual((await f.call('/admin/reminders')).body, { enabled: true, tasks_enabled: true, tasks_list: 'İşler' });
   } finally { await f.close(); }
 });

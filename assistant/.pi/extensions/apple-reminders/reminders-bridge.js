@@ -53,6 +53,7 @@ function describe(r) {
 function listOp(app, request) {
   var lists = request.list ? [findList(app, request.list)] : app.lists();
   var after = request.due_after ? Date.parse(request.due_after) : null, before = request.due_before ? Date.parse(request.due_before) : null;
+  var notesMax = Math.min(Math.max(1, request.notes_max | 0 || 300), 8000);
   var found = [];
   for (var l = 0; l < lists.length; l++) {
     var all = lists[l].reminders;
@@ -62,7 +63,7 @@ function listOp(app, request) {
     for (var i = 0; i < ids.length; i++) {
       var due = allDays[i] || dues[i], time = due instanceof Date ? due.getTime() : null;
       if (time === null ? !request.undated : (after !== null && time < after) || (before !== null && time >= before)) continue;
-      found.push({ id: String(ids[i]), title: str(names[i], 300), notes: str(bodies[i] || '', 300), due: iso(due), all_day: Boolean(allDays[i]),
+      found.push({ id: String(ids[i]), title: str(names[i], 300), notes: str(bodies[i] || '', notesMax), due: iso(due), all_day: Boolean(allDays[i]),
         priority: priorities[i] || 0, completed: Boolean(done[i]), list: listName, time: time });
     }
   }

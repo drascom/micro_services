@@ -14,6 +14,8 @@ protocol AssistantBackend: Sendable {
     func cancel() async
     func reset() async throws
     func unloadLocal() async throws
+    /// Local/remote choice for automated Reminders tasks (follows the ring's mode).
+    func mode(offline: Bool) async
     func close() async
 }
 
@@ -131,10 +133,12 @@ actor BackendClient: AssistantBackend {
     func cancel() async { _ = try? await post("cancel", body: Data("{}".utf8)) }
     func reset() async throws { _ = try await post("reset", body: Data("{}".utf8)) }
     func unloadLocal() async throws { _ = try await post("unload-local", body: Data("{}".utf8)) }
+    func mode(offline: Bool) async { _ = try? await post("mode", body: JSONSerialization.data(withJSONObject: ["offline": offline])) }
     /// Admin window calls (status, skill/extension files); not part of the ring's backend protocol.
     func admin(_ route: String, _ body: [String: String] = [:]) async throws -> Data {
         try await post(route, body: JSONSerialization.data(withJSONObject: body))
     }
+    func admin(_ route: String, data body: Data) async throws -> Data { try await post(route, body: body) }
     func admin(_ route: String, json body: [String: Any]) async throws -> Data {
         try await post(route, body: JSONSerialization.data(withJSONObject: body))
     }

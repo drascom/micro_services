@@ -181,6 +181,7 @@ final class RingModel {
     func setOffline(_ value: Bool) {
         guard ready, !changingMode else { return }
         offline = value
+        Task { await backend.mode(offline: value) }
         guard !value else { return } // Local mode loads lazily on the next request.
         cancel(notifyBackend: false)
         changingMode = true; phase = .thinking; status = "Yerel model boşaltılıyor / Unloading local model…"

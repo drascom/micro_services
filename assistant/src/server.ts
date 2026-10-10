@@ -10,6 +10,18 @@ import type { MailTransport } from '../.pi/extensions/macos-mail/client.ts';
 import { defaultMailTransport } from '../.pi/extensions/macos-mail/mail-db.ts';
 import path from 'node:path';
 import { homedir } from 'node:os';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { TaskScheduler, type Notify } from './tasks.ts';
+import { osascriptTransport, type RemindersTransport } from '../.pi/extensions/apple-reminders/client.ts';
+
+/** Assistant tasks (Reminders list) wiring; omitted = no scheduler (tests). */
+export type TaskOptions = { transport?: RemindersTransport; notify?: Notify; stateFile: string | null; firstMs?: number; everyMs?: number };
+
+function beginRequestSlot() {
+  let finish!: () => void;
+  const done = new Promise<void>(resolve => { finish = resolve; });
+  return { controller: new AbortController(), done, finish };
+}
 
 async function readBody(request: IncomingMessage, limit: number): Promise<Buffer> {
   const chunks: Buffer[] = []; let size = 0;
@@ -24,18 +36,30 @@ async function readBody(request: IncomingMessage, limit: number): Promise<Buffer
 
 export async function makeServer(config: Config, app: Orchestrator, lifecycle: AbortSignal, activityFile: string | null = path.join(root, 'data/activity.log'), resourceRoot = root,
   trashDirs = [path.join(homedir(), '.Trash'), path.join(resourceRoot, 'data/trash')],
-  mail: { configPath?: string; transport?: MailTransport } = {}) {
+  mail: { configPath?: string; transport?: MailTransport } = {}, tasks?: TaskOptions) {
   const configPath = mail.configPath ?? path.join(root, 'config.json');
   const observe = <T>(details: Record<string, string | number | boolean>, action: () => Promise<T>) => activityFile ? observeRequest(activityFile, details, action) : action();
   const token = randomBytes(32).toString('base64url');
   let active: { controller: AbortController; done: Promise<void>; finish: () => void } | undefined;
   let unloading = false;
+  // An automated Reminders task holds this slot; it starts only when no user request runs and never interrupts one.
+  let task: ReturnType<typeof beginRequestSlot> | undefined;
+  // Local/remote choice for tasks follows the ring's mode (last chat or /mode).
+  let offlineMode = false;
   const transcriptions = new Set<AbortController>();
-  const beginRequest = () => {
-    let finish!: () => void;
-    const done = new Promise<void>(resolve => { finish = resolve; });
-    return { controller: new AbortController(), done, finish };
+  const beginRequest = beginRequestSlot;
+  const lane = {
+    async acquire(signal: AbortSignal) {
+      while (active || unloading || task) await sleep(250, undefined, { signal: AbortSignal.any([signal, lifecycle]) });
+      const slot = beginRequestSlot(); task = slot;
+      return { signal: AbortSignal.any([lifecycle, slot.controller.signal, signal]),
+        release: () => { if (task === slot) task = undefined; slot.finish(); } };
+    }
   };
+  if (tasks) new TaskScheduler({ config, transport: tasks.transport ?? osascriptTransport(), lane, notify: tasks.notify,
+    stateFile: tasks.stateFile, activityFile,
+    run: (prompt, intentText, signal) => app.ask(prompt, offlineMode, signal, { automated: true, intentText }) })
+    .start(lifecycle, tasks.firstMs, tasks.everyMs);
   const server = createServer(async (request, response) => {
     const reply = (code: number, data: unknown) => {
       if (response.destroyed) return;
@@ -67,7 +91,7 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
       if (!data || typeof data !== 'object' || Array.isArray(data)) throw Error('Expected an object');
       const input = data as { text?: unknown; offline?: unknown };
       // Native admin window (user actions; read-only status plus app-owned skill/extension files).
-      if (request.url === '/status') return reply(200, await collectStatus(config, app, { busy: Boolean(active), unloading }, activityFile));
+      if (request.url === '/status') return reply(200, await collectStatus(config, app, { busy: Boolean(active || task), unloading }, activityFile));
       if (request.url?.startsWith('/admin/')) {
         const value = data as { kind?: unknown; path?: unknown; content?: unknown; name?: unknown; description?: unknown };
         if (request.url === '/admin/resources') return reply(200, await listResources(resourceRoot));
@@ -78,18 +102,23 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         if (request.url === '/admin/create-extension') return reply(200, await createExtension(resourceRoot, value.name));
         if (request.url === '/admin/mail/accounts') return reply(200, await listMailAccounts(config, mail.transport ?? defaultMailTransport()));
         if (request.url === '/admin/mail/save') return reply(200, await saveMailAccounts(config, configPath, (data as { accounts?: unknown }).accounts));
-        if (request.url === '/admin/reminders') return reply(200, { enabled: config.reminders_enabled });
-        if (request.url === '/admin/reminders/save') return reply(200, await saveReminders(config, configPath, (data as { enabled?: unknown }).enabled));
+        if (request.url === '/admin/reminders') return reply(200, { enabled: config.reminders_enabled, tasks_enabled: config.tasks_enabled, tasks_list: config.tasks_list });
+        if (request.url === '/admin/reminders/save') return reply(200, await saveReminders(config, configPath, data));
         return reply(404, { error: 'Not found' });
       }
       if (request.url === '/cancel') { active?.controller.abort(); for (const t of transcriptions) t.abort(); return reply(200, { ok: true }); }
+      if (request.url === '/mode') {
+        if (typeof input.offline !== 'boolean') throw Error('Invalid mode');
+        offlineMode = input.offline; return reply(200, { ok: true });
+      }
       if (request.url === '/unload-local') {
         if (unloading) return reply(409, { error: 'Model is already unloading' });
         unloading = true;
         try {
-          const current = active;
-          current?.controller.abort();
+          const current = active, running = task;
+          current?.controller.abort(); running?.controller.abort(); // A cancelled task is retried on a later scan.
           if (current) await current.done;
+          if (running) await running.done;
           await app.unloadLocal();
           return reply(200, { ok: true });
         } finally { unloading = false; }
@@ -114,10 +143,14 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
       if (active || unloading) return reply(409, { error: 'Assistant is busy' });
       if (request.url === '/reset') { app.reset(); return reply(200, { ok: true }); }
       if (typeof input.text !== 'string' || (input.offline !== undefined && typeof input.offline !== 'boolean')) throw Error('Invalid chat request');
-      const current = beginRequest(); active = current;
+      const current = beginRequest(); active = current; offlineMode = input.offline === true;
       const disconnected = () => { if (!response.writableEnded) current.controller.abort(); };
       response.once('close', disconnected);
-      try { reply(200, await observe({ kind: 'chat', offline: input.offline === true, text_chars: input.text.length }, () => app.ask(input.text as string, input.offline === true, AbortSignal.any([lifecycle, current.controller.signal])))); }
+      try {
+        // A running task finishes first; this request waits its turn instead of being rejected.
+        const cancelled = new Promise(resolve => current.controller.signal.addEventListener('abort', resolve, { once: true }));
+        while (task) { await Promise.race([task.done, cancelled]); current.controller.signal.throwIfAborted(); }
+        reply(200, await observe({ kind: 'chat', offline: input.offline === true, text_chars: input.text.length }, () => app.ask(input.text as string, input.offline === true, AbortSignal.any([lifecycle, current.controller.signal])))); }
       finally { response.off('close', disconnected); if (active === current) active = undefined; current.finish(); }
     } catch (error) { reply(400, { error: lifecycle.aborted ? 'Assistant is shutting down' : error instanceof Error ? error.message : 'Request failed',
       ...(error instanceof NoSpeechError ? { code: 'NO_SPEECH' } : {}) }); }

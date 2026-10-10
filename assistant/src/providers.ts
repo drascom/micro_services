@@ -9,7 +9,7 @@ import { FileCredentials } from './credentials.ts';
 import type { Config } from './config.ts';
 
 export type HarnessSkill = 'online-search' | 'skill-manager' | 'mail-assistant' | 'reminders';
-export interface Chat { complete(context: Context, signal: AbortSignal, options?: { offline: boolean; skill?: HarnessSkill; briefNews?: boolean; turn?: number }): Promise<AssistantMessage>; }
+export interface Chat { complete(context: Context, signal: AbortSignal, options?: { offline: boolean; skill?: HarnessSkill; briefNews?: boolean; turn?: number; automated?: boolean }): Promise<AssistantMessage>; }
 export interface Intent { choice: string; confidence: number; provider: string; }
 export interface Classifier { classify(message: string, signal: AbortSignal): Promise<Intent>; }
 

@@ -56,7 +56,8 @@ export async function main(args = process.argv.slice(2)) {
       if (!args[0]) throw Error('Usage: ./run.sh transcribe /path/to/audio.wav');
       console.log(await speech.transcribe(await readFile(args[0]), lifecycle.signal));
     } else if (command === 'serve') {
-      const server = await makeServer(config, app, lifecycle.signal);
+      const server = await makeServer(config, app, lifecycle.signal, undefined, undefined, undefined, {},
+        { stateFile: path.join(root, 'data/tasks-state.json') });
       await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(config.port, '127.0.0.1', resolve); });
       const url = `http://127.0.0.1:${config.port}`;
       console.log(`Assistant: ${url}`);

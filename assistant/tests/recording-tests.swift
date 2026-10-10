@@ -4,6 +4,7 @@ actor FakeBackend: AssistantBackend {
     var messages: [String] = []
     var unloads = 0
     func unloadLocal() async throws { unloads += 1 }
+    func mode(offline: Bool) async {}
     var silent = false
     func setSilent(_ value: Bool) { silent = value }
     func connect() async throws {}

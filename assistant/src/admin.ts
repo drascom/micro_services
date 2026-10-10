@@ -251,10 +251,18 @@ export async function saveMailAccounts(config: Config, configPath: string, value
   return { ok: true, accounts: accounts as readonly MailAccount[] };
 }
 
-/** Reminders on/off. Off: the `reminders` tool is not registered for the model at all (from the next request). */
-export async function saveReminders(config: Config, configPath: string, enabled: unknown) {
-  if (typeof enabled !== 'boolean') throw Error('enabled must be a boolean');
-  await updateConfigFile(configPath, settings => { settings.reminders_enabled = enabled; });
-  config.reminders_enabled = enabled;
-  return { enabled };
+/**
+ * Reminders on/off (off: the `reminders` tool is not registered for the model at all, from the next request) and
+ * assistant tasks (on/off + list name). Only the fields present are changed.
+ */
+export async function saveReminders(config: Config, configPath: string, value: unknown) {
+  const input = (value && typeof value === 'object' ? value : {}) as { enabled?: unknown; tasks_enabled?: unknown; tasks_list?: unknown };
+  const change: Partial<Pick<Config, 'reminders_enabled' | 'tasks_enabled' | 'tasks_list'>> = {};
+  if (input.enabled !== undefined) { if (typeof input.enabled !== 'boolean') throw Error('enabled must be a boolean'); change.reminders_enabled = input.enabled; }
+  if (input.tasks_enabled !== undefined) { if (typeof input.tasks_enabled !== 'boolean') throw Error('tasks_enabled must be a boolean'); change.tasks_enabled = input.tasks_enabled; }
+  if (input.tasks_list !== undefined) { if (typeof input.tasks_list !== 'string') throw Error('tasks_list must be text'); change.tasks_list = input.tasks_list.trim(); }
+  if (!Object.keys(change).length) throw Error('Nothing to save');
+  await updateConfigFile(configPath, settings => { Object.assign(settings, change); }); // The whole file is validated before replacing.
+  Object.assign(config, change);
+  return { enabled: config.reminders_enabled, tasks_enabled: config.tasks_enabled, tasks_list: config.tasks_list };
 }
