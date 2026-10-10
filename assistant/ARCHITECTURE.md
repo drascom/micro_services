@@ -42,6 +42,10 @@ The app has one Swift/AppKit desktop host and one Node orchestration process
 plus local inference helpers. The desktop host owns a transparent floating
 NSPanel, SwiftUI animation/text UI, CoreGraphics modifier event monitor, and
 AVAudioRecorder. It talks to a protected native-only loopback API.
+At recording start the host notes another app's focused editable text element
+(Accessibility, `AXFocusedUIElement`); after transcription it pastes the same
+transcript there if that element still has focus (`Paster.swift`), then sends
+the chat as usual with `pasted_into` (activity metadata only, not model context).
 It starts the backend automatically and stops only its owned process on quit.
 The ring's right-click menu is minimal (type, cancel, new conversation, Admin,
 restart, quit). A native SwiftUI Admin window holds settings, live status (`POST /status`:

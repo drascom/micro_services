@@ -19,6 +19,11 @@ final class RingModel {
     var showInput: () -> Void = {}
     var toggleInput: () -> Void = {}
     var contextMenu: () -> Void = {}
+    /// Focused editable text field of another app at recording start (opaque; nil = none).
+    var captureFocus: () -> AnyObject? = { nil }
+    /// Pastes the transcript into the captured target if it still has focus; returns the app id when pasted.
+    var pasteInto: (AnyObject, String) -> String? = { _, _ in nil }
+    private var focusTarget: AnyObject?
     let backend: any AssistantBackend
     let audio: any AudioCapture
     private var recordingTask: Task<Void, Never>?
@@ -52,6 +57,7 @@ final class RingModel {
     func beginListening() {
         guard ready, phase == .idle || phase == .error || phase == .speaking || phase == .noSpeech else { return }
         feedbackTask?.cancel(); requestTask?.cancel()
+        focusTarget = captureFocus() // The user's text cursor at the moment they start speaking.
         phase = .preparing; status = "Preparing microphone…"
         recordingTask = Task {
             await backend.stopSpeech()
@@ -87,7 +93,9 @@ final class RingModel {
             requestTask = Task {
                 do { let text = try await backend.transcribe(wav); guard !Task.isCancelled else { return }
                     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { noSpeech(); return }
-                    transcript = text; try await reply(to: text) }
+                    // Also type the transcript where the user's cursor was, if that field still has focus.
+                    let pasted = focusTarget.flatMap { pasteInto($0, text) }; focusTarget = nil
+                    transcript = text; try await reply(to: text, pastedInto: pasted) }
                 catch TranscriptionError.noSpeech { if !Task.isCancelled { noSpeech() } }
                 catch { if !Task.isCancelled { fail(error) } }
             }
@@ -111,9 +119,9 @@ final class RingModel {
         requestTask = Task { do { await backend.stopSpeech(); try await reply(to: text) }
             catch { if !Task.isCancelled { fail(error) } } }
     }
-    private func reply(to text: String) async throws {
+    private func reply(to text: String, pastedInto: String? = nil) async throws {
         phase = .thinking; status = offline ? "Thinking locally…" : "Thinking with Pi…"
-        let result = try await backend.ask(text, offline: offline)
+        let result = try await backend.ask(text, offline: offline, pastedInto: pastedInto)
         guard !Task.isCancelled else { return }
         response = result.text; provider = result.provider + (result.fallback_reason.isEmpty ? "" : " • " + result.fallback_reason)
         if readAloud {

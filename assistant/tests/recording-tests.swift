@@ -7,8 +7,9 @@ actor FakeBackend: AssistantBackend {
     var silent = false
     func setSilent(_ value: Bool) { silent = value }
     func connect() async throws {}
-    func ask(_ text: String, offline: Bool) async throws -> BackendClient.Reply {
-        messages.append(text)
+    var pastedApps: [String?] = []
+    func ask(_ text: String, offline: Bool, pastedInto: String?) async throws -> BackendClient.Reply {
+        messages.append(text); pastedApps.append(pastedInto)
         return BackendClient.Reply(text: "reply: " + text, provider: "test", fallback_reason: "")
     }
     func transcribe(_ audio: Data) async throws -> String {
@@ -97,7 +98,37 @@ struct RecordingChecks {
         try await wait { !model.changingMode && model.phase == .idle }
         let unloads = await backend.unloads
         precondition(unloads == 1 && !model.offline && model.response == replyBeforeUnload)
+        // Voice with a focused text field elsewhere: pasted there AND sent to the assistant as usual.
+        final class Field {}
+        var pasted: [String] = []
+        model.captureFocus = { Field() }
+        model.pasteInto = { _, text in pasted.append(text); return "com.example.editor" }
+        model.modifiers(true)
+        try await wait { model.phase == .listening }
+        model.modifiers(false)
+        try await wait { model.response == "reply: voice" && model.phase == .idle && pasted == ["voice"] }
+        var apps = await backend.pastedApps
+        precondition(apps.last == "com.example.editor")
+        // Focus moved away before transcription finished: no paste, assistant flow unchanged.
+        model.pasteInto = { _, _ in nil }
+        model.modifiers(true)
+        try await wait { model.phase == .listening }
+        model.modifiers(false)
+        try await wait { model.phase == .idle }
+        let sent = await backend.messages.count
+        precondition(sent == 5)
+        apps = await backend.pastedApps
+        precondition(apps.last == .some(nil) && pasted == ["voice"])
+        // Silent recording: nothing pasted, nothing sent.
+        model.pasteInto = { _, text in pasted.append(text); return "x" }
+        await backend.setSilent(true)
+        model.modifiers(true)
+        try await wait { model.phase == .listening }
+        model.modifiers(false)
+        try await wait { model.phase == .idle }
+        let finalCount = await backend.messages.count
+        precondition(pasted == ["voice"] && finalCount == 5)
         model.cancel()
-        print("Recording checks passed: permission-release race, typed override during permission and recording.")
+        print("Recording checks passed: permission-release race, typed override during permission and recording, focused-field paste.")
     }
 }

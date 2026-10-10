@@ -3,7 +3,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Config } from './config.ts';
 import type { Orchestrator } from './orchestrator.ts';
 import { NoSpeechError } from './speech.ts';
-import { observeRequest } from './activity.ts';
+import { activity, observeRequest } from './activity.ts';
 import { root } from './config.ts';
 import { collectStatus, createExtension, createSkill, deleteResource, listResources, readResource, writeResource } from './admin.ts';
 import path from 'node:path';
@@ -60,7 +60,7 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
       }
       const data: unknown = JSON.parse(body.toString());
       if (!data || typeof data !== 'object' || Array.isArray(data)) throw Error('Expected an object');
-      const input = data as { text?: unknown; offline?: unknown };
+      const input = data as { text?: unknown; offline?: unknown; pasted_into?: unknown };
       // Native admin window (user actions; read-only status plus app-owned skill/extension files).
       if (request.url === '/status') return reply(200, await collectStatus(config, app, { busy: Boolean(active), unloading }, activityFile));
       if (request.url?.startsWith('/admin/')) {
@@ -93,11 +93,17 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
       if (!['/chat', '/reset'].includes(request.url || '')) return reply(404, { error: 'Not found' });
       if (active || unloading) return reply(409, { error: 'Assistant is busy' });
       if (request.url === '/reset') { app.reset(); return reply(200, { ok: true }); }
-      if (typeof input.text !== 'string' || (input.offline !== undefined && typeof input.offline !== 'boolean')) throw Error('Invalid chat request');
+      if (typeof input.text !== 'string' || (input.offline !== undefined && typeof input.offline !== 'boolean') ||
+          (input.pasted_into !== undefined && (typeof input.pasted_into !== 'string' || !/^[\w .-]{1,200}$/.test(input.pasted_into)))) throw Error('Invalid chat request');
+      // The host also pasted the voice transcript into another app's focused field: log app id + length only.
+      const pasted = input.pasted_into as string | undefined;
       const current = beginRequest(); active = current;
       const disconnected = () => { if (!response.writableEnded) current.controller.abort(); };
       response.once('close', disconnected);
-      try { reply(200, await observe({ kind: 'chat', offline: input.offline === true, text_chars: input.text.length }, () => app.ask(input.text as string, input.offline === true, AbortSignal.any([lifecycle, current.controller.signal])))); }
+      try { reply(200, await observe({ kind: 'chat', offline: input.offline === true, text_chars: input.text.length }, () => {
+        if (pasted) activity('pasted', { app: pasted, text_chars: (input.text as string).length });
+        return app.ask(input.text as string, input.offline === true, AbortSignal.any([lifecycle, current.controller.signal]));
+      })); }
       finally { response.off('close', disconnected); if (active === current) active = undefined; current.finish(); }
     } catch (error) { reply(400, { error: lifecycle.aborted ? 'Assistant is shutting down' : error instanceof Error ? error.message : 'Request failed',
       ...(error instanceof NoSpeechError ? { code: 'NO_SPEECH' } : {}) }); }

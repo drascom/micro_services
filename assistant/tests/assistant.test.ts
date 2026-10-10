@@ -203,6 +203,28 @@ test('no-speech API result has a stable code and releases the busy slot for the 
   } finally { lifecycle.abort(); await new Promise<void>(resolve => server.close(() => resolve())); }
 });
 
+test('chat with pasted_into logs app id and length only; invalid app id is rejected', async () => {
+  const f = fixture(), lifecycle = new AbortController();
+  const dir = await mkdtemp(path.join(tmpdir(), 'pasted-test-')), log = path.join(dir, 'activity.log');
+  const server = await makeServer(config, f.app, lifecycle.signal, log);
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const address = server.address(); assert.ok(address && typeof address === 'object');
+  const base = `http://127.0.0.1:${address.port}`;
+  try {
+    const { token } = await (await fetch(base + '/session')).json() as { token: string };
+    const headers = { 'X-Assistant-Token': token };
+    const body = (pasted: unknown) => JSON.stringify({ text: 'gizli metin', offline: true, pasted_into: pasted });
+    assert.equal((await fetch(base + '/chat', { method: 'POST', headers, body: body('com.apple.TextEdit') })).status, 200);
+    const raw = await readFile(log, 'utf8'), entries = raw.trim().split('\n').map(line => JSON.parse(line));
+    const pasted = entries.find(e => e.event === 'pasted');
+    assert.equal(pasted?.app, 'com.apple.TextEdit'); assert.equal(pasted?.text_chars, 'gizli metin'.length);
+    assert.ok(!raw.includes('gizli'));
+    assert.equal(f.counts().localCalls, 1); assert.equal(f.app.history.length, 2);
+    for (const bad of [42, '', 'x'.repeat(201), 'a\nb'])
+      assert.equal((await fetch(base + '/chat', { method: 'POST', headers, body: body(bad) })).status, 400);
+  } finally { lifecycle.abort(); await new Promise<void>(resolve => server.close(() => resolve())); await rm(dir, { recursive: true, force: true }); }
+});
+
 test('remote fallback releases local runtime; explicit offline use keeps it loaded', async () => {
   const f = fixture(true); let stops = 0;
   f.runtime.close = async () => { stops++; };

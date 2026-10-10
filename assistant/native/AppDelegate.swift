@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     override init() {
         client = BackendClient()
         model = RingModel(backend: client, audio: AudioRecorder())
+        model.captureFocus = { Paster.focusedTextTarget() }
+        model.pasteInto = { target, text in (target as? Paster.Target).flatMap { Paster.paste(text, into: $0) } }
         admin = AdminModel(backend: client, ring: model)
         super.init()
     }
