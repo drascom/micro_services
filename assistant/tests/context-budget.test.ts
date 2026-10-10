@@ -13,7 +13,8 @@ import { compactSchema } from '../.pi/extensions/web-access.ts';
 // Limits are characters (about 4 per token), set about 10% above the measured values (offline 3907, mail-assistant 3359; 2026-10-09).
 // 2026-10-10: optional `account` filter for multiple Mail accounts measured mail-assistant 3531, offline 4282.
 // 2026-10-10: Reminders (off by default) measured unrouted offline with it on 5374, reminders route 2018.
-const LIMITS = { unrouted_offline: 4300, 'mail-assistant': 3600, unrouted_offline_reminders: 5900, reminders: 2250 } as const;
+// 2026-10-10: "never pretend it was done" rule (+56) measured unrouted offline 4330.
+const LIMITS = { unrouted_offline: 4360, 'mail-assistant': 3600, unrouted_offline_reminders: 5900, reminders: 2250 } as const;
 
 async function measure(skill: 'mail-assistant' | 'reminders' | undefined, offline: boolean, reminders = false) {
   const agent = await mkdtemp(path.join(tmpdir(), 'ayhan-budget-'));
@@ -30,7 +31,7 @@ async function measure(skill: 'mail-assistant' | 'reminders' | undefined, offlin
     });
     // A preloaded skill body is sent with the user message.
     const body = skill ? (await import('node:fs/promises')).readFile(path.join(root, '.pi/skills', skill, 'SKILL.md'), 'utf8') : '';
-    return { names: session.getActiveToolNames(), chars: session.systemPrompt.length + tools.join('').length + (await body).length };
+    return { names: session.getActiveToolNames(), prompt: session.systemPrompt, chars: session.systemPrompt.length + tools.join('').length + (await body).length };
   } finally { session.dispose(); await rm(agent, { recursive: true, force: true }); }
 }
 
@@ -61,6 +62,11 @@ test('Reminders adds one compact tool only when enabled', async () => {
   const routed = await measure('reminders', false, true);
   assert.deepEqual(routed.names, ['reminders']);
   assert.ok(routed.chars <= LIMITS.reminders, `${routed.chars} chars`);
+});
+
+test('missing tools are never faked, routed or not', async () => {
+  for (const result of [await measure(undefined, true), await measure('mail-assistant', false)])
+    assert.match(result.prompt, /unavailable, say so; never pretend it was done, saved or remembered/);
 });
 
 test('upstream web tool schemas are compacted to first sentences', () => {
