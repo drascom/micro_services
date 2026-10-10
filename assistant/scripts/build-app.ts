@@ -1,12 +1,18 @@
 import { spawnSync } from 'node:child_process';
-import { writeFile, mkdir, readdir, access } from 'node:fs/promises';
+import { writeFile, mkdir, readdir, access, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { root, loadConfig } from '../src/config.ts';
 import { signApp } from './signing.ts';
 
 const app = path.join(root, 'PersonalAssistant.app');
-try { await access(app); throw Error('PersonalAssistant.app exists. Move it aside before rebuilding.'); }
-catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
+const replace = process.argv.includes('--replace');
+let exists = true;
+try { await access(app); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; exists = false; }
+if (exists) {
+  if (!replace) throw Error('PersonalAssistant.app exists. Move it aside or pass --replace.');
+  const old = `/tmp/PersonalAssistant.app.old.${Date.now()}`;
+  await rename(app, old); console.log(`Moved previous app to ${old}`);
+}
 const macos = path.join(app, 'Contents/MacOS'), resources = path.join(app, 'Contents/Resources');
 await mkdir(macos, { recursive: true }); await mkdir(resources, { recursive: true });
 await mkdir(path.join(root, 'data'), { recursive: true, mode: 0o700 });
@@ -24,6 +30,7 @@ if (compile.error || compile.status !== 0) throw Error('Native assistant compila
 const info = {
   CFBundleIdentifier: 'com.drascom.personal-assistant', CFBundleName: 'PersonalAssistant', CFBundleDisplayName: 'Ayhan Assistant',
   CFBundleExecutable: 'PersonalAssistant', CFBundlePackageType: 'APPL', CFBundleShortVersionString: '0.3.0',
+  PAInstallPath: path.resolve(app),
   LSMinimumSystemVersion: '14.0', LSUIElement: true, NSHighResolutionCapable: true,
   NSMicrophoneUsageDescription: 'Ayhan records your voice while you hold Control and Option. Audio is transcribed locally on this Mac.',
   NSAppleEventsUsageDescription: 'Ayhan reads messages already available in Apple Mail only when you ask it to search, summarize, or classify email. It does not send or modify messages.'

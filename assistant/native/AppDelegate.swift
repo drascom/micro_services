@@ -166,6 +166,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc private func reset() { model.newConversation() }
     @objc private func restart() { restartRequested = true; NSApp.terminate(nil) }
     @objc private func quit() { NSApp.terminate(nil) }
+    /// Canonical install path written at build time; falls back to the running bundle.
+    private static func relaunchPath() -> String {
+        if let path = Bundle.main.object(forInfoDictionaryKey: "PAInstallPath") as? String, path.hasSuffix(".app"),
+           Bundle(path: path)?.executableURL.map({ FileManager.default.isExecutableFile(atPath: $0.path) }) == true {
+            return path
+        }
+        return Bundle.main.bundleURL.path
+    }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         hotkey?.stop(); model.cancel()
         Task {
@@ -176,7 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     helper.executableURL = URL(fileURLWithPath: "/bin/sh")
                     // Pass paths as arguments; wait until this app exits before reopening.
                     helper.arguments = ["-c", "while /bin/kill -0 \"$1\" 2>/dev/null; do /bin/sleep 0.1; done; exec /usr/bin/open -n \"$2\"",
-                                        "ayhan-restart", String(ProcessInfo.processInfo.processIdentifier), Bundle.main.bundleURL.path]
+                                        "ayhan-restart", String(ProcessInfo.processInfo.processIdentifier), Self.relaunchPath()]
                     helper.standardInput = FileHandle.nullDevice
                     helper.standardOutput = FileHandle.nullDevice; helper.standardError = FileHandle.nullDevice
                     try helper.run(); relauncher = helper

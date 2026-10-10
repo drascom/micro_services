@@ -76,7 +76,7 @@ the native app can attach to an existing backend and stops only one it owns.
 The native launcher references this folder and the Node interpreter used when
 it was built. Keep this folder in place; this is a personal local app, not a
 portable distribution bundle. `data/native-launcher.log` records launcher errors.
-To rebuild, move the existing app aside, then run `npm run build-app` (requires
+To rebuild, run `npm run rebuild-app` (moves the old app to `/tmp`; requires
 Apple Command Line Tools). The resulting app uses a stable local code-signing certificate (see below).
 
 ## Your existing Pi subscription login
