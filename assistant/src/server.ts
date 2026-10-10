@@ -5,8 +5,9 @@ import type { Orchestrator } from './orchestrator.ts';
 import { NoSpeechError } from './speech.ts';
 import { observeRequest } from './activity.ts';
 import { root } from './config.ts';
-import { collectStatus, createExtension, createSkill, listResources, readResource, writeResource } from './admin.ts';
+import { collectStatus, createExtension, createSkill, deleteResource, listResources, readResource, writeResource } from './admin.ts';
 import path from 'node:path';
+import { homedir } from 'node:os';
 
 async function readBody(request: IncomingMessage, limit: number): Promise<Buffer> {
   const chunks: Buffer[] = []; let size = 0;
@@ -19,7 +20,8 @@ async function readBody(request: IncomingMessage, limit: number): Promise<Buffer
   return Buffer.concat(chunks);
 }
 
-export async function makeServer(config: Config, app: Orchestrator, lifecycle: AbortSignal, activityFile: string | null = path.join(root, 'data/activity.log'), resourceRoot = root) {
+export async function makeServer(config: Config, app: Orchestrator, lifecycle: AbortSignal, activityFile: string | null = path.join(root, 'data/activity.log'), resourceRoot = root,
+  trashDirs = [path.join(homedir(), '.Trash'), path.join(resourceRoot, 'data/trash')]) {
   const observe = <T>(details: Record<string, string | number | boolean>, action: () => Promise<T>) => activityFile ? observeRequest(activityFile, details, action) : action();
   const token = randomBytes(32).toString('base64url');
   let active: { controller: AbortController; done: Promise<void>; finish: () => void } | undefined;
@@ -67,6 +69,7 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         if (request.url === '/admin/read') return reply(200, await readResource(resourceRoot, value.kind, value.path));
         if (request.url === '/admin/write') return reply(200, await writeResource(resourceRoot, value.kind, value.path, value.content));
         if (request.url === '/admin/create-skill') return reply(200, await createSkill(resourceRoot, value.name, value.description));
+        if (request.url === '/admin/delete') return reply(200, await deleteResource(resourceRoot, value.kind, value.name, trashDirs));
         if (request.url === '/admin/create-extension') return reply(200, await createExtension(resourceRoot, value.name));
         return reply(404, { error: 'Not found' });
       }

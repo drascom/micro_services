@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
@@ -25,7 +25,7 @@ async function setup() {
   const speech = { transcribe: async () => '', speak: async () => {}, stop: () => {}, close: async () => {} };
   const app = new Orchestrator(config, reply, reply, { ensure: async () => {}, close: async () => {} }, speech);
   const activityFile = path.join(directory, 'activity.log');
-  const lifecycle = new AbortController(), server = await makeServer(config, app, lifecycle.signal, activityFile, directory);
+  const lifecycle = new AbortController(), server = await makeServer(config, app, lifecycle.signal, activityFile, directory, [path.join(directory, 'trash')]);
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const address = server.address(); assert.ok(address && typeof address === 'object');
   const base = `http://127.0.0.1:${address.port}`;
@@ -89,5 +89,31 @@ test('admin rejects path traversal, symlinks, unknown kinds and missing files', 
     assert.equal(await readFile(path.join(f.directory, 'secret.txt'), 'utf8'), 'outside');
     assert.equal((await f.call('/admin/create-skill', { name: '../evil', description: 'x' })).status, 400);
     assert.equal((await f.call('/admin/create-extension', { name: '../../evil' })).status, 400);
+  } finally { await f.close(); }
+});
+
+test('admin deletes skills and extensions into the trash, refusing built-ins, traversal and missing tokens', async () => {
+  const f = await setup();
+  try {
+    await mkdir(path.join(f.directory, '.pi/extensions/macos-mail'));
+    await writeFile(path.join(f.directory, '.pi/extensions/permissions.ts'), 'export default function p() {}\n');
+    assert.equal((await f.call('/admin/delete', { kind: 'skill', name: 'demo' }, 'bad')).status, 403);
+    for (const [kind, name] of [['skill', '..'], ['skill', '../extensions'], ['skill', '../../secret.txt'], ['extension', '../skills/demo'],
+      ['skill', ''], ['skill', 'missing'], ['permissions', 'demo'], ['extension', 'macos-mail'], ['extension', 'permissions.ts']]) {
+      assert.equal((await f.call('/admin/delete', { kind, name })).status, 400, `${kind}:${name}`);
+    }
+    assert.match((await f.call('/admin/delete', { kind: 'extension', name: 'macos-mail' })).body.error, /Built-in/);
+    await access(path.join(f.directory, '.pi/extensions/permissions.ts'));
+    await access(path.join(f.directory, 'secret.txt'));
+    const removed = await f.call('/admin/delete', { kind: 'skill', name: 'demo' });
+    assert.equal(removed.status, 200); assert.match(removed.body.note, /trash/);
+    await assert.rejects(access(path.join(f.directory, '.pi/skills/demo')));
+    assert.equal((await f.call('/admin/delete', { kind: 'extension', name: 'tool.ts' })).status, 200);
+    await assert.rejects(access(path.join(f.directory, '.pi/extensions/tool.ts')));
+    const trashed = await readdir(path.join(f.directory, 'trash'));
+    assert.ok(trashed.some(n => n.startsWith('demo-')) && trashed.some(n => /^tool-.*\.ts$/.test(n)));
+    await access(path.join(f.directory, '.pi/skills'));
+    const list = await f.call('/admin/resources');
+    assert.equal(list.body.skills.length, 0); assert.ok(!list.body.extensions.some((e: { name: string }) => e.name === 'tool.ts'));
   } finally { await f.close(); }
 });

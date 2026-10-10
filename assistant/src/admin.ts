@@ -174,6 +174,34 @@ export async function createSkill(root: string, name: unknown, description: unkn
   return { ok: true, path: `${name}/SKILL.md`, note: 'Created. Available from the next request.' };
 }
 
+/** Move a whole skill or extension out of the resource root into a trash directory (first that works); never a hard delete. */
+export async function deleteResource(root: string, kind: unknown, name: unknown, trashDirs: string[]) {
+  const directory = base(root, kind);
+  if (typeof name !== 'string' || !SEGMENT.test(name) || name.length > 100) throw Error('Invalid name');
+  if (kind === 'extension' && FACTORY.has(name)) throw Error('Built-in extensions cannot be deleted');
+  const realBase = await realpath(directory);
+  const target = path.join(realBase, name);
+  if (path.dirname(target) !== realBase) throw Error('Path outside resource directory');
+  let info;
+  try { info = await lstat(target); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw Error('Not found'); throw error; }
+  if (info.isSymbolicLink()) throw Error('Symbolic links are not allowed');
+  if (kind === 'skill' ? !info.isDirectory() : !(info.isDirectory() || (info.isFile() && /\.(ts|js)$/.test(name)))) throw Error('Invalid resource');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const extension = info.isFile() ? path.extname(name) : '';
+  const trashed = `${path.basename(name, extension)}-${stamp}${extension}`;
+  let lastError: unknown = Error('No trash directory available');
+  for (const trash of trashDirs) {
+    try {
+      await mkdir(trash, { recursive: true, mode: 0o700 });
+      const destination = path.join(trash, trashed);
+      await rename(target, destination);
+      return { ok: true, trashed: destination, note: `Moved to ${destination}. Changes apply on the next request.` };
+    } catch (error) { lastError = error; }
+  }
+  throw lastError;
+}
+
 export async function createExtension(root: string, name: unknown) {
   if (typeof name !== 'string' || name.length > 64 || !NAME.test(name)) throw Error('Name: lowercase letters, digits and hyphens');
   const content = `import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';\n\n/** ${name}: describe what this extension does. */\nexport default function ${name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase()).replace(/^[0-9]/, '_$&')}(_pi: ExtensionAPI) {\n  // Register tools with pi.registerTool(); new tools stay unavailable until approved in the harness.\n}\n`;

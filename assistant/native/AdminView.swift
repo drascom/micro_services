@@ -112,6 +112,20 @@ final class AdminModel {
             message = "Skill oluşturuldu; sonraki istekte geçerli / Skill created; applies on the next request."
         } catch { message = error.localizedDescription }
     }
+    /// The skill/extension that owns the selected file (top-level folder, or the single extension file).
+    var selectedResource: AdminResource? {
+        let list = selectedKind == "skill" ? resources?.skills : selectedKind == "extension" ? resources?.extensions : nil
+        return list?.first { selectedPath == $0.name || selectedPath.hasPrefix($0.name + "/") }
+    }
+    /// Moves the whole skill/extension to the Trash (backend refuses built-ins), then clears the selection.
+    func delete(_ resource: AdminResource) async {
+        do {
+            let data = try await backend.admin("admin/delete", ["kind": resource.kind, "name": resource.name])
+            if selectedResource?.id == resource.id { selectedKind = ""; selectedPath = ""; content = ""; original = ""; loadError = "" }
+            await loadResources()
+            message = ((try JSONSerialization.jsonObject(with: data) as? [String: Any])?["note"] as? String) ?? "Silindi / Deleted"
+        } catch { message = error.localizedDescription }
+    }
     func createExtension(name: String) async {
         do {
             _ = try await backend.admin("admin/create-extension", ["name": name])
@@ -242,6 +256,7 @@ private struct ResourcesTab: View {
     @State private var selectionKey: String?
     @State private var pendingKey: String?
     @State private var confirmDiscard = false
+    @State private var deleting: AdminResource?
     private var currentKey: String? { admin.selectedPath.isEmpty ? nil : admin.selectedKind + "|" + admin.selectedPath }
     private func load(_ key: String) {
         guard let bar = key.firstIndex(of: "|") else { return }
@@ -284,6 +299,9 @@ private struct ResourcesTab: View {
                     HStack {
                         Text("Değişiklikler sonraki istekte geçerli / Changes apply on the next request").font(.caption).foregroundStyle(.secondary)
                         Spacer()
+                        if let resource = admin.selectedResource {
+                            Button("Sil / Delete…", role: .destructive) { deleting = resource }.disabled(resource.loading == "built-in")
+                        }
                         Button("Geri al / Revert") { admin.content = admin.original }.disabled(!dirty)
                         Button("Kaydet / Save") {
                             if admin.selectedKind == "extension" { confirmExtensionSave = true } else { Task { await admin.save() } }
@@ -304,6 +322,11 @@ private struct ResourcesTab: View {
             Button("Kaydet / Save") { Task { await admin.save() } }
             Button("İptal / Cancel", role: .cancel) {}
         } message: { Text("Extension'lar sonraki istekte harness içinde kod çalıştırır. / Extensions run code inside the harness on the next request.") }
+        .confirmationDialog("\(deleting?.name ?? "") silinsin mi? Çöp kutusuna taşınır. / Delete \(deleting?.name ?? "")? It will be moved to the Trash.",
+                            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("Sil / Delete", role: .destructive) { if let resource = deleting { Task { await admin.delete(resource) } }; deleting = nil }
+            Button("İptal / Cancel", role: .cancel) { deleting = nil }
+        }
         .sheet(isPresented: $creatingSkill) {
             form(title: "Yeni skill / New skill", description: true) { Task { await admin.createSkill(name: newName, description: newDescription) } }
         }
@@ -325,13 +348,17 @@ private struct ResourcesTab: View {
             VStack(alignment: .leading, spacing: 2) {
                 header
                 Text(file).font(.caption.monospaced()).foregroundStyle(.secondary)
-            }.tag(resource.kind + "|" + file)
+            }.tag(resource.kind + "|" + file).contextMenu { deleteMenu(resource) }
         } else {
-            header.selectionDisabled()
+            header.selectionDisabled().contextMenu { deleteMenu(resource) }
             ForEach(resource.files, id: \.self) { file in
-                Text(file).font(.caption.monospaced()).padding(.leading, 8).tag(resource.kind + "|" + file)
+                Text(file).font(.caption.monospaced()).padding(.leading, 8).tag(resource.kind + "|" + file).contextMenu { deleteMenu(resource) }
             }
         }
+    }
+
+    @ViewBuilder private func deleteMenu(_ resource: AdminResource) -> some View {
+        Button("Sil / Delete…", role: .destructive) { deleting = resource }.disabled(resource.loading == "built-in")
     }
 
     private func form(title: String, description: Bool, create: @escaping () -> Void) -> some View {
