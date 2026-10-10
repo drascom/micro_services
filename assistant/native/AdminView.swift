@@ -238,14 +238,19 @@ private struct ResourcesTab: View {
     @State private var newName = ""
     @State private var newDescription = ""
     private var dirty: Bool { !admin.selectedPath.isEmpty && admin.loadError.isEmpty && admin.content != admin.original }
-    /// Native List selection (tag = "kind|path"); selecting a row loads the file.
-    private var selection: Binding<String?> {
-        Binding(get: { admin.selectedPath.isEmpty ? nil : admin.selectedKind + "|" + admin.selectedPath },
-                set: { key in
-                    guard let key, let bar = key.firstIndex(of: "|") else { return }
-                    let kind = String(key[..<bar]), path = String(key[key.index(after: bar)...])
-                    if kind != admin.selectedKind || path != admin.selectedPath { Task { await admin.open(kind: kind, path: path) } }
-                })
+    /// Native List selection (tag = "kind|path"). Local @State drives the List; changes load the file via onChange.
+    @State private var selectionKey: String?
+    @State private var pendingKey: String?
+    @State private var confirmDiscard = false
+    private var currentKey: String? { admin.selectedPath.isEmpty ? nil : admin.selectedKind + "|" + admin.selectedPath }
+    private func load(_ key: String) {
+        guard let bar = key.firstIndex(of: "|") else { return }
+        let kind = String(key[..<bar]), path = String(key[key.index(after: bar)...])
+        Task { await admin.open(kind: kind, path: path) }
+    }
+    private func selectionChanged(_ key: String?) {
+        guard let key, key != currentKey else { return }
+        if dirty { pendingKey = key; confirmDiscard = true } else { load(key) }
     }
 
     var body: some View {
@@ -255,7 +260,7 @@ private struct ResourcesTab: View {
                     Button("Yeni skill / New skill…") { newName = ""; newDescription = ""; creatingSkill = true }
                     Button("Yeni extension…") { newName = ""; creatingExtension = true }
                 }
-                List(selection: selection) {
+                List(selection: $selectionKey) {
                     Section("Skills (.pi/skills)") { ForEach(admin.resources?.skills ?? []) { rows($0) } }
                     Section("Extensions (.pi/extensions)") { ForEach(admin.resources?.extensions ?? []) { rows($0) } }
                 }
@@ -288,6 +293,13 @@ private struct ResourcesTab: View {
                 if !admin.message.isEmpty { Text(admin.message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
             }.padding(.leading, 8).frame(minWidth: 380)
         }
+        .onChange(of: selectionKey) { _, key in selectionChanged(key) }
+        // Keep the List in sync when the model selects a file itself (create skill/extension); equal keys stop the loop.
+        .onChange(of: currentKey, initial: true) { _, key in if selectionKey != key { selectionKey = key } }
+        .confirmationDialog("Kaydedilmemiş değişiklikler atılsın mı? / Discard unsaved changes?", isPresented: $confirmDiscard) {
+            Button("Değişiklikleri at / Discard", role: .destructive) { if let key = pendingKey { load(key) }; pendingKey = nil }
+            Button("İptal / Cancel", role: .cancel) { pendingKey = nil; selectionKey = currentKey }
+        }
         .confirmationDialog("Extension kodu kaydedilsin mi? / Save extension code?", isPresented: $confirmExtensionSave) {
             Button("Kaydet / Save") { Task { await admin.save() } }
             Button("İptal / Cancel", role: .cancel) {}
@@ -313,11 +325,11 @@ private struct ResourcesTab: View {
             VStack(alignment: .leading, spacing: 2) {
                 header
                 Text(file).font(.caption.monospaced()).foregroundStyle(.secondary)
-            }.tag(Optional(resource.kind + "|" + file))
+            }.tag(resource.kind + "|" + file)
         } else {
             header.selectionDisabled()
             ForEach(resource.files, id: \.self) { file in
-                Text(file).font(.caption.monospaced()).padding(.leading, 8).tag(Optional(resource.kind + "|" + file))
+                Text(file).font(.caption.monospaced()).padding(.leading, 8).tag(resource.kind + "|" + file)
             }
         }
     }
