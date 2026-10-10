@@ -24,8 +24,19 @@ actor BackendClient: AssistantBackend {
     private var process: Process?
     private var token = ""
     private var base = URL(string: "http://127.0.0.1:8765")!
+    /// The in-flight (or finished) startup; requests made before it completes wait on it.
+    private var connecting: Task<Void, Error>?
+
+    init() {}
+    /// Tests: talk to a given base URL with a preset token (no launcher/startup).
+    init(base: URL, token: String) { self.base = base; self.token = token }
 
     func connect() async throws {
+        let task = Task { try await self.start() }
+        connecting = task
+        try await task.value
+    }
+    private func start() async throws {
         guard let settingsURL = Bundle.main.url(forResource: "launcher", withExtension: "json") else {
             throw NSError(domain: "Assistant", code: 1, userInfo: [NSLocalizedDescriptionKey: "Launcher settings missing"])
         }
@@ -59,13 +70,40 @@ actor BackendClient: AssistantBackend {
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.cannotConnectToHost) }
         return try JSONDecoder().decode(Session.self, from: data)
     }
+    /// Requests issued before the token exists (e.g. Admin reopened at launch) wait for startup, bounded.
+    private func ready() async {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(20))
+        while token.isEmpty, ContinuousClock.now < deadline {
+            if let connecting { _ = try? await connecting.value; break }
+            // connect() not called yet; bounded wait for it to begin.
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        if token.isEmpty, let session = try? await session() { token = session.token }
+    }
     private func post(_ route: String, body: Data, type: String = "application/json") async throws -> Data {
+        if token.isEmpty { await ready() }
+        let (data, status) = try await send(route, body: body, type: type)
+        if status == 403, Self.errorText(data) == "Invalid session", let session = try? await session() {
+            // Backend restarted with a new token: refresh once and retry once.
+            token = session.token
+            let (retried, retriedStatus) = try await send(route, body: body, type: type)
+            return try check(route, retried, retriedStatus)
+        }
+        return try check(route, data, status)
+    }
+    private static func errorText(_ data: Data) -> String? {
+        ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["error"] as? String
+    }
+    private func send(_ route: String, body: Data, type: String) async throws -> (Data, Int) {
         var request = URLRequest(url: base.appendingPathComponent(route))
         request.httpMethod = "POST"; request.httpBody = body; request.timeoutInterval = 360
         request.setValue(token, forHTTPHeaderField: "X-Assistant-Token")
         request.setValue(type, forHTTPHeaderField: "Content-Type")
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+        return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
+    }
+    private func check(_ route: String, _ data: Data, _ status: Int) throws -> Data {
+        guard status == 200 else {
             let value = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
             if route == "transcribe", value?["code"] as? String == "NO_SPEECH" { throw TranscriptionError.noSpeech }
             throw NSError(domain: "Assistant", code: 4, userInfo: [NSLocalizedDescriptionKey: value?["error"] as? String ?? "Assistant request failed"])

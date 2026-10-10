@@ -92,9 +92,14 @@ final class AdminModel {
     }
 
     func loadResources() async {
-        do { resources = try JSONDecoder().decode(AdminResources.self, from: try await backend.admin("admin/resources")) }
-        catch { message = error.localizedDescription }
+        do {
+            resources = try JSONDecoder().decode(AdminResources.self, from: try await backend.admin("admin/resources"))
+            if message == staleLoadMessage { message = "" }
+            staleLoadMessage = ""
+        } catch { message = error.localizedDescription; staleLoadMessage = message }
     }
+    /// Last resources-load error, so a later successful load clears it without wiping save/create notes.
+    @ObservationIgnored private var staleLoadMessage = ""
     func open(kind: String, path: String) async {
         // Select immediately so the row highlights; load errors are shown in the editor pane.
         selectedKind = kind; selectedPath = path; content = ""; original = ""; message = ""; loadError = ""
@@ -148,6 +153,7 @@ final class AdminModel {
             case "mail_unavailable": "Mail açık değil / Mail is not running"
             default: "Mail hesapları okunamadı / Could not read Mail accounts"
             }
+            mailMessage = ""
         } catch { mailMessage = error.localizedDescription }
     }
     /// Saves the whole list; on failure the list is reloaded from the backend.
@@ -157,7 +163,10 @@ final class AdminModel {
             let data = try await backend.admin("admin/mail/save", json: ["accounts": list])
             mailAccounts = try JSONDecoder().decode(SavedMailAccounts.self, from: data).accounts
             mailMessage = ""
-        } catch { mailMessage = error.localizedDescription; await loadMailAccounts() }
+        } catch {
+            let text = error.localizedDescription
+            await loadMailAccounts(); mailMessage = text
+        }
     }
     func createExtension(name: String) async {
         do {
