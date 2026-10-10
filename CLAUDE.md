@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-Microservices repository: each top-level directory is a standalone application with its own dependencies, config, and deployment. Service-specific commands and architecture live in each service's own `CLAUDE.md` (loaded when you work in that directory).
+Microservices repository: each top-level directory is a standalone application with its own dependencies, config, and deployment. Service-specific commands and architecture live in each service's own `CLAUDE.md` on that service's branch (loaded when you work in that directory).
 
 ## Services
 - **scan/** — email questionnaire processing (FastAPI, systemd `scan-emails`, port 1000)
-- **diziflix/** — dizi/film catalog server + Tizen TV client (lives on the `diziflix` branch; see `diziflix/CLAUDE.md`)
+- **diziflix/** — dizi/film catalog server + Tizen TV client (lives on the `diziflix` branch; see `diziflix/CLAUDE.md` on that branch)
 - **assistant/** — local personal assistant (SwiftUI ring + TypeScript/Pi backend; lives on the `assistant` branch)
 
 Each service is developed on its own branch (`scan`, `diziflix`, `assistant`); `main` holds the shared root files.
