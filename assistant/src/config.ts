@@ -27,6 +27,7 @@ const scalars = {
   piper_speed_tr: 1.25, piper_speed_en: 1.25,
   voice_tr: 'Yelda (Turkish (Türkiye))', voice_en: 'Daniel',
   language_detector: 'runtime/detect-language',
+  reminders_enabled: false,
   mail_max_age_days: 30, mail_max_list_results: 25, mail_max_body_chars: 8000,
   system_prompt: 'Concise personal assistant. Reply in the language of the latest message (Turkish or English); keep technical terms. No emoji. ' +
     'Calendar is not connected. Email is read-only via the Mail tools; never claim to send, move, delete or mark email.'

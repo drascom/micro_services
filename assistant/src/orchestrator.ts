@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { root } from './config.ts';
 import { activity } from './activity.ts';
+import { newTurn } from '../.pi/extensions/apple-reminders/confirmations.ts';
 
 export interface ContextSource { context(query: string, signal: AbortSignal): Promise<string>; }
 export interface Reply { text: string; provider: string; fallback_reason: string; intent?: Intent; intent_note?: string; }
@@ -51,6 +52,7 @@ export class Orchestrator {
   }
   async ask(prompt: string, offline = false, signal: AbortSignal = new AbortController().signal): Promise<Reply> {
     prompt = prompt.trim(); if (!prompt) throw Error('Enter a message');
+    const turn = newTurn(); // One user message: remote attempt and local fallback share it (reminder delete confirmation).
     let reason = offline ? 'Offline mode' : '', intent: Intent | undefined, intentNote = '';
     // Validate before transmitting to either remote service.
     const remoteContext = await this.context(prompt, false, signal);
@@ -62,10 +64,10 @@ export class Orchestrator {
     }
     let answer: AssistantMessage | undefined;
     const skill = ['web_search', 'news'].includes(intent?.choice || '') ? 'online-search' as const : intent?.choice === 'skill_management' ? 'skill-manager' as const :
-      intent?.choice === 'email' ? 'mail-assistant' as const : undefined;
+      intent?.choice === 'email' ? 'mail-assistant' as const : intent?.choice === 'reminders' && this.config.reminders_enabled ? 'reminders' as const : undefined;
     const briefNews = intent?.choice === 'news';
     if (!offline) {
-      try { answer = await this.remote.complete(remoteContext, AbortSignal.any([signal, AbortSignal.timeout(this.config.remote_timeout_ms)]), { offline: false, skill, briefNews }); }
+      try { answer = await this.remote.complete(remoteContext, AbortSignal.any([signal, AbortSignal.timeout(this.config.remote_timeout_ms)]), { offline: false, skill, briefNews, turn }); }
       catch (error) { signal.throwIfAborted(); reason = error instanceof Error ? error.message : 'Remote unavailable'; activity('local_fallback'); }
     }
     if (!answer) {
@@ -74,7 +76,7 @@ export class Orchestrator {
         const started = performance.now(); activity('local_load_started');
         await this.runtime.ensure(signal);
         activity('local_load_finished', { duration_ms: Math.round(performance.now() - started) });
-        answer = await this.local.complete(localContext, AbortSignal.any([signal, AbortSignal.timeout(this.config.local_timeout_ms)]), { offline, skill, briefNews });
+        answer = await this.local.complete(localContext, AbortSignal.any([signal, AbortSignal.timeout(this.config.local_timeout_ms)]), { offline, skill, briefNews, turn });
       } catch (error) { throw Error(`${reason}; local fallback failed: ${error instanceof Error ? error.message : 'unavailable'}`); }
       finally { if (!offline) await this.runtime.close(); }
     }

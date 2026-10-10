@@ -53,7 +53,7 @@ export type ResourceKind = 'skill' | 'extension';
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
 const MAX_FILE = 256 * 1024;
-const FACTORY = new Set(['permissions.ts', 'request-workflow.ts', 'macos-mail']);
+const FACTORY = new Set(['permissions.ts', 'request-workflow.ts', 'macos-mail', 'apple-reminders']);
 
 function base(root: string, kind: unknown): string {
   if (kind !== 'skill' && kind !== 'extension') throw Error('Invalid resource kind');
@@ -219,9 +219,8 @@ export async function listMailAccounts(config: Config, transport: MailTransport)
   return { accounts: config.mail_accounts, available, ...(available_error ? { available_error } : {}) };
 }
 
-/** Replaces mail_accounts in config.json (locked, validated, atomic); other settings are kept as they are. */
-export async function saveMailAccounts(config: Config, configPath: string, value: unknown) {
-  const accounts = validateMailAccounts(value);
+/** Changes config.json under a lock and atomically; the whole file must still load. Other settings are kept. */
+async function updateConfigFile(configPath: string, change: (settings: Record<string, unknown>) => void) {
   const release = await lockfile.lock(configPath, { realpath: false, stale: 10000, retries: { retries: 20, minTimeout: 50, maxTimeout: 250 } });
   try {
     let settings: Record<string, unknown> = {}, mode = 0o644;
@@ -231,8 +230,7 @@ export async function saveMailAccounts(config: Config, configPath: string, value
       try { settings = JSON.parse(text); } catch { throw Error('config.json is not valid JSON'); }
       if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw Error('config.json must contain an object');
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-    for (const key of ['mail_enabled', 'mail_account', 'mail_mailbox']) delete settings[key];
-    settings.mail_accounts = accounts;
+    change(settings);
     const temporary = `${configPath}.${process.pid}.admin.tmp`;
     try {
       await writeFile(temporary, JSON.stringify(settings, null, 2) + '\n', { mode });
@@ -240,6 +238,23 @@ export async function saveMailAccounts(config: Config, configPath: string, value
       await rename(temporary, configPath);
     } catch (error) { await rm(temporary, { force: true }); throw error; }
   } finally { await release(); }
+}
+
+/** Replaces mail_accounts in config.json (locked, validated, atomic); other settings are kept as they are. */
+export async function saveMailAccounts(config: Config, configPath: string, value: unknown) {
+  const accounts = validateMailAccounts(value);
+  await updateConfigFile(configPath, settings => {
+    for (const key of ['mail_enabled', 'mail_account', 'mail_mailbox']) delete settings[key];
+    settings.mail_accounts = accounts;
+  });
   config.mail_accounts = accounts; // Shared config object: the next Mail tool call sees the change.
   return { ok: true, accounts: accounts as readonly MailAccount[] };
+}
+
+/** Reminders on/off. Off: the `reminders` tool is not registered for the model at all (from the next request). */
+export async function saveReminders(config: Config, configPath: string, enabled: unknown) {
+  if (typeof enabled !== 'boolean') throw Error('enabled must be a boolean');
+  await updateConfigFile(configPath, settings => { settings.reminders_enabled = enabled; });
+  config.reminders_enabled = enabled;
+  return { enabled };
 }

@@ -404,6 +404,23 @@ Setup:
 To disable: set `mail_read` to `deny` or make every account inactive; remove the
 Automation permission in System Settings if wanted.
 
+### Apple Reminders
+
+One `reminders` tool (`.pi/extensions/apple-reminders`): `list` (list name, open/done/all,
+today/overdue/upcoming, limit), `add` (title, notes, local `due` `YYYY-MM-DD[THH:MM]`, priority,
+list; default = Reminders' own default list), `update`/`complete`/`delete` by the opaque `ref`
+from a listing. Fixed JXA bridge (`reminders-bridge.js`) under `/usr/bin/osascript`; Reminders is
+launched hidden (`open -g -j`), never activated. Works offline.
+
+- Admin → Ayarlar / Settings → **Reminders** switch (`reminders_enabled`, default off). Off: the
+  tool and skill are not sent to the model at all.
+- `.pi/permissions.json` `"reminders": "allow"` (missing = allowed, `deny` blocks); list/add/update/complete
+  run without asking.
+- Delete is two-step: `delete` + ref only returns a single-use `confirm_token`; Ayhan asks
+  "… silinsin mi?". The token works only in the user's **next** message (not the same turn),
+  within 2 minutes; the backend enforces this, the model only judges the yes/no.
+- First call asks for macOS Automation permission (Ayhan → Reminders); denied → `automation_denied`.
+
 ## Activity logging
 
 Admin → **Etkinlik / Activity** shows the latest entries; **Open log file…**

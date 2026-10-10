@@ -157,3 +157,17 @@ test('admin mail accounts reports a Mail permission error and still saves manual
     assert.equal(await readFile(f.configPath, 'utf8'), '{"language": "tr", broken');
   } finally { await f.close(); }
 });
+
+test('admin Reminders switch: token required, saved in config.json with other settings kept, applied live', async () => {
+  const f = await setup();
+  try {
+    await writeFile(f.configPath, JSON.stringify({ language: 'tr' }));
+    assert.equal((await f.call('/admin/reminders/save', { enabled: true }, 'bad')).status, 403);
+    assert.deepEqual((await f.call('/admin/reminders')).body, { enabled: false });
+    assert.equal((await f.call('/admin/reminders/save', { enabled: 'yes' })).status, 400);
+    assert.deepEqual((await f.call('/admin/reminders/save', { enabled: true })).body, { enabled: true });
+    assert.deepEqual(JSON.parse(await readFile(f.configPath, 'utf8')), { language: 'tr', reminders_enabled: true });
+    assert.equal(f.config.reminders_enabled, true);
+    assert.deepEqual((await f.call('/admin/reminders')).body, { enabled: true });
+  } finally { await f.close(); }
+});

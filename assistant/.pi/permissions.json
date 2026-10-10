@@ -6,5 +6,6 @@
   "fetch_content": "allow",
   "get_search_content": "allow",
   "web_enable": "allow",
-  "mail_read": "allow"
+  "mail_read": "allow",
+  "reminders": "allow"
 }

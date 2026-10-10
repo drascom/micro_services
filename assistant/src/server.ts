@@ -5,7 +5,7 @@ import type { Orchestrator } from './orchestrator.ts';
 import { NoSpeechError } from './speech.ts';
 import { activity, observeRequest } from './activity.ts';
 import { root } from './config.ts';
-import { collectStatus, createExtension, createSkill, deleteResource, listMailAccounts, listResources, readResource, saveMailAccounts, writeResource } from './admin.ts';
+import { collectStatus, createExtension, createSkill, deleteResource, listMailAccounts, listResources, readResource, saveMailAccounts, saveReminders, writeResource } from './admin.ts';
 import type { MailTransport } from '../.pi/extensions/macos-mail/client.ts';
 import { defaultMailTransport } from '../.pi/extensions/macos-mail/mail-db.ts';
 import path from 'node:path';
@@ -78,6 +78,8 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         if (request.url === '/admin/create-extension') return reply(200, await createExtension(resourceRoot, value.name));
         if (request.url === '/admin/mail/accounts') return reply(200, await listMailAccounts(config, mail.transport ?? defaultMailTransport()));
         if (request.url === '/admin/mail/save') return reply(200, await saveMailAccounts(config, configPath, (data as { accounts?: unknown }).accounts));
+        if (request.url === '/admin/reminders') return reply(200, { enabled: config.reminders_enabled });
+        if (request.url === '/admin/reminders/save') return reply(200, await saveReminders(config, configPath, (data as { enabled?: unknown }).enabled));
         return reply(404, { error: 'Not found' });
       }
       if (request.url === '/cancel') { active?.controller.abort(); for (const t of transcriptions) t.abort(); return reply(200, { ok: true }); }

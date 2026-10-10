@@ -57,6 +57,7 @@ final class AdminModel {
     var mailAvailable: [String]?
     var mailAvailableError = ""
     var mailMessage = ""
+    var remindersEnabled = false
     private var polling: Task<Void, Never>?
 
     init(backend: BackendClient, ring: RingModel) { self.backend = backend; self.ring = ring }
@@ -71,6 +72,7 @@ final class AdminModel {
         }
         Task { await loadResources() }
         Task { await loadMailAccounts() }
+        Task { await loadReminders() }
     }
     func stopPolling() { polling?.cancel(); polling = nil }
 
@@ -167,6 +169,19 @@ final class AdminModel {
             let text = error.localizedDescription
             await loadMailAccounts(); mailMessage = text
         }
+    }
+    func loadReminders() async {
+        let data = try? await backend.admin("admin/reminders")
+        if let data, let value = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["enabled"] as? Bool { remindersEnabled = value }
+    }
+    /// Off: the reminders tool is not offered to the model from the next request.
+    func setReminders(_ enabled: Bool) async {
+        remindersEnabled = enabled
+        do {
+            let data = try await backend.admin("admin/reminders/save", json: ["enabled": enabled])
+            if let value = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["enabled"] as? Bool { remindersEnabled = value }
+            mailMessage = ""
+        } catch { await loadReminders(); mailMessage = error.localizedDescription }
     }
     func createExtension(name: String) async {
         do {
@@ -280,6 +295,7 @@ private struct SettingsTab: View {
                     .disabled(ring.changingMode || ring.phase == .starting)
                 Toggle("Sesli yanıt / Read aloud", isOn: $ring.readAloud)
                 Toggle("Menü çubuğu simgesi / Menu bar icon", isOn: Binding(get: { admin.menuBarIcon }, set: { admin.actions.setMenuBarIcon($0) }))
+                Toggle("Reminders", isOn: Binding(get: { admin.remindersEnabled }, set: { on in Task { await admin.setReminders(on) } }))
             }
             MailAccountsSection(admin: admin, removing: $removing)
             Section("Uygulama / Application") {

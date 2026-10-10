@@ -26,6 +26,7 @@ export function permissionsExtension(options: { root: string; offline: boolean }
     // Read-only Apple Mail: per-request budgets inside the overall 12-call limit.
     const mailBudgets: Record<string, number> = { mail_list_messages: 2, mail_read_message: 5 };
     const mailCalls: Record<string, number> = {};
+    let reminderCalls = 0;
     const check = async (event: ToolCallEvent): Promise<ToolCallEventResult | undefined> => {
       if (++calls > 12) return { block: true, reason: 'Tool budget exhausted. Finish with the evidence already retrieved.', terminate: true };
       if (event.toolName === 'read') {
@@ -67,6 +68,16 @@ export function permissionsExtension(options: { root: string; offline: boolean }
           return { block: true, reason: event.toolName === 'mail_list_messages' ? 'Mail listing budget (2 per request) is exhausted. Use the messages already listed.'
             : 'Mail body budget (5 per request) is exhausted. Summarize from the bodies and metadata already retrieved.' };
         return; // Local, read-only: available in offline mode too.
+      }
+      if (event.toolName === 'reminders') {
+        // Full access by default (list/add/update/complete); only an explicit "deny" turns it off. Deletion is
+        // additionally gated by the extension's next-turn confirmation token. Local: available offline.
+        try {
+          const permissions = JSON.parse(await readFile(path.join(options.root, '.pi/permissions.json'), 'utf8'));
+          if (permissions?.reminders === 'deny') return { block: true, reason: 'Reminders is disabled in Pi permissions.' };
+        } catch {}
+        if (++reminderCalls > 8) return { block: true, reason: 'Reminders budget (8 per request) is exhausted. Finish with what is done.' };
+        return;
       }
       if (!['web_search', 'web_read', 'source_check', 'fetch_content', 'get_search_content', 'web_enable'].includes(event.toolName)) {
         return { block: true, reason: 'This ability is not authorized. New abilities require user authorization through Pi.' };
