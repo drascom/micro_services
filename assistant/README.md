@@ -216,7 +216,7 @@ every listed model.
 ## Dependencies and assets
 
 - Node.js 24+, already installed; application code runs TypeScript natively.
-- `@earendil-works/pi-ai` pinned to 0.99.2; `package-lock.json` locks dependencies.
+- `@earendil-works/pi-ai` and `pi-coding-agent` pinned to 1.1.0; `package-lock.json` locks dependencies.
   Reinstall with `npm ci --ignore-scripts` if needed.
 - Apple Silicon macOS, installed Python 3.12 for EMA/Kokoro, Python 3.13 for Piper, and built-in `afplay`.
 - An installed `say` voice only if opting into the previous speech engine.
@@ -403,10 +403,6 @@ Setup:
 
 To disable: set `mail_read` to `deny` or make every account inactive; remove the
 Automation permission in System Settings if wanted.
-
-After dependency installation, `npm ci` prepares a patched transitive dependency
-for Pi 0.99.2. If using `npm ci --ignore-scripts`, run `npm run prepare-deps` before
-starting. See `PI-HARNESS.md` for the published shrinkwrap limitation.
 
 ## Activity logging
 

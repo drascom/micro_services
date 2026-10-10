@@ -1,6 +1,6 @@
 # Pi harness analysis and ability architecture
 
-Inspected the globally installed Pi 0.99.2 CLI, its bundled SDK examples and exported TypeScript declarations. The assistant previously used `pi-ai` only: model/auth adapters and Jev classification, without the Pi agent/tool loop.
+Originally inspected the globally installed Pi 0.99.2 CLI (now upgraded to 1.1.0), its bundled SDK examples and exported TypeScript declarations. The assistant previously used `pi-ai` only: model/auth adapters and Jev classification, without the Pi agent/tool loop.
 
 Pi separates these responsibilities:
 
@@ -16,7 +16,7 @@ Only reviewed app-owned extensions and skills are loaded. The permission extensi
 
 Online search uses a Pi extension with `web_search` and `web_read` plus an online-search skill. Search queries are sent to DuckDuckGo's public HTML search, without an extra API key. HTML scraping can be throttled or challenged; errors are surfaced and no results are invented. Web reads use public HTTPS URLs, bounded responses, redirect checks and public-IP validation. No authenticated browser, mailbox, unrestricted filesystem browsing or sending capability is granted.
 
-Sources: https://pi.dev/docs/latest/sdk ; https://pi.dev/docs/latest/extensions ; https://pi.dev/docs/latest/skills ; local SDK documentation shipped with 0.99.2. Latest public docs may describe newer releases; installed declarations are authoritative for this implementation.
+Sources: https://pi.dev/docs/latest/sdk ; https://pi.dev/docs/latest/extensions ; https://pi.dev/docs/latest/skills ; local SDK documentation shipped with 1.1.0. Latest public docs may describe newer releases; installed declarations are authoritative for this implementation.
 
 ## Bağlam bütçesi / Context budget
 
@@ -46,17 +46,11 @@ dialog bridge yet; new/unapproved operations are blocked rather than prompting
 through a separate app system. Native macOS microphone/Documents permissions
 remain operating-system permissions, which Pi cannot grant.
 
-## Dependency preparation
+## Dependency pinning
 
-The app pins `pi-coding-agent` to the inspected global version 0.99.2. That
-release's nested npm shrinkwrap pins vulnerable `brace-expansion` 5.0.9 and
-ignores root npm overrides. A reviewed local postinstall routine removes only
-that nested copy so minimatch resolves the explicit patched root 5.0.12 instead.
-`npm ci` runs this routine. If installing with `--ignore-scripts`, run
-`npm run prepare-deps` afterward. npm audit may still flag the published nested
-shrinkwrap in the lockfile; the app's loaded implementation is 5.0.12.
-The global Pi installation is not modified. Revisit this workaround when
-upgrading the harness to a release with a corrected shrinkwrap.
+The app pins `pi-ai` and `pi-coding-agent` to 1.1.0. Earlier 0.99.2 shipped a
+nested shrinkwrap with vulnerable `brace-expansion`, which needed a postinstall
+workaround; 1.1.0 no longer ships a shrinkwrap, so that workaround was removed.
 
 ## Timing and diagnostics
 
