@@ -293,6 +293,7 @@ private struct MailAccountsSection: View {
     @Bindable var admin: AdminModel
     @Binding var removing: MailAccount?
     private static let manual = "\u{0}manual"
+    private static let buttonWidth: CGFloat = 110
     @State private var choice = ""
     @State private var manualName = ""
     @State private var mailbox = ""
@@ -311,38 +312,43 @@ private struct MailAccountsSection: View {
     var body: some View {
         Section("Mail hesapları / Mail accounts") {
             ForEach(admin.mailAccounts) { account in
-                HStack {
-                    Toggle(isOn: Binding(get: { account.enabled }, set: { on in
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(account.account).lineLimit(1).truncationMode(.middle)
+                        Text(account.mailbox).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                    Toggle("Aktif / Active", isOn: Binding(get: { account.enabled }, set: { on in
                         let list = admin.mailAccounts.map { $0.id == account.id ? MailAccount(account: $0.account, mailbox: $0.mailbox, enabled: on) : $0 }
                         admin.mailAccounts = list
                         Task { await admin.saveMailAccounts(list) }
-                    })) {
-                        VStack(alignment: .leading) {
-                            Text(account.account)
-                            Text(account.mailbox).font(.caption).foregroundStyle(.secondary)
-                        }
+                    })).labelsHidden().toggleStyle(.switch)
+                    Button(role: .destructive) { removing = account } label: {
+                        Text("Kaldır / Remove").frame(width: Self.buttonWidth)
                     }
-                    Button("Kaldır / Remove", role: .destructive) { removing = account }
                 }
             }
-            HStack {
+            HStack(spacing: 8) {
                 if admin.mailAvailable != nil {
                     Picker("Hesap / Account", selection: $choice) {
-                        Text("Seç / Choose").tag("")
+                        Text("Hesap seç / Choose account").tag("")
                         ForEach(choices, id: \.self) { Text($0).tag($0) }
                         Text("Elle gir / Enter manually").tag(Self.manual)
-                    }
+                    }.labelsHidden().frame(minWidth: 140, maxWidth: 220)
                 }
                 if admin.mailAvailable == nil || choice == Self.manual {
-                    TextField("Hesap adı / Account name", text: $manualName)
+                    TextField("Hesap adı / Account name", text: $manualName).frame(minWidth: 120, maxWidth: 200)
                 }
-                TextField("Mailbox", text: $mailbox, prompt: Text("INBOX")).frame(maxWidth: 120)
+                Spacer(minLength: 8)
+                TextField("Mailbox", text: $mailbox, prompt: Text("INBOX")).labelsHidden().frame(width: 100)
                 Button("Ekle / Add") {
                     let list = admin.mailAccounts + [MailAccount(account: name, mailbox: box, enabled: true)]
                     choice = ""; manualName = ""; mailbox = ""
                     Task { await admin.saveMailAccounts(list) }
                 }.disabled(!canAdd)
-                Button("Yenile / Refresh") { Task { await admin.loadMailAccounts() } }
+                Button { Task { await admin.loadMailAccounts() } } label: {
+                    Text("Yenile / Refresh").frame(width: Self.buttonWidth)
+                }
             }
             if !admin.mailAvailableError.isEmpty { Text(admin.mailAvailableError).font(.caption).foregroundStyle(.orange) }
             if !admin.mailMessage.isEmpty { Text(admin.mailMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
