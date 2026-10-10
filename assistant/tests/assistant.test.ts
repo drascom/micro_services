@@ -275,3 +275,34 @@ test('unload waits for active request cancellation and rejects new work until sh
     assert.equal(f.app.history.length, 0);
   } finally { finish(); stop(); lifecycle.abort(); await new Promise<void>(resolve => server.close(() => resolve())); }
 });
+
+test('transcription runs beside an active chat without cancelling it; speech can be paused and resumed', async () => {
+  const f = fixture(), lifecycle = new AbortController();
+  let start!: () => void, finish!: () => void, aborted = false, pauses = 0, resumes = 0;
+  const started = new Promise<void>(r => { start = r; });
+  const gate = new Promise<void>(r => { finish = r; });
+  const complete = f.local.complete;
+  f.local.complete = async (context, signal, options) => {
+    start(); signal.addEventListener('abort', () => { aborted = true; }, { once: true });
+    await gate; return complete(context, signal, options);
+  };
+  f.app.speech.pause = () => { pauses++; }; f.app.speech.resume = () => { resumes++; };
+  const server = await makeServer(config, f.app, lifecycle.signal, null);
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const address = server.address(); assert.ok(address && typeof address === 'object');
+  const base = `http://127.0.0.1:${address.port}`;
+  try {
+    const { token } = await (await fetch(base + '/session')).json() as { token: string };
+    const headers = { 'X-Assistant-Token': token };
+    const chat = fetch(base + '/chat', { method: 'POST', headers, body: '{"text":"hi","offline":true}' });
+    await started;
+    const heard = await fetch(base + '/transcribe', { method: 'POST', headers, body: Buffer.from('audio') });
+    assert.equal(heard.status, 200); assert.equal((await heard.json() as { text: string }).text, 'transcript');
+    assert.equal((await fetch(base + '/pause-speech', { method: 'POST', headers, body: '{}' })).status, 200);
+    assert.equal((await fetch(base + '/resume-speech', { method: 'POST', headers, body: '{}' })).status, 200);
+    assert.equal(pauses, 1); assert.equal(resumes, 1);
+    // A second chat still waits its turn (the host queues), the first is untouched.
+    assert.equal((await fetch(base + '/chat', { method: 'POST', headers, body: '{"text":"next"}' })).status, 409);
+    finish(); assert.equal((await chat).status, 200); assert.equal(aborted, false);
+  } finally { finish(); lifecycle.abort(); await new Promise<void>(resolve => server.close(() => resolve())); }
+});

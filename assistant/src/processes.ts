@@ -15,9 +15,10 @@ export async function stopProcess(child?: ChildProcess): Promise<void> {
   try { await exited; } finally { clearTimeout(escalation); }
 }
 
-export async function runProcess(bin: string, args: string[], signal: AbortSignal, input?: string): Promise<string> {
+export async function runProcess(bin: string, args: string[], signal: AbortSignal, input?: string, started?: (child: ChildProcess) => void): Promise<string> {
   signal.throwIfAborted();
   const child = spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+  started?.(child);
   let output = '', error = '', overflow = false;
   const abort = () => { void stopProcess(child); };
   signal.addEventListener('abort', abort, { once: true });

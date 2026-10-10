@@ -9,8 +9,18 @@ actor FakeBackend: AssistantBackend {
     func connect() async throws {}
     var dictations: [String] = []
     func dictation(app: String, chars: Int) async { dictations.append("\(app):\(chars)") }
+    var holdNext = false
+    var held: CheckedContinuation<Void, Never>?
+    func setHoldNext() { holdNext = true }
+    func release() { held?.resume(); held = nil }
+    var isHeld: Bool { held != nil }
+    var speech: [String] = []
+    func pauseSpeech() async { speech.append("pause") }
+    func resumeSpeech() async { speech.append("resume") }
+    var cancels = 0
     func ask(_ text: String, offline: Bool) async throws -> BackendClient.Reply {
         messages.append(text)
+        if holdNext { holdNext = false; await withCheckedContinuation { held = $0 } }
         return BackendClient.Reply(text: "reply: " + text, provider: "test", fallback_reason: "")
     }
     func transcribe(_ audio: Data) async throws -> String {
@@ -18,7 +28,7 @@ actor FakeBackend: AssistantBackend {
     }
     func speak(_ text: String) async throws {}
     func stopSpeech() async {}
-    func cancel() async {}
+    func cancel() async { cancels += 1 }
     func reset() async throws {}
     func close() async {}
 }
@@ -146,7 +156,38 @@ struct RecordingChecks {
         try await wait { model.phase == .idle && !model.dictating }
         sent = await backend.messages.count
         precondition(pasted == ["voice"] && sent == before + 2)
+        // A running assistant request survives dictation and a queued voice request.
+        await backend.setSilent(false)
+        await backend.setHoldNext()
+        model.captureFocus = { nil }
+        model.input = "long job"; model.send()
+        for _ in 0..<100 { if await backend.isHeld { break }; try await Task.sleep(for: .milliseconds(5)) }
+        precondition(model.phase == .thinking)
+        let jobStart = await backend.messages.count
+        // Dictation while the request runs: recording shown, then back to thinking; request untouched.
+        model.captureFocus = { Field() }
+        model.pasteInto = { _, text in pasted.append(text); return "com.example.editor" }
+        model.modifiers(true)
+        try await wait { model.phase == .listening }
+        model.modifiers(false)
+        try await wait { pasted.count == 2 && model.phase == .thinking }
+        var held = await backend.isHeld
+        precondition(held && model.transcript == "long job")
+        // Voice to the assistant while busy: queued, not sent, previous job keeps the ring.
+        model.captureFocus = { nil }
+        model.modifiers(true)
+        try await wait { model.phase == .listening }
+        model.modifiers(false)
+        try await wait { model.phase == .thinking }
+        try await Task.sleep(for: .milliseconds(30))
+        sent = await backend.messages.count; held = await backend.isHeld
+        precondition(sent == jobStart && held)
+        await backend.release()
+        try await wait { model.response == "reply: voice" && model.phase == .idle }
+        sent = await backend.messages.count
+        let speech = await backend.speech, cancels = await backend.cancels
+        precondition(sent == jobStart + 1 && cancels == 0 && speech.count >= 2 && speech.last == "resume")
         model.cancel()
-        print("Recording checks passed: permission-release race, typed override during permission and recording, dictation vs assistant routing.")
+        print("Recording checks passed: permission-release race, typed override during permission and recording, dictation vs assistant routing, dictation and queued voice beside a running request.")
     }
 }

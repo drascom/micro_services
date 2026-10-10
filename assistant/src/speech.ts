@@ -1,6 +1,7 @@
 import { mkdtemp, writeFile, rm, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import type { ChildProcess } from 'node:child_process';
 import { runProcess, ownedProcess, type OwnedProcess } from './processes.ts';
 import type { Config } from './config.ts';
 import { spokenText } from './spoken-text.ts';
@@ -57,9 +58,9 @@ export function wavDuration(bytes: Buffer): number {
   return dataLength / 32000;
 }
 
-export interface SpeechService { transcribe(bytes: Buffer, signal: AbortSignal): Promise<string>; speak(text: string, signal: AbortSignal): Promise<void>; stop(): void; close(): Promise<void>; processes?(): OwnedProcess[]; }
+export interface SpeechService { transcribe(bytes: Buffer, signal: AbortSignal): Promise<string>; speak(text: string, signal: AbortSignal): Promise<void>; stop(): void; pause?(): void; resume?(): void; close(): Promise<void>; processes?(): OwnedProcess[]; }
 export class Speech implements SpeechService {
-  config: Config; speaker?: AbortController; ema: EmaWorker; kokoro: KokoroWorker; whisper: WhisperServer;
+  config: Config; speaker?: AbortController; player?: ChildProcess; paused = false; ema: EmaWorker; kokoro: KokoroWorker; whisper: WhisperServer;
   constructor(config: Config) {
     this.config = config; this.ema = new EmaWorker(config); this.kokoro = new KokoroWorker(config);
     this.whisper = new WhisperServer(config);
@@ -110,7 +111,7 @@ export class Speech implements SpeechService {
           const wav = path.join(directory, 'reply.wav');
           await runProcess(this.config.piper_bin, ['-m', 'piper', '-m', model, '-f', wav,
             '--length-scale', String(1 / speed)], speechSignal, text);
-          await runProcess('/usr/bin/afplay', [wav], speechSignal);
+          await this.play('/usr/bin/afplay', [wav], speechSignal);
         } finally { await rm(directory, { recursive: true, force: true }); }
       };
       if (this.config.tts_engine === 'ema' && language === 'tr') {
@@ -123,7 +124,7 @@ export class Speech implements SpeechService {
             activity('tts_fallback', { from: 'ema', to: 'piper', error: error instanceof Error ? error.message : 'unknown' });
             await piper(); return;
           }
-          await runProcess('/usr/bin/afplay', [wav], speechSignal);
+          await this.play('/usr/bin/afplay', [wav], speechSignal);
         } finally { await rm(directory, { recursive: true, force: true }); }
       } else if (this.config.tts_engine === 'ema') {
         const directory = await mkdtemp(path.join(tmpdir(), 'assistant-kokoro-'));
@@ -135,19 +136,26 @@ export class Speech implements SpeechService {
             activity('tts_fallback', { from: 'kokoro', to: 'piper', error: error instanceof Error ? error.message : 'unknown' });
             await piper(); return;
           }
-          await runProcess('/usr/bin/afplay', [wav], speechSignal);
+          await this.play('/usr/bin/afplay', [wav], speechSignal);
         } finally { await rm(directory, { recursive: true, force: true }); }
       } else if (this.config.tts_engine === 'piper') {
         await piper();
       } else {
         const voice = this.config.voice || (language === 'tr' ? this.config.voice_tr : this.config.voice_en);
-        await runProcess('/usr/bin/say', ['-f', '-', ...(voice ? ['-v', voice] : [])], speechSignal, text);
+        await this.play('/usr/bin/say', ['-f', '-', ...(voice ? ['-v', voice] : [])], speechSignal, text);
       }
     }
     catch (error) { if (!controller.signal.aborted) throw error; }
     finally { if (this.speaker === controller) this.speaker = undefined; }
   }
-  stop(): void { this.speaker?.abort(); }
+  /** Audio output process; held (SIGSTOP) while the user records, continued afterwards. */
+  async play(bin: string, args: string[], signal: AbortSignal, input?: string): Promise<void> {
+    try { await runProcess(bin, args, signal, input, child => { this.player = child; if (this.paused) child.kill('SIGSTOP'); }); }
+    finally { this.player = undefined; }
+  }
+  pause(): void { this.paused = true; this.player?.kill('SIGSTOP'); }
+  resume(): void { this.paused = false; this.player?.kill('SIGCONT'); }
+  stop(): void { this.resume(); this.speaker?.abort(); }
   processes(): OwnedProcess[] {
     return [ownedProcess('whisper-server', this.whisper.child, Number(new URL(this.config.whisper_url).port)),
       ownedProcess('ema-worker', this.ema.child), ownedProcess('kokoro-worker', this.kokoro.child)];

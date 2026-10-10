@@ -9,6 +9,8 @@ protocol AssistantBackend: Sendable {
     func transcribe(_ audio: Data) async throws -> String
     func speak(_ text: String) async throws
     func stopSpeech() async
+    func pauseSpeech() async
+    func resumeSpeech() async
     func cancel() async
     func reset() async throws
     func unloadLocal() async throws
@@ -124,6 +126,8 @@ actor BackendClient: AssistantBackend {
         _ = try? await post("dictation", body: JSONSerialization.data(withJSONObject: ["app": app, "text_chars": chars] as [String: Any]))
     }
     func stopSpeech() async { _ = try? await post("stop-speech", body: Data("{}".utf8)) }
+    func pauseSpeech() async { _ = try? await post("pause-speech", body: Data("{}".utf8)) }
+    func resumeSpeech() async { _ = try? await post("resume-speech", body: Data("{}".utf8)) }
     func cancel() async { _ = try? await post("cancel", body: Data("{}".utf8)) }
     func reset() async throws { _ = try await post("reset", body: Data("{}".utf8)) }
     func unloadLocal() async throws { _ = try await post("unload-local", body: Data("{}".utf8)) }

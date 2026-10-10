@@ -30,7 +30,18 @@ final class RingModel {
     let backend: any AssistantBackend
     let audio: any AudioCapture
     private var recordingTask: Task<Void, Never>?
+    private var transcribeTask: Task<Void, Never>?
     private var requestTask: Task<Void, Never>?
+    /// Assistant work (ask + read aloud) runs independently of recording; voice requests queue behind it.
+    private var jobTask: Task<Void, Never>?
+    private var pending: [String] = []
+    private var jobPhase: Phase?
+    private var jobStatus = ""
+    private var jobError: Error?
+    /// Recording/transcription owns the ring until it ends; the assistant state is shown again afterwards.
+    private var capturing = false
+    private var speechPaused = false
+    private var speechGate: Task<Void, Never>?
     private var holdTask: Task<Void, Never>?
     private var meterTask: Task<Void, Never>?
     private var ceilingTask: Task<Void, Never>?
@@ -53,17 +64,15 @@ final class RingModel {
                 guard !Task.isCancelled, chordDown else { return }; beginListening()
             }
         } else if phase == .listening { finishListening() }
-        else if phase == .preparing {
-            discardRecording(); phase = .idle; status = "Hold \(shortcutLabel) to speak"
-        }
+        else if phase == .preparing { discardRecording(); restore() }
     }
     func beginListening() {
-        guard ready, phase == .idle || phase == .error || phase == .speaking || phase == .noSpeech else { return }
-        feedbackTask?.cancel(); requestTask?.cancel()
+        guard ready, !capturing, !changingMode, phase != .starting else { return }
+        feedbackTask?.cancel()
         focusTarget = captureFocus() // The user's text cursor at the moment they start speaking.
-        phase = .preparing; status = "Preparing microphone…"
+        capturing = true; phase = .preparing; status = "Preparing microphone…"
+        holdSpeech(true)
         recordingTask = Task {
-            await backend.stopSpeech()
             do {
                 try Task.checkCancellation()
                 try await audio.start()
@@ -79,65 +88,95 @@ final class RingModel {
                     try? await Task.sleep(for: .seconds(300)) // Intended recording safety ceiling.
                     if !Task.isCancelled, phase == .listening { finishListening() }
                 }
-            } catch { if !Task.isCancelled { fail(error) } }
+            } catch { if !Task.isCancelled { discardRecording(); fail(error) } }
         }
     }
+    /// Pauses (or continues) reply audio while the microphone is open; the request itself keeps running.
+    private func holdSpeech(_ pause: Bool) {
+        guard pause != speechPaused else { return }; speechPaused = pause
+        let previous = speechGate
+        speechGate = Task { await previous?.value; if pause { await backend.pauseSpeech() } else { await backend.resumeSpeech() } }
+    }
     private func discardRecording() {
-        recordingTask?.cancel(); meterTask?.cancel(); ceilingTask?.cancel()
-        audio.cancel(); level = 0; focusTarget = nil
+        recordingTask?.cancel(); transcribeTask?.cancel(); meterTask?.cancel(); ceilingTask?.cancel()
+        audio.cancel(); level = 0; focusTarget = nil; capturing = false; holdSpeech(false)
+    }
+    /// Recording finished: show the running assistant job (or idle) again.
+    private func restore() {
+        capturing = false
+        if let error = jobError { jobError = nil; fail(error) }
+        else if let jobPhase { phase = jobPhase; status = jobStatus }
+        else { phase = .idle; status = "\(shortcutLabel) • click to type" }
     }
     func finishListening() {
         guard phase == .listening else { return }
         recordingTask?.cancel(); meterTask?.cancel(); ceilingTask?.cancel(); level = 0
         do {
             let wav = try audio.finish()
-            guard !wav.isEmpty else { phase = .idle; status = "Hold \(shortcutLabel) to speak"; return }
+            holdSpeech(false)
+            guard !wav.isEmpty else { focusTarget = nil; restore(); return }
             phase = .thinking; status = focusTarget == nil ? "Transcribing on this Mac…" : "Yazılıyor / Typing…"
-            requestTask = Task {
+            transcribeTask = Task {
                 do { let text = try await backend.transcribe(wav); guard !Task.isCancelled else { return }
                     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { focusTarget = nil; noSpeech(); return }
                     // Dictation: typed where the user's cursor was (field still focused); otherwise ask the assistant.
                     let pasted = focusTarget.flatMap { pasteInto($0, text) }; focusTarget = nil
                     if let pasted { await dictated(into: pasted, chars: text.utf16.count); return }
-                    transcript = text; try await reply(to: text) }
+                    restore(); enqueue(text) }
                 catch TranscriptionError.noSpeech { if !Task.isCancelled { focusTarget = nil; noSpeech() } }
-                catch { if !Task.isCancelled { fail(error) } }
+                catch { if !Task.isCancelled { focusTarget = nil; capturing = false; fail(error) } }
             }
-        } catch { fail(error) }
+        } catch { discardRecording(); fail(error) }
     }
     private func dictated(into app: String, chars: Int) async {
-        phase = .idle; status = "Yapıştırıldı / Pasted • \(shortcutLabel)"
+        restore(); if jobPhase == nil, phase == .idle { status = "Yapıştırıldı / Pasted • \(shortcutLabel)" }
         await backend.dictation(app: app, chars: chars)
     }
     private func noSpeech() {
-        feedbackTask?.cancel()
+        feedbackTask?.cancel(); capturing = false
         phase = .noSpeech; status = "Ses algılanmadı / No speech detected"
         feedbackTask = Task {
             try? await Task.sleep(for: .milliseconds(450))
-            guard !Task.isCancelled, phase == .noSpeech else { return }
-            phase = .idle; status = "Hold \(shortcutLabel) to speak"
+            guard !Task.isCancelled, phase == .noSpeech, !capturing else { return }
+            restore()
         }
     }
     func send() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard ready, !text.isEmpty, phase != .starting, phase != .thinking else { return }
+        guard ready, !text.isEmpty, phase != .starting, phase != .thinking, !changingMode else { return }
         feedbackTask?.cancel(); holdTask?.cancel(); discardRecording()
-        input = ""; transcript = text; phase = .thinking; status = "Thinking…"
-        requestTask?.cancel()
-        requestTask = Task { do { await backend.stopSpeech(); try await reply(to: text) }
-            catch { if !Task.isCancelled { fail(error) } } }
+        input = ""; restore(); enqueue(text)
+    }
+    /// Runs requests one after another; a new one never interrupts the running one.
+    private func enqueue(_ text: String) {
+        pending.append(text)
+        guard jobTask == nil else { return }
+        jobTask = Task {
+            while !pending.isEmpty, !Task.isCancelled {
+                let next = pending.removeFirst()
+                do { try await reply(to: next) }
+                catch { if Task.isCancelled { return }; jobPhase = nil; if capturing { jobError = error } else { fail(error) } }
+            }
+            if !Task.isCancelled { jobTask = nil }
+        }
+    }
+    private func showJob(_ value: Phase?, _ text: String) {
+        jobPhase = value; jobStatus = text
+        guard !capturing, phase != .noSpeech else { return }
+        phase = value ?? .idle; status = text
     }
     private func reply(to text: String) async throws {
-        phase = .thinking; status = offline ? "Thinking locally…" : "Thinking with Pi…"
+        transcript = text
+        showJob(.thinking, offline ? "Thinking locally…" : "Thinking with Pi…")
         let result = try await backend.ask(text, offline: offline)
         guard !Task.isCancelled else { return }
         response = result.text; provider = result.provider + (result.fallback_reason.isEmpty ? "" : " • " + result.fallback_reason)
         if readAloud {
-            phase = .speaking; status = "Speaking…"
+            showJob(.speaking, "Speaking…")
             try await backend.speak(result.text)
         }
         guard !Task.isCancelled else { return }
-        phase = .idle; status = "\(shortcutLabel) • click to type"
+        showJob(nil, "\(shortcutLabel) • click to type")
     }
     func setOffline(_ value: Bool) {
         guard ready, !changingMode else { return }
@@ -156,9 +195,11 @@ final class RingModel {
         }
     }
     func cancel(notifyBackend: Bool = true) {
-        feedbackTask?.cancel(); holdTask?.cancel(); recordingTask?.cancel(); requestTask?.cancel(); meterTask?.cancel(); ceilingTask?.cancel()
+        feedbackTask?.cancel(); holdTask?.cancel(); recordingTask?.cancel(); transcribeTask?.cancel(); requestTask?.cancel(); meterTask?.cancel(); ceilingTask?.cancel()
+        jobTask?.cancel(); jobTask = nil; pending = []; jobPhase = nil; jobError = nil; capturing = false; speechPaused = false
         audio.cancel(); level = 0; focusTarget = nil; phase = .idle; status = "Cancelled"
-        if notifyBackend { Task { await backend.cancel(); await backend.stopSpeech() } }
+        let gate = speechGate
+        if notifyBackend { Task { await gate?.value; await backend.cancel(); await backend.stopSpeech() } }
     }
     func newConversation() {
         cancel(); response = ""; transcript = ""; provider = ""

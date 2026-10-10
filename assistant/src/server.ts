@@ -29,6 +29,7 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
   const token = randomBytes(32).toString('base64url');
   let active: { controller: AbortController; done: Promise<void>; finish: () => void } | undefined;
   let unloading = false;
+  const transcriptions = new Set<AbortController>();
   const beginRequest = () => {
     let finish!: () => void;
     const done = new Promise<void>(resolve => { finish = resolve; });
@@ -55,10 +56,10 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
     try {
       const body = await readBody(request, request.url === '/transcribe' ? config.max_record_seconds * 32000 + 4096 : request.url === '/admin/write' ? 600000 : 64000);
       if (request.url === '/transcribe') {
-        if (active || unloading) return reply(409, { error: 'Assistant is busy' });
-        const current = beginRequest(); active = current;
-        try { reply(200, { text: await observe({ kind: 'transcription', audio_bytes: body.length }, () => app.speech.transcribe(body, AbortSignal.any([lifecycle, current.controller.signal]))) }); }
-        finally { if (active === current) active = undefined; current.finish(); }
+        // Speech-to-text runs beside an active chat (separate whisper server); only an explicit cancel stops it.
+        const controller = new AbortController(); transcriptions.add(controller);
+        try { reply(200, { text: await observe({ kind: 'transcription', audio_bytes: body.length }, () => app.speech.transcribe(body, AbortSignal.any([lifecycle, controller.signal]))) }); }
+        finally { transcriptions.delete(controller); }
         return;
       }
       const data: unknown = JSON.parse(body.toString());
@@ -78,7 +79,7 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         if (request.url === '/admin/mail/save') return reply(200, await saveMailAccounts(config, configPath, (data as { accounts?: unknown }).accounts));
         return reply(404, { error: 'Not found' });
       }
-      if (request.url === '/cancel') { active?.controller.abort(); return reply(200, { ok: true }); }
+      if (request.url === '/cancel') { active?.controller.abort(); for (const t of transcriptions) t.abort(); return reply(200, { ok: true }); }
       if (request.url === '/unload-local') {
         if (unloading) return reply(409, { error: 'Model is already unloading' });
         unloading = true;
@@ -99,6 +100,9 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         await observe({ kind: 'dictation' }, async () => activity('dictation', details)); return reply(200, { ok: true });
       }
       if (request.url === '/stop-speech') { app.speech.stop(); return reply(200, { ok: true }); }
+      // Recording: hold reply audio so it does not reach the microphone, then continue it.
+      if (request.url === '/pause-speech') { app.speech.pause?.(); return reply(200, { ok: true }); }
+      if (request.url === '/resume-speech') { app.speech.resume?.(); return reply(200, { ok: true }); }
       if (request.url === '/speak') {
         if (typeof input.text !== 'string' || !input.text.length || input.text.length > 12000) throw Error('Invalid speech text');
         await observe({ kind: 'speech', text_chars: input.text.length }, () => app.speech.speak(input.text as string, lifecycle)); return reply(200, { ok: true });
