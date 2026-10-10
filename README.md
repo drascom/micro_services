@@ -6,21 +6,17 @@ microservice with its own dependencies, configuration, and install steps.
 
 ## Services
 
-| Service | What it is | Platform | Docs |
-|---------|------------|----------|------|
-| **gemma** | Local Gemma 4 12B server with an OpenAI-compatible API, driven by a macOS menu-bar app | macOS (Apple Silicon) | [gemma/README.md](gemma/README.md) |
-| **scan** | LivAuto Scan — processes hair-transplant pre-op questionnaires from email attachments (FastAPI) | Linux (systemd) | [scan/README.md](scan/README.md) |
+| Service | What it is | Platform | Branch | Docs |
+|---------|------------|----------|--------|------|
+| **scan** | LivAuto Scan — processes hair-transplant pre-op questionnaires from email attachments (FastAPI) | Linux (systemd) | `scan` | [scan/README.md](scan/README.md) |
+| **diziflix** | Catalogue & playback API for the diziflix Tizen TV client (FastAPI) | Linux (systemd) / macOS | `diziflix` | `diziflix/server/README.md` |
+| **assistant** | Local personal assistant — SwiftUI desktop ring with a TypeScript/Pi backend | macOS | `assistant` | `assistant/README.md` |
+
+diziflix and assistant live on their own branches.
 
 ## Quick start
 
 Each service is self-contained — `cd` into it and follow its README.
-
-**gemma** (macOS):
-```bash
-cd gemma
-./install.sh        # builds llama.cpp + the app, downloads the model
-open GemmaServer.app
-```
 
 **scan** (Linux / systemd):
 ```bash
@@ -29,6 +25,13 @@ cp .env.example .env   # then edit secrets
 chmod +x install.sh
 ./install.sh
 systemctl start scan-emails
+```
+
+**diziflix** (on the `diziflix` branch; Linux / systemd, runs on macOS too):
+```bash
+cd diziflix/server
+./install.sh           # venv + deps + fixture + systemd unit (Linux only)
+curl http://localhost:8090/api/health
 ```
 
 ## Adding a service
