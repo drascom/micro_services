@@ -28,7 +28,9 @@ function bridge(items: BridgeReminder[]) {
       requests.push(request);
       if (request.op === 'list') {
         const before = request.due_before ? Date.parse(request.due_before) : Infinity;
-        const found = items.filter(i => !i.completed && (i.due === null ? request.undated : Date.parse(i.due) < before));
+        const has = (title: string, prefixes?: string[]) => !!prefixes?.some(p => title.trimStart().startsWith(p));
+        const found = items.filter(i => !i.completed && (i.due === null ? request.undated : Date.parse(i.due) < before) && !has(i.title, request.skip_prefixes))
+          .sort((a, b) => Number(has(a.title, request.last_prefixes)) - Number(has(b.title, request.last_prefixes)));
         return JSON.stringify({ ok: true, matched: found.length, reminders: found.slice(0, request.max) });
       }
       const target = 'id' in request ? items.find(i => i.id === request.id) : undefined;
@@ -75,6 +77,16 @@ test('undated and due tasks run, not-yet-due ones wait; result appended, title �
   // Later, once due: the third runs; ✅ ones never run again.
   f.tick(2 * 3_600_000);
   assert.equal(await f.scan(), 1); assert.deepEqual(runs, ['Task 1\nOnly work mail.', 'Task 2', 'Task 3']);
+});
+
+test('limit: 25 ✅ and 25 spent ⚠️ tasks left in the list do not hide a new task', async () => {
+  const items = [...Array.from({ length: 25 }, (_, n) => item(n, { title: `✅ Done ${n}` })),
+    ...Array.from({ length: 25 }, (_, n) => item(100 + n, { title: `⚠️ Failed ${n}` })), item(999)];
+  const runs: string[] = [];
+  const f = scheduler(items, async (_prompt, intentText) => { runs.push(intentText); return { text: 'ok' }; });
+  assert.equal(await f.scan(), 1); assert.deepEqual(runs, ['Task 999']); assert.equal(items[50].title, '✅ Task 999');
+  const list = f.b.requests[0] as Extract<BridgeRequest, { op: 'list' }>;
+  assert.deepEqual([list.skip_prefixes, list.last_prefixes], [['✅'], ['⚠']]);
 });
 
 test('prefixes: no double prefix; removing ours makes it a new job; the prompt never sees a prefix', async () => {

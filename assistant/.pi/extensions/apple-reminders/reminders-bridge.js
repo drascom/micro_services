@@ -49,7 +49,15 @@ function describe(r) {
     priority: r.priority() || 0, completed: Boolean(r.completed()), flagged: Boolean(r.flagged()), list: str(list, 100) };
 }
 
-// Bulk property reads: one Apple Event per property per list.
+function prefixed(title, prefixes) {
+  if (!Array.isArray(prefixes)) return false;
+  var t = String(title || '').replace(/^\s+/, '');
+  for (var i = 0; i < prefixes.length; i++) if (typeof prefixes[i] === 'string' && prefixes[i] && t.indexOf(prefixes[i]) === 0) return true;
+  return false;
+}
+
+// Bulk property reads: one Apple Event per property per list. skip_prefixes drops titles before the limit;
+// last_prefixes sorts such titles after all others (both read from the already fetched names, no extra Apple Events).
 function listOp(app, request) {
   var lists = request.list ? [findList(app, request.list)] : app.lists();
   var after = request.due_after ? Date.parse(request.due_after) : null, before = request.due_before ? Date.parse(request.due_before) : null;
@@ -63,18 +71,20 @@ function listOp(app, request) {
     for (var i = 0; i < ids.length; i++) {
       var due = allDays[i] || dues[i], time = due instanceof Date ? due.getTime() : null;
       if (time === null ? !request.undated : (after !== null && time < after) || (before !== null && time >= before)) continue;
-      found.push({ id: String(ids[i]), title: str(names[i], 300), notes: str(bodies[i] || '', notesMax), due: iso(due), all_day: Boolean(allDays[i]),
+      if (prefixed(names[i], request.skip_prefixes)) continue;
+      found.push({ last: prefixed(names[i], request.last_prefixes),  id: String(ids[i]), title: str(names[i], 300), notes: str(bodies[i] || '', notesMax), due: iso(due), all_day: Boolean(allDays[i]),
         priority: priorities[i] || 0, completed: Boolean(done[i]), flagged: Boolean(flags[i]), list: listName, time: time });
     }
   }
   found.sort(function (a, b) {
+    if (a.last !== b.last) return a.last ? 1 : -1;
     if (a.time === b.time) return 0;
     if (a.time === null) return 1;
     if (b.time === null) return -1;
     return a.time - b.time;
   });
   var max = Math.min(Math.max(1, request.max | 0), 300);
-  var result = found.slice(0, max).map(function (item) { delete item.time; return item; });
+  var result = found.slice(0, max).map(function (item) { delete item.time; delete item.last; return item; });
   return { ok: true, matched: found.length, reminders: result };
 }
 

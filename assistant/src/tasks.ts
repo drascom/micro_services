@@ -111,7 +111,9 @@ export class TaskScheduler {
     let items: BridgeReminder[];
     try {
       const value = parse(await this.transport.request({ op: 'list', list: this.config.tasks_list, status: 'open',
-        due_before: new Date(this.now()).toISOString(), undated: true, max: 20, notes_max: 8000 }, signal));
+        due_before: new Date(this.now()).toISOString(), undated: true, max: 20, notes_max: 8000,
+        // ✅ stay in the list: filtered out before the limit so they never hide new tasks; ⚠️ (mostly spent retries) go last.
+        skip_prefixes: [DONE], last_prefixes: ['⚠'] }, signal));
       if (!Array.isArray(value.reminders)) throw new RemindersError('invalid_response');
       items = value.reminders.map(bridgeReminder);
       this.lastError = '';

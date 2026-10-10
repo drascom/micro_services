@@ -27,7 +27,8 @@ export const BRIDGE_ERROR_CODES: readonly RemindersErrorCode[] = ['list_not_foun
 
 /** Bridge dates are absolute ISO instants; `all_day` marks a date-only due date (local midnight). */
 export type BridgeRequest =
-  | { op: 'list'; list?: string; status: 'open' | 'done' | 'all'; due_after?: string; due_before?: string; undated: boolean; max: number; notes_max?: number }
+  | { op: 'list'; list?: string; status: 'open' | 'done' | 'all'; due_after?: string; due_before?: string; undated: boolean; max: number; notes_max?: number;
+      skip_prefixes?: string[]; last_prefixes?: string[] }
   | { op: 'add'; title: string; notes?: string; due?: string; all_day?: boolean; priority?: number; list?: string }
   | { op: 'update'; id: string; expected_title: string; title?: string; notes?: string; due?: string | null; all_day?: boolean; priority?: number; flagged?: boolean }
   | { op: 'complete'; id: string; expected_title: string }
