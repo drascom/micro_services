@@ -109,7 +109,7 @@ final class AdminModel {
         do {
             _ = try await backend.admin("admin/create-skill", ["name": name, "description": description])
             await loadResources(); await open(kind: "skill", path: name + "/SKILL.md")
-            message = "Skill oluşturuldu; sonraki istekte geçerli / Skill created; applies on the next request."
+            message = "Skill oluşturuldu / Skill created"
         } catch { message = error.localizedDescription }
     }
     /// The skill/extension that owns the selected file (top-level folder, or the single extension file).
@@ -130,7 +130,7 @@ final class AdminModel {
         do {
             _ = try await backend.admin("admin/create-extension", ["name": name])
             await loadResources(); await open(kind: "extension", path: name + ".ts")
-            message = "Extension oluşturuldu; sonraki istekte yüklenir / Extension created; loaded on the next request."
+            message = "Extension oluşturuldu / Extension created"
         } catch { message = error.localizedDescription }
     }
 }
@@ -248,7 +248,6 @@ private struct ResourcesTab: View {
     @Bindable var admin: AdminModel
     @State private var creatingSkill = false
     @State private var creatingExtension = false
-    @State private var confirmExtensionSave = false
     @State private var newName = ""
     @State private var newDescription = ""
     private var dirty: Bool { !admin.selectedPath.isEmpty && admin.loadError.isEmpty && admin.content != admin.original }
@@ -286,10 +285,6 @@ private struct ResourcesTab: View {
                     Spacer()
                 } else {
                     Text("\(admin.selectedKind == "skill" ? ".pi/skills" : ".pi/extensions")/\(admin.selectedPath)").font(.headline).textSelection(.enabled)
-                    if admin.selectedKind == "extension" {
-                        Text("Uyarı: extension'lar güvenilir kod olarak çalışır; kaydetmeden önce gözden geçir. / Warning: extensions run as trusted code; review before saving.")
-                            .font(.caption).foregroundStyle(.orange)
-                    }
                     if !admin.loadError.isEmpty {
                         Text("Dosya yüklenemedi / Could not load file: \(admin.loadError)").foregroundStyle(.red).textSelection(.enabled)
                         Spacer()
@@ -297,15 +292,12 @@ private struct ResourcesTab: View {
                         TextEditor(text: $admin.content).font(.system(.body, design: .monospaced))
                     }
                     HStack {
-                        Text("Değişiklikler sonraki istekte geçerli / Changes apply on the next request").font(.caption).foregroundStyle(.secondary)
                         Spacer()
                         if let resource = admin.selectedResource {
                             Button("Sil / Delete…", role: .destructive) { deleting = resource }.disabled(resource.loading == "built-in")
                         }
                         Button("Geri al / Revert") { admin.content = admin.original }.disabled(!dirty)
-                        Button("Kaydet / Save") {
-                            if admin.selectedKind == "extension" { confirmExtensionSave = true } else { Task { await admin.save() } }
-                        }.disabled(!dirty).keyboardShortcut("s", modifiers: .command)
+                        Button("Kaydet / Save") { Task { await admin.save() } }.disabled(!dirty).keyboardShortcut("s", modifiers: .command)
                     }
                 }
                 if !admin.message.isEmpty { Text(admin.message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
@@ -318,11 +310,7 @@ private struct ResourcesTab: View {
             Button("Değişiklikleri at / Discard", role: .destructive) { if let key = pendingKey { load(key) }; pendingKey = nil }
             Button("İptal / Cancel", role: .cancel) { pendingKey = nil; selectionKey = currentKey }
         }
-        .confirmationDialog("Extension kodu kaydedilsin mi? / Save extension code?", isPresented: $confirmExtensionSave) {
-            Button("Kaydet / Save") { Task { await admin.save() } }
-            Button("İptal / Cancel", role: .cancel) {}
-        } message: { Text("Extension'lar sonraki istekte harness içinde kod çalıştırır. / Extensions run code inside the harness on the next request.") }
-        .confirmationDialog("\(deleting?.name ?? "") silinsin mi? Çöp kutusuna taşınır. / Delete \(deleting?.name ?? "")? It will be moved to the Trash.",
+        .confirmationDialog("\(deleting?.name ?? "") silinsin mi? / Delete \(deleting?.name ?? "")?",
                             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("Sil / Delete", role: .destructive) { if let resource = deleting { Task { await admin.delete(resource) } }; deleting = nil }
             Button("İptal / Cancel", role: .cancel) { deleting = nil }
@@ -366,9 +354,6 @@ private struct ResourcesTab: View {
             Text(title).font(.headline)
             TextField("Ad (küçük harf, rakam, tire) / Name (lowercase, digits, hyphens)", text: $newName)
             if description { TextField("Kısa açıklama / Short description", text: $newDescription) }
-            if !description {
-                Text("Extension'lar güvenilir kod olarak çalışır. / Extensions run as trusted code.").font(.caption).foregroundStyle(.orange)
-            }
             HStack {
                 Spacer()
                 Button("İptal / Cancel") { creatingSkill = false; creatingExtension = false }.keyboardShortcut(.cancelAction)

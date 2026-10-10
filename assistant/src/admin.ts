@@ -118,7 +118,7 @@ export async function listResources(root: string) {
     extensions.push({ kind: 'extension', name: entry.name, description: extensionDescription(source),
       path: `.pi/extensions/${entry.name}`, files: list, loading: FACTORY.has(entry.name) ? 'built-in' : 'auto' });
   }
-  return { skills, extensions, note: 'Changes apply on the next request.' };
+  return { skills, extensions };
 }
 
 export async function readResource(root: string, kind: unknown, relative: unknown) {
@@ -159,7 +159,7 @@ export async function writeResource(root: string, kind: unknown, relative: unkno
   const segments = (relative as string).split('/');
   if (kind === 'skill' && segments.length === 2 && segments[1] === 'SKILL.md') await validateSkill(segments[0], content);
   await atomicWrite(file, content);
-  return { ok: true, note: 'Saved. Changes apply on the next request.' };
+  return { ok: true, note: 'Saved.' };
 }
 
 export async function createSkill(root: string, name: unknown, description: unknown) {
@@ -171,7 +171,7 @@ export async function createSkill(root: string, name: unknown, description: unkn
   try { await mkdir(directory); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw Error('Already exists'); throw error; }
   await atomicWrite(path.join(directory, 'SKILL.md'), content, true);
-  return { ok: true, path: `${name}/SKILL.md`, note: 'Created. Available from the next request.' };
+  return { ok: true, path: `${name}/SKILL.md`, note: 'Created.' };
 }
 
 /** Move a whole skill or extension out of the resource root into a trash directory (first that works); never a hard delete. */
@@ -196,7 +196,7 @@ export async function deleteResource(root: string, kind: unknown, name: unknown,
       await mkdir(trash, { recursive: true, mode: 0o700 });
       const destination = path.join(trash, trashed);
       await rename(target, destination);
-      return { ok: true, trashed: destination, note: `Moved to ${destination}. Changes apply on the next request.` };
+      return { ok: true, trashed: destination, note: `Moved to ${destination}.` };
     } catch (error) { lastError = error; }
   }
   throw lastError;
@@ -206,5 +206,5 @@ export async function createExtension(root: string, name: unknown) {
   if (typeof name !== 'string' || name.length > 64 || !NAME.test(name)) throw Error('Name: lowercase letters, digits and hyphens');
   const content = `import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';\n\n/** ${name}: describe what this extension does. */\nexport default function ${name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase()).replace(/^[0-9]/, '_$&')}(_pi: ExtensionAPI) {\n  // Register tools with pi.registerTool(); new tools stay unavailable until approved in the harness.\n}\n`;
   await atomicWrite(path.join(await realpath(base(root, 'extension')), `${name}.ts`), content, true);
-  return { ok: true, path: `${name}.ts`, note: 'Created. Extensions run as trusted code; loaded on the next request.' };
+  return { ok: true, path: `${name}.ts`, note: 'Created.' };
 }
