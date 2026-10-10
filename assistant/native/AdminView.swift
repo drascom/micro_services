@@ -45,6 +45,7 @@ final class AdminModel {
     var content = ""
     var original = ""
     var message = ""
+    var loadError = ""
     private var polling: Task<Void, Never>?
 
     init(backend: BackendClient, ring: RingModel) { self.backend = backend; self.ring = ring }
@@ -83,11 +84,18 @@ final class AdminModel {
         catch { message = error.localizedDescription }
     }
     func open(kind: String, path: String) async {
+        // Select immediately so the row highlights; load errors are shown in the editor pane.
+        selectedKind = kind; selectedPath = path; content = ""; original = ""; message = ""; loadError = ""
         do {
             let data = try await backend.admin("admin/read", ["kind": kind, "path": path])
-            let text = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["content"] as? String ?? ""
-            selectedKind = kind; selectedPath = path; content = text; original = text; message = ""
-        } catch { message = error.localizedDescription }
+            guard selectedKind == kind, selectedPath == path else { return }
+            guard let text = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["content"] as? String else {
+                loadError = "Geçersiz yanıt / Invalid response"; return
+            }
+            content = text; original = text
+        } catch {
+            if selectedKind == kind, selectedPath == path { loadError = error.localizedDescription }
+        }
     }
     func save() async {
         do {
@@ -229,7 +237,16 @@ private struct ResourcesTab: View {
     @State private var confirmExtensionSave = false
     @State private var newName = ""
     @State private var newDescription = ""
-    private var dirty: Bool { !admin.selectedPath.isEmpty && admin.content != admin.original }
+    private var dirty: Bool { !admin.selectedPath.isEmpty && admin.loadError.isEmpty && admin.content != admin.original }
+    /// Native List selection (tag = "kind|path"); selecting a row loads the file.
+    private var selection: Binding<String?> {
+        Binding(get: { admin.selectedPath.isEmpty ? nil : admin.selectedKind + "|" + admin.selectedPath },
+                set: { key in
+                    guard let key, let bar = key.firstIndex(of: "|") else { return }
+                    let kind = String(key[..<bar]), path = String(key[key.index(after: bar)...])
+                    if kind != admin.selectedKind || path != admin.selectedPath { Task { await admin.open(kind: kind, path: path) } }
+                })
+    }
 
     var body: some View {
         HSplitView {
@@ -238,9 +255,9 @@ private struct ResourcesTab: View {
                     Button("Yeni skill / New skill…") { newName = ""; newDescription = ""; creatingSkill = true }
                     Button("Yeni extension…") { newName = ""; creatingExtension = true }
                 }
-                List {
-                    Section("Skills (.pi/skills)") { ForEach(admin.resources?.skills ?? []) { row($0) } }
-                    Section("Extensions (.pi/extensions)") { ForEach(admin.resources?.extensions ?? []) { row($0) } }
+                List(selection: selection) {
+                    Section("Skills (.pi/skills)") { ForEach(admin.resources?.skills ?? []) { rows($0) } }
+                    Section("Extensions (.pi/extensions)") { ForEach(admin.resources?.extensions ?? []) { rows($0) } }
                 }
             }.frame(minWidth: 240, idealWidth: 280)
             VStack(alignment: .leading, spacing: 8) {
@@ -253,7 +270,12 @@ private struct ResourcesTab: View {
                         Text("Uyarı: extension'lar güvenilir kod olarak çalışır; kaydetmeden önce gözden geçir. / Warning: extensions run as trusted code; review before saving.")
                             .font(.caption).foregroundStyle(.orange)
                     }
-                    TextEditor(text: $admin.content).font(.system(.body, design: .monospaced))
+                    if !admin.loadError.isEmpty {
+                        Text("Dosya yüklenemedi / Could not load file: \(admin.loadError)").foregroundStyle(.red).textSelection(.enabled)
+                        Spacer()
+                    } else {
+                        TextEditor(text: $admin.content).font(.system(.body, design: .monospaced))
+                    }
                     HStack {
                         Text("Değişiklikler sonraki istekte geçerli / Changes apply on the next request").font(.caption).foregroundStyle(.secondary)
                         Spacer()
@@ -278,19 +300,24 @@ private struct ResourcesTab: View {
         }
     }
 
-    private func row(_ resource: AdminResource) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+    @ViewBuilder private func rows(_ resource: AdminResource) -> some View {
+        let header = VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Text(resource.name).bold()
                 if resource.valid == false { Text("geçersiz / invalid").font(.caption).foregroundStyle(.orange) }
                 if resource.loading == "built-in" { Text("yerleşik / built-in").font(.caption).foregroundStyle(.secondary) }
             }
             if !resource.description.isEmpty { Text(resource.description).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
+        }
+        if resource.files.count == 1, let file = resource.files.first {
+            VStack(alignment: .leading, spacing: 2) {
+                header
+                Text(file).font(.caption.monospaced()).foregroundStyle(.secondary)
+            }.tag(Optional(resource.kind + "|" + file))
+        } else {
+            header.selectionDisabled()
             ForEach(resource.files, id: \.self) { file in
-                Button { Task { await admin.open(kind: resource.kind, path: file) } } label: {
-                    Text(file).font(.caption.monospaced())
-                        .foregroundStyle(admin.selectedKind == resource.kind && admin.selectedPath == file ? Color.accentColor : Color.primary)
-                }.buttonStyle(.plain).padding(.leading, 8)
+                Text(file).font(.caption.monospaced()).padding(.leading, 8).tag(Optional(resource.kind + "|" + file))
             }
         }
     }
