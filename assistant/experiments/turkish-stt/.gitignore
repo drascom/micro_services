@@ -1,7 +1,0 @@
-.venv/
-models/
-runs/
-audio/
-*.wav
-*.aiff
-__pycache__/

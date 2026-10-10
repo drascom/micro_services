@@ -9,3 +9,5 @@ data/
 PersonalAssistant.app/
 
 .pi/agent/
+.venv/
+experiments/
