@@ -43,9 +43,10 @@ plus local inference helpers. The desktop host owns a transparent floating
 NSPanel, SwiftUI animation/text UI, CoreGraphics modifier event monitor, and
 AVAudioRecorder. It talks to a protected native-only loopback API.
 At recording start the host notes another app's focused editable text element
-(Accessibility, `AXFocusedUIElement`); after transcription it pastes the same
-transcript there if that element still has focus (`Paster.swift`), then sends
-the chat as usual with `pasted_into` (activity metadata only, not model context).
+(Accessibility, `AXFocusedUIElement`); after `POST /transcribe` it pastes the
+transcript there if that element still has focus (`Paster.swift`). A successful
+paste is dictation: no chat, no TTS, no history; only `POST /dictation` logs app id
++ length. If the paste is not possible, the transcript goes to the assistant.
 It starts the backend automatically and stops only its owned process on quit.
 The ring's right-click menu is minimal (type, cancel, new conversation, Admin,
 restart, quit). A native SwiftUI Admin window holds settings, live status (`POST /status`:

@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
 
-/// Voice transcript delivery into another app's focused text field (in addition to the assistant flow).
+/// Voice dictation into another app's focused text field. A successful paste replaces the assistant request.
 /// The target is captured when recording starts; pasting happens only if that same element still has focus.
 @MainActor
 enum Paster {
@@ -29,16 +29,18 @@ enum Paster {
         return Target(element, app.bundleIdentifier ?? "pid \(pid)")
     }
 
-    /// Pastes `text` if `target` still has focus; returns the target bundle id when pasted.
+    /// Pastes `text` if `target` still has focus; returns the target bundle id when pasted, nil otherwise.
     static func paste(_ text: String, into target: Target) -> String? {
-        guard AXIsProcessTrusted(), let current = focusedElement(), CFEqual(current, target.element) else { return nil }
+        guard AXIsProcessTrusted(), let current = focusedElement(), CFEqual(current, target.element),
+              let keys = commandV() else { return nil }
         let board = NSPasteboard.general
         let backup = snapshot(board)
-        board.clearContents(); board.setString(text, forType: .string)
+        board.clearContents()
+        guard board.setString(text, forType: .string) else { if !backup.isEmpty { board.writeObjects(backup) }; return nil }
         let ours = board.changeCount
         Task {
             try? await Task.sleep(for: .milliseconds(60)) // Let the pasteboard settle before ⌘V.
-            commandV()
+            keys.down.post(tap: .cghidEventTap); keys.up.post(tap: .cghidEventTap)
             try? await Task.sleep(for: .milliseconds(500)) // Give the target app time to read the pasteboard.
             // Restore only if nothing else replaced the clipboard meanwhile.
             if board.changeCount == ours { board.clearContents(); if !backup.isEmpty { board.writeObjects(backup) } }
@@ -66,15 +68,15 @@ enum Paster {
             return copy
         }
     }
-    private static func commandV() {
+    private static func commandV() -> (down: CGEvent, up: CGEvent)? {
         let source = CGEventSource(stateID: .combinedSessionState)
         // Keep physically held modifiers out of the synthetic event.
         source?.setLocalEventsFilterDuringSuppressionState([.permitLocalMouseEvents, .permitLocalKeyboardEvents],
                                                            state: .eventSuppressionStateSuppressionInterval)
         let v: CGKeyCode = 9 // ANSI "v"
         guard let down = CGEvent(keyboardEventSource: source, virtualKey: v, keyDown: true),
-              let up = CGEvent(keyboardEventSource: source, virtualKey: v, keyDown: false) else { return }
+              let up = CGEvent(keyboardEventSource: source, virtualKey: v, keyDown: false) else { return nil }
         down.flags = .maskCommand; up.flags = .maskCommand
-        down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
+        return (down, up)
     }
 }

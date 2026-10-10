@@ -7,9 +7,10 @@ actor FakeBackend: AssistantBackend {
     var silent = false
     func setSilent(_ value: Bool) { silent = value }
     func connect() async throws {}
-    var pastedApps: [String?] = []
-    func ask(_ text: String, offline: Bool, pastedInto: String?) async throws -> BackendClient.Reply {
-        messages.append(text); pastedApps.append(pastedInto)
+    var dictations: [String] = []
+    func dictation(app: String, chars: Int) async { dictations.append("\(app):\(chars)") }
+    func ask(_ text: String, offline: Bool) async throws -> BackendClient.Reply {
+        messages.append(text)
         return BackendClient.Reply(text: "reply: " + text, provider: "test", fallback_reason: "")
     }
     func transcribe(_ audio: Data) async throws -> String {
@@ -98,37 +99,54 @@ struct RecordingChecks {
         try await wait { !model.changingMode && model.phase == .idle }
         let unloads = await backend.unloads
         precondition(unloads == 1 && !model.offline && model.response == replyBeforeUnload)
-        // Voice with a focused text field elsewhere: pasted there AND sent to the assistant as usual.
+        // Pasted into another app's focused field: dictation only, the assistant is not asked.
         final class Field {}
         var pasted: [String] = []
         model.captureFocus = { Field() }
         model.pasteInto = { _, text in pasted.append(text); return "com.example.editor" }
+        let before = await backend.messages.count
+        let previous = model.response
         model.modifiers(true)
         try await wait { model.phase == .listening }
+        precondition(model.dictating)
         model.modifiers(false)
-        try await wait { model.response == "reply: voice" && model.phase == .idle && pasted == ["voice"] }
-        var apps = await backend.pastedApps
-        precondition(apps.last == "com.example.editor")
-        // Focus moved away before transcription finished: no paste, assistant flow unchanged.
+        try await wait { model.phase == .idle && pasted == ["voice"] }
+        try await wait { !model.dictating }
+        var dictations: [String] = []
+        for _ in 0..<50 { dictations = await backend.dictations; if !dictations.isEmpty { break }; try await Task.sleep(for: .milliseconds(5)) }
+        var sent = await backend.messages.count
+        precondition(sent == before && dictations == ["com.example.editor:5"] && model.response == previous)
+        // Paste failed (focus moved, no permission, ...): the transcript goes to the assistant as usual.
         model.pasteInto = { _, _ in nil }
         model.modifiers(true)
         try await wait { model.phase == .listening }
         model.modifiers(false)
+        for _ in 0..<50 { if await backend.messages.count == before + 1 { break }; try await Task.sleep(for: .milliseconds(5)) }
         try await wait { model.phase == .idle }
-        let sent = await backend.messages.count
-        precondition(sent == 5)
-        apps = await backend.pastedApps
-        precondition(apps.last == .some(nil) && pasted == ["voice"])
-        // Silent recording: nothing pasted, nothing sent.
+        sent = await backend.messages.count
+        dictations = await backend.dictations
+        precondition(sent == before + 1 && dictations.count == 1)
+        // No focused field: assistant flow, paste never attempted.
+        model.captureFocus = { nil }
         model.pasteInto = { _, text in pasted.append(text); return "x" }
+        model.modifiers(true)
+        try await wait { model.phase == .listening }
+        precondition(!model.dictating)
+        model.modifiers(false)
+        for _ in 0..<50 { if await backend.messages.count == before + 2 { break }; try await Task.sleep(for: .milliseconds(5)) }
+        try await wait { model.phase == .idle }
+        sent = await backend.messages.count
+        precondition(sent == before + 2 && pasted == ["voice"])
+        // Silent recording with a field focused: nothing pasted, nothing sent.
+        model.captureFocus = { Field() }
         await backend.setSilent(true)
         model.modifiers(true)
         try await wait { model.phase == .listening }
         model.modifiers(false)
-        try await wait { model.phase == .idle }
-        let finalCount = await backend.messages.count
-        precondition(pasted == ["voice"] && finalCount == 5)
+        try await wait { model.phase == .idle && !model.dictating }
+        sent = await backend.messages.count
+        precondition(pasted == ["voice"] && sent == before + 2)
         model.cancel()
-        print("Recording checks passed: permission-release race, typed override during permission and recording, focused-field paste.")
+        print("Recording checks passed: permission-release race, typed override during permission and recording, dictation vs assistant routing.")
     }
 }

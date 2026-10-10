@@ -40,7 +40,7 @@ struct RingView: View {
                         }.foregroundStyle(tint).frame(width: 100, height: 100).contentShape(Circle())
                     }
                 }.frame(width: 220, height: 220).scaleEffect(pulse)
-                Text(model.phase == .idle ? (model.shortcutEnabled ? "\(model.shortcutLabel)  HOLD TO TALK" : "CLICK TO TYPE") : model.phase == .noSpeech ? "NO SPEECH" : model.phase.rawValue.uppercased())
+                Text(model.phase == .idle ? (model.shortcutEnabled ? "\(model.shortcutLabel)  HOLD TO TALK" : "CLICK TO TYPE") : model.phase == .noSpeech ? "NO SPEECH" : model.dictating && (model.phase == .listening || model.phase == .thinking) ? (model.phase == .listening ? "DICTATION" : "TYPING") : model.phase.rawValue.uppercased())
                     .font(.system(size: 9, weight: .medium, design: .monospaced)).tracking(1.5)
                     .foregroundStyle(tint.opacity(0.75)).shadow(color: .black.opacity(0.6), radius: 4)
             }

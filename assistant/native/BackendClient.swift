@@ -4,7 +4,8 @@ enum TranscriptionError: Error { case noSpeech }
 
 protocol AssistantBackend: Sendable {
     func connect() async throws
-    func ask(_ text: String, offline: Bool, pastedInto: String?) async throws -> BackendClient.Reply
+    func ask(_ text: String, offline: Bool) async throws -> BackendClient.Reply
+    func dictation(app: String, chars: Int) async
     func transcribe(_ audio: Data) async throws -> String
     func speak(_ text: String) async throws
     func stopSpeech() async
@@ -71,11 +72,8 @@ actor BackendClient: AssistantBackend {
         }
         return data
     }
-    /// `pastedInto`: app id the transcript was also pasted into; activity metadata only, never model context.
-    func ask(_ text: String, offline: Bool, pastedInto: String? = nil) async throws -> Reply {
-        var body: [String: Any] = ["text": text, "offline": offline]
-        if let pastedInto { body["pasted_into"] = pastedInto }
-        let data = try await post("chat", body: JSONSerialization.data(withJSONObject: body))
+    func ask(_ text: String, offline: Bool) async throws -> Reply {
+        let data = try await post("chat", body: JSONSerialization.data(withJSONObject: ["text": text, "offline": offline]))
         return try JSONDecoder().decode(Reply.self, from: data)
     }
     func transcribe(_ audio: Data) async throws -> String {
@@ -83,6 +81,10 @@ actor BackendClient: AssistantBackend {
         return ((try JSONSerialization.jsonObject(with: data)) as? [String: String])?["text"] ?? ""
     }
     func speak(_ text: String) async throws { _ = try await post("speak", body: JSONSerialization.data(withJSONObject: ["text": text])) }
+    /// Activity log only (app id + length); the dictated text never leaves the host.
+    func dictation(app: String, chars: Int) async {
+        _ = try? await post("dictation", body: JSONSerialization.data(withJSONObject: ["app": app, "text_chars": chars] as [String: Any]))
+    }
     func stopSpeech() async { _ = try? await post("stop-speech", body: Data("{}".utf8)) }
     func cancel() async { _ = try? await post("cancel", body: Data("{}".utf8)) }
     func reset() async throws { _ = try await post("reset", body: Data("{}".utf8)) }

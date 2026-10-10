@@ -63,13 +63,12 @@ while a microphone permission dialog is open. Grant permission, then press
 and hold the shortcut again to start a fresh recording. Typed Send cancels
 any pending or active recording before submitting the text.
 
-If a text field in another app has keyboard focus when you start holding the
-shortcut, the transcript is also pasted there (clipboard + ⌘V, previous
-clipboard restored), while the assistant answers as usual. Nothing is pasted
-if focus moved during transcription, into Ayhan's own windows, or when the
-transcript is empty. Pasting needs Accessibility permission (macOS asks once
-per launch); without it the assistant works unchanged. The activity log
-records only the target app id and text length.
+Dictation: if a text field in another app has keyboard focus when you start
+holding the shortcut, the transcript is pasted there (clipboard + ⌘V, previous
+clipboard restored) and the assistant is not asked (no answer, no speech, no
+history). If it cannot be pasted (focus moved, Ayhan's own windows,
+no Accessibility permission — macOS asks once per launch), the transcript goes
+to the assistant as usual. The activity log records only the app id and length.
 
 On first use, allow microphone access. If the shortcut is unavailable, select
 **Change shortcut…** in Admin → Settings, save the shortcut, and allow Input

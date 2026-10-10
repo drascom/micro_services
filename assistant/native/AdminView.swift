@@ -157,7 +157,7 @@ private struct StatusTab: View {
           "tool_finished": "araç bitti / tool finished", "local_fallback": "yerel yedek / local fallback",
           "local_load_started": "yerel model yükleniyor / loading local model", "local_load_finished": "yerel model hazır / local model ready",
           "speech_prepared": "seslendirme / speaking", "tts_fallback": "TTS yedek / TTS fallback", "stt_fallback": "STT yedek / STT fallback",
-          "pasted": "alana yapıştırıldı / pasted into field" ][stage] ?? stage
+          "dictation": "dikte / dictation" ][stage] ?? stage
     }
     var body: some View {
         Form {

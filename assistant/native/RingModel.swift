@@ -22,8 +22,11 @@ final class RingModel {
     /// Focused editable text field of another app at recording start (opaque; nil = none).
     var captureFocus: () -> AnyObject? = { nil }
     /// Pastes the transcript into the captured target if it still has focus; returns the app id when pasted.
+    /// Pasted = dictation (the assistant is not asked); not pasted = the transcript goes to the assistant.
     var pasteInto: (AnyObject, String) -> String? = { _, _ in nil }
     private var focusTarget: AnyObject?
+    /// A paste target was captured: the ring shows dictation instead of the assistant states.
+    var dictating: Bool { focusTarget != nil }
     let backend: any AssistantBackend
     let audio: any AudioCapture
     private var recordingTask: Task<Void, Never>?
@@ -65,7 +68,7 @@ final class RingModel {
                 try Task.checkCancellation()
                 try await audio.start()
                 guard !Task.isCancelled, phase == .preparing else { audio.cancel(); return }
-                phase = .listening; status = "Listening… release the keys"
+                phase = .listening; status = focusTarget == nil ? "Listening… release the keys" : "Dikte / Dictation… release the keys"
                 meterTask = Task {
                     while !Task.isCancelled {
                         level = audio.level
@@ -81,7 +84,7 @@ final class RingModel {
     }
     private func discardRecording() {
         recordingTask?.cancel(); meterTask?.cancel(); ceilingTask?.cancel()
-        audio.cancel(); level = 0
+        audio.cancel(); level = 0; focusTarget = nil
     }
     func finishListening() {
         guard phase == .listening else { return }
@@ -89,17 +92,22 @@ final class RingModel {
         do {
             let wav = try audio.finish()
             guard !wav.isEmpty else { phase = .idle; status = "Hold \(shortcutLabel) to speak"; return }
-            phase = .thinking; status = "Transcribing on this Mac…"
+            phase = .thinking; status = focusTarget == nil ? "Transcribing on this Mac…" : "Yazılıyor / Typing…"
             requestTask = Task {
                 do { let text = try await backend.transcribe(wav); guard !Task.isCancelled else { return }
-                    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { noSpeech(); return }
-                    // Also type the transcript where the user's cursor was, if that field still has focus.
+                    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { focusTarget = nil; noSpeech(); return }
+                    // Dictation: typed where the user's cursor was (field still focused); otherwise ask the assistant.
                     let pasted = focusTarget.flatMap { pasteInto($0, text) }; focusTarget = nil
-                    transcript = text; try await reply(to: text, pastedInto: pasted) }
-                catch TranscriptionError.noSpeech { if !Task.isCancelled { noSpeech() } }
+                    if let pasted { await dictated(into: pasted, chars: text.utf16.count); return }
+                    transcript = text; try await reply(to: text) }
+                catch TranscriptionError.noSpeech { if !Task.isCancelled { focusTarget = nil; noSpeech() } }
                 catch { if !Task.isCancelled { fail(error) } }
             }
         } catch { fail(error) }
+    }
+    private func dictated(into app: String, chars: Int) async {
+        phase = .idle; status = "Yapıştırıldı / Pasted • \(shortcutLabel)"
+        await backend.dictation(app: app, chars: chars)
     }
     private func noSpeech() {
         feedbackTask?.cancel()
@@ -119,9 +127,9 @@ final class RingModel {
         requestTask = Task { do { await backend.stopSpeech(); try await reply(to: text) }
             catch { if !Task.isCancelled { fail(error) } } }
     }
-    private func reply(to text: String, pastedInto: String? = nil) async throws {
+    private func reply(to text: String) async throws {
         phase = .thinking; status = offline ? "Thinking locally…" : "Thinking with Pi…"
-        let result = try await backend.ask(text, offline: offline, pastedInto: pastedInto)
+        let result = try await backend.ask(text, offline: offline)
         guard !Task.isCancelled else { return }
         response = result.text; provider = result.provider + (result.fallback_reason.isEmpty ? "" : " • " + result.fallback_reason)
         if readAloud {
@@ -149,13 +157,13 @@ final class RingModel {
     }
     func cancel(notifyBackend: Bool = true) {
         feedbackTask?.cancel(); holdTask?.cancel(); recordingTask?.cancel(); requestTask?.cancel(); meterTask?.cancel(); ceilingTask?.cancel()
-        audio.cancel(); level = 0; phase = .idle; status = "Cancelled"
+        audio.cancel(); level = 0; focusTarget = nil; phase = .idle; status = "Cancelled"
         if notifyBackend { Task { await backend.cancel(); await backend.stopSpeech() } }
     }
     func newConversation() {
         cancel(); response = ""; transcript = ""; provider = ""
         Task { do { try await backend.reset(); status = "New conversation" } catch { fail(error) } }
     }
-    func fail(_ error: Error) { phase = .error; status = error.localizedDescription; showInput() }
+    func fail(_ error: Error) { focusTarget = nil; phase = .error; status = error.localizedDescription; showInput() }
     func close() { cancel(); Task { await backend.close() } }
 }
