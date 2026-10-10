@@ -9,7 +9,7 @@ Native SwiftUI desktop ring / CLI
            ├─ Pi AgentSession → global Pi/OpenAI OAuth subscription + approved tools
            ├─ Pi Models → TypeSafe Jev (typed intent classification)
            ├─ Pi AgentSession → bundled llama.cpp/Gemma + offline permission policy
-           ├─ Speech → bundled whisper-server (lazy, idle-stopped; whisper-cli fallback) + warm local EMA/Kokoro + Piper fallback + macOS audio playback
+           ├─ Speech → bundled whisper-server (lazy, idle-stopped, greedy decode; whisper-cli fallback) + warm local EMA/Kokoro + Piper fallback + macOS audio playback
            └─ Pi extensions/skills → web search, skill management, read-only Apple Mail; future calendar
 ```
 

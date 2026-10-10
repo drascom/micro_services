@@ -6,7 +6,7 @@ import path from 'node:path';
 import { createServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import { defaults, type Config } from '../src/config.ts';
-import { WhisperServer } from '../src/whisper.ts';
+import { WhisperServer, whisperArgs } from '../src/whisper.ts';
 import { Speech } from '../src/speech.ts';
 
 // Fake whisper-server: records its argv and each start, answers /health and /inference, logs SIGTERM.
@@ -29,7 +29,7 @@ const server = http.createServer((req, res) => {
 server.listen(port, '127.0.0.1');
 process.on('SIGTERM', () => { fs.writeFileSync(${JSON.stringify(path.join(dir, 'sigterm'))}, 'yes'); process.exit(0); });
 `;
-const fakeCli = `#!/bin/sh\necho " CLI ile yazıya döküldü"\n`;
+const fakeCli = (dir: string) => `#!/bin/sh\necho "$@" >> ${JSON.stringify(path.join(dir, 'cli-args'))}\necho " CLI ile yazıya döküldü"\n`;
 
 async function freePort(): Promise<number> {
   const server = createServer(); await new Promise<void>(r => server.listen(0, '127.0.0.1', r));
@@ -48,13 +48,27 @@ async function setup(t: test.TestContext, overrides: Partial<Config> = {}) {
   const dir = await mkdtemp(path.join(tmpdir(), 'whisper-test-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const server = path.join(dir, 'whisper-server'), cli = path.join(dir, 'whisper-cli'), model = path.join(dir, 'model.bin');
-  await writeFile(server, fakeServer(dir)); await writeFile(cli, fakeCli); await writeFile(model, '');
+  await writeFile(server, fakeServer(dir)); await writeFile(cli, fakeCli(dir)); await writeFile(model, '');
   await chmod(server, 0o755); await chmod(cli, 0o755);
   const config: Config = { ...defaults, whisper_server_bin: server, whisper_bin: cli, whisper_model: model,
     whisper_url: `http://127.0.0.1:${await freePort()}`, whisper_start_timeout_ms: 10000, ...overrides };
   const starts = async () => { try { return (await readFile(path.join(dir, 'starts'), 'utf8')).trim().split('\n').map(l => JSON.parse(l) as string[]); } catch { return []; } };
   return { dir, config, starts };
 }
+
+test('whisper_beam_size drives -bs/-bo for both server and CLI fallback', async t => {
+  assert.deepEqual(whisperArgs({ ...defaults }).slice(-4), ['-bs', '1', '-bo', '1']); // default: greedy
+  const f = await setup(t, { whisper_beam_size: 5 });
+  const server = new WhisperServer(f.config); t.after(() => server.close());
+  await server.transcribe(wav(), AbortSignal.timeout(5000));
+  const args = (await f.starts())[0];
+  assert.equal(args[args.indexOf('-bs') + 1], '5'); assert.equal(args[args.indexOf('-bo') + 1], '5');
+  const off = new Speech({ ...f.config, whisper_server: false }); t.after(() => off.close());
+  await off.transcribe(wav(), AbortSignal.timeout(5000));
+  const cli = (await readFile(path.join(f.dir, 'cli-args'), 'utf8')).trim().split(' ');
+  for (const [flag, value] of [['-bs', '5'], ['-bo', '5'], ['-l', 'auto'], ['-t', '8']]) assert.equal(cli[cli.indexOf(flag) + 1], value, flag);
+  assert.ok(cli.includes('-nt') && cli.includes('-np'));
+});
 
 test('whisper server starts lazily once, keeps CLI decoding flags and stays loopback-only', async t => {
   const f = await setup(t); const whisper = new WhisperServer(f.config); t.after(() => whisper.close());
@@ -65,7 +79,7 @@ test('whisper server starts lazily once, keeps CLI decoding flags and stays loop
   assert.match(await whisper.transcribe(audio, AbortSignal.timeout(5000)), /Merhaba/);
   const starts = await f.starts(); assert.equal(starts.length, 1);
   const args = starts[0];
-  for (const [flag, value] of [['-l', 'auto'], ['-t', '8'], ['-bo', '5'], ['-bs', '5'], ['--host', '127.0.0.1'],
+  for (const [flag, value] of [['-l', 'auto'], ['-t', '8'], ['-bs', '1'], ['-bo', '1'], ['--host', '127.0.0.1'],
     ['--port', new URL(f.config.whisper_url).port], ['-m', f.config.whisper_model]])
     assert.equal(args[args.indexOf(flag) + 1], value, flag);
   assert.ok(args.includes('-nt'));
@@ -110,6 +124,10 @@ test('whisper_url must be loopback HTTP on its own port', async t => {
   for (const bad of ['http://0.0.0.0:8092', 'https://127.0.0.1:8092', 'http://127.0.0.1', 'http://127.0.0.1:8765', 'http://127.0.0.1:8091', 'http://127.0.0.1:8092/x']) {
     await writeFile(file, JSON.stringify({ whisper_url: bad }));
     await assert.rejects(loadConfig(file), /whisper_url/, bad);
+  }
+  for (const beam of [0, -1, 1.5, 17]) {
+    await writeFile(file, JSON.stringify({ whisper_beam_size: beam }));
+    await assert.rejects(loadConfig(file), /whisper_beam_size/, String(beam));
   }
   await writeFile(file, JSON.stringify({ whisper_url: 'http://localhost:9100', whisper_idle_ms: 1000 }));
   assert.equal((await loadConfig(file)).whisper_url, 'http://localhost:9100');

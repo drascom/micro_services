@@ -6,10 +6,11 @@ import path from 'node:path';
 import { root, type Config } from './config.ts';
 import { stopProcess } from './processes.ts';
 
-/** Whisper decoding flags shared by whisper-cli and whisper-server. -bo/-bs pin the CLI defaults
- *  (best-of 5, beam 5); the server's own defaults differ (2 / greedy) and would change accuracy. */
+/** Whisper decoding flags shared by whisper-cli and whisper-server. -bs/-bo are always explicit because the two
+ *  binaries have different defaults. whisper_beam_size 1 = greedy (one candidate); >1 = beam search of that width. */
 export function whisperArgs(c: Config): string[] {
-  return ['-m', c.whisper_model, '-l', c.language, '-t', String(c.whisper_threads), '-nt', '-bo', '5', '-bs', '5'];
+  const beam = String(c.whisper_beam_size);
+  return ['-m', c.whisper_model, '-l', c.language, '-t', String(c.whisper_threads), '-nt', '-bs', beam, '-bo', beam];
 }
 
 /** Persistent localhost whisper-server: started lazily on first transcription, model stays loaded,

@@ -71,6 +71,8 @@ kaldığı yerden devam eder; tek cümle yeniden: `record.py --redo 05`. Elle de
 - **whisper --server** (`whisper-server` adı): asistanın yeni yolu (`src/whisper.ts`). Sunucu bir kez başlar,
   dosyalar HTTP ile sıcak modele gönderilir; aynı çözme ayarı (`-bo 5 -bs 5` = CLI varsayılanı). Ayrıca soğuk
   (başlatma -> ilk metin) süresi ve sunucu `ps rss` tepe değeri kaydedilir.
+- `--model <assistant/models/ altındaki dosya>` (ör. `ggml-large-v3-turbo-q5_0.bin`) ve `--greedy` (`-bs 1 -bo 1`;
+  varsayılan beam `-bs 5 -bo 5` = asistan ayarı) CLI ve sunucu modunda çalışır.
 - **Normalizasyon:** Türkçe küçük harf (İ/ı doğru), kesme işareti silinir, noktalama atılır. *Ham*: rakamlar olduğu
   gibi; *sayı*: rakam -> Türkçe yazı (`num2words`), ardışık sayı kelimeleri birleşik.
 

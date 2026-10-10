@@ -3,6 +3,68 @@
 > **Not:** mihu modeli (`models/turkish-stt/`) kullanıcı kararıyla silindi; mihu sonuçları aşağıda tarihsel
 > olarak duruyor. Yeniden indirme: `README.md > Kurulum` (git clone + curl). Model yokken `eval.py mihu` atlar.
 
+## large-v3 vs large-v3-turbo, beam vs greedy, CLI vs sunucu (2026-10-10)
+
+> **Karar: v3 + server + greedy** (kullanıcı onayı, 2026-10-10). Asistan: `ggml-large-v3-q5_0` + kalıcı
+> `whisper-server` + `whisper_beam_size: 1` (greedy, `-bs 1 -bo 1`; sunucu ve CLI fallback aynı), dil `auto`.
+> Turbo modelleri silindi (yeniden: ggml-org/whisper.cpp HF reposu `ggml-large-v3-turbo-q5_0.bin`).
+
+whisper.cpp v1.9.4, Metal, `-t 8 -nt`, şarjda, aynı oturumda sıralı. beam = `-bs 5 -bo 5` (asistan ayarı),
+greedy = `-bs 1 -bo 1`. Turbo modelleri: `ggml-large-v3-turbo-q5_0.bin` (574 MB) ve `-q8_0` (874 MB), ggml-org
+HF reposu, SHA-256 HF etag ile eşleşti. WER ham / sayı, CER sayı = yalnız TR klipler (user: 24, human: 60 okunan).
+EN WER = user'ın 5 İngilizce klibi (sayı-normalize). ms = dosya başı medyan (p95), tüm klipler (user 29, human 90).
+CLI = dosya başı süreç (yükleme dahil); sunucu = sıcak `whisper-server`. RSS = tepe, MB.
+
+| model/ayar | set | WER ham / sayı | CER | EN WER | ms/dosya | soğuk ms | RSS |
+|---|---|---:|---:|---:|---:|---:|---:|
+| v3 q5 beam, CLI (referans) | user | 12,6 / 12,5 | 6,6 | 33,3 | 1938 (2167) | – | 2013 |
+| v3 q5 greedy, CLI | user | 12,1 / 11,9 | 6,4 | 33,3 | 1786 (1883) | – | 1520 |
+| v3 q5 beam `-l tr`, CLI | user | 12,6 / 12,5 | 6,3 | 100 | 1336 (1519) | – | 2015 |
+| turbo q5 beam, CLI | user | 14,9 / 14,2 | 6,9 | 25,6 | 1401 (1452) | – | 826 |
+| turbo q5 greedy, CLI | user | 14,9 / 15,3 | 7,5 | 25,6 | 1362 (1386) | – | 753 |
+| turbo q5 beam `-l tr`, CLI | user | 14,9 / 14,2 | 6,5 | 33,3 | 842 (888) | – | 826 |
+| turbo q8 beam, CLI | user | 15,5 / 14,8 | 7,2 | 28,2 | 1415 (1477) | – | 1132 |
+| turbo q8 greedy, CLI | user | 15,5 / 15,9 | 7,6 | 28,2 | 1369 (1391) | – | 1059 |
+| v3 q5 beam, sunucu (şu anki asistan) | user | 12,6 / 12,5 | 6,6 | 33,3 | 1570 (1779) | 1851 | 2025 |
+| v3 q5 greedy, sunucu | user | 12,1 / 11,9 | 6,4 | 33,3 | 1419 (1507) | 1764 | 1533 |
+| turbo q5 beam, sunucu | user | 14,9 / 14,2 | 6,9 | 25,6 | 1182 (1233) | 1409 | 839 |
+| turbo q5 greedy, sunucu | user | 14,9 / 15,3 | 7,5 | 25,6 | 1148 (1170) | 1361 | 766 |
+| v3 q5 beam, CLI (referans) | human | 8,4 / 6,4 | 2,2 | – | 2175 (3889) | – | 2028 |
+| v3 q5 greedy, CLI | human | 8,8 / 6,8 | 2,3 | – | 1880 (2668) | – | 1536 |
+| v3 q5 beam `-l tr`, CLI | human | 8,4 / 6,4 | 2,2 | – | 1522 (3243) | – | 2028 |
+| turbo q5 beam, CLI | human | 11,2 / 8,6 | 3,0 | – | 1441 (1806) | – | 842 |
+| turbo q5 greedy, CLI | human | 12,3 / 9,3 | 3,4 | – | 1380 (1538) | – | 768 |
+| turbo q5 beam `-l tr`, CLI | human | 11,2 / 8,6 | 3,0 | – | 885 (1245) | – | 842 |
+| turbo q8 beam, CLI | human | 11,9 / 8,9 | 3,2 | – | 1445 (1769) | – | 1152 |
+| turbo q8 greedy, CLI | human | 13,2 / 10,0 | 3,6 | – | 1394 (1546) | – | 1077 |
+| v3 q5 beam, sunucu (şu anki asistan) | human | 8,4 / 6,4 | 2,2 | – | 1781 (3512) | 2592 | 2053 |
+| v3 q5 greedy, sunucu | human | 8,8 / 6,8 | 2,3 | – | 1524 (2306) | 2088 | 1554 |
+| turbo q5 beam, sunucu | human | 11,2 / 8,6 | 3,0 | – | 1223 (1584) | 1546 | 858 |
+| turbo q5 greedy, sunucu | human | 12,3 / 9,3 | 3,4 | – | 1167 (1323) | 1437 | 767 |
+
+Notlar:
+- Önceki tablodaki user WER'i (16,4) 29 klibin tümü (TR+EN) üzerindeydi; burada TR ve EN ayrı.
+- EN (5 klip) küçük ve gürültülü: "What is the weather like in London tomorrow?" iki modelde de boş/"." çıkıyor
+  (kayıt sorunu olabilir); v3 "Summarize my unread" -> "Summary my iron rate", turbo doğru. EN farkı 1 klipten.
+- **Dil tespiti (`-l auto`) ~550–600 ms/dosya**: v3 1938 -> 1336, turbo 1401 -> 842 (user); TR doğruluğu
+  değişmiyor, ama `-l tr` İngilizceyi bozuyor (v3 EN WER 100: İngilizceyi Türkçeye çeviriyor). Model ve beam
+  dışında en büyük tek maliyet bu.
+- **Beam etkisi küçük:** v3'te greedy ~150–300 ms kazandırıyor (p95'te human 3889 -> 2668, beam uzun kliplerde
+  pahalı), human WER sayı 6,4 -> 6,8, user TR'de 12,5 -> 11,9 (gürültü düzeyinde). Turbo'da greedy kazancı ~40–60 ms
+  ve WER daha çok bozuluyor (8,6 -> 9,3).
+- **Turbo:** v3'e göre ~500–700 ms hızlı (CLI), RSS 2,0 GB -> 0,84 GB (q5). Doğruluk kaybı: human WER sayı
+  6,4 -> 8,6 (+%34 göreli hata), CER 2,2 -> 3,0; user TR 12,5 -> 14,2. q8 q5'ten iyi değil (gürültü), daha büyük.
+- **Turbo'da sunucunun kazancı:** CLI 1401/1441 -> sunucu 1182/1223 ms (~220 ms, %15), sürekli ~0,84 GB.
+
+### Öneri
+
+- Turbo'ya geçmek doğruluk pahasına (~%34 göreli daha çok hata, human'da) ~0,5 s kazandırır; doğruluk
+  öncelikse v3 kalmalı. Hız gerekiyorsa en ucuz kazanım sırası: (1) v3 + sunucu + greedy: 1570 -> 1419 (user),
+  1781 -> 1524 ms (human, p95 3512 -> 2306), WER ~aynı, RAM 2,0 -> 1,5 GB; (2) dil tespitini hızlandırmak
+  (~0,55 s, ör. Türkçe varsayıp düşük güvende `auto`, ya da ayrı hızlı LID) — doğrulanmadı; (3) turbo.
+- Turbo seçilirse sunucuyu geri almak gerekmez: ~220 ms kazanç için ~0,84 GB, 10 dk idle timeout ile serbest
+  kalıyor. Sunucuyu kaldırmak yalnız RAM'in kritik olduğu durumda mantıklı (turbo + CLI: 1,4 s, boşta 0 GB).
+
 ## Kalıcı whisper-server (2026-10-10, uygulandı)
 
 Asistan artık `runtime/whisper/whisper-server` (v1.9.4, aynı kaynak/bayraklar) kullanıyor: ilk kayıtta başlar,

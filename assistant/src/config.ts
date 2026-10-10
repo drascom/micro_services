@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 
 export const root = fileURLToPath(new URL('../', import.meta.url));
 export const defaults = {
-  port: 8765, language: 'auto', whisper_threads: 8, whisper_timeout_ms: 120000,
+  port: 8765, language: 'auto', whisper_threads: 8, whisper_beam_size: 1, whisper_timeout_ms: 120000,
   min_record_seconds: 0.5, max_record_seconds: 300,
   whisper_bin: 'runtime/whisper/whisper-cli',
   whisper_model: 'models/ggml-large-v3-q5_0.bin',
@@ -77,6 +77,8 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
     throw Error('whisper_url must be a loopback HTTP URL with its own port');
   for (const [key, value] of Object.entries(config))
     if (typeof value === 'number' && !key.startsWith('min_') && key !== 'local_reasoning_budget' && value <= 0) throw Error(`${key} must be positive`);
+  if (!Number.isInteger(config.whisper_beam_size) || config.whisper_beam_size > 16)
+    throw Error('whisper_beam_size must be an integer between 1 (greedy) and 16');
   if (!Number.isInteger(config.local_reasoning_budget) || config.local_reasoning_budget < -1 || config.local_reasoning_budget > 4096)
     throw Error('local_reasoning_budget must be an integer between -1 and 4096');
   if (config.min_record_seconds < 0 || config.min_record_seconds >= config.max_record_seconds ||

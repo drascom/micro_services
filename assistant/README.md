@@ -220,13 +220,16 @@ seconds to process; synthetic English speech of 7.45 seconds took 2.45 seconds,
 including model startup. These are compatibility and latency smoke checks, not
 an evaluation of the user's real voice. Measurements are in `data/stt-benchmark.json`.
 Whisper runs as a persistent localhost `whisper-server` (`whisper_url`, default
-`http://127.0.0.1:8092`): started lazily on the first recording, the model stays loaded (~2.0 GB RSS),
+`http://127.0.0.1:8092`): started lazily on the first recording, the model stays loaded (~1.5 GB RSS greedy, ~2.0 GB beam),
 and the process gets SIGTERM after `whisper_idle_ms` without use (default 10 min) or when the
-assistant exits. Decoding flags match the CLI (`-l auto -t 8 -nt -bo 5 -bs 5`); transcripts were
-identical on the user/human sets and ~380 ms/file faster (see `experiments/turkish-stt/RESULTS.md`).
+assistant exits. Server and CLI fallback use the same flags (`-l auto -t 8 -nt -bs N -bo N`, N = `whisper_beam_size`).
+Default `whisper_beam_size: 1` is greedy decoding: vs beam 5 it is ~150–250 ms/file faster (p95 3.5 s -> 2.3 s
+on long clips), uses ~0.5 GB less RAM (~1.5 GB) and WER is about the same (human 6.4 -> 6.8, user TR 12.5 -> 11.9).
+Set it to 5 for the previous beam search. The server alone saves ~380 ms/file vs per-request CLI
+(see `experiments/turkish-stt/RESULTS.md`).
 If the server fails to start or errors, that request falls back once to the per-recording
 `whisper-cli`; `whisper_server: false` uses only the CLI. Server output goes to `data/whisper.log`
-(no transcript text). With Gemma loaded too, total RSS is ~9.1 GB (Gemma ~7.1 GB mmap, Whisper ~2.0 GB).
+(no transcript text). With Gemma loaded too, total RSS is ~8.6 GB (Gemma ~7.1 GB mmap, Whisper ~1.5 GB greedy).
 
 `models/` also contains Gemma, hard-linked from the existing model cache to
 avoid duplicate disk space. Treat model files as immutable. No old-project

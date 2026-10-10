@@ -62,10 +62,15 @@ def run_mihu(a, rows):
     return out, {"load_ms": round(load_ms), "warmup_ms": round(warm_ms), "peak_rss_mb": round(rss)}
 
 
+def decode(a):
+    # beam = whisper-cli varsayılanı (asistan ayarı); greedy = beam yok, tek aday
+    return ["-bs", "1", "-bo", "1"] if a.greedy else ["-bs", "5", "-bo", "5"]
+
+
 def run_whisper(a, rows):
     bin_ = os.path.join(ASSISTANT, "runtime/whisper/whisper-cli")
-    model = os.path.join(ASSISTANT, "models/ggml-large-v3-q5_0.bin")
-    base = [bin_, "-m", model, "-l", a.lang, "-t", str(a.threads), "-nt"] + (["-ng"] if a.cpu else [])
+    model = os.path.join(ASSISTANT, "models", a.model)
+    base = [bin_, "-m", model, "-l", a.lang, "-t", str(a.threads), "-nt"] + decode(a) + (["-ng"] if a.cpu else [])
     # soğuk yükleme dökümü: bir kez -np'siz çalıştır, whisper'ın kendi zaman çizelgesini oku
     p = subprocess.run(base + ["-f", rows[0]["wav"]], capture_output=True, text=True, cwd=ASSISTANT)
     m = re.search(r"load time =\s*([\d.]+) ms", p.stderr)
@@ -80,15 +85,15 @@ def run_whisper(a, rows):
         out.append({**r, "hyp": hyp, "ms": round(ms, 1), "first_partial_s": None, "final_latency_ms": round(ms, 1),
                     "rc": p.returncode})
     return out, {"load_ms": float(m.group(1)) if m else None, "peak_rss_mb": round(peak),
-                 "args": " ".join(base[3:]) + " -np -f <wav>"}
+                 "args": a.model + " " + " ".join(base[3:]) + " -np -f <wav>"}
 
 
 def run_whisper_server(a, rows):
     import signal, socket, urllib.request, uuid
     bin_ = os.path.join(ASSISTANT, "runtime/whisper/whisper-server")
-    model = os.path.join(ASSISTANT, "models/ggml-large-v3-q5_0.bin")
+    model = os.path.join(ASSISTANT, "models", a.model)
     with socket.socket() as s: s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]
-    base = ["-m", model, "-l", a.lang, "-t", str(a.threads), "-nt", "-bo", "5", "-bs", "5"] + (["-ng"] if a.cpu else [])
+    base = ["-m", model, "-l", a.lang, "-t", str(a.threads), "-nt"] + decode(a) + (["-ng"] if a.cpu else [])
     url = f"http://127.0.0.1:{port}"
 
     def post(path):
@@ -124,7 +129,7 @@ def run_whisper_server(a, rows):
     finally:
         proc.send_signal(signal.SIGTERM); proc.wait(10)
     return out, {"load_ms": round(load_ms), "cold_ms": round(cold_ms), "peak_rss_mb": round(peak),
-                 "args": " ".join(base[2:]) + " (whisper-server, sıcak)"}
+                 "args": a.model + " " + " ".join(base[2:]) + " (whisper-server, sıcak)"}
 
 
 def main():
@@ -136,6 +141,8 @@ def main():
     ap.add_argument("--lang", default="auto")
     ap.add_argument("--cpu", action="store_true", help="whisper: -ng (Metal kapalı)")
     ap.add_argument("--server", action="store_true", help="whisper: kalıcı whisper-server (asistanın yeni yolu)")
+    ap.add_argument("--model", default="ggml-large-v3-q5_0.bin", help="whisper: assistant/models/ altındaki dosya")
+    ap.add_argument("--greedy", action="store_true", help="whisper: -bs 1 -bo 1 (beam yok)")
     ap.add_argument("--name")
     a = ap.parse_args()
     name = a.name or (f"mihu-{'fp32' if a.fp32 else 'int8'}-t{a.threads}" if a.engine == "mihu"

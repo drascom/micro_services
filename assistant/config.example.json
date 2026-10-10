@@ -11,6 +11,7 @@
   "voice_en": "Daniel",
   "port": 8765,
   "whisper_model": "models/ggml-large-v3-q5_0.bin",
+  "whisper_beam_size": 1,
   "whisper_server": true,
   "whisper_url": "http://127.0.0.1:8092",
   "whisper_idle_ms": 600000,
