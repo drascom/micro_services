@@ -1,6 +1,6 @@
 # Ayhan web access
 
-The complete `pi-web-access` 0.35.0 package is pinned in Ayhan's package.json and
+The complete `pi-web-access` 0.38.0 package is pinned in Ayhan's package.json and
 installed under this app's node_modules. No global Pi package was installed.
 The adapter in `.pi/extensions/web-access.ts` loads the full upstream extension
 and retains its commands, hooks and four tools:
@@ -42,8 +42,11 @@ npm ci
 runtime/web-access/bin/python -m pip install -r scripts/web-access-requirements.txt
 ```
 
-The adapter passes cancellation and a 45-second deadline to tools, normalizes
-upstream failures into Pi errors, and records actual search provider metadata.
+The adapter passes cancellation and a 45-second deadline to tools, keeps upstream's
+`isError` (0.37+ marks every failed call), tags it `WEB_ACCESS_FAILED`, and records
+actual search provider metadata. 0.38 pulls `@modelcontextprotocol/sdk` 1.32.1
+(GHSA-6qxp-vccf-f47h fixed); Ayhan uses no MCP OAuth — keyless Exa is a plain
+HTTP call and the package's MCP server (`pi-web-access-mcp`) is not started.
 Package-internal helper operations share the approved tool's permission; they
 are not individually visible as extra Pi tool calls.
 

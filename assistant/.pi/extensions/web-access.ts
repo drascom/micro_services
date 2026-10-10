@@ -30,8 +30,7 @@ export default async function webAccess(pi: ExtensionAPI) {
       bounded.throwIfAborted();
       const result = await execute(id, params, bounded, update, context);
       bounded.throwIfAborted();
-      // Upstream sometimes reports failures only in details rather than isError.
-      const failed = result.isError || Boolean(result.details?.error) || result.details?.successfulQueries === 0 || result.details?.successful === 0;
+      const failed = Boolean(result.isError); // Upstream (>=0.37) marks details.error and all-failed calls.
       const providers = result.details?.queryProviders?.flatMap((query: any) => query.providers || []) || [];
       return { ...result, ...(failed ? { isError: true } : {}), details: {
         ...result.details, provider: result.details?.provider || (providers.length ? [...new Set(providers)].join(',') : tool.name === 'web_search' ? 'pi-web-access' : undefined),

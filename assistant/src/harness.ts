@@ -112,16 +112,15 @@ export class PiHarnessChat extends PiChat {
       offline: options?.offline ?? false, skill: options?.skill, briefNews: options?.briefNews, turn: options?.turn });
     activity('harness_ready', { provider: model.provider, model: model.id });
     let round = 0; let turnStart = 0;
-    const toolStarts = new Map<string, number>();
     const unsubscribe = session.subscribe(event => {
       if (event.type === 'turn_start') { turnStart = performance.now(); activity('model_started', { round: ++round }); }
       if (event.type === 'message_end' && event.message.role === 'assistant') {
         activity('model_finished', { round, duration_ms: Math.round(performance.now() - turnStart), stop_reason: event.message.stopReason });
       }
-      if (event.type === 'tool_execution_start') { toolStarts.set(event.toolCallId, performance.now()); activity('tool_started', { tool: event.toolName }); }
+      if (event.type === 'tool_execution_start') activity('tool_started', { tool: event.toolName });
       if (event.type === 'tool_execution_end') {
         const result = event.result as { details?: { provider?: string; error_code?: string; result_count?: number; truncated?: boolean } };
-        activity('tool_finished', { tool: event.toolName, duration_ms: Math.round(performance.now() - (toolStarts.get(event.toolCallId) ?? performance.now())),
+        activity('tool_finished', { tool: event.toolName, duration_ms: Math.round(event.durationMs ?? 0),
           success: !event.isError, ...(result.details?.provider ? { search_provider: result.details.provider } : {}),
           ...(result.details?.error_code ? { error_code: result.details.error_code } : {}),
           ...(typeof result.details?.result_count === 'number' ? { result_count: result.details.result_count } : {}),
