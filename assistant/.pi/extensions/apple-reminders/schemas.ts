@@ -29,11 +29,11 @@ export const BRIDGE_ERROR_CODES: readonly RemindersErrorCode[] = ['list_not_foun
 export type BridgeRequest =
   | { op: 'list'; list?: string; status: 'open' | 'done' | 'all'; due_after?: string; due_before?: string; undated: boolean; max: number; notes_max?: number }
   | { op: 'add'; title: string; notes?: string; due?: string; all_day?: boolean; priority?: number; list?: string }
-  | { op: 'update'; id: string; expected_title: string; title?: string; notes?: string; due?: string | null; all_day?: boolean; priority?: number }
+  | { op: 'update'; id: string; expected_title: string; title?: string; notes?: string; due?: string | null; all_day?: boolean; priority?: number; flagged?: boolean }
   | { op: 'complete'; id: string; expected_title: string }
   | { op: 'delete'; id: string; expected_title: string };
 
 export type BridgeReminder = { id: string; title: string; notes: string; due: string | null; all_day: boolean;
-  priority: number; completed: boolean; list: string };
+  priority: number; completed: boolean; flagged?: boolean; list: string };
 
 export const REMINDERS_TOOL_NAMES = ['reminders'] as const;

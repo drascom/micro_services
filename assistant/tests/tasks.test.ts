@@ -11,7 +11,7 @@ import { Orchestrator } from '../src/orchestrator.ts';
 import type { Chat, Classifier } from '../src/providers.ts';
 import { makeServer } from '../src/server.ts';
 import { createHarnessSession } from '../src/harness.ts';
-import { RESULT_CHARS, RETRY_MS, TaskScheduler, appendResult, taskPrompt, userNotes, type TaskLane, type TaskRun } from '../src/tasks.ts';
+import { RESULT_CHARS, RETRY_MS, TaskScheduler, appendResult, baseTitle, status, taskPrompt, userNotes, withStatus, type TaskLane, type TaskRun } from '../src/tasks.ts';
 import type { RemindersTransport } from '../.pi/extensions/apple-reminders/client.ts';
 import type { BridgeReminder, BridgeRequest } from '../.pi/extensions/apple-reminders/schemas.ts';
 
@@ -32,7 +32,9 @@ function bridge(items: BridgeReminder[]) {
         return JSON.stringify({ ok: true, matched: found.length, reminders: found.slice(0, request.max) });
       }
       const target = 'id' in request ? items.find(i => i.id === request.id) : undefined;
-      if (!target) return JSON.stringify({ ok: false, error: 'stale_reference' });
+      if (!target || ('expected_title' in request && request.expected_title !== target.title)) return JSON.stringify({ ok: false, error: 'stale_reference' });
+      if (request.op === 'update' && request.title !== undefined) target.title = request.title;
+      if (request.op === 'update' && request.flagged !== undefined) target.flagged = request.flagged;
       if (request.op === 'update' && request.notes !== undefined) target.notes = request.notes;
       if (request.op === 'complete') target.completed = true;
       return JSON.stringify({ ok: true, reminder: target });
@@ -57,7 +59,7 @@ test('off: no Reminders read when tasks or Reminders are disabled', async () => 
   }
 });
 
-test('undated and due tasks run, not-yet-due ones wait; result is appended to notes and the task completed', async () => {
+test('undated and due tasks run, not-yet-due ones wait; result appended, title ✅, task stays open', async () => {
   const runs: string[] = [];
   const items = [item(1, { notes: 'Only work mail.' }), item(2, { due: new Date(T0 - 60_000).toISOString() }), item(3, { due: new Date(T0 + 3_600_000).toISOString() })];
   const f = scheduler(items, async (prompt, intentText) => { runs.push(intentText); assert.match(prompt, /^Automated task/); return { text: 'Result ' + runs.length }; },
@@ -66,37 +68,69 @@ test('undated and due tasks run, not-yet-due ones wait; result is appended to no
   assert.deepEqual(runs, ['Task 1\nOnly work mail.', 'Task 2']);
   const list = f.b.requests[0] as Extract<BridgeRequest, { op: 'list' }>;
   assert.deepEqual([list.list, list.status, list.undated, list.due_before], ['Asistan', 'open', true, new Date(T0).toISOString()]);
-  assert.ok(items[0].completed && items[1].completed && !items[2].completed);
+  assert.ok(!items.some(i => i.completed)); assert.ok(!f.b.requests.some(r => r.op === 'complete'));
+  assert.deepEqual(items.map(i => i.title), ['✅ Task 1', '✅ Task 2', 'Task 3']);
   assert.match(items[0].notes, /^Only work mail\.\n\n— Asistan 2026-10-10 12:00 —\nResult 1$/);
   assert.deepEqual(f.notes[0], ['Asistan: Task 1', 'Result 1']);
-  // Later, once due: the third runs; finished ones never run again.
-  f.tick(2 * 3_600_000); items[0].completed = false; // even if reopened, the same occurrence is done
+  // Later, once due: the third runs; ✅ ones never run again.
+  f.tick(2 * 3_600_000);
   assert.equal(await f.scan(), 1); assert.deepEqual(runs, ['Task 1\nOnly work mail.', 'Task 2', 'Task 3']);
 });
 
-test('a repeating reminder moved to its next due date runs again; same occurrence does not', async () => {
-  let runs = 0;
-  const items = [item(1, { due: new Date(T0 - 1000).toISOString() })];
-  const f = scheduler(items, async () => ({ text: 'r' + ++runs }));
-  assert.equal(await f.scan(), 1);
-  // Reminders keeps the id and advances the due date (one day later).
-  items[0].completed = false; items[0].due = new Date(T0 + 86_400_000 - 1000).toISOString();
-  assert.equal(await f.scan(), 0);
-  f.tick(86_400_000); assert.equal(await f.scan(), 1); assert.equal(runs, 2);
-  // The note keeps the user's text and stays bounded; the next prompt does not include old results.
-  assert.equal(userNotes(items[0].notes), ''); assert.equal(taskPrompt(items[0]).intentText, 'Task 1');
+test('prefixes: no double prefix; removing ours makes it a new job; the prompt never sees a prefix', async () => {
+  assert.equal(withStatus('⚠️ ⏳ Task', '✅'), '✅ Task'); assert.equal(baseTitle('✅⚠ ⏳  Mail'), 'Mail');
+  assert.deepEqual(['Task', '⏳ T', '✅ T', '⚠️ T', '⚠ T'].map(status), ['', '⏳', '✅', '⚠️', '⚠️']);
+  const prompts: string[] = [];
+  const items = [item(1, { title: '⏳ ✅ Mail' })];
+  const f = scheduler(items, async (prompt, intentText) => { prompts.push(prompt + '|' + intentText); return { text: 'r' + prompts.length }; });
+  assert.equal(await f.scan(), 1); assert.equal(items[0].title, '✅ Mail');
+  assert.ok(!/[⏳✅⚠]/u.test(prompts[0])); assert.match(prompts[0], /Task: Mail\|Mail$/);
+  f.tick(RETRY_MS * 3); assert.equal(await f.scan(), 0);
+  items[0].title = 'Mail'; // the user removed the prefix
+  assert.equal(await f.scan(), 1); assert.equal(items[0].title, '✅ Mail'); assert.equal(prompts.length, 2);
+  assert.equal(userNotes(items[0].notes), ''); assert.equal(taskPrompt(items[0]).intentText, 'Mail');
 });
 
-test('failure: error line in notes, not completed, retried once after a delay, then left alone', async () => {
-  let runs = 0;
+test('⏳ recovery: a task left running when the app closed runs again on startup; completed ones are never listed', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'ayhan-tasks-'));
+  try {
+    const stateFile = path.join(dir, 'state.json');
+    const items = [item(1), item(2, { title: '✅ Old', completed: true }), item(3, { title: 'Ticked', completed: true })];
+    let controller = new AbortController();
+    const lane: TaskLane = { acquire: async () => { controller = new AbortController(); return { signal: controller.signal, release: () => {} }; } };
+    const b = bridge(items);
+    const s = new TaskScheduler({ config: { ...defaults, reminders_enabled: true, tasks_enabled: true }, transport: b.transport, lane, notify: async () => {},
+      stateFile, activityFile: null, now: () => T0, run: async () => { controller.abort(); throw Error('closed'); } });
+    assert.equal(await s.scan(new AbortController().signal), 0); assert.equal(items[0].title, '⏳ Task 1');
+    const f = scheduler(items, ok, {}, { stateFile }); // restart
+    assert.equal(await f.scan(), 1); assert.equal(items[0].title, '✅ Task 1');
+    assert.deepEqual(items.slice(1).map(i => i.title), ['✅ Old', 'Ticked']);
+    assert.ok(!f.b.requests.some(r => r.op !== 'list' && 'id' in r && r.id !== items[0].id));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('failure: error line, ⚠️ and flagged; the retry shows ⏳ and unflags; then left alone', async () => {
+  let runs = 0, seen: [string, boolean | undefined] | undefined;
   const items = [item(1, { notes: 'keep me' })];
-  const f = scheduler(items, async () => { runs++; throw Error('Remote unavailable; local fallback failed: unavailable'); });
+  const f = scheduler(items, async () => { runs++; if (runs === 2) seen = [items[0].title, items[0].flagged]; throw Error('Remote unavailable; local fallback failed: unavailable'); });
   assert.equal(await f.scan(), 1); assert.equal(items[0].completed, false);
+  assert.deepEqual([items[0].title, items[0].flagged], ['⚠️ Task 1', true]);
   assert.match(items[0].notes, /^keep me\n\n— Asistan .* —\nHata \/ Error: Remote unavailable/);
   assert.equal(await f.scan(), 0); // too soon
   f.tick(RETRY_MS); assert.equal(await f.scan(), 1); assert.match(items[0].notes, /not retried\)$/);
+  assert.deepEqual(seen, ['⏳ Task 1', false]); assert.deepEqual([items[0].title, items[0].flagged], ['⚠️ Task 1', true]);
   f.tick(RETRY_MS * 10); assert.equal(await f.scan(), 0); assert.equal(runs, 2); assert.equal(items[0].completed, false);
   assert.equal(f.notes.length, 2);
+});
+
+test('flag: success after a failed try unflags ours; a flag the user set is never touched', async () => {
+  let runs = 0;
+  const items = [item(1), item(2, { flagged: true })];
+  const f = scheduler(items, async (_p, intent) => { runs++; if (runs <= 2) throw Error('down ' + intent); return { text: 'ok' }; });
+  assert.equal(await f.scan(), 2); assert.deepEqual(items.map(i => [i.title, i.flagged]), [['⚠️ Task 1', true], ['⚠️ Task 2', true]]);
+  f.tick(RETRY_MS); assert.equal(await f.scan(), 2);
+  assert.deepEqual(items.map(i => [i.title, i.flagged]), [['✅ Task 1', false], ['✅ Task 2', true]]);
+  assert.ok(!f.b.requests.some(r => r.op === 'update' && r.id === items[1].id && r.flagged !== undefined));
 });
 
 test('a cancelled task is not counted and runs again on the next scan', async () => {
@@ -108,9 +142,9 @@ test('a cancelled task is not counted and runs again on the next scan', async ()
   const s = new TaskScheduler({ config: { ...defaults, reminders_enabled: true, tasks_enabled: true }, transport: b.transport, lane, notify: async () => {},
     stateFile: null, activityFile: null, now: () => T0,
     run: async () => { if (++attempt === 1) { controller.abort(); throw Error('aborted'); } return { text: 'ok' }; } });
-  assert.equal(await s.scan(new AbortController().signal), 0); assert.equal(items[0].notes, '');
-  assert.ok(!b.requests.some(r => r.op === 'update'));
-  assert.equal(await s.scan(new AbortController().signal), 1); assert.ok(items[0].completed);
+  assert.equal(await s.scan(new AbortController().signal), 0); assert.equal(items[0].notes, ''); assert.equal(items[0].title, '⏳ Task 1');
+  assert.ok(!b.requests.some(r => r.op === 'update' && r.notes !== undefined));
+  assert.equal(await s.scan(new AbortController().signal), 1); assert.equal(items[0].title, '✅ Task 1');
 });
 
 test('state file holds hashes only; activity has a short reference, duration and success, not the title', async () => {
@@ -125,8 +159,7 @@ test('state file holds hashes only; activity has a short reference, duration and
     const events = log.trim().split('\n').map(line => JSON.parse(line));
     const finished = events.find(e => e.event === 'task_finished');
     assert.ok(events.some(e => e.event === 'task_started') && finished.success === true && /^[0-9a-f]{6}$/.test(finished.task) && 'duration_ms' in finished);
-    // A new scheduler (app restart) reads the state: the finished task does not run again.
-    items[0].completed = false;
+    // A new scheduler (app restart): the ✅ task does not run again.
     assert.equal(await scheduler(items, ok, {}, { stateFile }).scan(), 0);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
@@ -218,6 +251,6 @@ test('server lane: a task never interrupts a user request; a user request during
     assert.equal(response.status, 200); assert.equal(taskAborted, false);
     assert.deepEqual(order, ['task', 'chat']); assert.equal(app.history.length, 2);
     for (let i = 0; i < 50 && !notes.length; i++) await new Promise(r => setTimeout(r, 20));
-    assert.ok(items[0].completed); assert.deepEqual(notes, ['Asistan: Task 1']);
+    assert.equal(items[0].title, '✅ Task 1'); assert.deepEqual(notes, ['Asistan: Task 1']);
   } finally { releaseTask(); lifecycle.abort(); await new Promise<void>(resolve => server.close(() => resolve())); }
 });

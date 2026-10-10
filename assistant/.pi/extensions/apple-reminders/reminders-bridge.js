@@ -46,7 +46,7 @@ function describe(r) {
   var list = '';
   try { list = r.container().name(); } catch (e) {}
   return { id: String(r.id()), title: str(r.name(), 300), notes: str(r.body() || '', 300), due: iso(allDay || due), all_day: Boolean(allDay),
-    priority: r.priority() || 0, completed: Boolean(r.completed()), list: str(list, 100) };
+    priority: r.priority() || 0, completed: Boolean(r.completed()), flagged: Boolean(r.flagged()), list: str(list, 100) };
 }
 
 // Bulk property reads: one Apple Event per property per list.
@@ -59,12 +59,12 @@ function listOp(app, request) {
     var all = lists[l].reminders;
     var set = request.status === 'open' ? all.whose({ completed: false }) : request.status === 'done' ? all.whose({ completed: true }) : all;
     var ids = set.id(), names = set.name(), dues = set.dueDate(), allDays = set.alldayDueDate(), priorities = set.priority(),
-      done = set.completed(), bodies = set.body(), listName = str(lists[l].name(), 100);
+      done = set.completed(), flags = set.flagged(), bodies = set.body(), listName = str(lists[l].name(), 100);
     for (var i = 0; i < ids.length; i++) {
       var due = allDays[i] || dues[i], time = due instanceof Date ? due.getTime() : null;
       if (time === null ? !request.undated : (after !== null && time < after) || (before !== null && time >= before)) continue;
       found.push({ id: String(ids[i]), title: str(names[i], 300), notes: str(bodies[i] || '', notesMax), due: iso(due), all_day: Boolean(allDays[i]),
-        priority: priorities[i] || 0, completed: Boolean(done[i]), list: listName, time: time });
+        priority: priorities[i] || 0, completed: Boolean(done[i]), flagged: Boolean(flags[i]), list: listName, time: time });
     }
   }
   found.sort(function (a, b) {
@@ -112,6 +112,7 @@ function update(app, request) {
   if (typeof request.title === 'string' && request.title.trim()) r.name = request.title;
   if (typeof request.notes === 'string') r.body = request.notes;
   if (typeof request.priority === 'number') r.priority = request.priority;
+  if (typeof request.flagged === 'boolean') r.flagged = request.flagged;
   setDue(r, request);
   return { ok: true, reminder: describe(r) };
 }

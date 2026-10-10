@@ -130,6 +130,7 @@ export function bridgeReminder(value: unknown): BridgeReminder {
   if (!isObject(value) || typeof value.id !== 'string' || !value.id || value.id.length > 300 || typeof value.title !== 'string' ||
       typeof value.notes !== 'string' || (value.due !== null && (typeof value.due !== 'string' || !Number.isFinite(Date.parse(value.due)))) ||
       typeof value.all_day !== 'boolean' || !Number.isInteger(value.priority) || typeof value.completed !== 'boolean' ||
+      (value.flagged !== undefined && typeof value.flagged !== 'boolean') ||
       typeof value.list !== 'string') throw new RemindersError('invalid_response');
   return value as BridgeReminder;
 }

@@ -11,8 +11,10 @@ import type { BridgeReminder } from '../.pi/extensions/apple-reminders/schemas.t
 /**
  * Assistant tasks: open reminders in one Reminders list (Admin: "Assistant tasks" + list name) are run as automated
  * requests. Undated items run when seen, dated ones once due; items missed while the app was closed run on the next scan.
- * Success: a short dated result is appended to the reminder's notes and it is completed. Failure: an error line is
- * appended, it stays open and is retried at most once. State holds hashes only (no reminder text).
+ * The status is a title prefix and the task stays in the list (the user completes it): ⏳ running, ✅ done (result
+ * appended to the notes), ⚠️ failed (error line appended, flagged, retried at most once). A ⏳ task found on a scan is
+ * not running (the app closed mid-run) and runs again; a task whose prefix the user removed is a new job.
+ * State holds hashes only (no reminder text).
  */
 export const SCAN_MS = 60_000, RETRY_MS = 5 * 60_000, RESULT_CHARS = 1500, NOTES_CHARS = 4000;
 const MARK = '— Asistan ';
@@ -22,7 +24,15 @@ const KEEP_DAYS = 45;
 export interface TaskLane { acquire(signal: AbortSignal): Promise<{ signal: AbortSignal; release(): void }>; }
 export type TaskRun = (prompt: string, intentText: string, signal: AbortSignal) => Promise<{ text: string }>;
 export type Notify = (title: string, body: string) => Promise<void>;
-type Entry = { attempts: number; at: number; done?: true };
+type Entry = { attempts: number; at: number; done?: true; flag?: true };
+export const RUNNING = '⏳', DONE = '✅', FAILED = '⚠️';
+const PREFIX = /^(?:\s*(?:⏳|✅|⚠\uFE0F?)\s*)+/u;
+
+/** Title without status prefixes (any number of them). */
+export const baseTitle = (title: string) => title.replace(PREFIX, '');
+/** The first status prefix of a title, or '' for a new task. */
+export function status(title: string): string { const m = /^\s*(⏳|✅|⚠)/u.exec(title); return !m ? '' : m[1] === '⚠' ? FAILED : m[1]; }
+export const withStatus = (title: string, mark: string) => mark + ' ' + baseTitle(title);
 
 const hash = (value: string, length: number) => createHash('sha256').update(value).digest('hex').slice(0, length);
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -44,7 +54,7 @@ export function appendResult(notes: string, time: number, text: string): string 
 }
 
 export function taskPrompt(item: BridgeReminder): { prompt: string; intentText: string } {
-  const title = clean(item.title, 300), notes = userNotes(item.notes).slice(0, 1000);
+  const title = clean(baseTitle(item.title), 300), notes = userNotes(item.notes).slice(0, 1000);
   const intentText = title + (notes ? '\n' + notes : '');
   return { intentText, prompt: 'Automated task from the user\'s Reminders list; the user is not present, so do not ask questions or wait for a reply. ' +
     'Do it with the available tools, then reply with a short result (a few sentences).\nTask: ' + title + (notes ? '\nNotes: ' + notes : '') };
@@ -116,9 +126,13 @@ export class TaskScheduler {
     let ran = 0;
     for (const item of items) {
       if (signal.aborted || !this.config.tasks_enabled || !this.config.reminders_enabled) break;
-      const key = hash(item.id + '|' + (item.due ?? ''), 16), entry = state[key];
-      if (entry?.done || (entry && (entry.attempts >= 2 || this.now() - entry.at < RETRY_MS))) continue;
-      if (await this.execute(item, key, entry?.attempts ?? 0, signal)) ran++;
+      const key = hash(item.id + '|' + (item.due ?? ''), 16), entry = state[key], mark = status(item.title);
+      if (mark === DONE) continue;
+      // No prefix: a new job (also after the user removed ours). ⏳: interrupted run. ⚠️: only the one retry.
+      if (mark === FAILED && !entry) continue;
+      const attempts = mark === '' ? 0 : entry?.attempts ?? 0;
+      if (mark && (entry?.done || attempts >= 2 || (entry && this.now() - entry.at < RETRY_MS))) continue;
+      if (await this.execute(item, key, attempts, signal)) ran++;
     }
     return ran;
   }
@@ -126,8 +140,18 @@ export class TaskScheduler {
   private async execute(item: BridgeReminder, key: string, attempts: number, outer: AbortSignal): Promise<boolean> {
     const slot = await this.lane.acquire(outer).catch(() => undefined);
     if (!slot) return false;
-    const ref = hash(item.id, 6), title = clean(item.title, 60) || 'Görev';
+    const ref = hash(item.id, 6), title = clean(baseTitle(item.title), 60) || 'Görev';
     try {
+      // ⏳ first (and our own flag off); if the reminder cannot be marked it is not run (stale or renamed meanwhile).
+      let current = item.title;
+      const ours = (await this.load())[key]?.flag === true, running = withStatus(item.title, RUNNING);
+      if (current !== running || ours) {
+        try { await this.call({ op: 'update', id: item.id, expected_title: current, title: running, ...(ours ? { flagged: false } : {}) }, slot.signal); }
+        catch { return false; }
+        current = running;
+      }
+      // A new job forgets an earlier run of the same occurrence, so an interrupted run is recovered, not skipped.
+      if (attempts === 0) { const state = await this.load(); if (state[key]) { delete state[key]; await this.save(); } }
       return await this.observe({ kind: 'task' }, async () => {
         const started = this.now();
         activity('task_started', { task: ref, attempt: attempts + 1 });
@@ -139,14 +163,17 @@ export class TaskScheduler {
           failure = clean(error instanceof Error ? error.message : 'Failed', 200) || 'Failed';
         }
         const state = await this.load(), finalTry = attempts + 1 >= 2;
-        state[key] = { attempts: attempts + 1, at: this.now(), ...(failure ? {} : { done: true as const }) };
+        // Flag only on failure and only if the user had not flagged it; remembered so we only ever unflag our own.
+        const flag = !!failure && (!item.flagged || ours);
+        state[key] = { attempts: attempts + 1, at: this.now(), ...(failure ? {} : { done: true as const }), ...(flag ? { flag: true as const } : {}) };
         await this.save();
         const notes = appendResult(item.notes, this.now(), failure ? `Hata / Error: ${failure}${finalTry ? ' (tekrar denenmeyecek / not retried)' : ''}` : text);
         // Notes read back truncated (bridge limit) are not written back: that would cut the user's text.
         let written = false;
         try {
-          if (item.notes.length < 8000) { await this.call({ op: 'update', id: item.id, expected_title: item.title, notes }, slot.signal); written = true; }
-          if (!failure) await this.call({ op: 'complete', id: item.id, expected_title: item.title }, slot.signal);
+          await this.call({ op: 'update', id: item.id, expected_title: current, title: withStatus(item.title, failure ? FAILED : DONE),
+            ...(item.notes.length < 8000 ? { notes } : {}), ...(flag ? { flagged: true } : {}) }, slot.signal);
+          written = item.notes.length < 8000;
         } catch {}
         activity('task_finished', { task: ref, success: !failure, duration_ms: this.now() - started, note_written: written });
         await this.notify('Asistan: ' + title, clean(failure ? 'Hata / Error: ' + failure : text, 140)).catch(() => {});
@@ -165,7 +192,7 @@ export class TaskScheduler {
     if (value && typeof value === 'object' && !Array.isArray(value))
       for (const [key, entry] of Object.entries(value as Record<string, Entry>))
         if (/^[0-9a-f]{16}$/.test(key) && entry && Number.isInteger(entry.attempts) && Number.isFinite(entry.at))
-          state[key] = { attempts: entry.attempts, at: entry.at, ...(entry.done ? { done: true as const } : {}) };
+          state[key] = { attempts: entry.attempts, at: entry.at, ...(entry.done ? { done: true as const } : {}), ...(entry.flag ? { flag: true as const } : {}) };
     return this.state = state;
   }
 
