@@ -63,7 +63,9 @@ Metadata-only activity logging uses Pi session lifecycle events and the Pi
 permission extension. The host adds voice, classification, fallback and request
 boundaries. Request IDs correlate entries in `data/activity.log`; no prompt,
 reply, tool arguments, OAuth token or reasoning is logged. Logs rotate at 2 MiB
-with one previous file. The native menu opens the log in TextEdit.
+with one previous file. The native Admin window shows recent entries and can open the log in TextEdit.
+The Admin window's Skill & Extension tab lets the user (not the model) edit app-owned
+skills/extensions via `/admin/*`; it does not change the model's permission policy.
 
 Jev can classify web search and skill management. The decision passes a trusted
 skill name to the adapter, which uses Pi's `/skill:name` expansion rather than

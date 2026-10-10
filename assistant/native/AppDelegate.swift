@@ -3,7 +3,10 @@ import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation {
-    private let model = RingModel(backend: BackendClient(), audio: AudioRecorder())
+    private let client: BackendClient
+    private let model: RingModel
+    private let admin: AdminModel
+    private var adminWindow: NSWindow?
     private var pet: NSPanel?
     private var input: NSPanel?
     private var hotkey: HotkeyMonitor?
@@ -11,6 +14,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var menu: NSMenu?
     private var restartRequested = false
     private var relauncher: Process?
+    override init() {
+        client = BackendClient()
+        model = RingModel(backend: client, audio: AudioRecorder())
+        admin = AdminModel(backend: client, ring: model)
+        super.init()
+    }
     func applicationDidFinishLaunching(_ notification: Notification) {
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 240, height: 260), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = false
@@ -24,20 +33,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         model.toggleInput = { [weak self] in self?.toggleInput() }
         hotkey = HotkeyMonitor(model: model); hotkey?.start()
         model.contextMenu = { [weak self] in self?.showContextMenu() }
+        // Minimal context menu; settings, status and activity live in the Admin window.
         let menu = NSMenu()
         for (title, action) in [("Mesaj yaz / Type a request…", #selector(openInput)),
-                                ("Kısayolu değiştir / Change shortcut…", #selector(changeShortcut)),
-                                ("Talimatları düzenle / Edit instructions…", #selector(editInstructions)),
-                                ("Etkinlik kaydı / Activity log…", #selector(openActivityLog)),
-                                ("Yerel kullan / Local only", #selector(toggleOffline)),
-                                ("Sesli yanıt / Read aloud", #selector(toggleSpeech)),
                                 ("İsteği iptal et / Cancel request", #selector(cancelRequest)),
                                 ("Yeni konuşma / New conversation", #selector(reset)),
-                                ("Menü çubuğu simgesi / Menu bar icon", #selector(toggleStatusIcon)),
-                                ("Yeniden başlat / Restart Ayhan", #selector(restart)),
+                                ("Yönetim / Admin…", #selector(openAdmin)),
                                 ("Çıkış / Quit Ayhan", #selector(quit))] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: ""); item.target = self; menu.addItem(item)
         }
+        admin.actions = AdminModel.Actions(
+            changeShortcut: { [weak self] in self?.changeShortcut() },
+            editInstructions: { [weak self] in self?.editInstructions() },
+            openActivityLog: { [weak self] in self?.openActivityLog() },
+            restart: { [weak self] in self?.restart() },
+            setMenuBarIcon: { [weak self] visible in self?.setStatusIcon(visible) })
         self.menu = menu
         updateStatusIcon()
         model.connect()
@@ -71,23 +81,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         input.setFrameOrigin(NSPoint(x: x, y: pet.frame.maxY + 8))
     }
+    @objc private func openAdmin() {
+        if adminWindow == nil {
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 560),
+                                  styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+            window.title = "Yönetim / Admin"; window.isReleasedWhenClosed = false
+            window.contentView = NSHostingView(rootView: AdminView(admin: admin))
+            window.delegate = self; window.center()
+            adminWindow = window
+        }
+        if adminWindow?.isVisible != true { admin.startPolling() }
+        adminWindow?.makeKeyAndOrderFront(nil); NSApp.activate()
+    }
+    func windowWillClose(_ notification: Notification) {
+        if let closing = notification.object as? NSWindow, closing === adminWindow { admin.stopPolling() }
+    }
     func windowDidMove(_ notification: Notification) {
         if let moved = notification.object as? NSWindow, moved === pet, input?.isVisible == true { positionInput() }
     }
-    @objc private func toggleOffline() { model.setOffline(!model.offline) }
-    @objc private func toggleSpeech() { model.readAloud.toggle() }
     @objc private func cancelRequest() { model.cancel() }
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        if item.action == #selector(toggleOffline) { item.state = model.offline ? .on : .off; return !model.changingMode && model.phase != .starting }
-        if item.action == #selector(toggleSpeech) { item.state = model.readAloud ? .on : .off }
-        if item.action == #selector(toggleStatusIcon) { item.state = statusItem == nil ? .off : .on }
+        if item.action == #selector(cancelRequest) { return model.phase != .idle && model.phase != .starting }
         return true
     }
     @objc private func openInput() { showInput() }
-    @objc private func editInstructions() {
+    private func editInstructions() {
         openTextFile("instructions.md", initial: "Do not use emoji in your responses.\n")
     }
-    @objc private func openActivityLog() {
+    private func openActivityLog() {
         openTextFile("data/activity.log", initial: "")
     }
     private func openTextFile(_ filename: String, initial: String) {
@@ -120,11 +141,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             NSStatusBar.system.removeStatusItem(item); statusItem = nil
         }
     }
-    @objc private func toggleStatusIcon() {
-        UserDefaults.standard.set(!UserDefaults.standard.bool(forKey: "showMenuBarIcon"), forKey: "showMenuBarIcon")
+    private func setStatusIcon(_ visible: Bool) {
+        UserDefaults.standard.set(visible, forKey: "showMenuBarIcon")
+        admin.menuBarIcon = visible
         updateStatusIcon()
     }
-    @objc private func changeShortcut() {
+    private func changeShortcut() {
         hotkey?.suspended = true
         defer { hotkey?.suspended = false }
         let recorder = ShortcutCaptureView(shortcut: .load())
@@ -141,7 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
     @objc private func reset() { model.newConversation() }
-    @objc private func restart() { restartRequested = true; NSApp.terminate(nil) }
+    private func restart() { restartRequested = true; NSApp.terminate(nil) }
     @objc private func quit() { NSApp.terminate(nil) }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         hotkey?.stop(); model.cancel()

@@ -84,6 +84,10 @@ actor BackendClient: AssistantBackend {
     func cancel() async { _ = try? await post("cancel", body: Data("{}".utf8)) }
     func reset() async throws { _ = try await post("reset", body: Data("{}".utf8)) }
     func unloadLocal() async throws { _ = try await post("unload-local", body: Data("{}".utf8)) }
+    /// Admin window calls (status, skill/extension files); not part of the ring's backend protocol.
+    func admin(_ route: String, _ body: [String: String] = [:]) async throws -> Data {
+        try await post(route, body: JSONSerialization.data(withJSONObject: body))
+    }
     func close() async {
         if let process, process.isRunning {
             process.terminate()

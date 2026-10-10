@@ -5,6 +5,7 @@ import type { Orchestrator } from './orchestrator.ts';
 import { NoSpeechError } from './speech.ts';
 import { observeRequest } from './activity.ts';
 import { root } from './config.ts';
+import { collectStatus, createExtension, createSkill, listResources, readResource, writeResource } from './admin.ts';
 import path from 'node:path';
 
 async function readBody(request: IncomingMessage, limit: number): Promise<Buffer> {
@@ -18,7 +19,7 @@ async function readBody(request: IncomingMessage, limit: number): Promise<Buffer
   return Buffer.concat(chunks);
 }
 
-export async function makeServer(config: Config, app: Orchestrator, lifecycle: AbortSignal, activityFile: string | null = path.join(root, 'data/activity.log')) {
+export async function makeServer(config: Config, app: Orchestrator, lifecycle: AbortSignal, activityFile: string | null = path.join(root, 'data/activity.log'), resourceRoot = root) {
   const observe = <T>(details: Record<string, string | number | boolean>, action: () => Promise<T>) => activityFile ? observeRequest(activityFile, details, action) : action();
   const token = randomBytes(32).toString('base64url');
   let active: { controller: AbortController; done: Promise<void>; finish: () => void } | undefined;
@@ -47,7 +48,7 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
     if (request.method !== 'POST' || (request.headers.origin && request.headers.origin !== origin) ||
         supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return reply(403, { error: 'Invalid session' });
     try {
-      const body = await readBody(request, request.url === '/transcribe' ? config.max_record_seconds * 32000 + 4096 : 64000);
+      const body = await readBody(request, request.url === '/transcribe' ? config.max_record_seconds * 32000 + 4096 : request.url === '/admin/write' ? 600000 : 64000);
       if (request.url === '/transcribe') {
         if (active || unloading) return reply(409, { error: 'Assistant is busy' });
         const current = beginRequest(); active = current;
@@ -58,6 +59,17 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
       const data: unknown = JSON.parse(body.toString());
       if (!data || typeof data !== 'object' || Array.isArray(data)) throw Error('Expected an object');
       const input = data as { text?: unknown; offline?: unknown };
+      // Native admin window (user actions; read-only status plus app-owned skill/extension files).
+      if (request.url === '/status') return reply(200, await collectStatus(config, app, { busy: Boolean(active), unloading }, activityFile));
+      if (request.url?.startsWith('/admin/')) {
+        const value = data as { kind?: unknown; path?: unknown; content?: unknown; name?: unknown; description?: unknown };
+        if (request.url === '/admin/resources') return reply(200, await listResources(resourceRoot));
+        if (request.url === '/admin/read') return reply(200, await readResource(resourceRoot, value.kind, value.path));
+        if (request.url === '/admin/write') return reply(200, await writeResource(resourceRoot, value.kind, value.path, value.content));
+        if (request.url === '/admin/create-skill') return reply(200, await createSkill(resourceRoot, value.name, value.description));
+        if (request.url === '/admin/create-extension') return reply(200, await createExtension(resourceRoot, value.name));
+        return reply(404, { error: 'Not found' });
+      }
       if (request.url === '/cancel') { active?.controller.abort(); return reply(200, { ok: true }); }
       if (request.url === '/unload-local') {
         if (unloading) return reply(409, { error: 'Model is already unloading' });

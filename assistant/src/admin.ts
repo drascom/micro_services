@@ -1,0 +1,182 @@
+import { loadSkillsFromDir } from '@earendil-works/pi-coding-agent';
+import { lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import type { Config } from './config.ts';
+import type { Orchestrator } from './orchestrator.ts';
+import { FileCredentials } from './credentials.ts';
+import { liveRequests, recentActivity } from './activity.ts';
+import { runProcess, type OwnedProcess } from './processes.ts';
+import { PiChat } from './providers.ts';
+
+/** Native admin window data. User actions only: nothing here is sent to or callable by the model. */
+
+const started = Date.now();
+async function memory(processes: OwnedProcess[]): Promise<Map<number, number>> {
+  const pids = [process.pid, ...processes.flatMap(p => p.pid ? [p.pid] : [])];
+  const result = new Map<number, number>();
+  try {
+    const output = await runProcess('/bin/ps', ['-o', 'pid=,rss=', '-p', pids.join(',')], AbortSignal.timeout(2000));
+    for (const line of output.trim().split('\n')) {
+      const [pid, rss] = line.trim().split(/\s+/).map(Number);
+      if (pid && Number.isFinite(rss)) result.set(pid, Math.round(rss / 1024));
+    }
+  } catch {}
+  return result;
+}
+
+export async function collectStatus(config: Config, app: Orchestrator, state: { busy: boolean; unloading: boolean }, activityFile: string | null) {
+  const owned = [...(app.runtime.processes?.() ?? []), ...(app.speech.processes?.() ?? [])];
+  const [rss, localHealthy, credentials, remoteModel, activity] = await Promise.all([
+    memory(owned),
+    app.runtime.healthy?.(AbortSignal.timeout(1500)) ?? Promise.resolve(false),
+    new FileCredentials(path.join(config.pi_agent_dir, 'auth.json')).list().catch(() => []),
+    app.remote instanceof PiChat ? app.remote.resolveModel().then(m => `${m.provider}/${m.id}`, (e: Error) => `unavailable: ${e.message}`) : Promise.resolve('injected'),
+    activityFile ? recentActivity(activityFile, 100).catch(() => []) : Promise.resolve([])
+  ]);
+  return {
+    backend: { pid: process.pid, port: config.port, uptime_s: Math.round((Date.now() - started) / 1000), memory_mb: rss.get(process.pid) },
+    busy: state.busy, unloading: state.unloading, requests: liveRequests(),
+    remote_model: remoteModel, jev_enabled: config.jev_enabled && Boolean(app.classifier), tts_engine: config.tts_engine,
+    // Provider and credential type only; never tokens.
+    pi_login: credentials.map(c => ({ provider: c.providerId, type: c.type })),
+    local_healthy: localHealthy,
+    processes: owned.map(p => ({ ...p, ...(p.pid && rss.has(p.pid) ? { memory_mb: rss.get(p.pid) } : {}) })),
+    history_messages: app.history.length,
+    activity
+  };
+}
+
+export type ResourceKind = 'skill' | 'extension';
+const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
+const MAX_FILE = 256 * 1024;
+const FACTORY = new Set(['permissions.ts', 'request-workflow.ts', 'macos-mail']);
+
+function base(root: string, kind: unknown): string {
+  if (kind !== 'skill' && kind !== 'extension') throw Error('Invalid resource kind');
+  return path.join(root, '.pi', kind === 'skill' ? 'skills' : 'extensions');
+}
+
+/** Resolve a relative file path strictly inside the resource root: safe segments, no symlinks anywhere on the path. */
+async function resolveFile(root: string, kind: unknown, relative: unknown, mustExist = true): Promise<string> {
+  const directory = base(root, kind);
+  if (typeof relative !== 'string' || !relative || relative.length > 300) throw Error('Invalid path');
+  const segments = relative.split('/');
+  if (segments.some(s => !SEGMENT.test(s) || s === '..' || s === '.')) throw Error('Invalid path');
+  const realBase = await realpath(directory);
+  let target = realBase;
+  for (const [index, segment] of segments.entries()) {
+    target = path.join(target, segment);
+    try {
+      const info = await lstat(target);
+      if (info.isSymbolicLink()) throw Error('Symbolic links are not allowed');
+      if (index === segments.length - 1 ? !info.isFile() : !info.isDirectory()) throw Error('Invalid path');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') { if (mustExist || index < segments.length - 1) throw Error('File not found'); }
+      else throw error;
+    }
+  }
+  if (!target.startsWith(realBase + path.sep)) throw Error('Path outside resource directory');
+  return target;
+}
+
+async function files(directory: string, prefix: string, depth = 0): Promise<string[]> {
+  const result: string[] = [];
+  for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
+    if (!SEGMENT.test(entry.name) || entry.isSymbolicLink()) continue;
+    if (entry.isFile()) result.push(prefix + entry.name);
+    else if (entry.isDirectory() && depth < 3) result.push(...await files(path.join(directory, entry.name), prefix + entry.name + '/', depth + 1));
+    if (result.length > 200) break;
+  }
+  return result;
+}
+
+function extensionDescription(source: string): string {
+  const match = source.match(/\/\*\*\s*([\s\S]*?)\*\//) || source.match(/^\s*\/\/\s*(.+)$/m);
+  return match ? match[1].replace(/\s*\*\s*/g, ' ').trim().slice(0, 200) : '';
+}
+
+export async function listResources(root: string) {
+  const skillsDir = base(root, 'skill'), extensionsDir = base(root, 'extension');
+  const skills = [];
+  for (const entry of await readdir(skillsDir, { withFileTypes: true }).catch(() => [])) {
+    if (!entry.isDirectory() || !SEGMENT.test(entry.name)) continue;
+    const directory = path.join(skillsDir, entry.name);
+    const parsed = loadSkillsFromDir({ dir: directory, source: 'ayhan' });
+    skills.push({ kind: 'skill', name: entry.name, description: parsed.skills[0]?.description ?? '',
+      path: `.pi/skills/${entry.name}`, files: await files(directory, entry.name + '/'),
+      valid: parsed.skills.some(s => s.name === entry.name) && !parsed.diagnostics.length });
+  }
+  const extensions = [];
+  for (const entry of await readdir(extensionsDir, { withFileTypes: true }).catch(() => [])) {
+    if (!SEGMENT.test(entry.name) || entry.isSymbolicLink()) continue;
+    if (!entry.isDirectory() && !/\.(ts|js)$/.test(entry.name)) continue;
+    const list = entry.isDirectory() ? await files(path.join(extensionsDir, entry.name), entry.name + '/') : [entry.name];
+    const main = list.find(f => /(^|\/)index\.(ts|js)$/.test(f)) ?? list[0];
+    const source = main ? await readFile(path.join(extensionsDir, main), 'utf8').catch(() => '') : '';
+    extensions.push({ kind: 'extension', name: entry.name, description: extensionDescription(source),
+      path: `.pi/extensions/${entry.name}`, files: list, loading: FACTORY.has(entry.name) ? 'built-in' : 'auto' });
+  }
+  return { skills, extensions, note: 'Changes apply on the next request.' };
+}
+
+export async function readResource(root: string, kind: unknown, relative: unknown) {
+  const file = await resolveFile(root, kind, relative);
+  const handle = await open(file, 'r');
+  try {
+    if ((await handle.stat()).size > MAX_FILE) throw Error('File too large to edit here');
+    return { kind, path: relative, content: await handle.readFile('utf8') };
+  } finally { await handle.close(); }
+}
+
+/** Validate SKILL.md with the harness parser in a scratch copy, so an invalid skill is never saved. */
+async function validateSkill(name: string, content: string): Promise<void> {
+  const scratch = await mkdtemp(path.join(tmpdir(), 'ayhan-skill-'));
+  try {
+    const directory = path.join(scratch, name);
+    await mkdir(directory); await writeFile(path.join(directory, 'SKILL.md'), content);
+    const result = loadSkillsFromDir({ dir: directory, source: 'ayhan' });
+    const problems = result.diagnostics.map(d => d.message);
+    if (!result.skills.some(s => s.name === name)) problems.unshift(`Skill name must be "${name}" with a description`);
+    if (problems.length) throw Error('Skill validation failed: ' + problems.join('; '));
+  } finally { await rm(scratch, { recursive: true, force: true }); }
+}
+
+async function atomicWrite(file: string, content: string, exclusive = false): Promise<void> {
+  if (exclusive) {
+    try { await writeFile(file, content, { flag: 'wx', mode: 0o644 }); return; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw Error('Already exists'); throw error; }
+  }
+  const temporary = `${file}.${process.pid}.admin.tmp`;
+  await writeFile(temporary, content, { mode: 0o644 });
+  await rename(temporary, file);
+}
+
+export async function writeResource(root: string, kind: unknown, relative: unknown, content: unknown) {
+  if (typeof content !== 'string' || Buffer.byteLength(content) > MAX_FILE) throw Error('Invalid content');
+  const file = await resolveFile(root, kind, relative);
+  const segments = (relative as string).split('/');
+  if (kind === 'skill' && segments.length === 2 && segments[1] === 'SKILL.md') await validateSkill(segments[0], content);
+  await atomicWrite(file, content);
+  return { ok: true, note: 'Saved. Changes apply on the next request.' };
+}
+
+export async function createSkill(root: string, name: unknown, description: unknown) {
+  if (typeof name !== 'string' || name.length > 64 || !NAME.test(name)) throw Error('Name: lowercase letters, digits and hyphens');
+  if (typeof description !== 'string' || !description.trim() || description.length > 300 || /[\r\n]/.test(description)) throw Error('Description: one line, up to 300 characters');
+  const content = `---\nname: ${name}\ndescription: ${JSON.stringify(description.trim())}\n---\n# ${name}\n\nDescribe the workflow here. Keep it short.\n`;
+  await validateSkill(name, content);
+  const directory = path.join(await realpath(base(root, 'skill')), name);
+  try { await mkdir(directory); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw Error('Already exists'); throw error; }
+  await atomicWrite(path.join(directory, 'SKILL.md'), content, true);
+  return { ok: true, path: `${name}/SKILL.md`, note: 'Created. Available from the next request.' };
+}
+
+export async function createExtension(root: string, name: unknown) {
+  if (typeof name !== 'string' || name.length > 64 || !NAME.test(name)) throw Error('Name: lowercase letters, digits and hyphens');
+  const content = `import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';\n\n/** ${name}: describe what this extension does. */\nexport default function ${name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase()).replace(/^[0-9]/, '_$&')}(_pi: ExtensionAPI) {\n  // Register tools with pi.registerTool(); new tools stay unavailable until approved in the harness.\n}\n`;
+  await atomicWrite(path.join(await realpath(base(root, 'extension')), `${name}.ts`), content, true);
+  return { ok: true, path: `${name}.ts`, note: 'Created. Extensions run as trusted code; loaded on the next request.' };
+}

@@ -35,7 +35,13 @@ export async function runProcess(bin: string, args: string[], signal: AbortSigna
   } finally { signal.removeEventListener('abort', abort); }
 }
 
-export interface Runtime { ensure(signal: AbortSignal): Promise<void>; close(): Promise<void>; }
+/** Status of a helper process owned by the backend (no arguments or secrets). */
+export interface OwnedProcess { name: string; running: boolean; pid?: number; port?: number; }
+export function ownedProcess(name: string, child: ChildProcess | undefined, port?: number): OwnedProcess {
+  const running = Boolean(child && child.exitCode === null && child.signalCode === null);
+  return { name, running, ...(running && child?.pid ? { pid: child.pid } : {}), ...(port ? { port } : {}) };
+}
+export interface Runtime { ensure(signal: AbortSignal): Promise<void>; close(): Promise<void>; processes?(): OwnedProcess[]; healthy?(signal?: AbortSignal): Promise<boolean>; }
 export class LocalRuntime implements Runtime {
   config: Config; child?: ChildProcess;
   constructor(config: Config) { this.config = config; }
@@ -79,5 +85,6 @@ export class LocalRuntime implements Runtime {
       }
     } catch (error) { await this.close(); throw error; }
   }
+  processes(): OwnedProcess[] { return [ownedProcess('llama-server', this.child, Number(new URL(this.config.local_url).port))]; }
   async close(): Promise<void> { await stopProcess(this.child); this.child = undefined; }
 }

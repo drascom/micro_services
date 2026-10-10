@@ -43,6 +43,12 @@ plus local inference helpers. The desktop host owns a transparent floating
 NSPanel, SwiftUI animation/text UI, CoreGraphics modifier event monitor, and
 AVAudioRecorder. It talks to a protected native-only loopback API.
 It starts the backend automatically and stops only its owned process on quit.
+The ring's right-click menu is minimal (type, cancel, new conversation, Admin,
+quit). A native SwiftUI Admin window holds settings, live status (`POST /status`:
+active request stage, mode, remote model, Pi login metadata, owned processes with
+PID/port/memory, recent activity) and user editing of app-owned skills and
+extensions (`POST /admin/*`, confined to `.pi/skills` and `.pi/extensions`). Both
+use the same session-token loopback API; nothing is added to model context.
 
 The backend runs as one Node process plus native helpers. Combining model engines
 into one binary would require unnecessary bindings and lose compatibility

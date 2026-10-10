@@ -1,7 +1,7 @@
 import { mkdtemp, writeFile, rm, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runProcess } from './processes.ts';
+import { runProcess, ownedProcess, type OwnedProcess } from './processes.ts';
 import type { Config } from './config.ts';
 import { spokenText } from './spoken-text.ts';
 import { activity } from './activity.ts';
@@ -57,7 +57,7 @@ export function wavDuration(bytes: Buffer): number {
   return dataLength / 32000;
 }
 
-export interface SpeechService { transcribe(bytes: Buffer, signal: AbortSignal): Promise<string>; speak(text: string, signal: AbortSignal): Promise<void>; stop(): void; close(): Promise<void>; }
+export interface SpeechService { transcribe(bytes: Buffer, signal: AbortSignal): Promise<string>; speak(text: string, signal: AbortSignal): Promise<void>; stop(): void; close(): Promise<void>; processes?(): OwnedProcess[]; }
 export class Speech implements SpeechService {
   config: Config; speaker?: AbortController; ema: EmaWorker; kokoro: KokoroWorker; whisper: WhisperServer;
   constructor(config: Config) {
@@ -148,5 +148,9 @@ export class Speech implements SpeechService {
     finally { if (this.speaker === controller) this.speaker = undefined; }
   }
   stop(): void { this.speaker?.abort(); }
+  processes(): OwnedProcess[] {
+    return [ownedProcess('whisper-server', this.whisper.child, Number(new URL(this.config.whisper_url).port)),
+      ownedProcess('ema-worker', this.ema.child), ownedProcess('kokoro-worker', this.kokoro.child)];
+  }
   async close(): Promise<void> { this.stop(); await Promise.all([this.ema.close(), this.kokoro.close(), this.whisper.close()]); }
 }

@@ -22,20 +22,36 @@ immediately above it. Drag the ring to reposition it; an open panel follows.
 Drag the panel by its native title bar or empty background. Close it with the
 red macOS close button or by clicking the ring again. The panel displays only
 the assistant reply, not your spoken transcript. The send arrow sits inside
-the input field. Right-click the ring to open its menu and quit **Ayhan**;
-quitting stops the backend and local model processes owned by this app.
+the input field. Right-click the ring for a minimal menu: **Mesaj yaz / Type a
+request…**, **İsteği iptal et / Cancel request**, **Yeni konuşma / New
+conversation**, **Yönetim / Admin…** and **Çıkış / Quit Ayhan** (the menu-bar
+icon uses the same menu). Quitting stops the backend and local model processes
+owned by this app.
+
+**Yönetim / Admin…** opens one native window (reopening brings it to front):
+- **Durum / Status** refreshes every 3 s: backend state, active request stage,
+  mode, remote model, Pi login (provider/type only), owned processes
+  (llama-server, whisper-server, EMA/Kokoro workers) with PID, port and memory.
+- **Etkinlik / Activity**: latest activity log entries, newest first.
+- **Ayarlar / Settings**: shortcut, instructions, Local only, Read aloud,
+  Menu bar icon, Restart (moved from the context menu).
+- **Skill & Extension**: list, view, edit and create app-owned `.pi/skills` and
+  `.pi/extensions` files. These are user actions through the protected loopback
+  API (`/admin/*`); skill files are validated with the harness parser before
+  saving, paths are confined to those folders (no traversal or symlinks), and
+  changes apply on the next request. The model's permissions are unchanged.
 
 Hold **Control + Option** together for at least 350 ms to speak; release them
 to transcribe locally and submit the message. The ring changes colour while
 listening, thinking, and speaking. Replies are spoken by default; turn off
-**Read aloud** in the ring right-click menu if preferred. **Local only** in the same
-menu bypasses both remote providers. Unchecking **Local only** cancels any
+**Read aloud** in Admin → Settings if preferred. **Local only** there
+bypasses both remote providers. Unchecking **Local only** cancels any
 active request, waits for it to finish, and unloads the assistant-owned Gemma
 process. Checking it again loads Gemma lazily on the next request.
-**Cancel request** is also in that menu.
+**Cancel request** is in the ring menu.
 
-The menu-bar icon is hidden by default. Toggle **Menu bar icon** in the ring
-menu to show or hide it; this preference survives a restart. **Change shortcut…**
+The menu-bar icon is hidden by default. Toggle **Menu bar icon** in Admin →
+Settings to show or hide it; this preference survives a restart. **Change shortcut…**
 opens a key recorder: press and release your chosen chord, then click **OK**.
 Use at least one modifier (Control, Option, Command, Shift, or Fn); a letter
 or another key can be included. The saved shortcut replaces Control + Option
@@ -47,7 +63,7 @@ and hold the shortcut again to start a fresh recording. Typed Send cancels
 any pending or active recording before submitting the text.
 
 On first use, allow microphone access. If the shortcut is unavailable, select
-**Change shortcut…** from the ring menu, save the shortcut, and allow Input
+**Change shortcut…** in Admin → Settings, save the shortcut, and allow Input
 Monitoring in macOS System Settings → Privacy & Security. Restart the app
 if macOS requires it. Typing remains available without these permissions.
 
@@ -98,7 +114,7 @@ assistant does not claim to send mail or change events.
 ## Voice and offline mode
 
 Hold Control + Option to record and release to submit. Click the ring for
-text input. Read aloud, Local only, and Cancel request are in the ring menu.
+text input. Read aloud and Local only are in Admin → Settings; Cancel request is in the ring menu.
 
 Microphone audio stays on your Mac and temporary WAVs are deleted. The default
 Whisper language is automatic (`auto`), supporting Turkish and English between
@@ -310,7 +326,7 @@ Official references: [Pi AI](https://github.com/earendil-works/pi/tree/main/pack
 
 ### Personal instructions
 
-Right-click the ring and choose **Talimatları düzenle / Edit instructions…**.
+Open Admin → Settings → **Talimatları düzenle / Edit instructions…**.
 This opens `instructions.md` in TextEdit. Add rules, save, and they apply to
 the next request through both remote and local LLMs, without restarting.
 These rules supplement the built-in assistant instructions.
@@ -377,8 +393,8 @@ starting. See `PI-HARNESS.md` for the published shrinkwrap limitation.
 
 ## Activity logging
 
-Right-click the ring → **Etkinlik kaydı / Activity log…** to open
-`data/activity.log` in TextEdit. The JSON-lines log records timestamps, request
+Admin → **Etkinlik / Activity** shows the latest entries; **Open log file…**
+opens `data/activity.log` in TextEdit. The JSON-lines log records timestamps, request
 IDs, elapsed milliseconds, classification, model rounds, tool timings and
 permission decisions, local model loading/fallback, and success/failure. Voice
 transcription, chat and speech have separate request entries. Chat elapsed time
@@ -394,7 +410,7 @@ dates and original article links, excluding stories older than 72 hours. General
 are reported and should not be repeatedly retried. A quick roundup uses one
 focused news search. For detailed research, it can read original pages.
 
-**Yeniden başlat / Restart Ayhan** in the ring menu cancels active work, waits
+**Yeniden başlat / Restart Ayhan** in Admin → Settings cancels active work, waits
 for the owned backend to exit and unload its model, then reopens the app after
 the current instance exits. An externally started backend remains externally
 owned; restart only restarts the desktop host in that case.
