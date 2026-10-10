@@ -29,7 +29,7 @@ macOS Mail yaklaşımı şu avantajları sağlar:
 - İlk sürüm yalnız okuma yaptığı için risk ve izin yüzeyi küçüktür.
 - İleride Gmail API gerekirse yalnız eksik özellikler için ayrı ve isteğe bağlı bir bağlayıcı eklenebilir.
 
-Mail'in özel `~/Library/Mail` veritabanları veya `Envelope Index` dosyaları okunmayacak. Bunlar desteklenen API değildir, macOS sürümleriyle değişebilir ve Full Disk Access gerektirebilir. Entegrasyon yalnız Mail'in uygulama sözlüğündeki nesne ve özellikleri kullanacak.
+Güncelleme (2026-10): Varsayılan taşıyıcı artık Mail'in yerel deposunu salt-okunur okur (`mail-db.ts`: `~/Library/Mail/V*/MailData/Envelope Index` SQLite, hesap adları `~/Library/Accounts/Accounts4.sqlite`, gövde `.emlx`/`.partial.emlx` + küçük MIME ayrıştırıcı `mime.ts`). Mail.app kapalıyken de çalışır; uygulamaya/terminale Full Disk Access gerekir. İzin yok, dosya yok veya şema uyuşmazsa istek (ve aynı istekteki sonraki çağrılar) JXA köprüsüne düşer. Depo desteklenen bir API değildir; macOS sürümüyle değişirse şema kontrolü JXA'ya geri düşürür. Araç şeması, limitler ve hata kodları değişmedi.
 
 ## 3. Mevcut mimariye bağlanma noktaları
 

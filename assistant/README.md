@@ -383,12 +383,16 @@ moves, deletes, flags or marks messages, and opens no links or attachments.
 Tools: `mail_list_messages` (metadata of all active accounts merged newest first, max 25; each row
 has an `account` label; optional `account` filter accepts only an active account) and `mail_read_message` (plain-text
 body, max 8,000 chars, 40,000 per request); at most 2 listings and 5 body reads per
-request. A fixed JXA script (`.pi/extensions/macos-mail/mail-reader.js`) runs under
-`/usr/bin/osascript`; it does not launch Mail, so keep Mail open. No mail content is logged.
+request. By default Mail's local store is read directly and read-only (`mail-db.ts`: `Envelope Index`
+SQLite, account names from `Accounts4.sqlite`, bodies from `.emlx` files), so Mail.app may be closed;
+this needs **Full Disk Access** for PersonalAssistant.app (or the terminal running it). Without access,
+or if the store layout is unknown, it falls back to a fixed JXA script (`mail-reader.js` under
+`/usr/bin/osascript`), which needs Mail open and Automation permission. Mail is never launched. No mail content is logged.
 
 Setup:
-1. `node scripts/test-mail-smoke.ts "<Mail account name>"` — read-only check: inbox
-   count and up to 5 recent metadata rows in the terminal. Allow the macOS
+1. Grant Full Disk Access (System Settings → Privacy & Security → Full Disk Access).
+   `node scripts/test-mail-smoke.ts "<Mail account name>"` — read-only check: inbox
+   count and up to 5 recent metadata rows in the terminal. On the JXA fallback, allow the
    Automation prompt (System Settings → Privacy & Security → Automation).
 2. Admin → Ayarlar / Settings → Mail hesapları / Mail accounts: pick an account from
    Mail.app (or enter its name), optional mailbox; toggle active/inactive, remove.

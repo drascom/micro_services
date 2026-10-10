@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { loadConfig } from '../../../src/config.ts';
-import { MailClient, MailError, osascriptTransport, untrustedText, type MailSettings, type MailTransport } from './client.ts';
+import { MailClient, MailError, untrustedText, type MailSettings, type MailTransport } from './client.ts';
+import { defaultMailTransport } from './mail-db.ts';
 import { ListParams, ReadParams } from './schemas.ts';
 
 type Details = { error_code?: string; result_count?: number; truncated?: boolean };
@@ -14,7 +15,7 @@ function failure(error: unknown) {
 /** Read-only Apple Mail tools. One factory call = one Pi request: references and budgets do not outlive it. */
 export function macosMail(options: { settings: MailSettings; transport?: MailTransport }) {
   return (pi: ExtensionAPI) => {
-    const client = new MailClient(options.settings, options.transport ?? osascriptTransport());
+    const client = new MailClient(options.settings, options.transport ?? defaultMailTransport());
     const annotations = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
     pi.registerTool({
       name: 'mail_list_messages', label: 'List Mail messages', annotations, executionMode: 'sequential',

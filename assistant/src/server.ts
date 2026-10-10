@@ -6,7 +6,8 @@ import { NoSpeechError } from './speech.ts';
 import { activity, observeRequest } from './activity.ts';
 import { root } from './config.ts';
 import { collectStatus, createExtension, createSkill, deleteResource, listMailAccounts, listResources, readResource, saveMailAccounts, writeResource } from './admin.ts';
-import { osascriptTransport, type MailTransport } from '../.pi/extensions/macos-mail/client.ts';
+import type { MailTransport } from '../.pi/extensions/macos-mail/client.ts';
+import { defaultMailTransport } from '../.pi/extensions/macos-mail/mail-db.ts';
 import path from 'node:path';
 import { homedir } from 'node:os';
 
@@ -75,7 +76,7 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         if (request.url === '/admin/create-skill') return reply(200, await createSkill(resourceRoot, value.name, value.description));
         if (request.url === '/admin/delete') return reply(200, await deleteResource(resourceRoot, value.kind, value.name, trashDirs));
         if (request.url === '/admin/create-extension') return reply(200, await createExtension(resourceRoot, value.name));
-        if (request.url === '/admin/mail/accounts') return reply(200, await listMailAccounts(config, mail.transport ?? osascriptTransport()));
+        if (request.url === '/admin/mail/accounts') return reply(200, await listMailAccounts(config, mail.transport ?? defaultMailTransport()));
         if (request.url === '/admin/mail/save') return reply(200, await saveMailAccounts(config, configPath, (data as { accounts?: unknown }).accounts));
         return reply(404, { error: 'Not found' });
       }

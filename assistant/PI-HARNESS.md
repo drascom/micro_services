@@ -39,7 +39,8 @@ Mail tools allow at most 2 listings and 5 body reads per request inside the same
 12-call limit, 12 seconds per Mail bridge call, 256 KiB bridge output, 64 KiB per
 tool result and 40,000 body characters per request. Mail results carry an
 "Untrusted local email data" header; activity logs keep only tool name, decision,
-duration, result count, truncation and error code.
+duration, result count, truncation and error code. Mail data comes from Mail's local store
+(read-only, needs Full Disk Access) with the JXA bridge as fallback.
 Local model tool quality is model-dependent. There is no interactive permission
 dialog bridge yet; new/unapproved operations are blocked rather than prompting
 through a separate app system. Native macOS microphone/Documents permissions

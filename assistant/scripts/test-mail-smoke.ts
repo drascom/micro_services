@@ -2,15 +2,16 @@
 //   node scripts/test-mail-smoke.ts "<Mail account name>"   (default: first active mail_accounts entry)
 // Prints the inbox count, up to 5 of today's message metadata rows and the length/status of one body
 // (never the body text) to this terminal only. Nothing is written to disk; no message is changed.
-// The first run may show the macOS Automation prompt.
+// Uses Mail's local store (Full Disk Access); the JXA fallback may show the macOS Automation prompt.
 import { loadConfig } from '../src/config.ts';
-import { osascriptTransport, MailClient, MailError, cleanField } from '../.pi/extensions/macos-mail/client.ts';
+import { MailClient, MailError, cleanField } from '../.pi/extensions/macos-mail/client.ts';
+import { defaultMailTransport } from '../.pi/extensions/macos-mail/mail-db.ts';
 
 const config = await loadConfig();
 const configured = config.mail_accounts.find(a => process.argv[2] === undefined ? a.enabled : a.account === process.argv[2]);
 const account = process.argv[2] ?? configured?.account ?? '', mailbox = configured?.mailbox ?? 'INBOX';
 if (!account.trim()) { console.error('Usage: node scripts/test-mail-smoke.ts "<Mail account name>" (or add an account in Admin)'); process.exit(2); }
-const transport = osascriptTransport();
+const transport = defaultMailTransport();
 const signal = AbortSignal.timeout(60_000);
 const timed = async <T>(label: string, work: () => Promise<T>): Promise<T> => {
   const started = performance.now();
