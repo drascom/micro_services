@@ -54,7 +54,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         self.menu = menu
         updateStatusIcon()
         model.connect()
+        // Set only by a restart that happened while Admin was open; a normal launch never opens Admin.
+        if CommandLine.arguments.contains(Self.openAdminArgument) { openAdmin() }
     }
+    private static let openAdminArgument = "--open-admin"
     private func showInput() {
         if input == nil {
             // Keep the native title bar outside the hosted view so its close button receives clicks.
@@ -89,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 560),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
             window.title = "Yönetim / Admin"; window.isReleasedWhenClosed = false
+            window.isRestorable = false // Never brought back by macOS with stale content; a restart reopens it fresh.
             window.contentView = NSHostingView(rootView: AdminView(admin: admin))
             window.delegate = self; window.center()
             adminWindow = window
@@ -178,6 +182,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         hotkey?.stop(); model.cancel()
+        let reopenAdmin = restartRequested && adminWindow?.isVisible == true
+        adminWindow?.close() // Closes with the old instance instead of lingering while the backend stops.
         Task {
             await model.backend.close()
             if restartRequested {
@@ -185,8 +191,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     let helper = Process()
                     helper.executableURL = URL(fileURLWithPath: "/bin/sh")
                     // Pass paths as arguments; wait until this app exits before reopening.
-                    helper.arguments = ["-c", "while /bin/kill -0 \"$1\" 2>/dev/null; do /bin/sleep 0.1; done; exec /usr/bin/open -n \"$2\"",
-                                        "ayhan-restart", String(ProcessInfo.processInfo.processIdentifier), Self.relaunchPath()]
+                    helper.arguments = ["-c", "while /bin/kill -0 \"$1\" 2>/dev/null; do /bin/sleep 0.1; done; exec /usr/bin/open -n \"$2\" ${3:+--args \"$3\"}",
+                                        "ayhan-restart", String(ProcessInfo.processInfo.processIdentifier), Self.relaunchPath(),
+                                        reopenAdmin ? Self.openAdminArgument : ""]
                     helper.standardInput = FileHandle.nullDevice
                     helper.standardOutput = FileHandle.nullDevice; helper.standardError = FileHandle.nullDevice
                     try helper.run(); relauncher = helper
@@ -195,6 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     NSApp.reply(toApplicationShouldTerminate: false)
                     NSAlert(error: error).runModal()
                     hotkey?.start(); model.connect()
+                    if reopenAdmin { openAdmin() }
                     return
                 }
             }
