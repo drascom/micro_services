@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>diziflix yönetim</title>
+<link rel="stylesheet" href="/admin/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>diziflix <small>yönetim</small></h1>
+    <nav id="menu" class="menu" aria-label="Ekranlar"></nav>
+    <div class="strip" id="strip">
+      <span id="sumtxt" class="muted">yükleniyor…</span>
+      <div class="bellbox">
+        <button type="button" id="bell" class="bell" aria-haspopup="true" aria-expanded="false" title="Bildirimler">🔔 <b id="bellcount"></b></button>
+        <div id="bellmenu" class="bellmenu" hidden></div>
+      </div>
+    </div>
+  </header>
+  <main id="view"></main>
+</div>
+<!-- Shell first; each screen registers itself (later tasks add one <script> line each). -->
+<script src="/admin/js/app.js"></script>
+<script src="/admin/js/notes.js"></script>
+<script src="/admin/js/sites.js"></script>
+<script src="/admin/js/cardsync.js"></script>
+<script src="/admin/js/site.js"></script>
+<script src="/admin/js/catalog_player.js"></script><script src="/admin/js/catalog.js"></script>
+<script src="/admin/js/routing.js"></script>
+<script src="/admin/js/crawl.js"></script>
+<script src="/admin/js/settings.js"></script>
+<script src="/admin/js/problems.js"></script>
+<script src="/admin/js/categories.js"></script>
+<script>ADMIN.start();</script>
+</body>
+</html>

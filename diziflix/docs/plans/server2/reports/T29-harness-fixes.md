@@ -1,0 +1,25 @@
+# T29 raporu: harness denetimi düzeltmeleri (AUDIT-harness ilk 5 + MID)
+
+**Yapılan (madde: yapıldı/ertelendi)**
+1. **A6->A5 döngüsü, yapıldı.** `a6_sources.escalate`: parmak izi = A5 kural hash'i + hata sınıfı (`kind:stage`), `settings` `stages:handback:<site>` (en çok 20). Aynı iz ikinci kez geri verilmez: `None` döner, A6 LLM incelemesi başlar. A5 ölçümüne `reached_samples >= 1` (zorunlu) eklendi: örnekler A6'nın oynatma testiyle (`play_sample`: aday -> sağlayıcı -> akış -> `CHECK_STREAM`) biri oynayana dek oynatılır. Bir örnek ya oynamalı ya da en azından sitenin kendi sayfasından çıkıp video host'una varmalı (sağlayıcısız host / kötü akış A6'nın tarif işi, A5 bunun yüzünden geçemezse A6 hiç koşamaz; sapma).
+2. **player_page extract şeması, yapıldı.** Tek kaynak `resolvers.prompt_block(kinds)` (katalog + player_page kuralları + ilgili türlerin tam şeması); ilk okuma, düzeltme (`prompts_a4_a7.full`) ve iki format_fix aynı bloğu kullanır.
+3. **Biçim düzeltmesi, yapıldı.** Okuma kipi `format_fix(stage, err, LAST_REPLY_TYPES)`: tür şeması + hata satır satır, 2000 krk'ye kadar (`error_text`), `reply_patch` 12 harita hatası verir (önce 3).
+4. **compare_by_playback, yapıldı.** Taslaktaki mevcut A5 kuralı da yarışır; oynayan kural hiçbir zaman oynamayanla ezilmez; "hiçbiri oynamadı (geçmiş sayılmaz)", karar A5 ölçümünün.
+5. **Normalize + inceleme, yapıldı.** `fetch` bool/geçersiz kaldırılır (not), `extract[].selector`->`css`, `{type: iframe, css}`->`{css, attr: src}`; boş sayfada `find`/`show_script` "örnek sayfa yok (page boş)…" diye reddedilir, betik yoksa açıkça söylenir.
+6. **A6 sonucu, yapıldı.** `enqueue(downstream=)` -> yük -> `StageCtx.downstream`; istemde "A6 sonucu" bloğu (başarısız kural, varılan adım, hata, ilk 3 örnek izi); ipucu boş, "Admin hint" yalnız kullanıcı ipucu. Referee/keşif: geri verilen yamayı yeniden bulan keşif geçmiş sayılmaz.
+7. **Hakem, yapıldı.** Aynı sonuçta her zaman LLM kuralı; puan yalnız farklı sonuçta (aday kartı).
+8. **A4 bölüm açma, yapıldı.** `episode_pages_ok` (zorunlu): 2 bölüm adresi getirilir; 4xx/getirilemedi ya da dizi/ana sayfaya dönüş -> geçmez, not "açılmadı (http_404)".
+9. **Tek örnek / tek URL biçimi, yapıldı.** Aşağıdaki kullanıcı kararıyla genelleşti; A1: LLM'in okuması bölümü `take` ile tek tür aldıysa ve `merged_pattern` tüm kart adreslerini tutuyorsa karışık biçim reddedilmez (not satırı).
+10. **İstem tekrarları, yapıldı (kısmen).** A5 okumasında alan grameri/FIELD_GRAMMAR yok, A4 dizi sayfası devri yok, şema bloğu site notunun hemen ardında (önbellek öneki). Brief'teki "Örnek düzenlendi" günlüğünü tek satıra indirme: ertelendi (brief.py ortak, ayrı iş).
+11. **Diğer LOW:** `repair_ok` nedeninin Yardım metnine yazılması ertelendi (onarım akışı, kapsam dışı); aynı `upstream_sig`+ipucu sonucunu yeniden kullanma ertelendi (1. madde döngüyü kesiyor).
+12. **A6->A5 harita tutarlılığı, yapıldı.** `_save_player` tek transaction'da taslak `pages.player.resolvers` + A5 satırının `patch` ve `handoff`'u; zincir `settings` `stages:a6_chain:<site>`'te tutulur, A5 keşfi her yeniden koşuda onu öne koyar (sıfırlama geri almaz). A6 A5'e yalnız "sayfada aday yok"ta döner (değişmedi), en çok bir kez.
+
+## Kullanıcı kararı: 1 çalışan örnek yeter
+- `meta.EXPECT` A2-A6'da örnek sayısı/oran denetimleri `coverage: True`; `base.measurement` -> `one_sample_enough`: >=1 örnek çalışıyorsa başarısız coverage denetimi uyarıya döner (`relaxed`), not "N örnekten K'i çalıştı; kalanlar onarımda ele alınır"; 0 ise eski akış (LLM incelemesi -> soru).
+- Doluluk: poster/yıl/tür/özet `optional` (uyarı). Zorunlu kalanlar: A2 `url_fill`, `pagination_ok`; A3 `duplicate_key_ratio` (+ örnek ok = anahtar + başlık + tür); A4 `episode_pages_ok`; A5 `reached_samples`; A6 en az 1 oynayan örnek. A7 değişmedi (`search_ok` zaten tek arama; `gate_catches` K5 için sıkı kaldı).
+- Onarıma besleme: uyarıyla geçişte başarısız örnekler kanıtta `to_repair` + mesaj "Onarılacak örnek: ..." (`engine._complete`). `samples.min_needed` coverage eşiğinde 1.
+- Eşik beklentisi güncellenen eski testler: t07 `valid_count` (+coverage), t08 `title_fill 1.5` -> `duplicate_key_ratio -1`, t09 "1/3 oynuyor" -> `passed_warn` + `to_repair` 2 (test adı değişti), t09 sekme testi (film de sekmeli), t09 season_pages (fikstüre bölüm sayfası), t18 A3 `needs_human` -> `passed_warn`, t18 format-fix + t19 not testi `poster_fill` zorunlu (meta.expect), t25 "En az 3" -> "En az 1 / 0", silme testi `strict_poster`, a4_ownership (bölüm sayfaları fikstürü).
+
+**Dosyalar (server2/):** `app/control/sitemap/meta.py`, `app/control/stages/{base,engine,a1_home,a4_episodes,a5_player,a6_sources,prompts_read,prompts_a1_a3,prompts_a4_a7,samples,explain}.py`, `app/core/play/{inspect.py,resolvers/__init__.py,resolvers/player_page.py}`; yeni `tests/test_t29_harness_fixes.py` (8 test, ~0.07 sn).
+
+**check.sh:** YESIL (6 adım), 400 test, ~15.7 sn. **Elle kontrol (kullanıcı):** gerçek sitede A6->A5 tek dönüş + "A6 sonucu" bloğu, A5 kartında "oynatma:" notu, A4 "bölüm adresleri açıldı" notu, uyarılı geçişte "Onarılacak örnek".
