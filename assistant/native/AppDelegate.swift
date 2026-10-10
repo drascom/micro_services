@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var statusItem: NSStatusItem?
     private var menu: NSMenu?
     private var restartRequested = false
+    private var restartReopensAdmin = false
     private var relauncher: Process?
     override init() {
         client = BackendClient()
@@ -40,7 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         for (title, action) in [("Mesaj yaz / Type a request…", #selector(openInput)),
                                 ("İsteği iptal et / Cancel request", #selector(cancelRequest)),
                                 ("Yeni konuşma / New conversation", #selector(reset)),
-                                ("Yönetim / Admin…", #selector(openAdmin)),
+                                ("Yönetim / Admin…", #selector(openAdminMenu)),
                                 ("Yeniden başlat / Restart Ayhan", #selector(restart)),
                                 ("Çıkış / Quit Ayhan", #selector(quit))] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: ""); item.target = self; menu.addItem(item)
@@ -55,9 +56,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         updateStatusIcon()
         model.connect()
         // Set only by a restart that happened while Admin was open; a normal launch never opens Admin.
-        if CommandLine.arguments.contains(Self.openAdminArgument) { openAdmin() }
+        // The one-shot defaults flag is the primary signal (LaunchServices may drop --args); consume it at once.
+        let defaults = UserDefaults.standard
+        let flagged = defaults.bool(forKey: Self.reopenAdminKey)
+        if flagged { defaults.removeObject(forKey: Self.reopenAdminKey); defaults.synchronize() }
+        if flagged || CommandLine.arguments.contains(Self.openAdminArgument) {
+            // Next runloop turn, after launch finishes, so the background-launched accessory app can take focus.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.openAdmin(forceFront: true) }
+        }
     }
     private static let openAdminArgument = "--open-admin"
+    private static let reopenAdminKey = "reopenAdminOnLaunch"
     private func showInput() {
         if input == nil {
             // Keep the native title bar outside the hosted view so its close button receives clicks.
@@ -87,7 +96,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         input.setFrameOrigin(NSPoint(x: x, y: pet.frame.maxY + 8))
     }
-    @objc private func openAdmin() {
+    @objc private func openAdminMenu() { openAdmin() }
+    private func openAdmin(forceFront: Bool = false) {
         if adminWindow == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 560),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
@@ -98,7 +108,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             adminWindow = window
         }
         if adminWindow?.isVisible != true { admin.startPolling() }
-        adminWindow?.makeKeyAndOrderFront(nil); NSApp.activate()
+        if adminWindow?.isMiniaturized == true { adminWindow?.deminiaturize(nil) }
+        if forceFront {
+            // Launched by the restart helper: cooperative activation may refuse focus, so force it and order front regardless.
+            NSRunningApplication.current.activate(options: [.activateAllWindows])
+            NSApp.activate(ignoringOtherApps: true)
+            adminWindow?.makeKeyAndOrderFront(nil); adminWindow?.orderFrontRegardless()
+        } else {
+            adminWindow?.makeKeyAndOrderFront(nil); NSApp.activate()
+        }
     }
     func windowWillClose(_ notification: Notification) {
         if let closing = notification.object as? NSWindow, closing === adminWindow { admin.stopPolling() }
@@ -170,7 +188,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
     @objc private func reset() { model.newConversation() }
-    @objc private func restart() { restartRequested = true; NSApp.terminate(nil) }
+    @objc private func restart() {
+        // Capture Admin state now, before any termination work can close or hide it.
+        restartReopensAdmin = adminWindow.map { $0.isVisible || $0.isMiniaturized } ?? false
+        restartRequested = true; NSApp.terminate(nil)
+    }
     @objc private func quit() { NSApp.terminate(nil) }
     /// Canonical install path written at build time; falls back to the running bundle.
     private static func relaunchPath() -> String {
@@ -182,7 +204,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         hotkey?.stop(); model.cancel()
-        let reopenAdmin = restartRequested && adminWindow?.isVisible == true
+        let reopenAdmin = restartRequested && restartReopensAdmin
+        if reopenAdmin { UserDefaults.standard.set(true, forKey: Self.reopenAdminKey); UserDefaults.standard.synchronize() }
         adminWindow?.close() // Closes with the old instance instead of lingering while the backend stops.
         Task {
             await model.backend.close()
@@ -198,7 +221,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     helper.standardOutput = FileHandle.nullDevice; helper.standardError = FileHandle.nullDevice
                     try helper.run(); relauncher = helper
                 } catch {
-                    restartRequested = false
+                    restartRequested = false; restartReopensAdmin = false
+                    UserDefaults.standard.removeObject(forKey: Self.reopenAdminKey); UserDefaults.standard.synchronize()
                     NSApp.reply(toApplicationShouldTerminate: false)
                     NSAlert(error: error).runModal()
                     hotkey?.start(); model.connect()
