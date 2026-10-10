@@ -1,0 +1,72 @@
+import { readFile, access } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import path from 'node:path';
+import { loadConfig, loadEnv, root } from './config.ts';
+import { observeRequest } from './activity.ts';
+import { createCollection, Jev } from './providers.ts';
+import { PiHarnessChat } from './harness.ts';
+import { FileCredentials } from './credentials.ts';
+import { LocalRuntime } from './processes.ts';
+import { Speech } from './speech.ts';
+import { Orchestrator } from './orchestrator.ts';
+import { makeServer } from './server.ts';
+
+export async function main(args = process.argv.slice(2)) {
+  await loadEnv(); const config = await loadConfig();
+  const models = createCollection(config), runtime = new LocalRuntime(config), speech = new Speech(config);
+  const app = new Orchestrator(config, new PiHarnessChat(models, config), new PiHarnessChat(models, config, true), runtime, speech,
+    process.env.TYPESAFE_API_KEY ? new Jev(models, config) : undefined);
+  const lifecycle = new AbortController();
+  const abort = () => lifecycle.abort();
+  process.on('SIGINT', abort); process.on('SIGTERM', abort);
+  try {
+    const command = args.shift() || 'serve';
+    if (command === 'doctor') {
+      const exists = async (p: string, executable = false) => { try { await access(p, executable ? constants.X_OK : constants.F_OK); return true; } catch { return false; } };
+      console.log(JSON.stringify({
+        whisper_binary: await exists(config.whisper_bin, true), whisper_model: await exists(config.whisper_model),
+        llama_binary: await exists(config.llama_bin, true), llama_model: await exists(config.llama_model),
+        tts_engine: config.tts_engine, ema_python: await exists(config.ema_python, true),
+        ema_worker: await exists(config.ema_worker), ema_cache: config.ema_cache, ema_device: config.ema_device,
+        kokoro_python: await exists(config.kokoro_python, true), kokoro_worker: await exists(config.kokoro_worker),
+        kokoro_model: await exists(config.kokoro_model), kokoro_voices: await exists(config.kokoro_voices),
+        kokoro_voice: config.kokoro_voice,
+        piper_binary: await exists(config.piper_bin, true),
+        piper_turkish_model: await exists(config.piper_model_tr), piper_english_model: await exists(config.piper_model_en),
+        audio_player: await exists('/usr/bin/afplay'),
+        pi_credentials: await new FileCredentials(path.join(config.pi_agent_dir, 'auth.json')).list(),
+        jev_key_configured: Boolean(process.env.TYPESAFE_API_KEY), local_running: await runtime.healthy(),
+      }, null, 2));
+    } else if (command === 'models') {
+      console.log(models.getModels().filter(m => ['openai', 'openai-codex'].includes(m.provider)).map(m => `${m.provider}/${m.id}`).join('\n'));
+    } else if (command === 'login') {
+      console.log('Use your global Pi connection: launch pi, then /login and select OpenAI.\nThis assistant shares that login and model preference.');
+    } else if (command === 'ask') {
+      const flags = new Set(args.filter(a => a.startsWith('--'))), prompt = args.filter(a => !a.startsWith('--')).join(' ');
+      const answer = await observeRequest(path.join(root, 'data/activity.log'), { kind: 'chat', offline: flags.has('--offline'), text_chars: prompt.length }, () => app.ask(prompt, flags.has('--offline'), lifecycle.signal));
+      console.log(JSON.stringify(answer));
+      if (flags.has('--speak')) await speech.speak(answer.text, lifecycle.signal);
+    } else if (command === 'classify') {
+      if (!process.env.TYPESAFE_API_KEY) throw Error('Add TypeSafe token to env.txt');
+      const result = await new Jev(models, config).classify(args.join(' '), AbortSignal.any([lifecycle.signal, AbortSignal.timeout(config.jev_timeout_ms)]));
+      console.log(JSON.stringify(result));
+    } else if (command === 'transcribe') {
+      if (!args[0]) throw Error('Usage: ./run.sh transcribe /path/to/audio.wav');
+      console.log(await speech.transcribe(await readFile(args[0]), lifecycle.signal));
+    } else if (command === 'serve') {
+      const server = await makeServer(config, app, lifecycle.signal);
+      await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(config.port, '127.0.0.1', resolve); });
+      const url = `http://127.0.0.1:${config.port}`;
+      console.log(`Assistant: ${url}`);
+      await new Promise<void>(resolve => {
+        const stop = () => { server.close(() => resolve()); server.closeIdleConnections(); };
+        lifecycle.signal.addEventListener('abort', stop, { once: true });
+        if (lifecycle.signal.aborted) stop();
+      });
+    } else throw Error('Commands: serve, ask, classify, transcribe, doctor, models, login');
+  } finally { await app.close(); process.off('SIGINT', abort); process.off('SIGTERM', abort); }
+}
+
+if (import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+  main().catch(error => { console.error(`Assistant: ${error instanceof Error ? error.message : 'Failed'}`); process.exitCode = 1; });
+}

@@ -1,0 +1,11 @@
+config.json
+.env
+env.txt
+node_modules/
+models/
+runtime/
+data/
+.DS_Store
+PersonalAssistant.app/
+
+.pi/agent/

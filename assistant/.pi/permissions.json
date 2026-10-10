@@ -1,0 +1,10 @@
+{
+  "web_search": "allow",
+  "web_read": "allow",
+  "skill_edit": "allow",
+  "source_check": "allow",
+  "fetch_content": "allow",
+  "get_search_content": "allow",
+  "web_enable": "allow",
+  "mail_read": "allow"
+}

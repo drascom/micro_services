@@ -1,0 +1,37 @@
+import AppKit
+import SwiftUI
+
+// Handle click and drag explicitly: SwiftUI hosting consumes background mouse events.
+struct RingInteraction: NSViewRepresentable {
+    let onClick: () -> Void
+    let onRightClick: () -> Void
+    func makeNSView(context: Context) -> RingMouseView { let view = RingMouseView(); view.onClick = onClick; view.onRightClick = onRightClick; return view }
+    func updateNSView(_ view: RingMouseView, context: Context) { view.onClick = onClick; view.onRightClick = onRightClick }
+}
+
+@MainActor
+final class RingMouseView: NSView {
+    var onClick: () -> Void = {}
+    var onRightClick: () -> Void = {}
+    override func rightMouseDown(with event: NSEvent) { onRightClick() }
+    private var downPoint = NSPoint.zero
+    private var downOrigin = NSPoint.zero
+    private var dragged = false
+    override var acceptsFirstResponder: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) {
+        downPoint = NSEvent.mouseLocation; downOrigin = window?.frame.origin ?? .zero; dragged = false
+    }
+    override func mouseDragged(with event: NSEvent) {
+        let point = NSEvent.mouseLocation
+        let dx = point.x - downPoint.x, dy = point.y - downPoint.y
+        if hypot(dx, dy) > 4 { dragged = true }
+        if dragged { window?.setFrameOrigin(NSPoint(x: downOrigin.x + dx, y: downOrigin.y + dy)) }
+    }
+    override func mouseUp(with event: NSEvent) { if !dragged { onClick() } }
+}
+
+@MainActor
+final class MovableHostingView<Content: View>: NSHostingView<Content> {
+    override var mouseDownCanMoveWindow: Bool { true }
+}
