@@ -145,7 +145,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             let url = URL(fileURLWithPath: settings.root).appendingPathComponent(filename)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             if !FileManager.default.fileExists(atPath: url.path) {
-                try initial.write(to: url, atomically: true, encoding: .utf8)
+                // Seed from a tracked example (e.g. instructions.example.md) when one exists.
+                let example = url.deletingPathExtension().appendingPathExtension("example").appendingPathExtension(url.pathExtension)
+                if FileManager.default.fileExists(atPath: example.path) {
+                    try FileManager.default.copyItem(at: example, to: url)
+                } else {
+                    try initial.write(to: url, atomically: true, encoding: .utf8)
+                }
             }
             NSWorkspace.shared.open([url], withApplicationAt: URL(fileURLWithPath: "/System/Applications/TextEdit.app"), configuration: NSWorkspace.OpenConfiguration()) { _, error in
                 if let error { Task { @MainActor in NSAlert(error: error).runModal() } }

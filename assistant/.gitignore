@@ -12,3 +12,4 @@ PersonalAssistant.app/
 .venv/
 experiments/
 config.json.lock
+instructions.md

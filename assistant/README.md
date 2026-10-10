@@ -335,6 +335,7 @@ Official references: [Pi AI](https://github.com/earendil-works/pi/tree/main/pack
 ### Personal instructions
 
 Open Admin → Settings → **Talimatları düzenle / Edit instructions…**.
+`instructions.md` is untracked; it is created from `instructions.example.md` if missing (the backend also falls back to the example).
 This opens `instructions.md` in TextEdit. Add rules, save, and they apply to
 the next request through both remote and local LLMs, without restarting.
 These rules supplement the built-in assistant instructions.

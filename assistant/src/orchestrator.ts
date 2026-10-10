@@ -16,7 +16,12 @@ export function textOf(message: Message): string {
 }
 
 export class Orchestrator {
-  loadInstructions: () => Promise<string> = () => readFile(path.join(root, 'instructions.md'), 'utf8');
+  // Personal instructions.md is untracked; fall back to the tracked example on a clean clone.
+  loadInstructions: () => Promise<string> = () => readFile(path.join(root, 'instructions.md'), 'utf8')
+    .catch(error => {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      return readFile(path.join(root, 'instructions.example.md'), 'utf8');
+    });
   config: Config; remote: Chat; local: Chat; classifier?: Classifier; runtime: Runtime; speech: SpeechService;
   sources: readonly ContextSource[]; history: Message[] = [];
   constructor(config: Config, remote: Chat, local: Chat, runtime: Runtime, speech: SpeechService,
