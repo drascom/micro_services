@@ -39,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                                 ("İsteği iptal et / Cancel request", #selector(cancelRequest)),
                                 ("Yeni konuşma / New conversation", #selector(reset)),
                                 ("Yönetim / Admin…", #selector(openAdmin)),
+                                ("Yeniden başlat / Restart Ayhan", #selector(restart)),
                                 ("Çıkış / Quit Ayhan", #selector(quit))] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: ""); item.target = self; menu.addItem(item)
         }
@@ -163,7 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
     @objc private func reset() { model.newConversation() }
-    private func restart() { restartRequested = true; NSApp.terminate(nil) }
+    @objc private func restart() { restartRequested = true; NSApp.terminate(nil) }
     @objc private func quit() { NSApp.terminate(nil) }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         hotkey?.stop(); model.cancel()

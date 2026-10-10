@@ -24,7 +24,8 @@ red macOS close button or by clicking the ring again. The panel displays only
 the assistant reply, not your spoken transcript. The send arrow sits inside
 the input field. Right-click the ring for a minimal menu: **Mesaj yaz / Type a
 request…**, **İsteği iptal et / Cancel request**, **Yeni konuşma / New
-conversation**, **Yönetim / Admin…** and **Çıkış / Quit Ayhan** (the menu-bar
+conversation**, **Yönetim / Admin…**, **Yeniden başlat / Restart Ayhan** and
+**Çıkış / Quit Ayhan** (the menu-bar
 icon uses the same menu). Quitting stops the backend and local model processes
 owned by this app.
 
@@ -410,7 +411,7 @@ dates and original article links, excluding stories older than 72 hours. General
 are reported and should not be repeatedly retried. A quick roundup uses one
 focused news search. For detailed research, it can read original pages.
 
-**Yeniden başlat / Restart Ayhan** in Admin → Settings cancels active work, waits
+**Yeniden başlat / Restart Ayhan** in the ring menu or Admin → Settings cancels active work, waits
 for the owned backend to exit and unload its model, then reopens the app after
 the current instance exits. An externally started backend remains externally
 owned; restart only restarts the desktop host in that case.
