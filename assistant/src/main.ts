@@ -25,6 +25,8 @@ export async function main(args = process.argv.slice(2)) {
       const exists = async (p: string, executable = false) => { try { await access(p, executable ? constants.X_OK : constants.F_OK); return true; } catch { return false; } };
       console.log(JSON.stringify({
         whisper_binary: await exists(config.whisper_bin, true), whisper_model: await exists(config.whisper_model),
+        whisper_server: config.whisper_server, whisper_server_binary: await exists(config.whisper_server_bin, true),
+        whisper_server_running: await speech.whisper.healthy(),
         llama_binary: await exists(config.llama_bin, true), llama_model: await exists(config.llama_model),
         tts_engine: config.tts_engine, ema_python: await exists(config.ema_python, true),
         ema_worker: await exists(config.ema_worker), ema_cache: config.ema_cache, ema_device: config.ema_device,

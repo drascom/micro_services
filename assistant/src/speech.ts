@@ -7,6 +7,7 @@ import { spokenText } from './spoken-text.ts';
 import { activity } from './activity.ts';
 import { EmaWorker } from './ema-worker.ts';
 import { KokoroWorker } from './kokoro-worker.ts';
+import { WhisperServer, whisperArgs } from './whisper.ts';
 
 export class NoSpeechError extends Error {
   constructor(message = 'No speech detected') { super(message); this.name = 'NoSpeechError'; }
@@ -58,21 +59,36 @@ export function wavDuration(bytes: Buffer): number {
 
 export interface SpeechService { transcribe(bytes: Buffer, signal: AbortSignal): Promise<string>; speak(text: string, signal: AbortSignal): Promise<void>; stop(): void; close(): Promise<void>; }
 export class Speech implements SpeechService {
-  config: Config; speaker?: AbortController; ema: EmaWorker; kokoro: KokoroWorker;
+  config: Config; speaker?: AbortController; ema: EmaWorker; kokoro: KokoroWorker; whisper: WhisperServer;
   constructor(config: Config) {
     this.config = config; this.ema = new EmaWorker(config); this.kokoro = new KokoroWorker(config);
+    this.whisper = new WhisperServer(config);
   }
   async transcribe(bytes: Buffer, signal: AbortSignal): Promise<string> {
     const c = this.config, duration = wavDuration(bytes);
     if (duration < c.min_record_seconds) throw new NoSpeechError('Recording too short');
     if (duration > c.max_record_seconds) throw Error('Recording duration outside limits');
+    const limit = AbortSignal.any([signal, AbortSignal.timeout(c.whisper_timeout_ms)]);
+    let text: string | undefined;
+    if (c.whisper_server) {
+      try { text = await this.whisper.transcribe(bytes, limit); }
+      catch (error) {
+        limit.throwIfAborted();
+        // One controlled fallback per request: drop the (possibly broken) server, use the per-request CLI.
+        activity('stt_fallback', { from: 'whisper-server', to: 'whisper-cli', error: error instanceof Error ? error.message : 'unknown' });
+        await this.whisper.close();
+      }
+    }
+    text ??= await this.transcribeCli(bytes, limit);
+    return guardText(text.replace(/\s+/g, ' ').trim(), duration, c.min_record_seconds);
+  }
+  async transcribeCli(bytes: Buffer, signal: AbortSignal): Promise<string> {
+    const c = this.config;
     await access(c.whisper_bin); await access(c.whisper_model);
     const directory = await mkdtemp(path.join(tmpdir(), 'assistant-audio-'));
     try {
       const wav = path.join(directory, 'speech.wav'); await writeFile(wav, bytes, { mode: 0o600 });
-      const text = await runProcess(c.whisper_bin, ['-m', c.whisper_model, '-l', c.language, '-t', String(c.whisper_threads), '-nt', '-np', '-f', wav],
-        AbortSignal.any([signal, AbortSignal.timeout(c.whisper_timeout_ms)]));
-      return guardText(text.replace(/\s+/g, ' ').trim(), duration, c.min_record_seconds);
+      return await runProcess(c.whisper_bin, [...whisperArgs(c), '-np', '-f', wav], signal);
     } finally { await rm(directory, { recursive: true, force: true }); }
   }
   async speak(text: string, signal: AbortSignal): Promise<void> {
@@ -132,5 +148,5 @@ export class Speech implements SpeechService {
     finally { if (this.speaker === controller) this.speaker = undefined; }
   }
   stop(): void { this.speaker?.abort(); }
-  async close(): Promise<void> { this.stop(); await Promise.all([this.ema.close(), this.kokoro.close()]); }
+  async close(): Promise<void> { this.stop(); await Promise.all([this.ema.close(), this.kokoro.close(), this.whisper.close()]); }
 }

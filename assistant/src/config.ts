@@ -9,6 +9,8 @@ export const defaults = {
   min_record_seconds: 0.5, max_record_seconds: 300,
   whisper_bin: 'runtime/whisper/whisper-cli',
   whisper_model: 'models/ggml-large-v3-q5_0.bin',
+  whisper_server: true, whisper_server_bin: 'runtime/whisper/whisper-server', whisper_url: 'http://127.0.0.1:8092',
+  whisper_idle_ms: 600000, whisper_start_timeout_ms: 60000,
   llama_bin: 'runtime/llama/llama-server', llama_model: 'models/gemma-4-12b-it-qat-q4_0.gguf',
   local_url: 'http://127.0.0.1:8091/v1', local_model: 'gemma-4-12b', local_context: 24576, local_reasoning_budget: 64,
   auto_start_local: true, local_start_timeout_ms: 120000, local_timeout_ms: 180000,
@@ -43,7 +45,7 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
     if (typeof value === 'number' && !Number.isFinite(value)) throw Error(`Invalid number: ${key}`);
   }
   const config: Config = { ...defaults, ...settings };
-  for (const key of ['whisper_bin', 'whisper_model', 'llama_bin', 'llama_model', 'language_detector',
+  for (const key of ['whisper_bin', 'whisper_model', 'whisper_server_bin', 'llama_bin', 'llama_model', 'language_detector',
     'ema_python', 'ema_worker', 'ema_cache', 'kokoro_python', 'kokoro_worker', 'kokoro_model',
     'kokoro_voices', 'piper_bin', 'piper_model_tr', 'piper_model_en'] as const)
     config[key] = path.resolve(root, config[key]);
@@ -68,6 +70,11 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
     throw Error('local_url must be a loopback HTTP URL ending in /v1');
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535 || config.port === Number(local.port))
     throw Error('Invalid UI port');
+  const whisper = new URL(config.whisper_url);
+  if (whisper.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(whisper.hostname) || !whisper.port ||
+      whisper.pathname !== '/' || whisper.username || whisper.search || whisper.hash ||
+      [config.port, Number(local.port)].includes(Number(whisper.port)))
+    throw Error('whisper_url must be a loopback HTTP URL with its own port');
   for (const [key, value] of Object.entries(config))
     if (typeof value === 'number' && !key.startsWith('min_') && key !== 'local_reasoning_budget' && value <= 0) throw Error(`${key} must be positive`);
   if (!Number.isInteger(config.local_reasoning_budget) || config.local_reasoning_budget < -1 || config.local_reasoning_budget > 4096)
