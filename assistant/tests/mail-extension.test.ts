@@ -17,7 +17,7 @@ import { ListParams, ReadParams, type BridgeMessage, type BridgeRequest } from '
 
 // Synthetic data only: no real accounts, addresses, subjects or bodies.
 const ACCOUNT = 'Synthetic Account', NOW = Date.parse('2026-10-09T12:00:00Z');
-const settings = { ...defaults, mail_enabled: true, mail_account: ACCOUNT };
+const settings = { ...defaults, mail_accounts: [{ account: ACCOUNT, mailbox: 'INBOX', enabled: true }] };
 const synthetic = (n: number): BridgeMessage => ({ id: n, message_id: `<synthetic-${n}@example.invalid>`, sender: `Sender ${n} <s${n}@example.invalid>`,
   subject: `Synthetic subject ${n}`, date_received: new Date(NOW - n * 3600000).toISOString(), read: n % 2 === 0, flagged: false, size: 1000 + n });
 
@@ -54,7 +54,7 @@ async function code(promise: Promise<unknown>): Promise<string> {
 
 test('schemas enforce limits and reject account/mailbox selection by the model', () => {
   assert.ok(Check(ListParams, { limit: 25, unread_only: true, received_after: '2026-10-01T00:00:00Z' }));
-  for (const bad of [{ limit: 0 }, { limit: 26 }, { sender_contains: 'x'.repeat(201) }, { account: 'Other' }, { mailbox: 'Sent' }])
+  for (const bad of [{ limit: 0 }, { limit: 26 }, { sender_contains: 'x'.repeat(201) }, { account: '' }, { mailbox: 'Sent' }])
     assert.equal(Check(ListParams, bad), false, JSON.stringify(bad).slice(0, 40));
   assert.ok(Check(ReadParams, { message_ref: 'm_abcdefghijkl', max_chars: 8000 }));
   for (const bad of [{ message_ref: 'm_abcdefghijkl', max_chars: 499 }, { message_ref: 'm_abcdefghijkl', max_chars: 8001 },
@@ -71,7 +71,7 @@ test('list validates dates, applies the configured scope and returns opaque refe
   const request = b.requests.at(-1) as Extract<BridgeRequest, { op: 'list' }>;
   assert.equal(request.account, ACCOUNT); assert.equal(request.mailbox, 'INBOX'); assert.equal(request.limit, 25);
   assert.match(result.messages[0].message_ref, /^m_[A-Za-z0-9_-]{12}$/);
-  assert.ok(!JSON.stringify(result).includes('synthetic-1@') && !JSON.stringify(result).includes(ACCOUNT));
+  assert.ok(!JSON.stringify(result).includes('synthetic-1@')); assert.equal(result.messages[0].account, ACCOUNT);
   const capped = new MailClient({ ...settings, mail_max_list_results: 5 }, b.transport, () => NOW);
   assert.equal((await capped.list({ limit: 20 }, live())).messages.length, 5);
 });
@@ -105,7 +105,7 @@ test('today_only uses system-local midnight (BST and GMT) and zone-less ISO is l
 
 test('disabled configuration fails closed without contacting Mail', async () => {
   const b = bridge();
-  for (const s of [{ ...settings, mail_enabled: false }, { ...settings, mail_account: '' }]) {
+  for (const s of [{ ...settings, mail_accounts: [] }, { ...settings, mail_accounts: [{ account: ACCOUNT, mailbox: 'INBOX', enabled: false }] }]) {
     const client = new MailClient(s, b.transport, () => NOW);
     assert.equal(await code(client.list({}, live())), 'mail_disabled');
     assert.equal(await code(client.read({ message_ref: 'm_abcdefghijkl' }, live())), 'mail_disabled');
@@ -220,19 +220,64 @@ test('osascript transport: absolute bin, fixed script, timeout, cancellation, ou
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test('config defaults keep Mail disabled and validate Mail settings', async () => {
-  assert.equal(defaults.mail_enabled, false); assert.equal(defaults.mail_mailbox, 'INBOX');
+test('config defaults keep Mail disabled, migrate the single-account settings and validate the list', async () => {
+  assert.deepEqual(defaults.mail_accounts, []);
   const dir = await mkdtemp(path.join(tmpdir(), 'ayhan-mail-config-'));
+  const load = async (value: object) => { await writeFile(path.join(dir, 'config.json'), JSON.stringify(value)); return loadConfig(path.join(dir, 'config.json')); };
+  const entry = (account: string, mailbox = 'INBOX', enabled = true) => ({ account, mailbox, enabled });
   try {
-    for (const bad of [{ mail_enabled: true }, { mail_max_age_days: 31 }, { mail_max_list_results: 26 }, { mail_max_body_chars: 9000 }, { mail_mailbox: '' }]) {
-      await writeFile(path.join(dir, 'config.json'), JSON.stringify(bad));
-      await assert.rejects(loadConfig(path.join(dir, 'config.json')), JSON.stringify(bad));
-    }
-    await writeFile(path.join(dir, 'config.json'), JSON.stringify({ mail_enabled: true, mail_account: ACCOUNT }));
-    assert.equal((await loadConfig(path.join(dir, 'config.json'))).mail_enabled, true);
+    for (const bad of [{ mail_enabled: true }, { mail_max_age_days: 31 }, { mail_max_list_results: 26 }, { mail_max_body_chars: 9000 }, { mail_mailbox: '' },
+      { mail_accounts: {} }, { mail_accounts: [entry('')] }, { mail_accounts: [entry('A\u0007')] }, { mail_accounts: [entry('x'.repeat(201))] },
+      { mail_accounts: [entry('A', '')] }, { mail_accounts: [{ ...entry('A'), extra: 1 }] }, { mail_accounts: [entry('A'), entry('A', 'inbox')] },
+      { mail_accounts: Array.from({ length: 11 }, (_, i) => entry('A' + i)) }])
+      await assert.rejects(load(bad), JSON.stringify(bad).slice(0, 60));
+    assert.deepEqual((await load({ mail_enabled: true, mail_account: ACCOUNT })).mail_accounts, [entry(ACCOUNT)]);
+    assert.deepEqual((await load({ mail_enabled: false, mail_account: ACCOUNT, mail_mailbox: 'Work' })).mail_accounts, [entry(ACCOUNT, 'Work', false)]);
+    assert.deepEqual((await load({ mail_enabled: false, mail_account: '' })).mail_accounts, []);
+    // The list wins over leftover legacy keys; mailbox and enabled have defaults.
+    assert.deepEqual((await load({ mail_account: 'Old', mail_accounts: [{ account: 'B' }, entry('B', 'Archive', false)] })).mail_accounts,
+      [entry('B'), entry('B', 'Archive', false)]);
     const example = JSON.parse(await readFile(path.join(root, 'config.example.json'), 'utf8'));
-    assert.equal(example.mail_enabled, false); assert.equal(example.mail_account, '');
+    assert.deepEqual(example.mail_accounts, []); assert.ok(!('mail_enabled' in example));
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('list merges all active accounts newest first under one limit; account filters among active accounts only', async () => {
+  const accounts = [{ account: 'Work', mailbox: 'INBOX', enabled: true }, { account: 'Home', mailbox: 'Box', enabled: true },
+    { account: 'Old', mailbox: 'INBOX', enabled: false }];
+  const b = bridge({ respond: r => {
+    if (r.op !== 'list') return '';
+    const offset = r.account === 'Work' ? 0 : 1; // Interleaved dates: Work 1,3,5…, Home 2,4,6…
+    const messages = Array.from({ length: 4 }, (_, i) => synthetic(i * 2 + 1 + offset));
+    return JSON.stringify({ ok: true, matched: 4, messages });
+  } });
+  const client = new MailClient({ ...settings, mail_accounts: accounts }, b.transport, () => NOW);
+  const result = await client.list({ limit: 5 }, live());
+  assert.deepEqual(b.requests.map(r => r.op === 'list' && `${r.account}/${r.mailbox}`), ['Work/INBOX', 'Home/Box']);
+  assert.deepEqual(result.messages.map(m => m.account), ['Work', 'Home', 'Work', 'Home', 'Work']);
+  assert.equal(result.matched, 8); assert.equal(result.truncated, true);
+  const filtered = await client.list({ account: 'home' }, live());
+  assert.ok(filtered.messages.every(m => m.account === 'Home'));
+  assert.equal((b.requests.at(-1) as Extract<BridgeRequest, { op: 'list' }>).account, 'Home');
+  const before = b.requests.length;
+  for (const name of ['Old', 'Nope']) {
+    const error = await client.list({ account: name }, live()).catch(e => e as MailError);
+    assert.ok(error instanceof MailError); assert.equal(error.code, 'unknown_account'); assert.ok(!error.message.includes(name));
+  }
+  assert.equal(b.requests.length, before);
+});
+
+test('a reference to an account disabled or removed after listing is stale', async () => {
+  const b = bridge();
+  const live2 = { ...settings, mail_accounts: [{ account: ACCOUNT, mailbox: 'INBOX', enabled: true }, { account: 'Other', mailbox: 'INBOX', enabled: true }] };
+  const client = new MailClient(live2, b.transport, () => NOW);
+  const { messages } = await client.list({ account: ACCOUNT }, live());
+  live2.mail_accounts = [{ account: ACCOUNT, mailbox: 'INBOX', enabled: false }, { account: 'Other', mailbox: 'INBOX', enabled: true }];
+  assert.equal(await code(client.read({ message_ref: messages[0].message_ref }, live())), 'stale_reference');
+  live2.mail_accounts = [{ account: 'Other', mailbox: 'INBOX', enabled: true }];
+  assert.equal(await code(client.read({ message_ref: messages[1].message_ref }, live())), 'stale_reference');
+  live2.mail_accounts = [{ account: ACCOUNT, mailbox: 'INBOX', enabled: true }];
+  assert.equal((await client.read({ message_ref: messages[2].message_ref }, live())).body, 'Synthetic body text.');
 });
 
 test('mail-assistant skill parses with the harness native parser', () => {
@@ -289,8 +334,8 @@ for (const permission of [undefined, 'deny'] as const) {
   });
 }
 
-test('mail_enabled=false fails closed even when permission allows', async () => {
-  const h = await harness([call('mail_list_messages', {}), fauxAssistantMessage('not set up')], { permission: 'allow', config: { mail_enabled: false } });
+test('no active mail account fails closed even when permission allows', async () => {
+  const h = await harness([call('mail_list_messages', {}), fauxAssistantMessage('not set up')], { permission: 'allow', config: { mail_accounts: [] } });
   try {
     await h.session.prompt('mail');
     assert.equal(h.bridge.requests.length, 0);

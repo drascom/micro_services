@@ -376,10 +376,11 @@ See `PI-HARNESS.md`.
 
 ### Apple Mail (read-only)
 
-Ayhan can list, search, summarize and classify messages from **one** Apple Mail
-account's inbox, using mail already on this Mac (also offline). It never sends,
+Ayhan can list, search, summarize and classify messages from the Apple Mail
+accounts enabled in Admin (each with one mailbox, default `INBOX`), using mail already on this Mac (also offline). It never sends,
 moves, deletes, flags or marks messages, and opens no links or attachments.
-Tools: `mail_list_messages` (metadata, max 25) and `mail_read_message` (plain-text
+Tools: `mail_list_messages` (metadata of all active accounts merged newest first, max 25; each row
+has an `account` label; optional `account` filter accepts only an active account) and `mail_read_message` (plain-text
 body, max 8,000 chars, 40,000 per request); at most 2 listings and 5 body reads per
 request. A fixed JXA script (`.pi/extensions/macos-mail/mail-reader.js`) runs under
 `/usr/bin/osascript`; it does not launch Mail, so keep Mail open. No mail content is logged.
@@ -388,11 +389,14 @@ Setup:
 1. `node scripts/test-mail-smoke.ts "<Mail account name>"` — read-only check: inbox
    count and up to 5 recent metadata rows in the terminal. Allow the macOS
    Automation prompt (System Settings → Privacy & Security → Automation).
-2. In `config.json` set `"mail_enabled": true` and `"mail_account": "<Mail account name>"`
-   (`mail_mailbox` defaults to `INBOX`).
+2. Admin → Ayarlar / Settings → Mail hesapları / Mail accounts: pick an account from
+   Mail.app (or enter its name), optional mailbox; toggle active/inactive, remove.
+   Saved to `config.json` as `mail_accounts: [{ account, mailbox, enabled }]` (max 10);
+   applies from the next Mail tool call. Older `mail_enabled`/`mail_account`/`mail_mailbox`
+   settings are read as a one-entry list and replaced on the first save.
 3. `.pi/permissions.json` has `"mail_read": "allow"`.
 
-To disable: set `mail_read` to `deny` or `mail_enabled` to `false`; remove the
+To disable: set `mail_read` to `deny` or make every account inactive; remove the
 Automation permission in System Settings if wanted.
 
 After dependency installation, `npm ci` prepares a patched transitive dependency

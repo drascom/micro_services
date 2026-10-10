@@ -40,6 +40,15 @@ function mailbox(request) {
   return account.mailboxes.byName(names[m]);
 }
 
+// Account names only (Admin account picker).
+function accounts() {
+  var mail = Application('Mail');
+  if (!mail.running()) throw new BridgeError('mail_unavailable');
+  var names = mail.accounts.name(), result = [];
+  for (var i = 0; i < names.length && result.length < 50; i++) if (typeof names[i] === 'string') result.push(str(names[i], 200));
+  return { ok: true, accounts: result };
+}
+
 function count(request) {
   return { ok: true, count: mailbox(request).messages.length };
 }
@@ -106,6 +115,7 @@ function run() {
   try { request = readInput(); } catch (error) { return output({ ok: false, error: 'invalid_request' }); }
   try {
     if (!request || typeof request !== 'object') throw new BridgeError('invalid_request');
+    if (request.op === 'accounts') return output(accounts());
     if (request.op === 'count') return output(count(request));
     if (request.op === 'list') return output(list(request));
     if (request.op === 'read') return output(read(request));

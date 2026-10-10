@@ -1,8 +1,10 @@
 import { loadSkillsFromDir } from '@earendil-works/pi-coding-agent';
-import { lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import lockfile from 'proper-lockfile';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { Config } from './config.ts';
+import { loadConfig, validateMailAccounts, type Config, type MailAccount } from './config.ts';
+import { MailError, mailAppAccounts, type MailTransport } from '../.pi/extensions/macos-mail/client.ts';
 import type { Orchestrator } from './orchestrator.ts';
 import { FileCredentials } from './credentials.ts';
 import { liveRequests, recentActivity } from './activity.ts';
@@ -207,4 +209,37 @@ export async function createExtension(root: string, name: unknown) {
   const content = `import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';\n\n/** ${name}: describe what this extension does. */\nexport default function ${name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase()).replace(/^[0-9]/, '_$&')}(_pi: ExtensionAPI) {\n  // Register tools with pi.registerTool(); new tools stay unavailable until approved in the harness.\n}\n`;
   await atomicWrite(path.join(await realpath(base(root, 'extension')), `${name}.ts`), content, true);
   return { ok: true, path: `${name}.ts`, note: 'Created.' };
+}
+
+/** Configured accounts plus the names Mail.app knows (null + error code when Mail cannot be asked). */
+export async function listMailAccounts(config: Config, transport: MailTransport) {
+  let available: string[] | null = null, available_error: string | undefined;
+  try { available = await mailAppAccounts(transport, AbortSignal.timeout(15000)); }
+  catch (error) { available_error = error instanceof MailError ? error.code : 'mail_unavailable'; }
+  return { accounts: config.mail_accounts, available, ...(available_error ? { available_error } : {}) };
+}
+
+/** Replaces mail_accounts in config.json (locked, validated, atomic); other settings are kept as they are. */
+export async function saveMailAccounts(config: Config, configPath: string, value: unknown) {
+  const accounts = validateMailAccounts(value);
+  const release = await lockfile.lock(configPath, { realpath: false, stale: 10000, retries: { retries: 20, minTimeout: 50, maxTimeout: 250 } });
+  try {
+    let settings: Record<string, unknown> = {}, mode = 0o644;
+    try {
+      const text = await readFile(configPath, 'utf8');
+      mode = (await stat(configPath)).mode & 0o777;
+      try { settings = JSON.parse(text); } catch { throw Error('config.json is not valid JSON'); }
+      if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw Error('config.json must contain an object');
+    } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    for (const key of ['mail_enabled', 'mail_account', 'mail_mailbox']) delete settings[key];
+    settings.mail_accounts = accounts;
+    const temporary = `${configPath}.${process.pid}.admin.tmp`;
+    try {
+      await writeFile(temporary, JSON.stringify(settings, null, 2) + '\n', { mode });
+      await loadConfig(temporary); // The whole file must still load before it replaces config.json.
+      await rename(temporary, configPath);
+    } catch (error) { await rm(temporary, { force: true }); throw error; }
+  } finally { await release(); }
+  config.mail_accounts = accounts; // Shared config object: the next Mail tool call sees the change.
+  return { ok: true, accounts: accounts as readonly MailAccount[] };
 }

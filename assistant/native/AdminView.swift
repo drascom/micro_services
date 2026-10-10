@@ -20,6 +20,13 @@ struct AdminResource: Decodable, Identifiable {
 }
 struct AdminResources: Decodable { let skills: [AdminResource]; let extensions: [AdminResource] }
 
+struct MailAccount: Codable, Identifiable, Equatable {
+    var account: String; var mailbox: String; var enabled: Bool
+    var id: String { account + "\u{1}" + mailbox.lowercased() }
+}
+struct MailAccounts: Decodable { let accounts: [MailAccount]; let available: [String]?; let available_error: String? }
+struct SavedMailAccounts: Decodable { let accounts: [MailAccount] }
+
 struct ActivityRow: Identifiable { let id: Int; let time: String; let request: String; let event: String; let details: String }
 
 @MainActor @Observable
@@ -46,6 +53,10 @@ final class AdminModel {
     var original = ""
     var message = ""
     var loadError = ""
+    var mailAccounts: [MailAccount] = []
+    var mailAvailable: [String]?
+    var mailAvailableError = ""
+    var mailMessage = ""
     private var polling: Task<Void, Never>?
 
     init(backend: BackendClient, ring: RingModel) { self.backend = backend; self.ring = ring }
@@ -59,6 +70,7 @@ final class AdminModel {
             }
         }
         Task { await loadResources() }
+        Task { await loadMailAccounts() }
     }
     func stopPolling() { polling?.cancel(); polling = nil }
 
@@ -125,6 +137,27 @@ final class AdminModel {
             await loadResources()
             message = ((try JSONSerialization.jsonObject(with: data) as? [String: Any])?["note"] as? String) ?? "Silindi / Deleted"
         } catch { message = error.localizedDescription }
+    }
+    func loadMailAccounts() async {
+        do {
+            let value = try JSONDecoder().decode(MailAccounts.self, from: try await backend.admin("admin/mail/accounts"))
+            mailAccounts = value.accounts; mailAvailable = value.available
+            mailAvailableError = switch value.available_error {
+            case nil: ""
+            case "automation_denied": "Mail için Otomasyon izni yok (Sistem Ayarları > Gizlilik ve Güvenlik > Otomasyon) / No Automation permission for Mail"
+            case "mail_unavailable": "Mail açık değil / Mail is not running"
+            default: "Mail hesapları okunamadı / Could not read Mail accounts"
+            }
+        } catch { mailMessage = error.localizedDescription }
+    }
+    /// Saves the whole list; on failure the list is reloaded from the backend.
+    func saveMailAccounts(_ accounts: [MailAccount]) async {
+        do {
+            let list = accounts.map { ["account": $0.account, "mailbox": $0.mailbox, "enabled": $0.enabled] as [String: Any] }
+            let data = try await backend.admin("admin/mail/save", json: ["accounts": list])
+            mailAccounts = try JSONDecoder().decode(SavedMailAccounts.self, from: data).accounts
+            mailMessage = ""
+        } catch { mailMessage = error.localizedDescription; await loadMailAccounts() }
     }
     func createExtension(name: String) async {
         do {
@@ -222,6 +255,7 @@ private struct ActivityTab: View {
 private struct SettingsTab: View {
     @Bindable var admin: AdminModel
     @Bindable var ring: RingModel
+    @State private var removing: MailAccount?
     var body: some View {
         Form {
             Section("Etkileşim / Interaction") {
@@ -238,10 +272,81 @@ private struct SettingsTab: View {
                 Toggle("Sesli yanıt / Read aloud", isOn: $ring.readAloud)
                 Toggle("Menü çubuğu simgesi / Menu bar icon", isOn: Binding(get: { admin.menuBarIcon }, set: { admin.actions.setMenuBarIcon($0) }))
             }
+            MailAccountsSection(admin: admin, removing: $removing)
             Section("Uygulama / Application") {
                 Button("Yeniden başlat / Restart Ayhan") { admin.actions.restart() }
             }
         }.formStyle(.grouped)
+        .confirmationDialog("\(removing?.account ?? "") kaldırılsın mı? / Remove?",
+                            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
+            Button("Kaldır / Remove", role: .destructive) {
+                if let account = removing { Task { await admin.saveMailAccounts(admin.mailAccounts.filter { $0.id != account.id }) } }
+                removing = nil
+            }
+            Button("İptal / Cancel", role: .cancel) { removing = nil }
+        }
+    }
+}
+
+/// Mail accounts the read-only Mail tools may use. Toggle and remove save immediately.
+private struct MailAccountsSection: View {
+    @Bindable var admin: AdminModel
+    @Binding var removing: MailAccount?
+    private static let manual = "\u{0}manual"
+    @State private var choice = ""
+    @State private var manualName = ""
+    @State private var mailbox = ""
+    private var choices: [String] {
+        let added = Set(admin.mailAccounts.map(\.account))
+        return (admin.mailAvailable ?? []).filter { !added.contains($0) }
+    }
+    private var name: String {
+        (choice == Self.manual || admin.mailAvailable == nil ? manualName : choice).trimmingCharacters(in: .whitespaces)
+    }
+    private var box: String { mailbox.trimmingCharacters(in: .whitespaces).isEmpty ? "INBOX" : mailbox.trimmingCharacters(in: .whitespaces) }
+    private var canAdd: Bool {
+        !name.isEmpty && admin.mailAccounts.count < 10 && !admin.mailAccounts.contains { $0.account == name && $0.mailbox.lowercased() == box.lowercased() }
+    }
+
+    var body: some View {
+        Section("Mail hesapları / Mail accounts") {
+            ForEach(admin.mailAccounts) { account in
+                HStack {
+                    Toggle(isOn: Binding(get: { account.enabled }, set: { on in
+                        let list = admin.mailAccounts.map { $0.id == account.id ? MailAccount(account: $0.account, mailbox: $0.mailbox, enabled: on) : $0 }
+                        admin.mailAccounts = list
+                        Task { await admin.saveMailAccounts(list) }
+                    })) {
+                        VStack(alignment: .leading) {
+                            Text(account.account)
+                            Text(account.mailbox).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Button("Kaldır / Remove", role: .destructive) { removing = account }
+                }
+            }
+            HStack {
+                if admin.mailAvailable != nil {
+                    Picker("Hesap / Account", selection: $choice) {
+                        Text("Seç / Choose").tag("")
+                        ForEach(choices, id: \.self) { Text($0).tag($0) }
+                        Text("Elle gir / Enter manually").tag(Self.manual)
+                    }
+                }
+                if admin.mailAvailable == nil || choice == Self.manual {
+                    TextField("Hesap adı / Account name", text: $manualName)
+                }
+                TextField("Mailbox", text: $mailbox, prompt: Text("INBOX")).frame(maxWidth: 120)
+                Button("Ekle / Add") {
+                    let list = admin.mailAccounts + [MailAccount(account: name, mailbox: box, enabled: true)]
+                    choice = ""; manualName = ""; mailbox = ""
+                    Task { await admin.saveMailAccounts(list) }
+                }.disabled(!canAdd)
+                Button("Yenile / Refresh") { Task { await admin.loadMailAccounts() } }
+            }
+            if !admin.mailAvailableError.isEmpty { Text(admin.mailAvailableError).font(.caption).foregroundStyle(.orange) }
+            if !admin.mailMessage.isEmpty { Text(admin.mailMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+        }
     }
 }
 

@@ -19,7 +19,8 @@ const DAY = 86_400_000;
 
 /** Generic messages only: never include account, mailbox, message data or bridge stderr. */
 const MESSAGES: Record<MailErrorCode, string> = {
-  mail_disabled: 'Mail access is not set up (mail_enabled is false or no account is selected). Tell the user setup is incomplete.',
+  mail_disabled: 'Mail access is not set up (no active Mail account in Admin settings). Tell the user setup is incomplete.',
+  unknown_account: 'No active Mail account has that name. Omit account to list all active accounts.',
   account_not_found: 'The configured Mail account was not found. Ask the user to check the assistant mail settings.',
   mailbox_not_found: 'The configured mailbox was not found. Ask the user to check that the account is synchronized in Mail.',
   automation_denied: 'macOS Automation permission for Mail is not granted. Tell the user to allow it in System Settings > Privacy & Security > Automation. Do not retry.',
@@ -38,8 +39,8 @@ export class MailError extends Error {
   constructor(code: MailErrorCode) { super(MESSAGES[code]); this.code = code; this.name = 'MailError'; }
 }
 
-export type MailSettings = Pick<Config, 'mail_enabled' | 'mail_account' | 'mail_mailbox' | 'mail_max_age_days' |
-  'mail_max_list_results' | 'mail_max_body_chars'>;
+/** Read live on every call: Admin changes apply to the next tool call without a restart. */
+export type MailSettings = Pick<Config, 'mail_accounts' | 'mail_max_age_days' | 'mail_max_list_results' | 'mail_max_body_chars'>;
 
 /** Carries one bridge request; returns raw stdout. Replaceable by a signed Swift helper or a test fake. */
 export interface MailTransport { request(input: BridgeRequest, signal: AbortSignal): Promise<string>; }
@@ -127,7 +128,8 @@ function bridgeMessage(value: unknown): BridgeMessage {
   return value as BridgeMessage;
 }
 
-type Reference = { account: string; mailbox: string; id: number; message_id: string };
+type Scope = { account: string; mailbox: string };
+type Reference = Scope & { id: number; message_id: string };
 
 /** Per-request Mail client: opaque references, serial bridge calls and the request body budget. */
 export class MailClient {
@@ -149,14 +151,20 @@ export class MailClient {
     return run;
   }
 
-  private scope(): { account: string; mailbox: string } {
-    const s = this.settings;
-    if (!s.mail_enabled || !s.mail_account.trim() || !s.mail_mailbox.trim()) throw new MailError('mail_disabled');
-    return { account: s.mail_account, mailbox: s.mail_mailbox };
+  /** Active account/mailbox pairs; an optional filter must name one of them (case-insensitive). */
+  private scopes(filter?: string): Scope[] {
+    const active = this.settings.mail_accounts.filter(a => a.enabled && a.account.trim() && a.mailbox.trim())
+      .map(a => ({ account: a.account, mailbox: a.mailbox }));
+    if (!active.length) throw new MailError('mail_disabled');
+    if (filter === undefined) return active;
+    const wanted = filter.trim().toLowerCase();
+    const selected = active.filter(a => a.account.toLowerCase() === wanted);
+    if (!selected.length) throw new MailError('unknown_account');
+    return selected;
   }
 
   async list(input: ListInput, signal: AbortSignal): Promise<ListResult> {
-    const scope = this.scope();
+    const scopes = this.scopes(input.account);
     const now = this.now(), maxAge = Math.min(this.settings.mail_max_age_days, 30) * DAY;
     // today_only wins over received_after: system-local midnight (DST-aware via Node's local time).
     const given = input.today_only ? undefined : input.received_after;
@@ -166,30 +174,40 @@ export class MailClient {
         (given !== undefined && !/^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:?\d{2})?)?$/.test(given)))
       throw new MailError('invalid_request');
     const limit = Math.min(input.limit ?? 10, this.settings.mail_max_list_results, 25);
-    const request: BridgeRequest = { op: 'list', ...scope, received_after: new Date(after).toISOString(),
+    const filters = { received_after: new Date(after).toISOString(),
       unread_only: input.unread_only ?? false, flagged_only: input.flagged_only ?? false, limit,
       ...(input.sender_contains ? { sender_contains: input.sender_contains.slice(0, 200) } : {}),
       ...(input.subject_contains ? { subject_contains: input.subject_contains.slice(0, 200) } : {}) };
     return this.serial(signal, async () => {
-      const value = parse(await this.transport.request(request, signal));
-      signal.throwIfAborted();
-      if (!Array.isArray(value.messages) || !Number.isSafeInteger(value.matched) || (value.matched as number) < 0)
-        throw new MailError('invalid_response');
-      const items = value.messages.map(bridgeMessage);
-      const messages = items.slice(0, limit).map(item => {
+      // One bridge call per active account; results are merged newest first under the shared limit.
+      const found: { scope: Scope; item: BridgeMessage; time: number }[] = [];
+      let matched = 0, extra = false;
+      for (const scope of scopes) {
+        const value = parse(await this.transport.request({ op: 'list', ...scope, ...filters }, signal));
+        signal.throwIfAborted();
+        if (!Array.isArray(value.messages) || !Number.isSafeInteger(value.matched) || (value.matched as number) < 0)
+          throw new MailError('invalid_response');
+        const items = value.messages.map(bridgeMessage);
+        matched += value.matched as number; extra ||= items.length > limit;
+        for (const item of items.slice(0, limit)) found.push({ scope, item, time: Date.parse(item.date_received) });
+      }
+      found.sort((x, y) => y.time - x.time);
+      const messages = found.slice(0, limit).map(({ scope, item }) => {
         const message_ref = 'm_' + randomBytes(9).toString('base64url');
         this.refs.set(message_ref, { ...scope, id: item.id, message_id: item.message_id });
-        return { message_ref, sender: cleanField(item.sender, 200), subject: cleanField(item.subject, 300),
+        return { message_ref, account: cleanField(scope.account, 60), sender: cleanField(item.sender, 200), subject: cleanField(item.subject, 300),
           date_received: new Date(item.date_received).toISOString(), read: item.read, flagged: item.flagged, size: Math.round(item.size) };
       });
-      return { messages, matched: value.matched as number, truncated: (value.matched as number) > messages.length || items.length > limit };
+      return { messages, matched, truncated: matched > messages.length || extra };
     }).catch(error => { throw signal.aborted ? new MailError('cancelled') : error; });
   }
 
   async read(input: ReadInput, signal: AbortSignal): Promise<ReadResult> {
-    const scope = this.scope();
+    const active = this.scopes();
     const ref = this.refs.get(input.message_ref);
-    if (!ref || ref.account !== scope.account || ref.mailbox !== scope.mailbox) throw new MailError('stale_reference');
+    // A reference to an account disabled or removed since listing is stale.
+    if (!ref || !active.some(s => s.account === ref.account && s.mailbox === ref.mailbox)) throw new MailError('stale_reference');
+    const scope = { account: ref.account, mailbox: ref.mailbox };
     const remaining = MAX_REQUEST_BODY_CHARS - this.bodyChars;
     const max = Math.min(input.max_chars ?? 6000, this.settings.mail_max_body_chars, 8000, remaining);
     if (max <= 0) throw new MailError('output_limit');
@@ -208,6 +226,15 @@ export class MailClient {
         truncated: cleaned.length > max || (value.body_length as number) > value.body.length };
     }).catch(error => { throw signal.aborted ? new MailError('cancelled') : error; });
   }
+}
+
+/** Admin only (never a model tool): account names configured in Mail.app, for the account picker. */
+export async function mailAppAccounts(transport: MailTransport, signal: AbortSignal): Promise<string[]> {
+  const value = parse(await transport.request({ op: 'accounts' }, signal));
+  if (!Array.isArray(value.accounts)) throw new MailError('invalid_response');
+  const names = value.accounts.filter((name): name is string => typeof name === 'string' && Boolean(name.trim()) &&
+    name.length <= 200 && !/[\u0000-\u001f\u007f]/.test(name));
+  return [...new Set(names)].slice(0, 50);
 }
 
 /** Wraps data for the model; enforces the 64 KiB tool result limit. */

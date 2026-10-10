@@ -93,6 +93,9 @@ actor BackendClient: AssistantBackend {
     func admin(_ route: String, _ body: [String: String] = [:]) async throws -> Data {
         try await post(route, body: JSONSerialization.data(withJSONObject: body))
     }
+    func admin(_ route: String, json body: [String: Any]) async throws -> Data {
+        try await post(route, body: JSONSerialization.data(withJSONObject: body))
+    }
     func close() async {
         if let process, process.isRunning {
             process.terminate()

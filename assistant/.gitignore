@@ -11,3 +11,4 @@ PersonalAssistant.app/
 .pi/agent/
 .venv/
 experiments/
+config.json.lock

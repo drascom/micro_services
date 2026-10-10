@@ -18,7 +18,7 @@ export function macosMail(options: { settings: MailSettings; transport?: MailTra
     const annotations = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
     pi.registerTool({
       name: 'mail_list_messages', label: 'List Mail messages', annotations, executionMode: 'sequential',
-      description: 'Read-only: list recent inbox messages (metadata only, works offline); message_ref is for mail_read_message. ' +
+      description: 'Read-only: list recent messages, all accounts or one `account` (metadata only, works offline); message_ref is for mail_read_message. ' +
         'Classify as acil, yanıt_gerekli, takip, bilgi, dusuk_oncelik from metadata; read a body only if subject/sender is not enough. ' +
         'For today/bugün (also with unread_only) set today_only: true. Reply in the user\'s language.',
       parameters: ListParams,
@@ -44,7 +44,7 @@ export function macosMail(options: { settings: MailSettings; transport?: MailTra
   };
 }
 
-// Standard Pi CLI sessions read the same app config; disabled unless mail_enabled is true.
+// Standard Pi CLI sessions read the same app config; disabled until an account is active.
 export default async function (pi: ExtensionAPI) {
   macosMail({ settings: await loadConfig() })(pi);
 }

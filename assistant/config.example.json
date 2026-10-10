@@ -24,9 +24,7 @@
   "piper_model_en": "models/piper/en_GB-alan-medium.onnx",
   "piper_speed_tr": 1.25,
   "piper_speed_en": 1.25,
-  "mail_enabled": false,
-  "mail_account": "",
-  "mail_mailbox": "INBOX",
+  "mail_accounts": [],
   "mail_max_age_days": 30,
   "mail_max_list_results": 25,
   "mail_max_body_chars": 8000

@@ -11,7 +11,8 @@ import { compactSchema } from '../.pi/extensions/web-access.ts';
 
 // Context budget rule (local and remote): system prompt + skill catalog/body + tool schemas stay small.
 // Limits are characters (about 4 per token), set about 10% above the measured values (offline 3907, mail-assistant 3359; 2026-10-09).
-const LIMITS = { unrouted_offline: 4300, 'mail-assistant': 3500 } as const;
+// 2026-10-10: optional `account` filter for multiple Mail accounts measured mail-assistant 3531, offline 4282.
+const LIMITS = { unrouted_offline: 4300, 'mail-assistant': 3600 } as const;
 
 async function measure(skill: 'mail-assistant' | undefined, offline: boolean) {
   const agent = await mkdtemp(path.join(tmpdir(), 'ayhan-budget-'));

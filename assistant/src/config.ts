@@ -4,7 +4,7 @@ import path from 'node:path';
 import { homedir } from 'node:os';
 
 export const root = fileURLToPath(new URL('../', import.meta.url));
-export const defaults = {
+const scalars = {
   port: 8765, language: 'auto', whisper_threads: 8, whisper_beam_size: 1, whisper_timeout_ms: 120000,
   min_record_seconds: 0.5, max_record_seconds: 300,
   whisper_bin: 'runtime/whisper/whisper-cli',
@@ -27,24 +27,61 @@ export const defaults = {
   piper_speed_tr: 1.25, piper_speed_en: 1.25,
   voice_tr: 'Yelda (Turkish (Türkiye))', voice_en: 'Daniel',
   language_detector: 'runtime/detect-language',
-  mail_enabled: false, mail_account: '', mail_mailbox: 'INBOX',
   mail_max_age_days: 30, mail_max_list_results: 25, mail_max_body_chars: 8000,
   system_prompt: 'Concise personal assistant. Reply in the language of the latest message (Turkish or English); keep technical terms. No emoji. ' +
     'Calendar is not connected. Email is read-only via the Mail tools; never claim to send, move, delete or mark email.'
 } as const;
-export type Config = { -readonly [K in keyof typeof defaults]: typeof defaults[K] extends number ? number :
-  typeof defaults[K] extends boolean ? boolean : string };
+/** One Apple Mail account/mailbox the user enabled in Admin; the model never chooses these. */
+export type MailAccount = { readonly account: string; readonly mailbox: string; readonly enabled: boolean };
+export const MAX_MAIL_ACCOUNTS = 10;
+export const defaults = { ...scalars, mail_accounts: Object.freeze([]) as readonly MailAccount[] };
+export type Config = { -readonly [K in keyof typeof scalars]: typeof scalars[K] extends number ? number :
+  typeof scalars[K] extends boolean ? boolean : string } & { mail_accounts: readonly MailAccount[] };
+
+const mailName = (value: unknown): value is string =>
+  typeof value === 'string' && Boolean(value.trim()) && value.length <= 200 && !/[\u0000-\u001f\u007f]/.test(value);
+/** Validates a full mail account list (Admin save and config load): names, size, duplicates. */
+export function validateMailAccounts(value: unknown): MailAccount[] {
+  if (!Array.isArray(value) || value.length > MAX_MAIL_ACCOUNTS) throw Error(`mail_accounts must be a list of at most ${MAX_MAIL_ACCOUNTS}`);
+  const seen = new Set<string>();
+  return value.map(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item) || Object.keys(item).some(k => !['account', 'mailbox', 'enabled'].includes(k)))
+      throw Error('Invalid mail account entry');
+    const { account, mailbox = 'INBOX', enabled = true } = item as Record<string, unknown>;
+    if (!mailName(account) || !mailName(mailbox) || typeof enabled !== 'boolean') throw Error('Invalid mail account or mailbox');
+    const key = JSON.stringify([account, mailbox.toLowerCase()]);
+    if (seen.has(key)) throw Error('Duplicate mail account and mailbox');
+    seen.add(key);
+    return Object.freeze({ account, mailbox, enabled });
+  });
+}
+/** Pre-list config: mail_enabled/mail_account/mail_mailbox become one list entry. */
+const LEGACY_MAIL = { mail_enabled: 'boolean', mail_account: 'string', mail_mailbox: 'string' } as const;
 
 export async function loadConfig(configPath = path.join(root, 'config.json')): Promise<Config> {
   let settings: Record<string, unknown> = {};
   try { settings = JSON.parse(await readFile(configPath, 'utf8')); }
   catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
   if (!settings || Array.isArray(settings) || typeof settings !== 'object') throw Error('config.json must contain an object');
+  const legacy: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(settings)) {
+    if (key in LEGACY_MAIL) {
+      if (typeof value !== LEGACY_MAIL[key as keyof typeof LEGACY_MAIL]) throw Error(`Invalid setting: ${key}`);
+      legacy[key] = value; delete settings[key]; continue;
+    }
+    if (key === 'mail_accounts') continue;
     if (!(key in defaults) || typeof value !== typeof defaults[key as keyof typeof defaults]) throw Error(`Invalid setting: ${key}`);
     if (typeof value === 'number' && !Number.isFinite(value)) throw Error(`Invalid number: ${key}`);
   }
-  const config: Config = { ...defaults, ...settings };
+  let mailAccounts: readonly MailAccount[] = defaults.mail_accounts;
+  if ('mail_accounts' in settings) mailAccounts = validateMailAccounts(settings.mail_accounts);
+  else if (Object.keys(legacy).length) {
+    const account = legacy.mail_account as string | undefined ?? '';
+    if (legacy.mail_enabled === true && !account.trim()) throw Error('mail_enabled requires mail_account');
+    if (account.trim()) mailAccounts = validateMailAccounts([{ account, mailbox: legacy.mail_mailbox ?? 'INBOX', enabled: legacy.mail_enabled === true }]);
+    else if (legacy.mail_mailbox !== undefined && !mailName(legacy.mail_mailbox)) throw Error('Invalid mail account or mailbox');
+  }
+  const config: Config = { ...defaults, ...settings, mail_accounts: mailAccounts } as Config;
   for (const key of ['whisper_bin', 'whisper_model', 'whisper_server_bin', 'llama_bin', 'llama_model', 'language_detector',
     'ema_python', 'ema_worker', 'ema_cache', 'kokoro_python', 'kokoro_worker', 'kokoro_model',
     'kokoro_voices', 'piper_bin', 'piper_model_tr', 'piper_model_en'] as const)
@@ -61,9 +98,6 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
     throw Error('mail_max_list_results must be an integer between 1 and 25');
   if (!Number.isInteger(config.mail_max_body_chars) || config.mail_max_body_chars < 500 || config.mail_max_body_chars > 8000)
     throw Error('mail_max_body_chars must be an integer between 500 and 8000');
-  if (config.mail_account.length > 200 || /[\u0000-\u001f]/.test(config.mail_account) || !config.mail_mailbox.trim() ||
-      config.mail_mailbox.length > 200 || /[\u0000-\u001f]/.test(config.mail_mailbox)) throw Error('Invalid mail account or mailbox');
-  if (config.mail_enabled && !config.mail_account.trim()) throw Error('mail_enabled requires mail_account');
   const local = new URL(config.local_url);
   if (local.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(local.hostname) ||
       !local.port || local.pathname.replace(/\/$/, '') !== '/v1' || local.username || local.search || local.hash)

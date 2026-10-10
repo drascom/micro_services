@@ -109,7 +109,7 @@ offline fallback, bounded history, cancellation, and adapter seams.
 - `Chat` and `Classifier` expose provider operations with explicit cancellation.
 - `Runtime` exposes start/readiness/owned-stop, allowing safe existing-server attachment.
 - `SpeechService` separates local capture/transcription/output from the chat flow.
-- Read-only email: `.pi/extensions/macos-mail` (tools `mail_list_messages`, `mail_read_message`) → `MailClient` (opaque per-request references, serial calls, limits, error codes) → injectable `MailTransport` → fixed JXA `mail-reader.js` via `/usr/bin/osascript` → Apple Mail local cache. Configured account/inbox only; works offline; gated by `mail_read` permission and `mail_enabled`. A signed Swift helper can replace the transport if the TCC spike requires it.
+- Read-only email: `.pi/extensions/macos-mail` (tools `mail_list_messages`, `mail_read_message`) → `MailClient` (opaque per-request references, serial calls, limits, error codes) → injectable `MailTransport` → fixed JXA `mail-reader.js` via `/usr/bin/osascript` → Apple Mail local cache. Only the active `mail_accounts` (Admin-managed, saved to `config.json` under a lock, applied live); listings merge accounts, the model may only filter by an active account name; works offline; gated by `mail_read` permission and at least one active account. A signed Swift helper can replace the transport if the TCC spike requires it.
 - `ContextSource` remains an unused internal reference-data seam. Future user-facing calendar abilities must be Pi extension tools and skills, including cached offline reads, governed by the same permission hook.
 - External email/calendar writes require their own confirmed action model and reconnect logic.
 

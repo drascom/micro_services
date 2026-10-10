@@ -5,7 +5,8 @@ import type { Orchestrator } from './orchestrator.ts';
 import { NoSpeechError } from './speech.ts';
 import { activity, observeRequest } from './activity.ts';
 import { root } from './config.ts';
-import { collectStatus, createExtension, createSkill, deleteResource, listResources, readResource, writeResource } from './admin.ts';
+import { collectStatus, createExtension, createSkill, deleteResource, listMailAccounts, listResources, readResource, saveMailAccounts, writeResource } from './admin.ts';
+import { osascriptTransport, type MailTransport } from '../.pi/extensions/macos-mail/client.ts';
 import path from 'node:path';
 import { homedir } from 'node:os';
 
@@ -21,7 +22,9 @@ async function readBody(request: IncomingMessage, limit: number): Promise<Buffer
 }
 
 export async function makeServer(config: Config, app: Orchestrator, lifecycle: AbortSignal, activityFile: string | null = path.join(root, 'data/activity.log'), resourceRoot = root,
-  trashDirs = [path.join(homedir(), '.Trash'), path.join(resourceRoot, 'data/trash')]) {
+  trashDirs = [path.join(homedir(), '.Trash'), path.join(resourceRoot, 'data/trash')],
+  mail: { configPath?: string; transport?: MailTransport } = {}) {
+  const configPath = mail.configPath ?? path.join(root, 'config.json');
   const observe = <T>(details: Record<string, string | number | boolean>, action: () => Promise<T>) => activityFile ? observeRequest(activityFile, details, action) : action();
   const token = randomBytes(32).toString('base64url');
   let active: { controller: AbortController; done: Promise<void>; finish: () => void } | undefined;
@@ -71,6 +74,8 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         if (request.url === '/admin/create-skill') return reply(200, await createSkill(resourceRoot, value.name, value.description));
         if (request.url === '/admin/delete') return reply(200, await deleteResource(resourceRoot, value.kind, value.name, trashDirs));
         if (request.url === '/admin/create-extension') return reply(200, await createExtension(resourceRoot, value.name));
+        if (request.url === '/admin/mail/accounts') return reply(200, await listMailAccounts(config, mail.transport ?? osascriptTransport()));
+        if (request.url === '/admin/mail/save') return reply(200, await saveMailAccounts(config, configPath, (data as { accounts?: unknown }).accounts));
         return reply(404, { error: 'Not found' });
       }
       if (request.url === '/cancel') { active?.controller.abort(); return reply(200, { ok: true }); }
