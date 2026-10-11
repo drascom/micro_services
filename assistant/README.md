@@ -404,6 +404,12 @@ Setup:
 To disable: set `mail_read` to `deny` or make every account inactive; remove the
 Automation permission in System Settings if wanted.
 
+### Gmail triage
+
+Optional `mail_organize` tool: classify new Gmail INBOX mail (urgent/important/later/junk), apply labels after
+next-turn confirmation, move `Gereksiz` to Trash, undo. OAuth Desktop client, tokens in Keychain. Off by default
+(Admin → Ayarlar → Gmail → Mail düzenleme). Setup: see [GMAIL.md](GMAIL.md).
+
 ### Apple Reminders
 
 One `reminders` tool (`.pi/extensions/apple-reminders`): `list` (list name, open/done/all,

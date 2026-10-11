@@ -29,7 +29,7 @@ export function permissionsExtension(options: { root: string; offline: boolean; 
     // Read-only Apple Mail: per-request budgets inside the overall 12-call limit.
     const mailBudgets: Record<string, number> = { mail_list_messages: 2, mail_read_message: 5 };
     const mailCalls: Record<string, number> = {};
-    let reminderCalls = 0;
+    let reminderCalls = 0, organizeCalls = 0;
     const check = async (event: ToolCallEvent): Promise<ToolCallEventResult | undefined> => {
       if (++calls > 12) return { block: true, reason: 'Tool budget exhausted. Finish with the evidence already retrieved.', terminate: true };
       // Automated Reminders task: no user can confirm, so only read-only/safe tools and never a deletion.
@@ -64,6 +64,18 @@ export function permissionsExtension(options: { root: string; offline: boolean; 
           if (permissions?.skill_edit === 'allow') return;
         } catch {}
         return { block: true, reason: 'Skill management permission is disabled.' };
+      }
+      if (event.toolName === 'mail_organize') {
+        // Gmail triage: apply/purge are additionally gated by the extension's next-turn token. A task may only propose.
+        if (options.automated && (event.input as { action?: string }).action !== 'propose')
+          return { block: true, reason: 'Automated tasks may only propose a mail plan.' };
+        if (options.offline) return { block: true, reason: 'Offline mode: Gmail is unavailable.' };
+        try {
+          const permissions = JSON.parse(await readFile(path.join(options.root, '.pi/permissions.json'), 'utf8'));
+          if (permissions?.mail_organize !== 'allow') return { block: true, reason: 'Mail organizing is disabled in Pi permissions.' };
+        } catch { return { block: true, reason: 'Mail organizing is disabled in Pi permissions.' }; }
+        if (++organizeCalls > 3) return { block: true, reason: 'Mail organize budget (3 per request) is exhausted. Report what was done.' };
+        return;
       }
       if (event.toolName.startsWith('mail_')) {
         if (!Object.hasOwn(mailBudgets, event.toolName))

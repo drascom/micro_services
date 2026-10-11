@@ -86,7 +86,17 @@ test('limit: 25 ✅ and 25 spent ⚠️ tasks left in the list do not hide a new
   const f = scheduler(items, async (_prompt, intentText) => { runs.push(intentText); return { text: 'ok' }; });
   assert.equal(await f.scan(), 1); assert.deepEqual(runs, ['Task 999']); assert.equal(items[50].title, '✅ Task 999');
   const list = f.b.requests[0] as Extract<BridgeRequest, { op: 'list' }>;
-  assert.deepEqual([list.skip_prefixes, list.last_prefixes], [['✅'], ['⚠']]);
+  assert.deepEqual([list.skip_prefixes, list.last_prefixes], [['✅', '📧'], ['⚠']]);
+});
+
+test('📧 reply reminders from Gmail triage are never run as tasks', async () => {
+  const items = [item(1, { title: '📧 Cevapla: Boss – Contract' }), item(2)];
+  const runs: string[] = [];
+  const f = scheduler(items, async (_prompt, intentText) => { runs.push(intentText); return { text: 'ok' }; });
+  // Even if the bridge ignored skip_prefixes, the scanner skips it.
+  const request = f.b.transport.request.bind(f.b.transport);
+  f.b.transport.request = async (input, signal) => request(input.op === 'list' ? { ...input, skip_prefixes: [] } : input, signal);
+  assert.equal(await f.scan(), 1); assert.deepEqual(runs, ['Task 2']); assert.equal(items[0].title, '📧 Cevapla: Boss – Contract');
 });
 
 test('prefixes: no double prefix; removing ours makes it a new job; the prompt never sees a prefix', async () => {

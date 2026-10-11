@@ -3,7 +3,9 @@ import { lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rename, rm, s
 import lockfile from 'proper-lockfile';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { loadConfig, validateMailAccounts, type Config, type MailAccount } from './config.ts';
+import { loadConfig, validateMailAccounts, validateUrgentSenders, type Config, type MailAccount } from './config.ts';
+import type { GmailService } from '../.pi/extensions/gmail/service.ts';
+import { MailTriage, triageMemory } from '../.pi/extensions/gmail/triage.ts';
 import { MailError, mailAppAccounts, type MailTransport } from '../.pi/extensions/macos-mail/client.ts';
 import type { Orchestrator } from './orchestrator.ts';
 import { FileCredentials } from './credentials.ts';
@@ -53,7 +55,7 @@ export type ResourceKind = 'skill' | 'extension';
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
 const MAX_FILE = 256 * 1024;
-const FACTORY = new Set(['permissions.ts', 'request-workflow.ts', 'macos-mail', 'apple-reminders']);
+const FACTORY = new Set(['permissions.ts', 'request-workflow.ts', 'macos-mail', 'apple-reminders', 'gmail']);
 
 function base(root: string, kind: unknown): string {
   if (kind !== 'skill' && kind !== 'extension') throw Error('Invalid resource kind');
@@ -265,4 +267,58 @@ export async function saveReminders(config: Config, configPath: string, value: u
   await updateConfigFile(configPath, settings => { Object.assign(settings, change); }); // The whole file is validated before replacing.
   Object.assign(config, change);
   return { enabled: config.reminders_enabled, tasks_enabled: config.tasks_enabled, tasks_list: config.tasks_list };
+}
+
+/** Gmail: connection metadata and triage settings for Admin; never secrets or tokens. */
+export async function gmailStatus(config: Config, service: GmailService) {
+  const auth = await service.auth.status();
+  return { ...auth, account: config.gmail_account, triage_enabled: config.gmail_triage_enabled,
+    urgent_senders: config.gmail_urgent_senders, daily_limit: config.gmail_daily_limit,
+    missing_labels: auth.connected ? await service.missingLabels() : [], error: service.auth.lastError };
+}
+
+/**
+ * Gmail settings: OAuth client (Keychain only, never config.json) and account, triage switch and urgent senders
+ * (config.json). Only the fields present are changed.
+ */
+export async function saveGmail(config: Config, configPath: string, service: GmailService, value: unknown) {
+  const input = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
+  if (input.client_id !== undefined || input.client_secret !== undefined) await service.auth.saveClient(input.client_id, input.client_secret);
+  const change: Partial<Pick<Config, 'gmail_account' | 'gmail_triage_enabled' | 'gmail_urgent_senders'>> = {};
+  if (input.account !== undefined) {
+    if (typeof input.account !== 'string' || (input.account.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.account.trim()))) throw Error('Invalid Gmail address');
+    change.gmail_account = input.account.trim().toLowerCase();
+  }
+  if (input.triage_enabled !== undefined) { if (typeof input.triage_enabled !== 'boolean') throw Error('triage_enabled must be a boolean'); change.gmail_triage_enabled = input.triage_enabled; }
+  if (input.urgent_senders !== undefined) change.gmail_urgent_senders = validateUrgentSenders(input.urgent_senders);
+  if (Object.keys(change).length) {
+    await updateConfigFile(configPath, settings => { Object.assign(settings, change); });
+    Object.assign(config, change);
+  }
+  return gmailStatus(config, service);
+}
+
+/** Starts the browser consent; the Mac app opens `auth_url`. A first connection records the account in config.json. */
+export async function connectGmail(config: Config, configPath: string, service: GmailService) {
+  const { auth_url, done } = await service.auth.connect(config.gmail_account);
+  done.then(async email => {
+    service.forgetLabels();
+    if (!config.gmail_account) await saveGmail(config, configPath, service, { account: email }).catch(() => {});
+  }, () => {});
+  return { auth_url };
+}
+
+export async function disconnectGmail(config: Config, service: GmailService) {
+  await service.auth.disconnect(); service.forgetLabels();
+  return gmailStatus(config, service);
+}
+
+const adminTriage = (config: Config, service: GmailService) => new MailTriage({ provider: service.provider, settings: config, memory: triageMemory,
+  turn: 0, logFile: service.logFile, stateFile: service.stateFile, importance: () => service.importance() });
+export async function gmailActions(config: Config, service: GmailService) {
+  return { batches: await adminTriage(config, service).recent(10) };
+}
+export async function undoGmail(config: Config, service: GmailService) {
+  const result = await adminTriage(config, service).undo(AbortSignal.timeout(60_000));
+  return { ...result, batches: await adminTriage(config, service).recent(10) };
 }

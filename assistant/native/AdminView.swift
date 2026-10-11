@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import Observation
 
@@ -26,6 +27,16 @@ struct MailAccount: Codable, Identifiable, Equatable {
 }
 struct MailAccounts: Decodable { let accounts: [MailAccount]; let available: [String]?; let available_error: String? }
 struct SavedMailAccounts: Decodable { let accounts: [MailAccount] }
+
+struct GmailStatus: Decodable {
+    var client_configured = false; var connected = false; var email = ""; var connecting = false; var account = ""
+    var triage_enabled = false; var urgent_senders: [String] = []; var missing_labels: [String] = []; var error = ""
+}
+struct GmailBatch: Decodable, Identifiable {
+    let batch: String; let at: Double; let kind: String; let count: Int; let undone: Bool; let levels: [String: Int]
+    var id: String { batch }
+}
+struct GmailBatches: Decodable { let batches: [GmailBatch] }
 
 struct ActivityRow: Identifiable { let id: Int; let time: String; let request: String; let event: String; let details: String }
 
@@ -60,6 +71,15 @@ final class AdminModel {
     var remindersEnabled = false
     var tasksEnabled = false
     var tasksList = "Asistan"
+    var gmail = GmailStatus()
+    var gmailClientId = ""
+    var gmailClientSecret = ""
+    var gmailAccount = ""
+    var gmailUrgent = ""
+    var gmailImportance = ""
+    var gmailImportanceOriginal = ""
+    var gmailMessage = ""
+    var gmailBatches: [GmailBatch] = []
     private var polling: Task<Void, Never>?
 
     init(backend: BackendClient, ring: RingModel) { self.backend = backend; self.ring = ring }
@@ -75,6 +95,7 @@ final class AdminModel {
         Task { await loadResources() }
         Task { await loadMailAccounts() }
         Task { await loadReminders() }
+        Task { await loadGmail(); await loadImportance(); await loadGmailActions() }
     }
     func stopPolling() { polling?.cancel(); polling = nil }
 
@@ -192,6 +213,69 @@ final class AdminModel {
         }
         catch { await loadReminders(); mailMessage = error.localizedDescription }
     }
+    // MARK: Gmail (OAuth client in Keychain via the backend; the backend never returns secrets)
+    private func applyGmail(_ data: Data) {
+        guard let value = try? JSONDecoder().decode(GmailStatus.self, from: data) else { return }
+        gmail = value; gmailAccount = value.account; gmailUrgent = value.urgent_senders.joined(separator: ", ")
+    }
+    func loadGmail() async {
+        do { applyGmail(try await backend.admin("admin/gmail")) } catch { gmailMessage = error.localizedDescription }
+    }
+    private func saveGmail(_ body: [String: Any]) async {
+        do {
+            let json = try JSONSerialization.data(withJSONObject: body)
+            applyGmail(try await backend.admin("admin/gmail/save", data: json)); gmailMessage = ""
+        }
+        catch { gmailMessage = error.localizedDescription; await loadGmail() }
+    }
+    func saveGmailClient() async {
+        await saveGmail(["client_id": gmailClientId, "client_secret": gmailClientSecret])
+        if gmailMessage.isEmpty { gmailClientId = ""; gmailClientSecret = "" }
+    }
+    func saveGmailAccount() async { await saveGmail(["account": gmailAccount]) }
+    func setGmailTriage(_ on: Bool) async { gmail.triage_enabled = on; await saveGmail(["triage_enabled": on]) }
+    func saveGmailUrgent() async {
+        let list = gmailUrgent.split(whereSeparator: { $0 == "," || $0 == "\n" || $0 == " " }).map(String.init).filter { !$0.isEmpty }
+        await saveGmail(["urgent_senders": list])
+    }
+    /// Opens Google's consent page in the default browser; the backend's loopback listener completes the connection.
+    func connectGmail() async {
+        do {
+            let data = try await backend.admin("admin/gmail/connect")
+            guard let text = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["auth_url"] as? String,
+                  let url = URL(string: text), url.scheme == "https" else { gmailMessage = "Geçersiz yanıt / Invalid response"; return }
+            NSWorkspace.shared.open(url); gmailMessage = ""
+            for _ in 0..<150 { // Up to 5 minutes, like the backend's consent timeout.
+                try? await Task.sleep(for: .seconds(2))
+                await loadGmail()
+                if gmail.connected || !gmail.connecting { break }
+            }
+            if !gmail.connected, !gmail.error.isEmpty { gmailMessage = gmail.error }
+        } catch { gmailMessage = error.localizedDescription }
+    }
+    func disconnectGmail() async {
+        do { applyGmail(try await backend.admin("admin/gmail/disconnect")); gmailMessage = "" } catch { gmailMessage = error.localizedDescription }
+    }
+    func loadImportance() async {
+        guard let data = try? await backend.admin("admin/gmail/importance"),
+              let text = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["content"] as? String else { return }
+        gmailImportance = text; gmailImportanceOriginal = text
+    }
+    func saveImportance() async {
+        do { _ = try await backend.admin("admin/gmail/importance/save", ["content": gmailImportance]); gmailImportanceOriginal = gmailImportance; gmailMessage = "" }
+        catch { gmailMessage = error.localizedDescription }
+    }
+    func loadGmailActions() async {
+        if let data = try? await backend.admin("admin/gmail/actions"), let value = try? JSONDecoder().decode(GmailBatches.self, from: data) { gmailBatches = value.batches }
+    }
+    func undoGmail() async {
+        do {
+            let data = try await backend.admin("admin/gmail/undo")
+            if let value = try? JSONDecoder().decode(GmailBatches.self, from: data) { gmailBatches = value.batches }
+            gmailMessage = ""
+        } catch { gmailMessage = error.localizedDescription }
+    }
+
     func createExtension(name: String) async {
         do {
             _ = try await backend.admin("admin/create-extension", ["name": name])
@@ -259,6 +343,22 @@ private struct StatusTab: View {
                     LabeledContent("Yerel model sağlığı / Local health", value: s.local_healthy ? "OK" : "Kapalı / Down")
                 }
             }
+            if !admin.gmailBatches.isEmpty {
+                Section("Mail işlemleri / Mail actions") {
+                    ForEach(admin.gmailBatches) { b in
+                        LabeledContent(Date(timeIntervalSince1970: b.at / 1000).formatted(date: .abbreviated, time: .shortened),
+                                       value: "\(b.kind == "trash" ? "Çöp / Trash" : "Düzenleme / Organize") • \(b.count)" +
+                                              (b.levels.isEmpty ? "" : " • " + b.levels.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")) +
+                                              (b.undone ? " • geri alındı / undone" : ""))
+                    }
+                    HStack {
+                        Spacer()
+                        Button("Yenile / Refresh") { Task { await admin.loadGmailActions() } }
+                        Button("Geri al / Undo") { Task { await admin.undoGmail() } }
+                            .disabled(!admin.gmailBatches.contains { $0.kind == "apply" && !$0.undone })
+                    }
+                }
+            }
             if let updated = admin.updated {
                 Text("Güncellendi / Updated \(updated.formatted(date: .omitted, time: .standard))").font(.caption).foregroundStyle(.secondary)
             }
@@ -312,6 +412,7 @@ private struct SettingsTab: View {
                     .disabled(!admin.remindersEnabled || !admin.tasksEnabled)
             }
             MailAccountsSection(admin: admin, removing: $removing)
+            GmailSection(admin: admin)
             Section("Uygulama / Application") {
                 Button("Yeniden başlat / Restart Ayhan") { admin.actions.restart() }
             }
@@ -391,6 +492,49 @@ private struct MailAccountsSection: View {
             }
             if !admin.mailAvailableError.isEmpty { Text(admin.mailAvailableError).font(.caption).foregroundStyle(.orange) }
             if !admin.mailMessage.isEmpty { Text(admin.mailMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+        }
+    }
+}
+
+/// Gmail connection and triage settings. No explanatory text: fields, buttons and one-line warnings only.
+private struct GmailSection: View {
+    @Bindable var admin: AdminModel
+    var body: some View {
+        Section("Gmail") {
+            TextField("Client ID", text: $admin.gmailClientId, prompt: Text(admin.gmail.client_configured ? "Kayıtlı / Saved" : ""))
+            HStack {
+                SecureField("Client secret", text: $admin.gmailClientSecret)
+                Button("Kaydet / Save") { Task { await admin.saveGmailClient() } }
+                    .disabled(admin.gmailClientId.isEmpty || admin.gmailClientSecret.isEmpty)
+            }
+            TextField("Hesap / Account", text: $admin.gmailAccount, prompt: Text("name@gmail.com"))
+                .onSubmit { Task { await admin.saveGmailAccount() } }
+            HStack {
+                Text(admin.gmail.connected ? "Bağlı / Connected: \(admin.gmail.email)" : admin.gmail.connecting ? "Tarayıcıda onay bekleniyor / Waiting for browser…" : "Bağlı değil / Not connected")
+                    .foregroundStyle(admin.gmail.connected ? .primary : .secondary)
+                Spacer()
+                if admin.gmail.connected {
+                    Button("Bağlantıyı kes / Disconnect") { Task { await admin.disconnectGmail() } }
+                } else {
+                    Button("Bağlan / Connect") { Task { await admin.connectGmail() } }.disabled(!admin.gmail.client_configured)
+                }
+            }
+            if !admin.gmail.missing_labels.isEmpty {
+                Text("Eksik etiket / Missing label: \(admin.gmail.missing_labels.joined(separator: ", "))").font(.caption).foregroundStyle(.orange)
+            }
+            Toggle("Mail düzenleme / Mail organizing", isOn: Binding(get: { admin.gmail.triage_enabled }, set: { on in Task { await admin.setGmailTriage(on) } }))
+                .disabled(!admin.gmail.connected)
+            TextField("Acil gönderenler / Urgent senders", text: $admin.gmailUrgent, prompt: Text("boss@work.com, @council.gov.uk"))
+                .onSubmit { Task { await admin.saveGmailUrgent() } }
+            VStack(alignment: .leading) {
+                Text("Önem tanımı / Importance").font(.caption).foregroundStyle(.secondary)
+                TextEditor(text: $admin.gmailImportance).font(.system(.body, design: .monospaced)).frame(minHeight: 90)
+                HStack {
+                    Spacer()
+                    Button("Kaydet / Save") { Task { await admin.saveImportance() } }.disabled(admin.gmailImportance == admin.gmailImportanceOriginal)
+                }
+            }
+            if !admin.gmailMessage.isEmpty { Text(admin.gmailMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
         }
     }
 }

@@ -1,0 +1,4 @@
+- Hemen cevapla: iş yeri, aile, council, trafik/park cezası, vergi, mahkeme, banka dolandırıcılık uyarısı.
+- Önemli: fiyat artışı, abonelik değişikliği, teslimat gecikmesi/sorunu, ödeme başarısız, hesap güvenliği.
+- Bekleyebilir: bültenler, haberler, sosyal bildirimler.
+- Gereksiz: reklam, kampanya, "siparişiniz alındı", "yola çıktı", "teslim edildi".

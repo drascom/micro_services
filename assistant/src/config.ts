@@ -29,15 +29,28 @@ const scalars = {
   language_detector: 'runtime/detect-language',
   reminders_enabled: false, tasks_enabled: false, tasks_list: 'Asistan',
   mail_max_age_days: 30, mail_max_list_results: 25, mail_max_body_chars: 8000,
+  gmail_triage_enabled: false, gmail_account: '', gmail_daily_limit: 500,
   system_prompt: 'Concise personal assistant. Reply in the language of the latest message (Turkish or English); keep technical terms. No emoji. ' +
     'Calendar is not connected. Email is read-only via the Mail tools; never claim to send, move, delete or mark email.'
 } as const;
 /** One Apple Mail account/mailbox the user enabled in Admin; the model never chooses these. */
 export type MailAccount = { readonly account: string; readonly mailbox: string; readonly enabled: boolean };
 export const MAX_MAIL_ACCOUNTS = 10;
-export const defaults = { ...scalars, mail_accounts: Object.freeze([]) as readonly MailAccount[] };
+export const MAX_URGENT_SENDERS = 100;
+export const defaults = { ...scalars, mail_accounts: Object.freeze([]) as readonly MailAccount[], gmail_urgent_senders: Object.freeze([]) as readonly string[] };
 export type Config = { -readonly [K in keyof typeof scalars]: typeof scalars[K] extends number ? number :
-  typeof scalars[K] extends boolean ? boolean : string } & { mail_accounts: readonly MailAccount[] };
+  typeof scalars[K] extends boolean ? boolean : string } & { mail_accounts: readonly MailAccount[]; gmail_urgent_senders: readonly string[] };
+
+/** Gmail urgent senders (Admin only): exact addresses `a@b.c` or whole domains `@b.c`, lowercased, no duplicates. */
+export function validateUrgentSenders(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > MAX_URGENT_SENDERS) throw Error(`gmail_urgent_senders must be a list of at most ${MAX_URGENT_SENDERS}`);
+  const result = value.map(item => {
+    const entry = typeof item === 'string' ? item.trim().toLowerCase() : '';
+    if (entry.length > 254 || !/^(?:[^\s@<>",;]+)?@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(entry)) throw Error('Invalid urgent sender: use name@domain or @domain');
+    return entry;
+  });
+  return [...new Set(result)];
+}
 
 const mailName = (value: unknown): value is string =>
   typeof value === 'string' && Boolean(value.trim()) && value.length <= 200 && !/[\u0000-\u001f\u007f]/.test(value);
@@ -70,7 +83,7 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
       if (typeof value !== LEGACY_MAIL[key as keyof typeof LEGACY_MAIL]) throw Error(`Invalid setting: ${key}`);
       legacy[key] = value; delete settings[key]; continue;
     }
-    if (key === 'mail_accounts') continue;
+    if (key === 'mail_accounts' || key === 'gmail_urgent_senders') continue;
     if (!(key in defaults) || typeof value !== typeof defaults[key as keyof typeof defaults]) throw Error(`Invalid setting: ${key}`);
     if (typeof value === 'number' && !Number.isFinite(value)) throw Error(`Invalid number: ${key}`);
   }
@@ -82,7 +95,8 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
     if (account.trim()) mailAccounts = validateMailAccounts([{ account, mailbox: legacy.mail_mailbox ?? 'INBOX', enabled: legacy.mail_enabled === true }]);
     else if (legacy.mail_mailbox !== undefined && !mailName(legacy.mail_mailbox)) throw Error('Invalid mail account or mailbox');
   }
-  const config: Config = { ...defaults, ...settings, mail_accounts: mailAccounts } as Config;
+  const urgent = 'gmail_urgent_senders' in settings ? validateUrgentSenders(settings.gmail_urgent_senders) : defaults.gmail_urgent_senders;
+  const config: Config = { ...defaults, ...settings, mail_accounts: mailAccounts, gmail_urgent_senders: urgent } as Config;
   for (const key of ['whisper_bin', 'whisper_model', 'whisper_server_bin', 'llama_bin', 'llama_model', 'language_detector',
     'ema_python', 'ema_worker', 'ema_cache', 'kokoro_python', 'kokoro_worker', 'kokoro_model',
     'kokoro_voices', 'piper_bin', 'piper_model_tr', 'piper_model_en'] as const)
@@ -101,6 +115,9 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
     throw Error('mail_max_body_chars must be an integer between 500 and 8000');
   if (!config.tasks_list.trim() || config.tasks_list.length > 100 || /[\u0000-\u001f\u007f]/.test(config.tasks_list))
     throw Error('tasks_list must be a Reminders list name (1-100 characters)');
+  if (!Number.isInteger(config.gmail_daily_limit) || config.gmail_daily_limit > 5000)
+    throw Error('gmail_daily_limit must be an integer between 1 and 5000');
+  if (config.gmail_account && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.gmail_account)) throw Error('gmail_account must be an email address');
   const local = new URL(config.local_url);
   if (local.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(local.hostname) ||
       !local.port || local.pathname.replace(/\/$/, '') !== '/v1' || local.username || local.search || local.hash)

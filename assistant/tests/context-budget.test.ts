@@ -8,22 +8,33 @@ import { fauxProvider, fauxAssistantMessage } from '@earendil-works/pi-ai';
 import { defaults, root } from '../src/config.ts';
 import { createHarnessSession, harnessTools } from '../src/harness.ts';
 import { compactSchema } from '../.pi/extensions/web-access.ts';
+import { GmailService } from '../.pi/extensions/gmail/service.ts';
+import { MemorySecretStore } from '../.pi/extensions/gmail/secrets.ts';
 
 // Context budget rule (local and remote): system prompt + skill catalog/body + tool schemas stay small.
 // Limits are characters (about 4 per token), set about 10% above the measured values (offline 3907, mail-assistant 3359; 2026-10-09).
 // 2026-10-10: optional `account` filter for multiple Mail accounts measured mail-assistant 3531, offline 4282.
 // 2026-10-10: Reminders (off by default) measured unrouted offline with it on 5374, reminders route 2018.
 // 2026-10-10: "never pretend it was done" rule (+56) measured unrouted offline 4330.
-const LIMITS = { unrouted_offline: 4360, 'mail-assistant': 3600, unrouted_offline_reminders: 5900, reminders: 2250 } as const;
+// 2026-10-11: Gmail triage (off by default) measured mail-triage route 1709; unrouted online adds 831 when on.
+const LIMITS = { unrouted_offline: 4360, 'mail-assistant': 3600, unrouted_offline_reminders: 5900, reminders: 2250,
+  'mail-triage': 1880, unrouted_gmail_added: 920 } as const;
 
-async function measure(skill: 'mail-assistant' | 'reminders' | undefined, offline: boolean, reminders = false) {
+/** A connected Gmail (fake secret store) for the mail_organize cases; no network call happens while measuring. */
+function connectedGmail() {
+  const store = new MemorySecretStore();
+  store.values.set('token', JSON.stringify({ refresh_token: 'x', email: 'me@gmail.com' }));
+  return new GmailService({ dataDir: tmpdir(), exampleFile: '', store, http: async () => { throw Error('no network in tests'); } });
+}
+
+async function measure(skill: 'mail-assistant' | 'reminders' | 'mail-triage' | undefined, offline: boolean, reminders = false, organize = false) {
   const agent = await mkdtemp(path.join(tmpdir(), 'ayhan-budget-'));
   const fake = fauxProvider({ provider: 'budget-test', models: [{ id: 'test' }], tokensPerSecond: 1000000 });
   fake.setResponses([fauxAssistantMessage('ok')]);
   const runtime = await ModelRuntime.create({ modelsPath: null, refreshOnCreate: false }); runtime.registerNativeProvider(fake.provider);
-  const session = await createHarnessSession({ root, config: { ...defaults, pi_agent_dir: agent, reminders_enabled: reminders },
+  const session = await createHarnessSession({ root, config: { ...defaults, pi_agent_dir: agent, reminders_enabled: reminders, gmail_triage_enabled: organize },
     context: { systemPrompt: defaults.system_prompt, messages: [{ role: 'user', content: 'test', timestamp: 1 }] },
-    model: fake.getModel(), runtime, offline, skill, extensionPaths: [] });
+    model: fake.getModel(), runtime, offline, skill, extensionPaths: [], ...(organize ? { gmail: connectedGmail() } : {}) });
   try {
     const tools = session.getActiveToolNames().map(name => {
       const tool = session.getToolDefinition(name)!;
@@ -62,6 +73,15 @@ test('Reminders adds one compact tool only when enabled', async () => {
   const routed = await measure('reminders', false, true);
   assert.deepEqual(routed.names, ['reminders']);
   assert.ok(routed.chars <= LIMITS.reminders, `${routed.chars} chars`);
+});
+
+test('Gmail triage adds one compact tool only when enabled and connected', async () => {
+  const routed = await measure('mail-triage', false, false, true);
+  assert.deepEqual(routed.names, ['mail_organize']);
+  assert.ok(routed.chars <= LIMITS['mail-triage'], `${routed.chars} chars`);
+  const plain = await measure(undefined, false), organize = await measure(undefined, false, false, true);
+  assert.deepEqual(organize.names.filter(name => !plain.names.includes(name)), ['mail_organize']);
+  assert.ok(organize.chars - plain.chars <= LIMITS.unrouted_gmail_added, `${organize.chars - plain.chars} chars added`);
 });
 
 test('missing tools are never faked, routed or not', async () => {

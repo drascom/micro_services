@@ -8,7 +8,7 @@ import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completio
 import { FileCredentials } from './credentials.ts';
 import type { Config } from './config.ts';
 
-export type HarnessSkill = 'online-search' | 'skill-manager' | 'mail-assistant' | 'reminders';
+export type HarnessSkill = 'online-search' | 'skill-manager' | 'mail-assistant' | 'reminders' | 'mail-triage';
 export interface Chat { complete(context: Context, signal: AbortSignal, options?: { offline: boolean; skill?: HarnessSkill; briefNews?: boolean; turn?: number; automated?: boolean }): Promise<AssistantMessage>; }
 export interface Intent { choice: string; confidence: number; provider: string; }
 export interface Classifier { classify(message: string, signal: AbortSignal): Promise<Intent>; }
@@ -79,6 +79,7 @@ export class Jev implements Classifier {
       intent: { type: 'choice', instructions: 'Classify the user request by the main capability it needs.', criteria: {
         conversation: 'General chat, reasoning, writing, questions, or advice',
         email: 'Read, search, draft, or send email',
+        mail_triage: 'Organize or clean up the Gmail inbox: sort by importance, label, archive, trash junk, or undo that (mail düzenle, temizle)',
         calendar: 'Read or modify calendar events, availability, meetings, or appointments',
         reminders: 'Add, list, update, complete or delete reminders or to-dos (hatırlatıcı, yapılacaklar)',
         news: 'Brief latest/recent news, headlines or a short news roundup about a place/topic, including Turkish haber/haberler requests; use web_search for requested detailed investigation',
@@ -88,7 +89,7 @@ export class Jev implements Classifier {
     } }, { signal });
     const answer = result.answers.intent;
     if (result.stopReason !== 'stop' || answer?.type !== 'choice' ||
-        !['conversation', 'email', 'calendar', 'reminders', 'news', 'web_search', 'skill_management'].includes(answer.choice) ||
+        !['conversation', 'email', 'mail_triage', 'calendar', 'reminders', 'news', 'web_search', 'skill_management'].includes(answer.choice) ||
         !Number.isFinite(answer.confidence) || answer.confidence < 0 || answer.confidence > 1)
       throw Error('Jev classification unavailable');
     return { choice: answer.choice, confidence: answer.confidence, provider: 'jev' };

@@ -25,7 +25,7 @@ export interface TaskLane { acquire(signal: AbortSignal): Promise<{ signal: Abor
 export type TaskRun = (prompt: string, intentText: string, signal: AbortSignal) => Promise<{ text: string }>;
 export type Notify = (title: string, body: string) => Promise<void>;
 type Entry = { attempts: number; at: number; done?: true; flag?: true };
-export const RUNNING = '⏳', DONE = '✅', FAILED = '⚠️';
+export const RUNNING = '⏳', DONE = '✅', FAILED = '⚠️', REPLY = '📧';
 const PREFIX = /^(?:\s*(?:⏳|✅|⚠\uFE0F?)\s*)+/u;
 
 /** Title without status prefixes (any number of them). */
@@ -113,7 +113,8 @@ export class TaskScheduler {
       const value = parse(await this.transport.request({ op: 'list', list: this.config.tasks_list, status: 'open',
         due_before: new Date(this.now()).toISOString(), undated: true, max: 20, notes_max: 8000,
         // ✅ stay in the list: filtered out before the limit so they never hide new tasks; ⚠️ (mostly spent retries) go last.
-        skip_prefixes: [DONE], last_prefixes: ['⚠'] }, signal));
+        // 📧 reply reminders from Gmail triage are for the user, never run as tasks.
+        skip_prefixes: [DONE, REPLY], last_prefixes: ['⚠'] }, signal));
       if (!Array.isArray(value.reminders)) throw new RemindersError('invalid_response');
       items = value.reminders.map(bridgeReminder);
       this.lastError = '';
@@ -129,7 +130,7 @@ export class TaskScheduler {
     for (const item of items) {
       if (signal.aborted || !this.config.tasks_enabled || !this.config.reminders_enabled) break;
       const key = hash(item.id + '|' + (item.due ?? ''), 16), entry = state[key], mark = status(item.title);
-      if (mark === DONE) continue;
+      if (mark === DONE || item.title.trimStart().startsWith(REPLY)) continue;
       // No prefix: a new job (also after the user removed ours). ⏳: interrupted run. ⚠️: only the one retry.
       if (mark === FAILED && !entry) continue;
       const attempts = mark === '' ? 0 : entry?.attempts ?? 0;

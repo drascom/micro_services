@@ -5,7 +5,10 @@ import type { Orchestrator } from './orchestrator.ts';
 import { NoSpeechError } from './speech.ts';
 import { activity, observeRequest } from './activity.ts';
 import { root } from './config.ts';
-import { collectStatus, createExtension, createSkill, deleteResource, listMailAccounts, listResources, readResource, saveMailAccounts, saveReminders, writeResource } from './admin.ts';
+import { collectStatus, connectGmail, createExtension, createSkill, deleteResource, disconnectGmail, gmailActions, gmailStatus, listMailAccounts, listResources,
+  readResource, saveGmail, saveMailAccounts, saveReminders, undoGmail, writeResource } from './admin.ts';
+import { gmailService, type GmailService } from '../.pi/extensions/gmail/service.ts';
+import { GmailError } from '../.pi/extensions/gmail/schemas.ts';
 import type { MailTransport } from '../.pi/extensions/macos-mail/client.ts';
 import { defaultMailTransport } from '../.pi/extensions/macos-mail/mail-db.ts';
 import path from 'node:path';
@@ -36,7 +39,8 @@ async function readBody(request: IncomingMessage, limit: number): Promise<Buffer
 
 export async function makeServer(config: Config, app: Orchestrator, lifecycle: AbortSignal, activityFile: string | null = path.join(root, 'data/activity.log'), resourceRoot = root,
   trashDirs = [path.join(homedir(), '.Trash'), path.join(resourceRoot, 'data/trash')],
-  mail: { configPath?: string; transport?: MailTransport } = {}, tasks?: TaskOptions) {
+  mail: { configPath?: string; transport?: MailTransport; gmail?: GmailService } = {}, tasks?: TaskOptions) {
+  const gmail = mail.gmail ?? gmailService(root);
   const configPath = mail.configPath ?? path.join(root, 'config.json');
   const observe = <T>(details: Record<string, string | number | boolean>, action: () => Promise<T>) => activityFile ? observeRequest(activityFile, details, action) : action();
   const token = randomBytes(32).toString('base64url');
@@ -104,6 +108,14 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         if (request.url === '/admin/mail/save') return reply(200, await saveMailAccounts(config, configPath, (data as { accounts?: unknown }).accounts));
         if (request.url === '/admin/reminders') return reply(200, { enabled: config.reminders_enabled, tasks_enabled: config.tasks_enabled, tasks_list: config.tasks_list });
         if (request.url === '/admin/reminders/save') return reply(200, await saveReminders(config, configPath, data));
+        if (request.url === '/admin/gmail') return reply(200, await gmailStatus(config, gmail));
+        if (request.url === '/admin/gmail/save') return reply(200, await saveGmail(config, configPath, gmail, data));
+        if (request.url === '/admin/gmail/connect') return reply(200, await connectGmail(config, configPath, gmail));
+        if (request.url === '/admin/gmail/disconnect') return reply(200, await disconnectGmail(config, gmail));
+        if (request.url === '/admin/gmail/importance') return reply(200, { content: await gmail.importance() });
+        if (request.url === '/admin/gmail/importance/save') return reply(200, await gmail.saveImportance((data as { content?: unknown }).content));
+        if (request.url === '/admin/gmail/actions') return reply(200, await gmailActions(config, gmail));
+        if (request.url === '/admin/gmail/undo') return reply(200, await undoGmail(config, gmail));
         return reply(404, { error: 'Not found' });
       }
       if (request.url === '/cancel') { active?.controller.abort(); for (const t of transcriptions) t.abort(); return reply(200, { ok: true }); }
@@ -152,7 +164,7 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         while (task) { await Promise.race([task.done, cancelled]); current.controller.signal.throwIfAborted(); }
         reply(200, await observe({ kind: 'chat', offline: input.offline === true, text_chars: input.text.length }, () => app.ask(input.text as string, input.offline === true, AbortSignal.any([lifecycle, current.controller.signal])))); }
       finally { response.off('close', disconnected); if (active === current) active = undefined; current.finish(); }
-    } catch (error) { reply(400, { error: lifecycle.aborted ? 'Assistant is shutting down' : error instanceof Error ? error.message : 'Request failed',
+    } catch (error) { reply(400, { error: lifecycle.aborted ? 'Assistant is shutting down' : error instanceof GmailError ? error.code : error instanceof Error ? error.message : 'Request failed',
       ...(error instanceof NoSpeechError ? { code: 'NO_SPEECH' } : {}) }); }
   });
   server.requestTimeout = 30000;
