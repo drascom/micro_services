@@ -63,12 +63,17 @@ while a microphone permission dialog is open. Grant permission, then press
 and hold the shortcut again to start a fresh recording. Typed Send cancels
 any pending or active recording before submitting the text.
 
-Dictation: if a text field in another app has keyboard focus when you start
-holding the shortcut, the transcript is pasted there (clipboard + ⌘V, previous
-clipboard restored) and the assistant is not asked (no answer, no speech, no
-history). If it cannot be pasted (focus moved, Ayhan's own windows,
-no Accessibility permission — macOS asks once per launch), the transcript goes
-to the assistant as usual. The activity log records only the app id and length.
+Two hold-to-talk shortcuts (Admin → Settings; they may not be equal or nested):
+- **Assistant** (default ⌃⌥): always asks the assistant, never pastes. Pressing it stops
+  the assistant's voice at once. If the previous request is still generating, the new
+  text (voice or typed) is steered into it (Pi `steer`, one reply); if only its reply was
+  being read aloud, the new request starts immediately. Nothing waits in a queue.
+- **Dictation** (default ⌃⇧; ⌥⌘ if that clashes): pastes into the text field that had
+  focus at the press (clipboard + ⌘V, previous clipboard restored); never asks the
+  assistant. Not pasteable (focus moved, no field, no Accessibility permission) → the
+  text stays on the clipboard and the ring shows COPIED. Pressing it stops the
+  assistant's voice; a request still running finishes but its reply is not read aloud.
+  The activity log records only the app id and length.
 
 On first use, allow microphone access. If the shortcut is unavailable, select
 **Change shortcut…** in Admin → Settings, save the shortcut, and allow Input
@@ -438,8 +443,8 @@ and the list name (`tasks_list`, default `Asistan`). Write a task as a reminder 
   (also flagged → Flagged list; only our own flag is removed later). `✅`/final `⚠️` never run again; delete the
   prefix to run it again. A `⏳` left by a closed app runs again on start. Completed items are never scanned.
   Repeating reminders: the next occurrence likely keeps the `✅` title (unverified) — remove the prefix to rerun.
-- Each task is a normal request (same local/remote mode as the ring) that waits for the user's request and never
-  interrupts it; no conversation history in or out.
+- Each task is a normal request (same local/remote mode as the ring) that waits for the user's request; a user
+  request cancels a running task (left `⏳`, it runs again on the next scan); no conversation history in or out.
 - Success: a dated result (≤1500 chars) is appended below the reminder's notes (own text kept), title `✅`,
   a short macOS notification is shown, and `task_started`/`task_finished` appear in Activity.
   Failure: an error line, `⚠️` + flag, retried once after 5 min (`⏳`, unflagged), then left alone

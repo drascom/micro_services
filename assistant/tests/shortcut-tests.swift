@@ -31,6 +31,22 @@ struct ShortcutChecks {
         precondition(Shortcut.load(from: defaults) == letter)
         defaults.set(Data("invalid".utf8), forKey: "voiceShortcut")
         precondition(Shortcut.load(from: defaults) == .standard)
-        print("Shortcut checks passed: modifier chord, key chord, release, reset, validation, persistence.")
+        // Dictation chord: default never clashes with the assistant's; same or nested chords conflict.
+        let shift = CGEventFlags.maskShift.rawValue, command = CGEventFlags.maskCommand.rawValue
+        precondition(!Shortcut.dictationStandard.conflicts(with: .standard))
+        precondition(Shortcut.standard.conflicts(with: .standard))
+        precondition(Shortcut(modifiers: control, keyCode: nil, keyLabel: "").conflicts(with: .standard))
+        precondition(Shortcut.standard.conflicts(with: letter) && letter.conflicts(with: .standard))
+        precondition(!letter.conflicts(with: Shortcut(modifiers: control | option, keyCode: 1, keyLabel: "S")))
+        Shortcut(modifiers: control | shift, keyCode: nil, keyLabel: "").save(to: defaults)
+        let fallback = Shortcut.loadDictation(from: defaults)
+        precondition(!fallback.conflicts(with: Shortcut.load(from: defaults)) && fallback.modifiers == option | command)
+        Shortcut(modifiers: control, keyCode: nil, keyLabel: "").saveDictation(to: defaults)
+        precondition(Shortcut.loadDictation(from: defaults).modifiers == option | command) // a clashing saved chord is ignored
+        Shortcut.standard.save(to: defaults)
+        let custom = Shortcut(modifiers: command | shift, keyCode: 2, keyLabel: "D")
+        custom.saveDictation(to: defaults)
+        precondition(Shortcut.loadDictation(from: defaults) == custom)
+        print("Shortcut checks passed: modifier chord, key chord, release, reset, validation, persistence, dictation chord conflicts.")
     }
 }

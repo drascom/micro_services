@@ -7,7 +7,8 @@ import { ModelRuntime, type ExtensionFactory } from '@earendil-works/pi-coding-a
 import { fauxProvider, fauxAssistantMessage, fauxToolCall, type AssistantMessage } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
 import { defaults } from '../src/config.ts';
-import { createHarnessSession } from '../src/harness.ts';
+import { createHarnessSession, promptSteered } from '../src/harness.ts';
+import { Steering } from '../src/providers.ts';
 import skillManager from '../.pi/extensions/skill-manager.ts';
 import { publicUrl, searchResults, newsResults, publicHtml } from '../.pi/extensions/online-search.ts';
 
@@ -189,3 +190,29 @@ for (const name of ['source_check', 'fetch_content', 'get_search_content'] as co
     });
   }
 }
+
+test('steer: text added while a request runs reaches the same session before the next model call; one reply', async () => {
+  let started!: () => void, release!: () => void, calls = 0;
+  const ready = new Promise<void>(resolve => started = resolve), gate = new Promise<void>(resolve => release = resolve);
+  const f = await fixture([], false, true, pi => {
+    pi.registerTool({ name: 'web_search', label: 'Search', description: 'Test', parameters: Type.Object({ query: Type.String() }),
+      execute: async () => { started(); await gate; return { content: [{ type: 'text', text: 'result' }], details: {} }; } });
+  });
+  try {
+    f.fake.setResponses([() => { calls++; return tool('web_search', { query: 'weather' }); }, context => {
+      calls++; assert.match(JSON.stringify(context.messages.at(-1)), /also tomorrow/);
+      return fauxAssistantMessage('today and tomorrow');
+    }]);
+    const steering = new Steering(), signal = new AbortController().signal;
+    const work = promptSteered(f.session, 'weather today', { expandPromptTemplates: false }, signal, steering);
+    await ready;
+    assert.equal(steering.steer('also tomorrow'), true);
+    release(); await work;
+    assert.equal(calls, 2); assert.deepEqual(steering.accepted, ['also tomorrow']);
+    const turn = f.session.messages.slice(f.session.messages.findIndex(m => m.role === 'user' && JSON.stringify(m.content).includes('weather today')));
+    const replies = turn.filter(m => m.role === 'assistant' && m.content.some(b => b.type === 'text' && b.text.trim()));
+    assert.equal(replies.length, 1);
+    // Finished: no live session, so a later text is not steered (the server starts a new request instead).
+    assert.equal(steering.steer('late'), false);
+  } finally { release(); await f.cleanup(); }
+});

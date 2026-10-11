@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
 
-/// Voice dictation into another app's focused text field. A successful paste replaces the assistant request.
+/// Voice dictation (dictation shortcut) into another app's focused text field; never sent to the assistant.
 /// The target is captured when recording starts; pasting happens only if that same element still has focus.
 @MainActor
 enum Paster {
@@ -46,6 +46,12 @@ enum Paster {
             if board.changeCount == ours { board.clearContents(); if !backup.isEmpty { board.writeObjects(backup) } }
         }
         return target.bundle
+    }
+
+    /// Not pasted (no field, focus moved, no permission): the text stays on the clipboard.
+    static func copy(_ text: String) {
+        let board = NSPasteboard.general
+        board.clearContents(); board.setString(text, forType: .string)
     }
 
     private static func focusedElement() -> AXUIElement? {

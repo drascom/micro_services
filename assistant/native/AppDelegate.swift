@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         model = RingModel(backend: client, audio: AudioRecorder())
         model.captureFocus = { Paster.focusedTextTarget() }
         model.pasteInto = { target, text in (target as? Paster.Target).flatMap { Paster.paste(text, into: $0) } }
+        model.copyText = { Paster.copy($0) }
         admin = AdminModel(backend: client, ring: model)
         super.init()
     }
@@ -48,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         admin.actions = AdminModel.Actions(
             changeShortcut: { [weak self] in self?.changeShortcut() },
+            changeDictationShortcut: { [weak self] in self?.changeShortcut(dictation: true) },
             editInstructions: { [weak self] in self?.editInstructions() },
             openActivityLog: { [weak self] in self?.openActivityLog() },
             restart: { [weak self] in self?.restart() },
@@ -177,21 +179,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         admin.menuBarIcon = visible
         updateStatusIcon()
     }
-    private func changeShortcut() {
+    private func changeShortcut(dictation: Bool = false) {
         hotkey?.suspended = true
         defer { hotkey?.suspended = false }
-        let recorder = ShortcutCaptureView(shortcut: .load())
+        let current = dictation ? Shortcut.loadDictation() : Shortcut.load()
+        let other = dictation ? Shortcut.load() : Shortcut.loadDictation()
+        let recorder = ShortcutCaptureView(shortcut: current)
         let alert = NSAlert()
-        alert.messageText = "Kısayolu değiştir / Change shortcut"
+        alert.messageText = dictation ? "Dikte kısayolunu değiştir / Change dictation shortcut" : "Kısayolu değiştir / Change shortcut"
         alert.informativeText = "Tuşlara birlikte bas, bırak ve Tamam'a tıkla. En az bir Control, Option, Command veya Shift tuşu kullan.\nPress a chord, release it, then click OK. Include a modifier key."
         alert.accessoryView = recorder
         alert.addButton(withTitle: "Tamam / OK"); alert.addButton(withTitle: "İptal / Cancel")
         alert.window.initialFirstResponder = recorder
         NSApp.activate()
-        if alert.runModal() == .alertFirstButtonReturn {
-            recorder.candidate.save(); hotkey?.setShortcut(recorder.candidate)
-            if !model.shortcutEnabled { hotkey?.start(requestPermission: true) }
+        guard alert.runModal() == .alertFirstButtonReturn, recorder.candidate != current else { return }
+        // The two chords must differ and neither may be held inside the other.
+        guard !recorder.candidate.conflicts(with: other) else {
+            let refusal = NSAlert()
+            refusal.messageText = "Kısayol çakışıyor / Shortcut conflict"
+            refusal.informativeText = "\(recorder.candidate.label) ↔ \(other.label)"
+            refusal.runModal(); return
         }
+        if dictation { recorder.candidate.saveDictation(); hotkey?.setDictationShortcut(recorder.candidate) }
+        else { recorder.candidate.save(); hotkey?.setShortcut(recorder.candidate) }
+        if !model.shortcutEnabled { hotkey?.start(requestPermission: true) }
     }
     @objc private func reset() { model.newConversation() }
     @objc private func restart() {

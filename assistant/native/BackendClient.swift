@@ -24,6 +24,19 @@ actor BackendClient: AssistantBackend {
     struct Session: Decodable { let token: String; let max_record_seconds: Double }
     struct Reply: Decodable, Sendable {
         let text: String; let provider: String; let fallback_reason: String
+        /// Barge-in: the text was added to the request still generating; that request's reply answers both.
+        var steered = false
+        init(text: String, provider: String, fallback_reason: String, steered: Bool = false) {
+            self.text = text; self.provider = provider; self.fallback_reason = fallback_reason; self.steered = steered
+        }
+        private enum Keys: String, CodingKey { case text, provider, fallback_reason, steered }
+        init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: Keys.self)
+            steered = try values.decodeIfPresent(Bool.self, forKey: .steered) ?? false
+            text = steered ? "" : try values.decode(String.self, forKey: .text)
+            provider = try values.decodeIfPresent(String.self, forKey: .provider) ?? ""
+            fallback_reason = try values.decodeIfPresent(String.self, forKey: .fallback_reason) ?? ""
+        }
     }
     private var process: Process?
     private var token = ""

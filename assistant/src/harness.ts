@@ -4,7 +4,7 @@ import type { Context, Model, AssistantMessage } from '@earendil-works/pi-ai';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { root, type Config } from './config.ts';
-import { PiChat, type HarnessSkill } from './providers.ts';
+import { PiChat, type HarnessSkill, type Steering } from './providers.ts';
 import { FileCredentials } from './credentials.ts';
 import { permissionsExtension } from '../.pi/extensions/permissions.ts';
 import { activity } from './activity.ts';
@@ -130,6 +130,30 @@ export async function createHarnessSession(options: {
   } catch (error) { result.session.dispose(); throw error; }
 }
 
+type HarnessSession = Awaited<ReturnType<typeof createHarnessSession>>;
+/** Runs one request; barge-in text from `steering` is injected with Pi `steer` (delivered before the next model
+ *  call, so one reply). Text that missed the agent loop's last check is prompted once more in the same session. */
+export async function promptSteered(session: HarnessSession, text: string, options: { expandPromptTemplates: boolean },
+  signal: AbortSignal, steering?: Steering): Promise<void> {
+  let steers: Promise<unknown>[] = [], late: string[] = [], open = true;
+  steering?.attach(extra => {
+    if (!open || extra.startsWith('/')) return false;
+    if (session.isStreaming) steers.push(session.steer(extra).catch(() => { late.push(extra); })); else late.push(extra);
+    activity('request_steered'); return true;
+  });
+  try {
+    await session.prompt(text, options);
+    for (;;) {
+      signal.throwIfAborted();
+      while (steers.length) { const batch = steers; steers = []; await Promise.all(batch); }
+      late.push(...session.clearQueue().steering);
+      if (!late.length) { open = false; return; }
+      const next = late.join('\n\n'); late = [];
+      await session.prompt(next);
+    }
+  } finally { open = false; steering?.detach(); }
+}
+
 export class PiHarnessChat extends PiChat {
   private runtime?: Promise<ModelRuntime>;
   private getRuntime(): Promise<ModelRuntime> {
@@ -141,7 +165,7 @@ export class PiHarnessChat extends PiChat {
       return runtime;
     });
   }
-  override async complete(context: Context, signal: AbortSignal, options?: { offline: boolean; skill?: HarnessSkill; briefNews?: boolean; turn?: number; automated?: boolean }): Promise<AssistantMessage> {
+  override async complete(context: Context, signal: AbortSignal, options?: { offline: boolean; skill?: HarnessSkill; briefNews?: boolean; turn?: number; automated?: boolean; steering?: Steering }): Promise<AssistantMessage> {
     signal.throwIfAborted();
     const model = await this.resolveModel(); // Preserves subscription-only auth and global Pi model choice.
     const runtime = await this.getRuntime();
@@ -173,7 +197,7 @@ export class PiHarnessChat extends PiChat {
       if (!prompt || prompt.role !== 'user' || typeof prompt.content !== 'string') throw Error('A text user message is required');
       const text = options?.skill ? `/skill:${options.skill} ${prompt.content}` : prompt.content;
       if (options?.skill) activity('skill_selected', { skill: options.skill });
-      await session.prompt(text, { expandPromptTemplates: Boolean(options?.skill) });
+      await promptSteered(session, text, { expandPromptTemplates: Boolean(options?.skill) }, signal, options?.steering);
       signal.throwIfAborted();
       const last = session.messages.at(-1);
       if (last?.role !== 'assistant' || last.stopReason === 'error' || last.stopReason === 'aborted' ||

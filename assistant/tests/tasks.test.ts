@@ -239,15 +239,16 @@ test('harness: automated task gets no write tools and cannot delete reminders', 
   } finally { await unrouted.abort(); unrouted.dispose(); await rm(dir, { recursive: true, force: true }); }
 });
 
-test('server lane: a task never interrupts a user request; a user request during a task waits instead of 409', async () => {
+test('server lane: a task never interrupts a user request; a user request cancels a running task (it runs again later)', async () => {
   const lifecycle = new AbortController();
   let releaseTask!: () => void, taskStarted!: () => void, taskAborted = false;
   const taskGate = new Promise<void>(r => { releaseTask = r; }), started = new Promise<void>(r => { taskStarted = r; });
   const order: string[] = [];
   const remote: Chat = { complete: async (_context, signal, options) => {
     if (options?.automated) {
-      taskStarted(); signal.addEventListener('abort', () => { taskAborted = true; }, { once: true });
-      await taskGate; order.push('task'); return { ...fauxAssistantMessage('task result'), provider: 'openai' };
+      taskStarted();
+      await Promise.race([taskGate, new Promise((_, reject) => signal.addEventListener('abort', () => { taskAborted = true; reject(Error('aborted')); }, { once: true }))]);
+      order.push('task'); return { ...fauxAssistantMessage('task result'), provider: 'openai' };
     }
     order.push('chat'); return { ...fauxAssistantMessage('chat reply'), provider: 'openai' };
   } };
@@ -266,13 +267,10 @@ test('server lane: a task never interrupts a user request; a user request during
     const headers = { 'X-Assistant-Token': token };
     await started;
     const chat = fetch(base + '/chat', { method: 'POST', headers, body: '{"text":"hi"}' });
-    await new Promise(r => setTimeout(r, 100));
-    assert.deepEqual(order, []); // the user request waits for the running task
-    releaseTask();
-    const response = await chat;
-    assert.equal(response.status, 200); assert.equal(taskAborted, false);
-    assert.deepEqual(order, ['task', 'chat']); assert.equal(app.history.length, 2);
-    for (let i = 0; i < 50 && !notes.length; i++) await new Promise(r => setTimeout(r, 20));
-    assert.equal(items[0].title, '✅ Task 1'); assert.deepEqual(notes, ['Asistan: Task 1']);
+    const response = await chat; // the user comes first: the task is cancelled, not waited for
+    assert.equal(response.status, 200); assert.equal(taskAborted, true);
+    assert.deepEqual(order, ['chat']); assert.equal(app.history.length, 2);
+    await new Promise(r => setTimeout(r, 50));
+    assert.ok(items[0].title.startsWith('⏳'), items[0].title); assert.deepEqual(notes, []); // left ⏳: an interrupted run is redone on a later scan
   } finally { releaseTask(); lifecycle.abort(); await new Promise<void>(resolve => server.close(() => resolve())); }
 });

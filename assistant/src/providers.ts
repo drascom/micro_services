@@ -9,7 +9,22 @@ import { FileCredentials } from './credentials.ts';
 import type { Config } from './config.ts';
 
 export type HarnessSkill = 'online-search' | 'skill-manager' | 'mail-assistant' | 'reminders' | 'mail-triage';
-export interface Chat { complete(context: Context, signal: AbortSignal, options?: { offline: boolean; skill?: HarnessSkill; briefNews?: boolean; turn?: number; automated?: boolean }): Promise<AssistantMessage>; }
+export interface Chat { complete(context: Context, signal: AbortSignal, options?: { offline: boolean; skill?: HarnessSkill; briefNews?: boolean; turn?: number; automated?: boolean; steering?: Steering }): Promise<AssistantMessage>; }
+
+/** Barge-in: extra user text for a request that is still generating. Accepted only while a live Pi session
+ *  runs the request (it is injected before the next model call; one reply). Otherwise `steer` returns false. */
+export class Steering {
+  /** Every accepted text, in order (conversation history and a local fallback include them). */
+  readonly accepted: string[] = [];
+  private deliver?: (text: string) => boolean;
+  attach(deliver: (text: string) => boolean): void { this.deliver = deliver; }
+  detach(): void { this.deliver = undefined; }
+  steer(text: string): boolean {
+    text = text.trim();
+    if (!text || !this.deliver || !this.deliver(text)) return false;
+    this.accepted.push(text); return true;
+  }
+}
 export interface Intent { choice: string; confidence: number; provider: string; }
 export interface Classifier { classify(message: string, signal: AbortSignal): Promise<Intent>; }
 

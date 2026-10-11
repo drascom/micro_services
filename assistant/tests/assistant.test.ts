@@ -9,7 +9,7 @@ import { once } from 'node:events';
 import { createModels, fauxProvider, fauxAssistantMessage, type Context, type AssistantMessage } from '@earendil-works/pi-ai';
 import { loadConfig, defaults, type Config } from '../src/config.ts';
 import { Orchestrator } from '../src/orchestrator.ts';
-import { createCollection, PiChat, type Chat, type Classifier } from '../src/providers.ts';
+import { createCollection, PiChat, Steering, type Chat, type Classifier } from '../src/providers.ts';
 import { FileCredentials } from '../src/credentials.ts';
 import { LocalRuntime, runProcess } from '../src/processes.ts';
 import { NoSpeechError, guardText, wavDuration, type SpeechService } from '../src/speech.ts';
@@ -301,8 +301,80 @@ test('transcription runs beside an active chat without cancelling it; speech can
     assert.equal((await fetch(base + '/pause-speech', { method: 'POST', headers, body: '{}' })).status, 200);
     assert.equal((await fetch(base + '/resume-speech', { method: 'POST', headers, body: '{}' })).status, 200);
     assert.equal(pauses, 1); assert.equal(resumes, 1);
-    // A second chat still waits its turn (the host queues), the first is untouched.
-    assert.equal((await fetch(base + '/chat', { method: 'POST', headers, body: '{"text":"next"}' })).status, 409);
     finish(); assert.equal((await chat).status, 200); assert.equal(aborted, false);
   } finally { finish(); lifecycle.abort(); await new Promise<void>(resolve => server.close(() => resolve())); }
+});
+
+async function serve(f: ReturnType<typeof fixture>) {
+  const lifecycle = new AbortController();
+  const server = await makeServer(config, f.app, lifecycle.signal, null);
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const address = server.address(); assert.ok(address && typeof address === 'object');
+  const base = `http://127.0.0.1:${address.port}`;
+  const { token } = await (await fetch(base + '/session')).json() as { token: string };
+  const post = (route: string, body: unknown) => fetch(base + route, { method: 'POST', headers: { 'X-Assistant-Token': token }, body: JSON.stringify(body) });
+  return { post, close: async () => { lifecycle.abort(); await new Promise<void>(resolve => server.close(() => resolve())); } };
+}
+
+test('barge-in: a chat while a request generates is steered into it (one reply, both texts in history)', async () => {
+  const f = fixture();
+  let start!: () => void, finish!: () => void, steered: string[] = [], aborted = false;
+  const started = new Promise<void>(r => { start = r; }), gate = new Promise<void>(r => { finish = r; });
+  f.local.complete = async (context, signal, options) => {
+    options?.steering?.attach(text => { steered.push(text); return true; });
+    signal.addEventListener('abort', () => { aborted = true; }, { once: true });
+    start(); await gate; options?.steering?.detach();
+    return { ...fauxAssistantMessage('one reply for ' + [JSON.stringify(context.messages.at(-1)?.content), ...steered].join(' + ')), provider: 'local-gemma' };
+  };
+  const s = await serve(f);
+  try {
+    const first = s.post('/chat', { text: 'weather today', offline: true });
+    await started;
+    const second = await s.post('/chat', { text: 'and tomorrow', offline: true });
+    assert.equal(second.status, 200); assert.deepEqual(await second.json(), { steered: true });
+    finish();
+    const reply = await (await first).json() as { text: string };
+    assert.match(reply.text, /and tomorrow/); assert.equal(aborted, false);
+    assert.equal(f.app.history.length, 2); assert.equal(f.app.history[0].content, 'weather today\n\nand tomorrow');
+  } finally { finish(); await s.close(); }
+});
+
+test('barge-in without steering support: the running request is cancelled and a new one starts at once with both texts', async () => {
+  const f = fixture();
+  let start!: () => void, calls = 0;
+  const started = new Promise<void>(r => { start = r; });
+  const prompts: string[] = [];
+  f.local.complete = async (context, signal) => {
+    calls++; prompts.push(String(context.messages.at(-1)?.content));
+    if (calls === 1) { start(); await new Promise((_, reject) => signal.addEventListener('abort', () => reject(Error('aborted')), { once: true })); }
+    return { ...fauxAssistantMessage('fresh reply'), provider: 'local-gemma' };
+  };
+  const s = await serve(f);
+  try {
+    const first = s.post('/chat', { text: 'first', offline: true });
+    await started;
+    const second = await s.post('/chat', { text: 'second', offline: true });
+    assert.equal(second.status, 200); assert.equal((await second.json() as { text: string }).text, 'fresh reply');
+    const old = await first; assert.equal(old.status, 409); assert.equal((await old.json() as { code: string }).code, 'REPLACED');
+    assert.deepEqual(prompts, ['first', 'first\n\nsecond']); assert.equal(f.app.history.length, 2);
+  } finally { await s.close(); }
+});
+
+test('reply finished and only speech playing: stop-speech ends it and a new chat runs immediately', async () => {
+  const f = fixture();
+  let stops = 0; f.app.speech.stop = () => { stops++; };
+  const s = await serve(f);
+  try {
+    assert.equal((await s.post('/chat', { text: 'one', offline: true })).status, 200);
+    assert.equal((await s.post('/stop-speech', {})).status, 200); assert.equal(stops, 1);
+    const next = await s.post('/chat', { text: 'two', offline: true });
+    assert.equal(next.status, 200); assert.equal((await next.json() as { text: string }).text, 'local reply');
+  } finally { await s.close(); }
+});
+
+test('steering is refused when no live session is attached', () => {
+  const steering = new Steering();
+  assert.equal(steering.steer('x'), false);
+  steering.attach(() => true); assert.equal(steering.steer('  y '), true); assert.equal(steering.steer('   '), false);
+  steering.detach(); assert.equal(steering.steer('z'), false); assert.deepEqual(steering.accepted, ['y']);
 });

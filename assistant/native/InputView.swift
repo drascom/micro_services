@@ -3,7 +3,7 @@ import SwiftUI
 struct InputView: View {
     @Bindable var model: RingModel
     @FocusState private var focused: Bool
-    private var busy: Bool { model.phase == .starting || model.phase == .thinking }
+    private var busy: Bool { model.phase == .starting || model.changingMode } // Typed while busy: steered into the running request.
     var body: some View {
         VStack(spacing: 12) {
             if !model.response.isEmpty {

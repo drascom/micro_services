@@ -38,6 +38,11 @@ struct BackendTests {
         do { _ = try await stuck.admin("status"); expect(false, "rejection surfaces") }
         catch { expect(error.localizedDescription == "Invalid session", "error text kept") }
         expect(StubProtocol.posts == 2, "no loop")
+        // Barge-in reply: {"steered":true} carries no text; a normal reply is not steered.
+        let steered = try? JSONDecoder().decode(BackendClient.Reply.self, from: Data(#"{"steered":true}"#.utf8))
+        expect(steered?.steered == true && steered?.text == "", "steered reply decodes")
+        let normal = try? JSONDecoder().decode(BackendClient.Reply.self, from: Data(#"{"text":"hi","provider":"p","fallback_reason":""}"#.utf8))
+        expect(normal?.steered == false && normal?.text == "hi", "normal reply decodes")
         print("backend tests passed")
     }
 }

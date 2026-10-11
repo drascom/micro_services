@@ -15,6 +15,7 @@ import path from 'node:path';
 import { homedir } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { TaskScheduler, type Notify } from './tasks.ts';
+import { Steering } from './providers.ts';
 import { osascriptTransport, type RemindersTransport } from '../.pi/extensions/apple-reminders/client.ts';
 
 /** Assistant tasks (Reminders list) wiring; omitted = no scheduler (tests). */
@@ -44,9 +45,9 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
   const configPath = mail.configPath ?? path.join(root, 'config.json');
   const observe = <T>(details: Record<string, string | number | boolean>, action: () => Promise<T>) => activityFile ? observeRequest(activityFile, details, action) : action();
   const token = randomBytes(32).toString('base64url');
-  let active: { controller: AbortController; done: Promise<void>; finish: () => void } | undefined;
+  let active: { controller: AbortController; done: Promise<void>; finish: () => void; text: string; steering: Steering; replaced: boolean } | undefined;
   let unloading = false;
-  // An automated Reminders task holds this slot; it starts only when no user request runs and never interrupts one.
+  // An automated Reminders task holds this slot; it starts only when no user request runs; a user request cancels it.
   let task: ReturnType<typeof beginRequestSlot> | undefined;
   // Local/remote choice for tasks follows the ring's mode (last chat or /mode).
   let offlineMode = false;
@@ -152,17 +153,28 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         await observe({ kind: 'speech', text_chars: input.text.length }, () => app.speech.speak(input.text as string, lifecycle)); return reply(200, { ok: true });
       }
       if (!['/chat', '/reset'].includes(request.url || '')) return reply(404, { error: 'Not found' });
-      if (active || unloading) return reply(409, { error: 'Assistant is busy' });
+      if ((request.url === '/reset' && active) || unloading) return reply(409, { error: 'Assistant is busy' });
       if (request.url === '/reset') { app.reset(); return reply(200, { ok: true }); }
       if (typeof input.text !== 'string' || (input.offline !== undefined && typeof input.offline !== 'boolean')) throw Error('Invalid chat request');
-      const current = beginRequest(); active = current; offlineMode = input.offline === true;
+      let text = input.text;
+      if (active) {
+        // Barge-in: a request that is still generating takes the new text as a steer (one reply, on its response).
+        if (active.steering.steer(text)) return reply(200, { steered: true });
+        // Not steerable (no live Pi session yet, or finishing): cancel it and start now with both texts.
+        const previous = active; previous.replaced = true; previous.controller.abort(); await previous.done;
+        text = previous.text + '\n\n' + text;
+        if (active || unloading) return reply(409, { error: 'Assistant is busy' });
+      }
+      // The user comes first: a running automated task is cancelled; its reminder stays ⏳ and runs again on a later scan.
+      task?.controller.abort();
+      const current = { ...beginRequest(), text, steering: new Steering(), replaced: false }; active = current; offlineMode = input.offline === true;
       const disconnected = () => { if (!response.writableEnded) current.controller.abort(); };
       response.once('close', disconnected);
       try {
-        // A running task finishes first; this request waits its turn instead of being rejected.
         const cancelled = new Promise(resolve => current.controller.signal.addEventListener('abort', resolve, { once: true }));
         while (task) { await Promise.race([task.done, cancelled]); current.controller.signal.throwIfAborted(); }
-        reply(200, await observe({ kind: 'chat', offline: input.offline === true, text_chars: input.text.length }, () => app.ask(input.text as string, input.offline === true, AbortSignal.any([lifecycle, current.controller.signal])))); }
+        reply(200, await observe({ kind: 'chat', offline: input.offline === true, text_chars: text.length }, () => app.ask(text, input.offline === true, AbortSignal.any([lifecycle, current.controller.signal]), undefined, current.steering))); }
+      catch (error) { if (current.replaced) return reply(409, { error: 'Replaced by a newer request', code: 'REPLACED' }); throw error; }
       finally { response.off('close', disconnected); if (active === current) active = undefined; current.finish(); }
     } catch (error) { reply(400, { error: lifecycle.aborted ? 'Assistant is shutting down' : error instanceof GmailError ? error.code : error instanceof Error ? error.message : 'Request failed',
       ...(error instanceof NoSpeechError ? { code: 'NO_SPEECH' } : {}) }); }

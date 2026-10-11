@@ -46,6 +46,7 @@ struct ActivityRow: Identifiable { let id: Int; let time: String; let request: S
 final class AdminModel {
     struct Actions {
         var changeShortcut: () -> Void = {}
+        var changeDictationShortcut: () -> Void = {}
         var editInstructions: () -> Void = {}
         var openActivityLog: () -> Void = {}
         var restart: () -> Void = {}
@@ -422,6 +423,9 @@ private struct SettingsTab: View {
             Section("Etkileşim / Interaction") {
                 LabeledContent("Kısayol / Shortcut") {
                     HStack { Text(ring.shortcutLabel).monospaced(); Button("Kısayolu değiştir / Change shortcut…") { admin.actions.changeShortcut() } }
+                }
+                LabeledContent("Dikte kısayolu / Dictation shortcut") {
+                    HStack { Text(ring.dictationLabel).monospaced(); Button("Değiştir / Change…") { admin.actions.changeDictationShortcut() } }
                 }
                 LabeledContent("Talimatlar / Instructions") {
                     Button("Talimatları düzenle / Edit instructions…") { admin.actions.editInstructions() }

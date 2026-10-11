@@ -42,11 +42,16 @@ The app has one Swift/AppKit desktop host and one Node orchestration process
 plus local inference helpers. The desktop host owns a transparent floating
 NSPanel, SwiftUI animation/text UI, CoreGraphics modifier event monitor, and
 AVAudioRecorder. It talks to a protected native-only loopback API.
-At recording start the host notes another app's focused editable text element
-(Accessibility, `AXFocusedUIElement`); after `POST /transcribe` it pastes the
-transcript there if that element still has focus (`Paster.swift`). A successful
-paste is dictation: no chat, no TTS, no history; only `POST /dictation` logs app id
-+ length. If the paste is not possible, the transcript goes to the assistant.
+Two shortcuts: the dictation shortcut notes another app's focused editable text element
+(Accessibility, `AXFocusedUIElement`) and after `POST /transcribe` pastes there if it still has
+focus (`Paster.swift`), else copies to the clipboard; never chat/TTS/history, only `POST /dictation`
+logs app id + length. The assistant shortcut always goes to `/chat` and never pastes. Both stop
+speech at the press (`/stop-speech`); dictation also mutes the running request's reply.
+Barge-in: `/chat` while a request generates calls `Steering.steer` → `promptSteered` (Pi
+`session.steer`, delivered before the next model call; late text is prompted again in the same
+session) and returns `{steered:true}`; one reply on the first response, history keeps both texts.
+Not steerable (no live Pi session yet) → the running request is aborted (409 `REPLACED`) and a new
+one starts at once with both texts. A user `/chat` cancels a running Reminders task.
 It starts the backend automatically and stops only its owned process on quit.
 The ring's right-click menu is minimal (type, cancel, new conversation, Admin,
 restart, quit). A native SwiftUI Admin window holds settings, live status (`POST /status`:
@@ -112,7 +117,7 @@ offline fallback, bounded history, cancellation, and adapter seams.
 - Read-only email: `.pi/extensions/macos-mail` (tools `mail_list_messages`, `mail_read_message`) → `MailClient` (opaque per-request references, serial calls, limits, error codes) → injectable `MailTransport`: default `mail-db.ts` reads Mail's local store read-only (`Envelope Index` SQLite + `Accounts4.sqlite` names + `.emlx` via `mime.ts`; needs Full Disk Access, works with Mail closed) and falls back (sticky per request) to the fixed JXA `mail-reader.js` via `/usr/bin/osascript` on EPERM/missing files/unknown schema. Only the active `mail_accounts` (Admin-managed, saved to `config.json` under a lock, applied live); listings merge accounts, the model may only filter by an active account name; works offline; gated by `mail_read` permission and at least one active account.
 - Apple Reminders: `.pi/extensions/apple-reminders` (one `reminders` tool) → `RemindersClient` (opaque per-request refs, serial calls, generic error codes) → injectable transport, default fixed JXA `reminders-bridge.js` via `/usr/bin/osascript` (Reminders launched hidden). Registered only when `reminders_enabled` (Admin switch). Delete needs a backend `ConfirmationStore` token redeemable only in the next user turn (`newTurn()` per `Orchestrator.ask`, shared by remote attempt and local fallback) within 2 minutes; the next turn's system prompt names the pending deletion.
 - `ContextSource` remains an unused internal reference-data seam. Future user-facing calendar abilities must be Pi extension tools and skills, including cached offline reads, governed by the same permission hook.
-- Assistant tasks: `src/tasks.ts` `TaskScheduler` (started by `makeServer` when `TaskOptions` are given) lists open, due-or-undated reminders in `tasks_list` via the same bridge, takes the server's request lane (waits for `/chat`; `/chat` waits for a running task instead of 409), runs `Orchestrator.ask(..., { automated: true })` (no history, no user turn, tools filtered to `TASK_TOOLS`, permissions extension blocks other tools and `reminders delete`), appends the result to the notes and completes it. State key = hash(id + due), so a repeating reminder's next occurrence runs again.
+- Assistant tasks: `src/tasks.ts` `TaskScheduler` (started by `makeServer` when `TaskOptions` are given) lists open, due-or-undated reminders in `tasks_list` via the same bridge, takes the server's request lane (waits for `/chat`; `/chat` cancels a running task, which stays ⏳ and reruns on a later scan), runs `Orchestrator.ask(..., { automated: true })` (no history, no user turn, tools filtered to `TASK_TOOLS`, permissions extension blocks other tools and `reminders delete`), appends the result to the notes and completes it. State key = hash(id + due), so a repeating reminder's next occurrence runs again.
 - Gmail triage: `.pi/extensions/gmail` — `MailProvider` interface (`GmailProvider`: REST via injectable `fetch`), `GmailAuth` (OAuth Desktop, PKCE + loopback, access token in memory), `SecretStore` (`KeychainSecretStore` via `security` stdin; swappable for an encrypted file on Linux), `classify.ts` (DMARC/DKIM from Gmail's own header, category rules, batched model call built in `harness.ts` from the request's model, fixed level→action table), `MailTriage` (propose → next-turn token → apply/purge, undo from `data/mail-actions.jsonl`, processed ids in `data/mail-triage-state.json`, daily cap). Registered only when `gmail_triage_enabled` and connected, online only; Jev `mail_triage` routes to the `mail-triage` skill. Admin routes `/admin/gmail/*`.
 - External email/calendar writes require their own confirmed action model and reconnect logic (Reminders' next-turn token is the first such model).
 
