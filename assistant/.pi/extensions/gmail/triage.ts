@@ -5,7 +5,7 @@ import { ConfirmationStore } from '../apple-reminders/confirmations.ts';
 import type { RemindersTransport } from '../apple-reminders/client.ts';
 import { ACTIONS, classifyAll, clean, parseFrom, type ClassifyModel } from './classify.ts';
 import type { MailProvider, MessageMeta } from './provider.ts';
-import { GmailError, JUNK_LABEL, LATER_LABEL, type Level } from './schemas.ts';
+import { findLabel, GmailError, JUNK_LABEL, LATER_LABEL, LEVELS, type Level } from './schemas.ts';
 
 export const MAX_PROPOSE = 50, MAX_PURGE = 200, KEEP_DAYS = 60, MAX_PROCESSED = 20_000;
 export const REPLY_PREFIX = '📧';
@@ -34,6 +34,43 @@ async function mapLimit<T, R>(items: T[], limit: number, work: (item: T) => Prom
   return result;
 }
 const shown = (e: Pick<Entry, 'from' | 'subject'>) => { const f = parseFrom(e.from); return { from: f.name || f.address, subject: clean(e.subject, 100) }; };
+
+/** Subject for the model: long ids, numbers and hashes become `…` (years like 2026 stay). */
+export function scrub(subject: string): string {
+  const words = clean(subject, 200).split(' ').map(w => {
+    const digits = w.replace(/\D/g, '').length;
+    return digits >= 4 && !/^\W*(19|20)\d\d\W*$/.test(w) || /[0-9a-f]{12,}/i.test(w) || w.length >= 20 && /\d/.test(w) ? '…' : w;
+  });
+  return clean(words.join(' ').replace(/…(\s*…)+/g, '…'), 60);
+}
+
+export const MAX_GROUPS = 5;
+/**
+ * Compact per-sender summary of one level: `Sender (n): subject; subject`, at most MAX_GROUPS lines, the rest as one
+ * `and N more …` line. Distinct scrubbed subjects only (2 per sender), so six "project … shut down" mails read once.
+ */
+export function groups(entries: Pick<Entry, 'from' | 'subject'>[]): string[] {
+  const bySender = new Map<string, { n: number; subjects: Set<string> }>();
+  for (const e of entries) {
+    const f = parseFrom(e.from), key = f.name || f.domain || f.address || '?';
+    const g = bySender.get(key) ?? { n: 0, subjects: new Set<string>() };
+    g.n++; const subject = scrub(e.subject); if (subject) g.subjects.add(subject);
+    bySender.set(key, g);
+  }
+  const all = [...bySender.entries()].sort((a, b) => b[1].n - a[1].n);
+  const lines = all.slice(0, MAX_GROUPS).map(([from, g]) => {
+    const subjects = [...g.subjects];
+    return `${from} (${g.n}): ${subjects.slice(0, 2).join('; ')}${subjects.length > 2 ? '; …' : ''}`;
+  });
+  const rest = all.slice(MAX_GROUPS);
+  if (rest.length) lines.push(`and ${rest.length} more senders (${rest.reduce((sum, [, g]) => sum + g.n, 0)} mails)`);
+  return lines;
+}
+
+/** The latest proposal, per mail (sender + subject), for Admin > Status only; in memory, never sent to the model. */
+export type PlanView = { at: number; counts: Record<Level, number>; missing_labels: string[]; items: { level: Level; from: string; subject: string }[] };
+let lastPlanView: PlanView | undefined;
+export const lastPlan = () => lastPlanView;
 
 /**
  * Inbox triage: propose (no change) → apply with a token valid only in the user's next turn; purge_junk moves the
@@ -112,18 +149,20 @@ export class MailTriage {
     const metas = await mapLimit(ids, 5, id => this.o.provider.metadata(id, signal));
     const levels = await classifyAll(metas, this.o.settings.gmail_urgent_senders, await this.o.importance().catch(() => ''), this.o.model, signal);
     const entries: Entry[] = metas.map((m, i) => ({ id: m.id, level: levels[i], labels: sorted(m.labels), from: m.from, subject: m.subject }));
-    const missing = [LATER_LABEL, JUNK_LABEL].filter(name => !labels.has(name));
-    const counts = { urgent: 0, important: 0, later: 0, junk: 0 } as Record<Level, number>;
-    for (const e of entries) counts[e.level]++;
+    const labelIds = Object.fromEntries([LATER_LABEL, JUNK_LABEL].flatMap(name => { const id = findLabel(labels, name); return id ? [[name, id]] : []; }));
+    const missing = [LATER_LABEL, JUNK_LABEL].filter(name => !labelIds[name]);
+    // Counts come from the same entries the plan applies: they always add up to `total`.
+    const counts = Object.fromEntries(LEVELS.map(level => [level, entries.filter(e => e.level === level).length])) as Record<Level, number>;
     const skipped = entries.filter(e => ACTIONS[e.level].label && missing.includes(ACTIONS[e.level].label!)).length;
-    const labelIds = Object.fromEntries([LATER_LABEL, JUNK_LABEL].flatMap(name => labels.has(name) ? [[name, labels.get(name)!]] : []));
     const plan: Plan = { kind: 'apply', entries, labelIds };
-    return { status: 'proposal', counts,
-      urgent: entries.filter(e => e.level === 'urgent').slice(0, 10).map(shown),
-      important: entries.filter(e => e.level === 'important').slice(0, 10).map(shown),
+    lastPlanView = { at: this.o.now(), counts, missing_labels: missing, items: entries.map(e => ({ level: e.level, ...shown(e) })) };
+    const of = (level: Level) => entries.filter(e => e.level === level);
+    return { status: 'proposal', total: entries.length, counts,
+      ...(counts.urgent ? { urgent: groups(of('urgent')) } : {}), ...(counts.important ? { important: groups(of('important')) } : {}),
       ...(missing.length ? { missing_labels: missing, skipped } : {}),
       ...(this.o.proposeOnly ? { note: 'Plan only; nothing changes.' } : { confirm_token: this.issue(plan, 'apply'),
-        next: 'Show the counts and the urgent/important lines, ask whether to apply, then stop. Call apply with confirm_token only after the user\'s reply confirms.' }) };
+        next: 'Reply in 2-3 short sentences: level counts, the gist of the urgent/important senders (no ids or numbers), a missing label in one sentence; ' +
+          'ask "Uygulayayım mı?" and stop. Call apply with confirm_token only after the user\'s reply confirms.' }) };
   }
 
   async apply(token: string | undefined, signal: AbortSignal) {
@@ -194,7 +233,7 @@ export class MailTriage {
       }
       return { status: 'trashed', trashed, failed, limited: plan.ids.length - ids.length, note: 'Moved to Trash (recoverable for 30 days), not deleted.' };
     }
-    const labels = await this.o.provider.labels(signal), junk = labels.get(JUNK_LABEL);
+    const labels = await this.o.provider.labels(signal), junk = findLabel(labels, JUNK_LABEL);
     if (!junk) return { status: 'label_missing', missing_labels: [JUNK_LABEL] };
     const ids = await this.o.provider.labeled(junk, MAX_PURGE, signal);
     if (!ids.length) return { status: 'empty', note: `No mail labeled ${JUNK_LABEL}.` };

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { loadConfig, validateMailAccounts, validateUrgentSenders, type Config, type MailAccount } from './config.ts';
 import type { GmailService } from '../.pi/extensions/gmail/service.ts';
-import { MailTriage, triageMemory } from '../.pi/extensions/gmail/triage.ts';
+import { lastPlan, MailTriage, triageMemory } from '../.pi/extensions/gmail/triage.ts';
 import { MailError, mailAppAccounts, type MailTransport } from '../.pi/extensions/macos-mail/client.ts';
 import type { Orchestrator } from './orchestrator.ts';
 import { FileCredentials } from './credentials.ts';
@@ -316,7 +316,7 @@ export async function disconnectGmail(config: Config, service: GmailService) {
 const adminTriage = (config: Config, service: GmailService) => new MailTriage({ provider: service.provider, settings: config, memory: triageMemory,
   turn: 0, logFile: service.logFile, stateFile: service.stateFile, importance: () => service.importance() });
 export async function gmailActions(config: Config, service: GmailService) {
-  return { batches: await adminTriage(config, service).recent(10) };
+  return { batches: await adminTriage(config, service).recent(10), last_plan: lastPlan() ?? null };
 }
 export async function undoGmail(config: Config, service: GmailService) {
   const result = await adminTriage(config, service).undo(AbortSignal.timeout(60_000));

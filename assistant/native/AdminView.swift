@@ -36,7 +36,9 @@ struct GmailBatch: Decodable, Identifiable {
     let batch: String; let at: Double; let kind: String; let count: Int; let undone: Bool; let levels: [String: Int]
     var id: String { batch }
 }
-struct GmailBatches: Decodable { let batches: [GmailBatch] }
+struct GmailPlanItem: Decodable { let level: String; let from: String; let subject: String }
+struct GmailPlan: Decodable { let at: Double; let counts: [String: Int]; let missing_labels: [String]; let items: [GmailPlanItem] }
+struct GmailBatches: Decodable { let batches: [GmailBatch]; var last_plan: GmailPlan? }
 
 struct ActivityRow: Identifiable { let id: Int; let time: String; let request: String; let event: String; let details: String }
 
@@ -80,6 +82,7 @@ final class AdminModel {
     var gmailImportanceOriginal = ""
     var gmailMessage = ""
     var gmailBatches: [GmailBatch] = []
+    var gmailPlan: GmailPlan?
     private var polling: Task<Void, Never>?
 
     init(backend: BackendClient, ring: RingModel) { self.backend = backend; self.ring = ring }
@@ -266,7 +269,7 @@ final class AdminModel {
         catch { gmailMessage = error.localizedDescription }
     }
     func loadGmailActions() async {
-        if let data = try? await backend.admin("admin/gmail/actions"), let value = try? JSONDecoder().decode(GmailBatches.self, from: data) { gmailBatches = value.batches }
+        if let data = try? await backend.admin("admin/gmail/actions"), let value = try? JSONDecoder().decode(GmailBatches.self, from: data) { gmailBatches = value.batches; gmailPlan = value.last_plan }
     }
     func undoGmail() async {
         do {
@@ -359,10 +362,35 @@ private struct StatusTab: View {
                     }
                 }
             }
+            if let plan = admin.gmailPlan {
+                Section("Son plan / Last plan") {
+                    LabeledContent(Date(timeIntervalSince1970: plan.at / 1000).formatted(date: .abbreviated, time: .shortened),
+                                   value: ["urgent", "important", "later", "junk"].map { "\(Self.levelMark($0)) \(plan.counts[$0] ?? 0)" }.joined(separator: "  "))
+                    if !plan.missing_labels.isEmpty {
+                        Text("Eksik etiket / Missing label: " + plan.missing_labels.joined(separator: ", ")).foregroundStyle(.orange)
+                    }
+                    DisclosureGroup("Mailler / Mails (\(plan.items.count))") {
+                        ForEach(Array(plan.items.enumerated()), id: \.offset) { _, item in
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(Self.levelMark(item.level))
+                                Text(item.from).bold().lineLimit(1)
+                                Text(item.subject).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        }
+                    }
+                }
+            }
             if let updated = admin.updated {
                 Text("Güncellendi / Updated \(updated.formatted(date: .omitted, time: .standard))").font(.caption).foregroundStyle(.secondary)
             }
         }.formStyle(.grouped)
+        .task { await admin.loadGmailActions() }
+    }
+}
+
+extension StatusTab {
+    static func levelMark(_ level: String) -> String {
+        switch level { case "urgent": "🔴"; case "important": "🟠"; case "later": "🔵"; default: "⚪️" }
     }
 }
 

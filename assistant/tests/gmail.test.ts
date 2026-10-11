@@ -18,8 +18,8 @@ import { ACTIONS, authenticated, classifyAll, classifyPrompt, parseLevels, ruleL
 import { PROFILE_URL, REVOKE_URL, SCOPE, TOKEN_URL, type Http } from '../.pi/extensions/gmail/oauth.ts';
 import { MemorySecretStore } from '../.pi/extensions/gmail/secrets.ts';
 import { GmailService } from '../.pi/extensions/gmail/service.ts';
-import { GmailError } from '../.pi/extensions/gmail/schemas.ts';
-import { MailTriage, TriageMemory } from '../.pi/extensions/gmail/triage.ts';
+import { findLabel, GmailError } from '../.pi/extensions/gmail/schemas.ts';
+import { groups, lastPlan, MailTriage, scrub, TriageMemory } from '../.pi/extensions/gmail/triage.ts';
 import type { MessageMeta } from '../.pi/extensions/gmail/provider.ts';
 
 // Synthetic mail and a fake Gmail/OAuth transport only: no real network call, nothing is written to a real account.
@@ -181,7 +181,7 @@ test('propose changes nothing; apply only in the next turn, within 2 minutes; la
     const before = JSON.stringify(messages);
     const proposal = await f.triage(1, { model: async () => '{"1":"important"}' }).propose(live()) as any;
     assert.deepEqual(proposal.counts, { urgent: 1, important: 1, later: 1, junk: 1 });
-    assert.deepEqual(proposal.urgent, [{ from: 'Boss', subject: 'Subject u1' }]);
+    assert.deepEqual(proposal.urgent, ['Boss (1): Subject u1']);
     assert.equal(JSON.stringify(messages), before);
     assert.ok(!f.gmail.calls.some(c => c.method === 'POST' && c.url.includes('gmail.googleapis')));
     // Same turn: refused, token kept for the reply.
@@ -224,6 +224,43 @@ test('apply skips messages changed since the proposal and actions whose label is
     // Not processed: proposed again once the label exists.
     assert.deepEqual((await f.triage(3).propose(live()) as any).counts.junk, 1);
   } finally { await f.close(); }
+});
+
+test('labels match tolerantly (case, spaces, NFC, Turkish i, nested); a real miss keeps the exact name', () => {
+  const labels = new Map([['sonra  OKU ', 'L1'], ['Arşiv/Gereksiz', 'L2']]);
+  assert.equal(findLabel(labels, 'Sonra Oku'), 'L1');
+  assert.equal(findLabel(labels, 'Gereksiz'), 'L2');
+  assert.equal(findLabel(new Map([['GEREKSİZ', 'L3']]), 'Gereksiz'), 'L3');
+  assert.equal(findLabel(new Map([['Sonra Oku'.normalize('NFD'), 'L4']]), 'Sonra Oku'), 'L4');
+  assert.equal(findLabel(new Map([['Sonra', 'L5']]), 'Sonra Oku'), undefined);
+});
+
+test('propose: compact sender groups without ids; counts add up to the plan; full list only for Admin', async () => {
+  const shut = (id: string, n: string) => msg(id, { from: 'Google Cloud <cloud@google.com>', subject: `Your project gen-lang-client-${n} has been shut down` });
+  const messages = [shut('a', '0424431039'), shut('b', '0424431040'), shut('c', '0999111222'),
+    msg('d', { from: 'Google <no-reply@accounts.google.com>', subject: 'Security alert' }), msg('e', { from: 'Google <no-reply@accounts.google.com>', subject: 'Security alert' }),
+    ...['f', 'g', 'h', 'i', 'j', 'k'].map(id => msg(id)),
+    ...['p', 'q'].map(id => msg(id, { labels: ['INBOX', 'CATEGORY_PROMOTIONS'] }))];
+  const f = await setup(messages, { labels: [{ id: 'Label_1', name: 'sonra oku' }, { id: 'Label_2', name: 'Gereksiz' }] });
+  try {
+    const all = Object.fromEntries(Array.from({ length: 11 }, (_, i) => [String(i + 1), 'important']));
+    const proposal = await f.triage(1, { model: async () => JSON.stringify(all) }).propose(live()) as any;
+    assert.deepEqual(proposal.counts, { urgent: 0, important: 11, later: 0, junk: 2 });
+    assert.equal(proposal.total, 13);
+    assert.equal(proposal.missing_labels, undefined); // 'sonra oku' matches 'Sonra Oku'.
+    assert.deepEqual(proposal.important, ['Google Cloud (3): Your project … has been shut down', 'Google (2): Security alert',
+      'Sender f (1): Subject f', 'Sender g (1): Subject g', 'Sender h (1): Subject h', 'and 3 more senders (3 mails)']);
+    assert.ok(!JSON.stringify(proposal).includes('0424431039') && proposal.urgent === undefined);
+    // Admin keeps the per-mail list; counts = what apply changes.
+    assert.equal(lastPlan()!.items.length, 13);
+    assert.ok(lastPlan()!.items.some(i => i.subject.includes('0424431039')));
+    const result = await f.triage(2).apply(proposal.confirm_token, live()) as any;
+    assert.equal(result.applied, proposal.total);
+    assert.equal(messages.filter(m => m.labels.includes('Label_2')).length, proposal.counts.junk);
+    assert.equal(messages.filter(m => m.labels.includes('STARRED')).length, proposal.counts.important);
+  } finally { await f.close(); }
+  assert.equal(scrub('Order #12345678 for 2026 a1b2c3d4e5f6a7b8 shipped'), 'Order … for 2026 … shipped');
+  assert.deepEqual(groups([]), []);
 });
 
 test('daily limit, purge_junk → Trash only (never permanent delete), undo restores the last apply', async () => {
@@ -371,7 +408,8 @@ test('admin Gmail: client secret only in the secret store, settings in config.js
     // Actions and undo from Admin.
     const proposal = await f.triage(1).propose(live()) as any;
     await f.triage(2).apply(proposal.confirm_token, live());
-    assert.equal((await call('/admin/gmail/actions')).body.batches[0].count, 1);
+    const actions = (await call('/admin/gmail/actions')).body;
+    assert.deepEqual([actions.batches[0].count, actions.last_plan.items.length], [1, 1]);
     const undone = (await call('/admin/gmail/undo')).body;
     assert.deepEqual([undone.restored, undone.batches[0].undone], [1, true]);
     assert.equal((await call('/admin/gmail/undo')).body.error, 'nothing_to_undo');

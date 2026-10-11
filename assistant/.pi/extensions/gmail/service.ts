@@ -3,7 +3,7 @@ import path from 'node:path';
 import { GmailAuth, type Http } from './oauth.ts';
 import { GmailProvider, type MailProvider } from './provider.ts';
 import { KeychainSecretStore, type SecretStore } from './secrets.ts';
-import { JUNK_LABEL, LATER_LABEL } from './schemas.ts';
+import { findLabel, JUNK_LABEL, LATER_LABEL } from './schemas.ts';
 
 export const MAX_IMPORTANCE = 4000;
 
@@ -46,7 +46,7 @@ export class GmailService {
     if (!await this.connected()) return [];
     try {
       const labels = await this.provider.labels(AbortSignal.timeout(10_000));
-      const missing = [LATER_LABEL, JUNK_LABEL].filter(name => !labels.has(name));
+      const missing = [LATER_LABEL, JUNK_LABEL].filter(name => !findLabel(labels, name));
       this.labelsCache = { at: Date.now(), missing };
       return missing;
     } catch { return []; }

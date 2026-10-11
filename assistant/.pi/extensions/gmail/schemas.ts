@@ -15,6 +15,22 @@ export type Level = typeof LEVELS[number];
 /** User-created labels the actions need; the app never creates labels. */
 export const LATER_LABEL = 'Sonra Oku', JUNK_LABEL = 'Gereksiz';
 
+/** Case (Turkish dotted/dotless i too), spacing and Unicode-normalization insensitive label name. */
+export const labelKey = (name: string) => name.normalize('NFC').replace(/\s+/g, ' ').trim().toLocaleLowerCase('tr')
+  .replace(/ı/g, 'i').normalize('NFD').replace(/\u0307/g, '').normalize('NFC');
+/** Label id for a required name: exact, then tolerant (`labelKey`), then a nested `Parent/Name`. */
+export function findLabel(labels: ReadonlyMap<string, string>, name: string): string | undefined {
+  const exact = labels.get(name);
+  if (exact) return exact;
+  const want = labelKey(name);
+  let nested: string | undefined;
+  for (const [label, id] of labels) {
+    if (labelKey(label) === want) return id;
+    if (!nested && label.includes('/') && labelKey(label.slice(label.lastIndexOf('/') + 1)) === want) nested = id;
+  }
+  return nested;
+}
+
 export const GMAIL_ERROR_CODES = ['gmail_not_connected', 'gmail_auth_expired', 'gmail_rate_limited', 'gmail_unavailable',
   'gmail_wrong_account', 'gmail_not_configured', 'gmail_daily_limit', 'gmail_disabled', 'confirmation_invalid', 'confirmation_expired',
   'confirmation_needs_reply', 'nothing_to_undo', 'invalid_request', 'invalid_response', 'cancelled', 'timeout'] as const;
