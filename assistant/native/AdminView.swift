@@ -552,7 +552,7 @@ private struct GmailSection: View {
             }
             Toggle("Mail düzenleme / Mail organizing", isOn: Binding(get: { admin.gmail.triage_enabled }, set: { on in Task { await admin.setGmailTriage(on) } }))
                 .disabled(!admin.gmail.connected)
-            TextField("Acil gönderenler / Urgent senders", text: $admin.gmailUrgent, prompt: Text("boss@work.com, @council.gov.uk"))
+            TextField("Acil gönderenler / Urgent senders", text: $admin.gmailUrgent, prompt: Text("boss@work.com, @*.gov.uk"))
                 .onSubmit { Task { await admin.saveGmailUrgent() } }
             VStack(alignment: .leading) {
                 Text("Önem tanımı / Importance").font(.caption).foregroundStyle(.secondary)

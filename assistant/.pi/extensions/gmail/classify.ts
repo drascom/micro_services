@@ -1,3 +1,4 @@
+import { domainToASCII } from 'node:url';
 import { JUNK_LABEL, LATER_LABEL, type Level } from './schemas.ts';
 import type { MessageMeta } from './provider.ts';
 
@@ -33,7 +34,8 @@ const aligned = (domain: string, other: string) => Boolean(domain && other) && (
  * lower down is never trusted.
  */
 export function authenticated(meta: Pick<MessageMeta, 'auth' | 'from'>): boolean {
-  const domain = parseFrom(meta.from).domain;
+  const raw = parseFrom(meta.from).domain;
+  const domain = asciiDomain(raw) || raw;
   if (!meta.auth || !domain) return false;
   const text = meta.auth.replace(/\([^()]*\)/g, ' ').toLowerCase();
   const [server, ...clauses] = text.split(';').map(part => part.trim());
@@ -52,10 +54,40 @@ export function authenticated(meta: Pick<MessageMeta, 'auth' | 'from'>): boolean
   return false;
 }
 
-/** Admin list entry `a@b.c` (exact address) or `@b.c` (that domain). */
+/** Domain → lowercase ASCII (NFC, IDN punycode), at least two labels; '' when invalid. */
+export function asciiDomain(domain: string): string {
+  const value = domain.normalize('NFC').trim().replace(/\.$/, '');
+  if (!value || value.length > 253) return '';
+  const ascii = domainToASCII(value);
+  return /^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(ascii) ? ascii : '';
+}
+
+/**
+ * Admin urgent-sender entry → canonical form, '' when invalid: `a@b.c` (address), `@b.c` (that domain only) or
+ * `@*.b.c` (every subdomain of b.c, not b.c itself). `*` only as a leading `*.` with at least two labels after it.
+ */
+export function urgentEntry(raw: string): string {
+  const entry = raw.normalize('NFC').trim();
+  const at = entry.lastIndexOf('@');
+  if (at < 0) return '';
+  const local = entry.slice(0, at).toLowerCase();
+  let host = entry.slice(at + 1);
+  const wild = host.startsWith('*.');
+  if (wild) { if (local) return ''; host = host.slice(2); }
+  if (/[\s@<>",;*]/.test(local) || host.includes('*')) return '';
+  const domain = asciiDomain(host);
+  const result = domain ? `${local}@${wild ? '*.' : ''}${domain}` : '';
+  return result.length <= 254 ? result : '';
+}
+
+/** Sender address against canonical entries from urgentEntry (case-insensitive, IDN-normalised). */
 export function urgentSender(address: string, list: readonly string[]): boolean {
-  const domain = address.split('@')[1] ?? '';
-  return Boolean(address) && list.some(entry => entry.startsWith('@') ? domain === entry.slice(1) : address === entry);
+  const at = address.lastIndexOf('@');
+  const domain = at > 0 ? asciiDomain(address.slice(at + 1)) : '';
+  if (!domain) return false;
+  const full = `${address.slice(0, at).normalize('NFC').toLowerCase()}@${domain}`;
+  return list.some(entry => entry.startsWith('@*.') ? domain.endsWith(entry.slice(2))
+    : entry.startsWith('@') ? domain === entry.slice(1) : full === entry);
 }
 
 /** Deterministic rules first; `undefined` means the model decides. */

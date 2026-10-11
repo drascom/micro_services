@@ -2,6 +2,7 @@ import { readFile, chmod } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { homedir } from 'node:os';
+import { urgentEntry } from '../.pi/extensions/gmail/classify.ts';
 
 export const root = fileURLToPath(new URL('../', import.meta.url));
 const scalars = {
@@ -41,12 +42,12 @@ export const defaults = { ...scalars, mail_accounts: Object.freeze([]) as readon
 export type Config = { -readonly [K in keyof typeof scalars]: typeof scalars[K] extends number ? number :
   typeof scalars[K] extends boolean ? boolean : string } & { mail_accounts: readonly MailAccount[]; gmail_urgent_senders: readonly string[] };
 
-/** Gmail urgent senders (Admin only): exact addresses `a@b.c` or whole domains `@b.c`, lowercased, no duplicates. */
+/** Gmail urgent senders (Admin only): `a@b.c`, `@b.c` or `@*.b.c` (subdomains), normalised, no duplicates. */
 export function validateUrgentSenders(value: unknown): string[] {
   if (!Array.isArray(value) || value.length > MAX_URGENT_SENDERS) throw Error(`gmail_urgent_senders must be a list of at most ${MAX_URGENT_SENDERS}`);
   const result = value.map(item => {
-    const entry = typeof item === 'string' ? item.trim().toLowerCase() : '';
-    if (entry.length > 254 || !/^(?:[^\s@<>",;]+)?@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(entry)) throw Error('Invalid urgent sender: use name@domain or @domain');
+    const entry = typeof item === 'string' ? urgentEntry(item) : '';
+    if (!entry) throw Error(`Geçersiz / Invalid: ${String(item).slice(0, 60)}`);
     return entry;
   });
   return [...new Set(result)];

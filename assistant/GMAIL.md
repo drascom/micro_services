@@ -12,7 +12,7 @@
 4. In Gmail create two labels: `Sonra Oku` and `Gereksiz` (the app never creates labels; missing → that action is skipped).
 5. Admin → Ayarlar → **Gmail**: paste Client ID + secret → Kaydet; enter the account address; **Bağlan** → approve in the
    browser (loopback redirect to `127.0.0.1:<random port>`, PKCE). Then turn on **Mail düzenleme**.
-6. Optional: urgent senders (`boss@work.com, @council.gov.uk`) and the importance text (`data/mail-importance.md`,
+6. Optional: urgent senders (`boss@work.com, @council.gov.uk`, `@*.gov.uk` = every subdomain, not gov.uk itself; `*` only as leading `*.` + 2 labels) and the importance text (`data/mail-importance.md`,
    starts from `mail-importance.example.md`).
 
 Client ID/secret and the refresh token are stored in the macOS Keychain (`Ayhan Gmail`), never in `config.json` or logs.

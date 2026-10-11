@@ -14,7 +14,7 @@ import { Orchestrator } from '../src/orchestrator.ts';
 import { ConfirmationStore, CONFIRM_TTL_MS } from '../.pi/extensions/apple-reminders/confirmations.ts';
 import type { RemindersTransport } from '../.pi/extensions/apple-reminders/client.ts';
 import type { BridgeRequest } from '../.pi/extensions/apple-reminders/schemas.ts';
-import { ACTIONS, authenticated, classifyAll, classifyPrompt, parseLevels, ruleLevel } from '../.pi/extensions/gmail/classify.ts';
+import { ACTIONS, authenticated, classifyAll, urgentEntry, urgentSender, classifyPrompt, parseLevels, ruleLevel } from '../.pi/extensions/gmail/classify.ts';
 import { PROFILE_URL, REVOKE_URL, SCOPE, TOKEN_URL, type Http } from '../.pi/extensions/gmail/oauth.ts';
 import { MemorySecretStore } from '../.pi/extensions/gmail/secrets.ts';
 import { GmailService } from '../.pi/extensions/gmail/service.ts';
@@ -347,14 +347,34 @@ test('harness: mail_organize exists only when enabled and connected; online; new
   } finally { await f.close(); await rm(dir, { recursive: true, force: true }); }
 });
 
+test('urgent senders: @*.domain matches every subdomain but not the domain; patterns validated; DMARC still required', () => {
+  const list = ['@*.gov.uk', '@exact.example'];
+  assert.equal(urgentSender('a@council.gov.uk', list), true);
+  assert.equal(urgentSender('a@x.y.gov.uk', list), true);
+  assert.equal(urgentSender('A@Council.GOV.UK', list), true);
+  assert.equal(urgentSender('a@gov.uk', list), false);
+  assert.equal(urgentSender('a@evilgov.uk', list), false);
+  assert.equal(urgentSender('a@sub.exact.example', list), false);
+  assert.equal(urgentSender('a@exact.example', list), true);
+  assert.equal(urgentEntry('@*.Gov.UK'), '@*.gov.uk');
+  assert.equal(urgentEntry('@*.bücher.de'), '@*.xn--bcher-kva.de');
+  assert.equal(urgentSender('x@shop.bücher.de', [urgentEntry('@*.bücher.de')]), true);
+  for (const bad of ['@*', '@*.uk', '@*.com', 'a*.com', '@a*.com', '*@x.com', 'a@*.x.com', '@*.*.x.com', '@x.*.com', '@**.x.com', '@*x.com', '@.x.com'])
+    assert.equal(urgentEntry(bad), '', bad);
+  const meta = (from: string, auth?: string): MessageMeta => ({ id: 'x', labels: ['INBOX'], from, subject: 's', snippet: '', date: 0, auth });
+  assert.equal(ruleLevel(meta('C <c@council.gov.uk>', GOOGLE_OK('council.gov.uk')), list), 'urgent');
+  assert.equal(ruleLevel(meta('C <c@council.gov.uk>', 'mx.google.com; dmarc=fail header.from=council.gov.uk'), list), undefined);
+  assert.equal(ruleLevel(meta('C <c@council.gov.uk>', 'mx.google.com; dkim=pass header.d=other.gov.uk'), list), undefined);
+});
+
 test('config: urgent senders validated and lowercased; Gmail secrets never go to config.json', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'ayhan-gmail-config-'));
   try {
     const file = path.join(dir, 'config.json');
-    await writeFile(file, JSON.stringify({ gmail_urgent_senders: ['Boss@Work.example', '@Council.gov.uk', '@council.gov.uk'], gmail_triage_enabled: true }));
+    await writeFile(file, JSON.stringify({ gmail_urgent_senders: ['Boss@Work.example', '@Council.gov.uk', '@council.gov.uk', '@*.Gov.uk'], gmail_triage_enabled: true }));
     const config = await loadConfig(file);
-    assert.deepEqual(config.gmail_urgent_senders, ['boss@work.example', '@council.gov.uk']);
-    for (const bad of [['not an address'], ['@'], 'x', [1]]) {
+    assert.deepEqual(config.gmail_urgent_senders, ['boss@work.example', '@council.gov.uk', '@*.gov.uk']);
+    for (const bad of [['not an address'], ['@'], ['@*.uk'], ['a*.com'], 'x', [1]]) {
       await writeFile(file, JSON.stringify({ gmail_urgent_senders: bad }));
       await assert.rejects(loadConfig(file));
     }
