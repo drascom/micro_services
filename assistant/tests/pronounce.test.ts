@@ -11,6 +11,9 @@ const none = new Map<string, string>();
 test('CMUdict words become Turkish spellings', () => {
   assert.equal(respellEnglish('meeting update Google weather phone download computer doctor about', none),
     'miting apdeyt Gugıl vedır fon daunlod kompyutır doktır abaut');
+  assert.equal(respellEnglish('storage message package backup', none), 'storıc mesıc pekıc bekap');
+  assert.equal(respellEnglish('storage', parsePronunciations('storage=storeyc')), 'storeyc');
+  assert.equal(arpabetToTurkish('D EY1 T AH0', 'data'), 'deyta');
   assert.equal(arpabetToTurkish('DH AH0'), 'dı');
   assert.equal(arpabetToTurkish('JH AA1 B'), 'cab');
   assert.equal(arpabetToTurkish('JH AA1 B', 'job'), 'cob');

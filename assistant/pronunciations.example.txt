@@ -31,3 +31,4 @@ ChatGPT=çet ci pi ti
 Claude=Klod
 Codex=Kodeks
 Reminders=Rimayndırs
+storage=storeyc

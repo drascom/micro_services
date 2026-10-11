@@ -78,19 +78,20 @@ const PHONES: Record<string, string> = { AA: 'a', AE: 'e', AH: 'a', AO: 'o', AW:
 
 /**
  * ARPAbet (stress digits dropped) to Turkish letters. When the spelling's vowel groups line up one-to-one with the
- * vowel phones, the spelling picks AA/AH0 -> o ("online" onlayn, "doctor" doktır) or AH0 -> a ("data" deyta);
- * a word-initial AH0 is a ("update" apdeyt); otherwise unstressed AH is ı ("Google" gugıl).
+ * vowel phones, the spelling picks AA/AH0 -> o ("online" onlayn, "doctor" doktır) or a word-final AH0 -> a ("data" deyta);
+ * a word-initial AH0 is a ("update" apdeyt); otherwise unstressed AH is ı ("Google" gugıl, "storage" storıc).
  */
 export function arpabetToTurkish(phones: string, spelling = ''): string {
   const list = phones.split(' ').filter(Boolean);
   const groups = spelling.toLowerCase().replace(/([^aeiouy])e$/, '$1').match(/[aeiouy]+/g) ?? [];
   const vowels = list.filter(p => /\d$/.test(p)).length, aligned = groups.length === vowels;
   let index = 0, result = '';
-  for (const phone of list) {
+  for (const [i, phone] of list.entries()) {
+    const last = i === list.length - 1;
     const base = phone.replace(/\d$/, ''), group = /\d$/.test(phone) ? (aligned ? groups[index++] : '') : undefined;
     let letters = PHONES[base] ?? '';
     if (base === 'AA' && group?.includes('o') && !group.includes('a')) letters = 'o';
-    if (phone === 'AH0') letters = !result || group === 'a' ? 'a' : group === 'o' ? 'o' : 'ı';
+    if (phone === 'AH0') letters = !result || (group === 'a' && last) ? 'a' : group === 'o' ? 'o' : 'ı';
     result += letters;
   }
   return result;
