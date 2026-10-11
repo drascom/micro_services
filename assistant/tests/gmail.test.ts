@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { once } from 'node:events';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -8,6 +9,8 @@ import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai';
 import { defaults, loadConfig, type Config } from '../src/config.ts';
 import { createHarnessSession, harnessTools } from '../src/harness.ts';
+import { makeServer } from '../src/server.ts';
+import { Orchestrator } from '../src/orchestrator.ts';
 import { ConfirmationStore, CONFIRM_TTL_MS } from '../.pi/extensions/apple-reminders/confirmations.ts';
 import type { RemindersTransport } from '../.pi/extensions/apple-reminders/client.ts';
 import type { BridgeRequest } from '../.pi/extensions/apple-reminders/schemas.ts';
@@ -324,9 +327,6 @@ test('config: urgent senders validated and lowercased; Gmail secrets never go to
 });
 
 test('admin Gmail: client secret only in the secret store, settings in config.json, status without secrets, importance and undo', async () => {
-  const { makeServer } = await import('../src/server.ts');
-  const { Orchestrator } = await import('../src/orchestrator.ts');
-  const { once } = await import('node:events');
   const f = await setup([msg('a', { labels: ['INBOX', 'CATEGORY_SOCIAL'] })], { connected: false });
   f.store.values.clear();
   const config: Config = { ...defaults, pi_agent_dir: f.dir };
