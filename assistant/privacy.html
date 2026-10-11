@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>:root{color-scheme:light dark}body{font-family:-apple-system,system-ui,"Segoe UI",Roboto,sans-serif;line-height:1.6;max-width:720px;margin:0 auto;padding:24px 16px;color:#222;background:#fff}h1{font-size:1.8em;margin-bottom:.2em}h2{font-size:1.2em;margin-top:1.6em}a{color:#0b62c4}footer{margin-top:3em;font-size:.9em;color:#666}@media (prefers-color-scheme:dark){body{color:#ddd;background:#141414}a{color:#6cb0ff}footer{color:#999}}</style><title>Privacy Policy - Personal Assistant</title></head><body>
+<h1>Privacy Policy</h1>
+<p><em>Last updated: 2026-10-11</em></p>
+<p>Personal Assistant is a personal voice assistant that runs on its owner's own device or home server. It is used only by its owner (drascom) with his own Google account. This policy explains how it handles Google user data.</p>
+
+<h2>Google data accessed</h2>
+<p>The app requests a single Google scope: <code>https://www.googleapis.com/auth/gmail.modify</code>. It is used only to:</p>
+<ul>
+<li>read the owner's own inbox messages: sender, subject, Gmail's short snippet (preview), Gmail category labels and the authentication headers (Authentication-Results) used to verify the sender. The message body is not sent to the classifier;</li>
+<li>add and remove labels (for example starred, important, "Sonra Oku", "Gereksiz") and mark messages as read;</li>
+<li>move messages labelled as junk to Trash.</li>
+</ul>
+<p>The app never sends email and never permanently deletes messages. Actions can be undone from within the app.</p>
+
+<h2>How data is processed and stored</h2>
+<ul>
+<li>All processing happens on the owner's own device or server. There is no separate backend operated by the app.</li>
+<li>The OAuth client credentials and tokens are stored in the device's secure storage (macOS Keychain), never in configuration files or logs.</li>
+<li>Classification is done by a local language model running on the same device by default. If the owner chooses a remote LLM provider for a request in the app's settings (for example an OpenAI subscription model), the sender name and address, subject, snippet and Gmail category of the messages being sorted may be sent to that provider for that request. The message body is never sent.</li>
+<li>The action log stored on the device contains only message IDs, priority levels and labels &mdash; no message content.</li>
+</ul>
+
+<h2>Sharing</h2>
+<p>Google user data is not shared with third parties (except the optional, owner-selected LLM provider described above), is not sold, and is not used for advertising or to train AI/ML models.</p>
+
+<h2>Google API Services User Data Policy</h2>
+<p>Personal Assistant's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+
+<h2>Revoking access</h2>
+<p>Access can be removed at any time from your Google Account &rarr; Security &rarr; Third-party access (<a href="https://myaccount.google.com/connections">myaccount.google.com/connections</a>), or with the "Disconnect" button in the app, which revokes the token and deletes it from the device.</p>
+
+<h2>Contact</h2>
+<p>Questions: <a href="https://github.com/drascom/micro_services/issues">GitHub issues</a>.</p>
+<footer><a href="index.html">Personal Assistant</a> &middot; <a href="../">micro_services</a></footer>
+</body></html>
