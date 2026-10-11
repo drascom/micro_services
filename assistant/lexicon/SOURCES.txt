@@ -1,0 +1,10 @@
+Offline lexicons for Turkish TTS respelling of English words (src/pronounce.ts).
+Rebuild: node scripts/build-lexicon.ts <dir with the four source files below>
+
+cmudict.txt.gz - CMU Pronouncing Dictionary (first pronunciation per word)
+  https://github.com/cmusphinx/cmudict (cmudict.dict), BSD-2-Clause, see LICENSE-cmudict.txt
+
+turkish-words.txt.gz - Turkish words that CMUdict also has; these are never respelled
+  Zemberek master-dictionary.dict, https://github.com/ahmetaa/zemberek-nlp, Apache-2.0
+  FrequencyWords tr_50k.txt / en_50k.txt (2018, OpenSubtitles), https://github.com/hermitdave/FrequencyWords,
+  word lists CC-BY-SA-4.0 (code MIT); en_50k is used only to filter English words out of tr_50k

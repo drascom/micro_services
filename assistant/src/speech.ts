@@ -5,6 +5,7 @@ import type { ChildProcess } from 'node:child_process';
 import { runProcess, ownedProcess, type OwnedProcess } from './processes.ts';
 import type { Config } from './config.ts';
 import { spokenText } from './spoken-text.ts';
+import { loadLexicon, ttsText } from './pronounce.ts';
 import { activity } from './activity.ts';
 import { EmaWorker } from './ema-worker.ts';
 import { KokoroWorker } from './kokoro-worker.ts';
@@ -60,7 +61,7 @@ export function wavDuration(bytes: Buffer): number {
 
 export interface SpeechService { transcribe(bytes: Buffer, signal: AbortSignal): Promise<string>; speak(text: string, signal: AbortSignal): Promise<void>; stop(): void; pause?(): void; resume?(): void; close(): Promise<void>; processes?(): OwnedProcess[]; }
 export class Speech implements SpeechService {
-  config: Config; speaker?: AbortController; player?: ChildProcess; paused = false; ema: EmaWorker; kokoro: KokoroWorker; whisper: WhisperServer;
+  config: Config; speaker?: AbortController; player?: ChildProcess; paused = false; lexiconLogged = false; ema: EmaWorker; kokoro: KokoroWorker; whisper: WhisperServer;
   constructor(config: Config) {
     this.config = config; this.ema = new EmaWorker(config); this.kokoro = new KokoroWorker(config);
     this.whisper = new WhisperServer(config);
@@ -102,6 +103,12 @@ export class Speech implements SpeechService {
     try {
       const speechSignal = AbortSignal.any([signal, controller.signal, AbortSignal.timeout(300000)]);
       const language = (await runProcess(this.config.language_detector, [], speechSignal, text)).trim();
+      // Turkish voices: English words respelled (user dictionary, CMUdict). Speech input only; the reply is unchanged.
+      if (language === 'tr') {
+        const first = !this.lexiconLogged; this.lexiconLogged = true;
+        text = ttsText(text, language);
+        if (first) activity('lexicon_loaded', { ms: loadLexicon().ms });
+      }
       const piper = async () => {
         const model = language === 'tr' ? this.config.piper_model_tr : this.config.piper_model_en;
         const speed = language === 'tr' ? this.config.piper_speed_tr : this.config.piper_speed_en;

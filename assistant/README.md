@@ -486,6 +486,16 @@ model names are preserved. An URL-only reply produces no audio. All speech
 engines use the same filtered text, and language detection also uses it.
 The activity log records original/spoken character counts, not their contents.
 
+When the detected language is Turkish, `src/pronounce.ts` then respells English
+words for the Turkish voice (offline; screen text and model context unchanged):
+user dictionary `data/pronunciations.txt` (`word=reading`, case-insensitive,
+edited in Admin > Settings > Pronunciations; `pronunciations.example.txt` until
+saved) wins; known Turkish words and words with Turkish letters stay; all-caps
+2-5 letter acronyms use English letter names (`API` → ey-pi-ay); other words
+come from CMUdict ARPAbet mapped to Turkish letters (`meeting` → miting). A
+suffix after an apostrophe is kept (`Google'da` → Gugıl'da). Lexicons live in
+`lexicon/` (sources and licenses in `lexicon/SOURCES.txt`), loaded once (~40 ms).
+
 Brief news has a separate Jev intent. A Pi workflow extension selects the news
 category and limits a brief roundup to one search. Preloaded skills are marked
 as already supplied to avoid redundant reads; detailed research retains the

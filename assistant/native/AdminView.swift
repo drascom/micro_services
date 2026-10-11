@@ -82,6 +82,9 @@ final class AdminModel {
     var gmailImportance = ""
     var gmailImportanceOriginal = ""
     var gmailMessage = ""
+    var pronunciations = ""
+    var pronunciationsOriginal = ""
+    var pronunciationsMessage = ""
     var gmailBatches: [GmailBatch] = []
     var gmailPlan: GmailPlan?
     private var polling: Task<Void, Never>?
@@ -100,6 +103,7 @@ final class AdminModel {
         Task { await loadMailAccounts() }
         Task { await loadReminders() }
         Task { await loadGmail(); await loadImportance(); await loadGmailActions() }
+        Task { await loadPronunciations() }
     }
     func stopPolling() { polling?.cancel(); polling = nil }
 
@@ -268,6 +272,15 @@ final class AdminModel {
     func saveImportance() async {
         do { _ = try await backend.admin("admin/gmail/importance/save", ["content": gmailImportance]); gmailImportanceOriginal = gmailImportance; gmailMessage = "" }
         catch { gmailMessage = error.localizedDescription }
+    }
+    func loadPronunciations() async {
+        guard let data = try? await backend.admin("admin/pronunciations"),
+              let text = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["content"] as? String else { return }
+        pronunciations = text; pronunciationsOriginal = text
+    }
+    func savePronunciations() async {
+        do { _ = try await backend.admin("admin/pronunciations/save", ["content": pronunciations]); pronunciationsOriginal = pronunciations; pronunciationsMessage = "" }
+        catch { pronunciationsMessage = error.localizedDescription }
     }
     func loadGmailActions() async {
         if let data = try? await backend.admin("admin/gmail/actions"), let value = try? JSONDecoder().decode(GmailBatches.self, from: data) { gmailBatches = value.batches; gmailPlan = value.last_plan }
@@ -445,6 +458,14 @@ private struct SettingsTab: View {
             }
             MailAccountsSection(admin: admin, removing: $removing)
             GmailSection(admin: admin)
+            Section("Okunuşlar / Pronunciations") {
+                TextEditor(text: $admin.pronunciations).font(.system(.body, design: .monospaced)).frame(minHeight: 120)
+                HStack {
+                    if !admin.pronunciationsMessage.isEmpty { Text(admin.pronunciationsMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+                    Spacer()
+                    Button("Kaydet / Save") { Task { await admin.savePronunciations() } }.disabled(admin.pronunciations == admin.pronunciationsOriginal)
+                }
+            }
             Section("Uygulama / Application") {
                 Button("Yeniden başlat / Restart Ayhan") { admin.actions.restart() }
             }

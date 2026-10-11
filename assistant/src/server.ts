@@ -7,6 +7,7 @@ import { activity, observeRequest } from './activity.ts';
 import { root } from './config.ts';
 import { collectStatus, connectGmail, createExtension, createSkill, deleteResource, disconnectGmail, gmailActions, gmailStatus, listMailAccounts, listResources,
   readResource, saveGmail, saveMailAccounts, saveReminders, undoGmail, writeResource } from './admin.ts';
+import { readPronunciations, savePronunciations } from './pronounce.ts';
 import { gmailService, type GmailService } from '../.pi/extensions/gmail/service.ts';
 import { GmailError } from '../.pi/extensions/gmail/schemas.ts';
 import type { MailTransport } from '../.pi/extensions/macos-mail/client.ts';
@@ -115,6 +116,8 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         if (request.url === '/admin/gmail/disconnect') return reply(200, await disconnectGmail(config, gmail));
         if (request.url === '/admin/gmail/importance') return reply(200, { content: await gmail.importance() });
         if (request.url === '/admin/gmail/importance/save') return reply(200, await gmail.saveImportance((data as { content?: unknown }).content));
+        if (request.url === '/admin/pronunciations') return reply(200, { content: await readPronunciations() });
+        if (request.url === '/admin/pronunciations/save') return reply(200, await savePronunciations((data as { content?: unknown }).content));
         if (request.url === '/admin/gmail/actions') return reply(200, await gmailActions(config, gmail));
         if (request.url === '/admin/gmail/undo') return reply(200, await undoGmail(config, gmail));
         return reply(404, { error: 'Not found' });
