@@ -2,7 +2,7 @@ import { Type, type Static } from 'typebox';
 
 /** Model-facing inputs. The model never picks a mailbox; `account` only filters among the user's active accounts. */
 export const ListParams = Type.Object({
-  received_after: Type.Optional(Type.String({ minLength: 10, maxLength: 40, description: 'ISO-8601, max 30 days ago; default 7 days' })),
+  received_after: Type.Optional(Type.String({ minLength: 10, maxLength: 40, description: 'ISO-8601 date; default 7 days, older clamped to 30' })),
   today_only: Type.Optional(Type.Boolean()),
   unread_only: Type.Optional(Type.Boolean()),
   flagged_only: Type.Optional(Type.Boolean()),
@@ -39,7 +39,7 @@ export type BridgeMessage = { id: number; message_id: string; sender: string; su
 
 export type ListedMessage = { message_ref: string; account: string; sender: string; subject: string; date_received: string;
   read: boolean; flagged: boolean; size: number };
-export type ListResult = { messages: ListedMessage[]; matched: number; truncated: boolean };
+export type ListResult = { messages: ListedMessage[]; matched: number; truncated: boolean; note?: string };
 export type ReadResult = { sender: string; subject: string; date_received: string; body: string; truncated: boolean };
 
 export const MAIL_TOOL_NAMES = ['mail_list_messages', 'mail_read_message'] as const;

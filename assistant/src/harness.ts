@@ -32,10 +32,12 @@ const SKILL_TOOLS: Record<HarnessSkill, readonly string[]> = {
   'mail-triage': GMAIL_TOOL_NAMES
 };
 /** Context budget: only the tools a request can use are sent to the model (local and remote). */
-/** `organize`: Gmail connected and "Mail düzenleme" on; Gmail needs the network, so never offline. */
+/** `organize`: Gmail connected and "Mail düzenleme" on; Gmail needs the network, so never offline. A mail request routed
+ * to the read-only skill may still ask for a change ("delete these"), so mail-assistant gets mail_organize too. */
 export function harnessTools(skill: HarnessSkill | undefined, offline: boolean, reminders = false, organize = false): string[] {
   const gmail = organize && !offline ? GMAIL_TOOL_NAMES : [];
   if (skill === 'mail-triage') return [...gmail];
+  if (skill === 'mail-assistant') return [...MAIL_TOOL_NAMES, ...gmail];
   if (skill) return SKILL_TOOLS[skill].filter(tool => !offline || !SKILL_TOOLS['online-search'].includes(tool));
   // Unrouted request: `read` loads a matching skill; offline local Gemma routes email/reminders itself.
   return ['read', ...(offline ? [] : ['web_search', 'web_read']), ...MAIL_TOOL_NAMES, ...(reminders ? REMINDERS_TOOL_NAMES : []), ...gmail];
@@ -103,7 +105,7 @@ export async function createHarnessSession(options: {
       (tools.includes('web_search') ? 'Cite retrieved source URLs. ' : '') +
       `Date: ${new Date().toISOString().slice(0, 10)}.` + (options.offline ? ' Offline: no web access.' : '') +
       (tools.includes('reminders') ? ` Local time: ${localTime()}.` : '') +
-      (tools.includes('mail_organize') ? ' mail_organize may label, archive or trash Gmail; report only what it returned.' : '') +
+      (tools.includes('mail_organize') ? ' Report only what mail_organize returned.' : '') +
       (mailPending ? ` Pending ${mailPending.title}: if this message confirms, call mail_organize ${mailPending.title === 'junk purge' ? 'purge_junk' : 'apply'} with confirm_token ${mailPending.token}; otherwise do not.` : '') +
       (pending ? ` Pending reminder deletion ${JSON.stringify(pending.title)}: if this message confirms, call reminders delete with confirm_token ${pending.token}; otherwise do not delete.` : '')
     ],

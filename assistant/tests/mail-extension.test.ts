@@ -64,8 +64,15 @@ test('schemas enforce limits and reject account/mailbox selection by the model',
 test('list validates dates, applies the configured scope and returns opaque references', async () => {
   const b = bridge({ count: 30 });
   const client = new MailClient(settings, b.transport, () => NOW);
-  for (const received_after of ['2026-09-01T00:00:00Z', 'yesterday', '2026-10-20T00:00:00Z'])
-    assert.equal(await code(client.list({ received_after }, live())), 'invalid_request');
+  // A bad date says what is wrong; a too-old date is clamped to the allowed window (with a note), never an error.
+  for (const [received_after, hint] of [['yesterday', /ISO-8601 date like/], ['2026-10-20T00:00:00Z', /in the future/]] as const) {
+    const error = await client.list({ received_after }, live()).catch(e => e);
+    assert.equal(error.code, 'invalid_request'); assert.match(error.message, hint);
+  }
+  const old = await client.list({ received_after: '2025-01-01' }, live());
+  assert.match(old.note ?? '', /last 30 days/);
+  assert.equal(Date.parse((b.requests.at(-1) as Extract<BridgeRequest, { op: 'list' }>).received_after), NOW - 30 * 86_400_000);
+  assert.equal((await client.list({ received_after: '2026-10-05 08:00' }, live())).note, undefined); // space separator tolerated
   const result = await client.list({ limit: 25, sender_contains: 'Sender' }, live());
   assert.equal(result.messages.length, 25); assert.equal(result.truncated, true);
   const request = b.requests.at(-1) as Extract<BridgeRequest, { op: 'list' }>;
@@ -352,14 +359,15 @@ test('offline mode keeps local Mail tools available and web tools blocked', asyn
   } finally { await h.cleanup(); }
 });
 
-test('Mail budgets: 2 listings and 5 body reads per request', async () => {
+test('Mail budgets: 3 successful listings and 5 body reads per request; failed calls do not count', async () => {
   const reads = Array.from({ length: 6 }, () => (context: Context) => call('mail_read_message', { message_ref: firstRef(context) }));
-  const h = await harness([call('mail_list_messages', {}), call('mail_list_messages', {}), call('mail_list_messages', {}), ...reads,
-    fauxAssistantMessage('done')], { permission: 'allow' });
+  const h = await harness([call('mail_list_messages', { received_after: 'last week' }), call('mail_list_messages', {}), call('mail_list_messages', {}),
+    call('mail_list_messages', {}), call('mail_list_messages', {}), ...reads, fauxAssistantMessage('done')], { permission: 'allow' });
   try {
     await h.session.prompt('mail');
-    assert.deepEqual(h.bridge.requests.map(r => r.op), ['list', 'list', 'read', 'read', 'read', 'read', 'read']);
-    assert.deepEqual(h.results().map(r => r.isError), [false, false, true, false, false, false, false, false, true]);
+    assert.deepEqual(h.bridge.requests.map(r => r.op), ['list', 'list', 'list', 'read', 'read', 'read', 'read', 'read']);
+    assert.deepEqual(h.results().map(r => r.isError), [true, false, false, false, true, false, false, false, false, false, true]);
+    assert.match(JSON.stringify(h.results()[4].content), /listing budget \(3 per request\)/);
   } finally { await h.cleanup(); }
 });
 

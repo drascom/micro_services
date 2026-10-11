@@ -93,8 +93,8 @@ export class Jev implements Classifier {
     const result = await this.models.classify(model, { state: { message }, questions: {
       intent: { type: 'choice', instructions: 'Classify the user request by the main capability it needs.', criteria: {
         conversation: 'General chat, reasoning, writing, questions, or advice',
-        email: 'Read, search, draft, or send email',
-        mail_triage: 'Organize or clean up the Gmail inbox: sort by importance, label, archive, trash junk, or undo that (mail düzenle, temizle)',
+        email: 'Read, search, summarize, draft, or send email (no changes to existing mail)',
+        mail_triage: 'Change existing Gmail mail: delete/trash, archive, label, mark read, star, sort by importance, clean up or undo, also for specific senders or subjects (mail sil, düzenle, temizle)',
         calendar: 'Read or modify calendar events, availability, meetings, or appointments',
         reminders: 'Add, list, update, complete or delete reminders or to-dos (hatırlatıcı, yapılacaklar)',
         news: 'Brief latest/recent news, headlines or a short news roundup about a place/topic, including Turkish haber/haberler requests; use web_search for requested detailed investigation',

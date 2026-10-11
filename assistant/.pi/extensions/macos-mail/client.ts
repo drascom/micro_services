@@ -36,7 +36,8 @@ const MESSAGES: Record<MailErrorCode, string> = {
 
 export class MailError extends Error {
   readonly code: MailErrorCode;
-  constructor(code: MailErrorCode) { super(MESSAGES[code]); this.code = code; this.name = 'MailError'; }
+  /** `detail`: a fixed, data-free hint replacing the generic message (invalid_request only). */
+  constructor(code: MailErrorCode, detail?: string) { super(detail ?? MESSAGES[code]); this.code = code; this.name = 'MailError'; }
 }
 
 /** Read live on every call: Admin changes apply to the next tool call without a restart. */
@@ -167,12 +168,16 @@ export class MailClient {
     const scopes = this.scopes(input.account);
     const now = this.now(), maxAge = Math.min(this.settings.mail_max_age_days, 30) * DAY;
     // today_only wins over received_after: system-local midnight (DST-aware via Node's local time).
-    const given = input.today_only ? undefined : input.received_after;
-    const after = input.today_only ? new Date(now).setHours(0, 0, 0, 0)
+    // Tolerant date: a space instead of `T` is accepted; older than the allowed age is clamped (reported), never an error.
+    const given = input.today_only ? undefined : input.received_after?.trim().replace(/^(\d{4}-\d{2}-\d{2}) (?=\d)/, '$1T');
+    if (given !== undefined && !/^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:?\d{2})?)?$/.test(given))
+      throw new MailError('invalid_request', 'received_after must be an ISO-8601 date like 2026-10-01 or 2026-10-01T09:00:00Z; omit it for the last 7 days.');
+    let after = input.today_only ? new Date(now).setHours(0, 0, 0, 0)
       : given === undefined ? now - Math.min(7 * DAY, maxAge) : parseLocalIso(given);
-    if (!Number.isFinite(after) || after < now - maxAge - 60_000 || after > now + 60_000 ||
-        (given !== undefined && !/^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:?\d{2})?)?$/.test(given)))
-      throw new MailError('invalid_request');
+    if (!Number.isFinite(after)) throw new MailError('invalid_request', 'received_after is not a valid date; use e.g. 2026-10-01.');
+    if (after > now + 60_000) throw new MailError('invalid_request', 'received_after is in the future; use a past date or omit it.');
+    const clamped = after < now - maxAge;
+    if (clamped) after = now - maxAge;
     const limit = Math.min(input.limit ?? 10, this.settings.mail_max_list_results, 25);
     const filters = { received_after: new Date(after).toISOString(),
       unread_only: input.unread_only ?? false, flagged_only: input.flagged_only ?? false, limit,
@@ -198,7 +203,8 @@ export class MailClient {
         return { message_ref, account: cleanField(scope.account, 60), sender: cleanField(item.sender, 200), subject: cleanField(item.subject, 300),
           date_received: new Date(item.date_received).toISOString(), read: item.read, flagged: item.flagged, size: Math.round(item.size) };
       });
-      return { messages, matched, truncated: matched > messages.length || extra };
+      return { messages, matched, truncated: matched > messages.length || extra,
+        ...(clamped ? { note: `Only the last ${Math.round(maxAge / DAY)} days are searchable; older mail is not listed.` } : {}) };
     }).catch(error => { throw signal.aborted ? new MailError('cancelled') : error; });
   }
 

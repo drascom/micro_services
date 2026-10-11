@@ -7,13 +7,14 @@ import { ACTIONS, classifyAll, clean, parseFrom, type ClassifyModel } from './cl
 import type { MailProvider, MessageMeta } from './provider.ts';
 import { findLabel, GmailError, JUNK_LABEL, LATER_LABEL, LEVELS, type Level } from './schemas.ts';
 
-export const MAX_PROPOSE = 50, MAX_PURGE = 200, KEEP_DAYS = 60, MAX_PROCESSED = 20_000;
+export const MAX_PROPOSE = 50, MAX_PURGE = 200, MAX_FILTER = 100, KEEP_DAYS = 60, MAX_PROCESSED = 20_000;
 export const REPLY_PREFIX = '📧';
 
 export type TriageSettings = { gmail_urgent_senders: readonly string[]; gmail_daily_limit: number;
   reminders_enabled: boolean; tasks_list: string };
 type Entry = { id: string; level: Level; labels: string[]; from: string; subject: string };
-type Plan = { kind: 'apply'; entries: Entry[]; labelIds: Record<string, string> } | { kind: 'purge'; ids: string[] };
+type Plan = { kind: 'apply'; entries: Entry[]; labelIds: Record<string, string> } | { kind: 'purge'; ids: string[] }
+  | { kind: 'act'; act: string; entries: { id: string; labels: string[] }[]; add: string[]; remove: string[]; trash: boolean };
 export type LogLine = { at: number; batch: string; kind: 'apply' | 'trash' | 'undo'; id?: string; level?: Level; before?: string[]; after?: string[] };
 
 /** Plans awaiting the user's reply live for the whole backend process, like the reminder deletion token. */
@@ -32,6 +33,32 @@ async function mapLimit<T, R>(items: T[], limit: number, work: (item: T) => Prom
     while (next < items.length) { const i = next++; result[i] = await work(items[i]); }
   }));
   return result;
+}
+const BAD_ACT = 'act must be one of trash, archive, mark_read, mark_unread, star, unstar, label:<existing label>, unlabel:<label>, and needs a query.';
+const FIXED_ACTS: Record<string, { add: string[]; remove: string[] }> = {
+  archive: { add: [], remove: ['INBOX'] }, mark_read: { add: [], remove: ['UNREAD'] }, mark_unread: { add: ['UNREAD'], remove: [] },
+  star: { add: ['STARRED'], remove: [] }, unstar: { add: [], remove: ['STARRED'] }
+};
+/** A closed set of explicit actions; labels must already exist (the app never creates labels). */
+export function parseAct(act: string, labels: ReadonlyMap<string, string>): { add: string[]; remove: string[]; trash: boolean } | { missing: string } {
+  const value = act.trim();
+  if (value.length > 100) throw new GmailError('invalid_request', BAD_ACT);
+  if (value === 'trash') return { add: [], remove: [], trash: true };
+  if (FIXED_ACTS[value]) return { ...FIXED_ACTS[value], trash: false };
+  const named = /^(label|unlabel):(.+)$/.exec(value), name = named ? clean(named[2], 100) : '';
+  if (!named || !name) throw new GmailError('invalid_request', BAD_ACT);
+  const id = findLabel(labels, name);
+  if (!id) return { missing: name };
+  return named[1] === 'label' ? { add: [id], remove: [], trash: false } : { add: [], remove: [id], trash: false };
+}
+/** Gmail search scope: the inbox unless the query names `in:`/`label:`; `in:all` = all mail (Gmail still skips Spam/Trash). */
+export function scopedQuery(query: string): string {
+  const q = clean(query, 201);
+  if (q.length > 200) throw new GmailError('invalid_request', 'query is too long (max 200 characters).');
+  if (!q) throw new GmailError('invalid_request', 'query is empty; use e.g. from:example.com or subject:invoice.');
+  if (/(^|[\s(-])in:(anywhere|trash|spam)\b/i.test(q)) throw new GmailError('invalid_request', 'Trash and Spam cannot be searched; use in:all, in:inbox or label:<name>.');
+  if (/(^|[\s(-])in:all\b/i.test(q)) return clean(q.replace(/(^|[\s(])in:all\b/gi, ' '), 200) || 'in:inbox';
+  return /(^|[\s(-])(in|label):/i.test(q) ? q : `in:inbox ${q}`;
 }
 const shown = (e: Pick<Entry, 'from' | 'subject'>) => { const f = parseFrom(e.from); return { from: f.name || f.address, subject: clean(e.subject, 100) }; };
 
@@ -136,16 +163,20 @@ export class MailTriage {
     if (typeof result === 'string') throw new GmailError(result);
     const plan = this.o.memory.plans.get(result.id);
     this.o.memory.plans.delete(result.id);
-    if (!plan || plan.kind !== kind) throw new GmailError('confirmation_invalid');
+    if (!plan || (plan.kind === 'purge' ? 'purge' : 'apply') !== kind) throw new GmailError('confirmation_invalid');
     return plan;
   }
 
   // ---- actions ----
-  async propose(signal: AbortSignal) {
+  /** `query` limits the plan to matching mail; `act` replaces the importance levels with one explicit action. */
+  async propose(signal: AbortSignal, filter: { query?: string; act?: string } = {}) {
+    if (filter.act !== undefined && !filter.query) throw new GmailError('invalid_request', BAD_ACT);
+    const query = filter.query !== undefined ? scopedQuery(filter.query) : undefined;
     const labels = await this.o.provider.labels(signal);
+    if (filter.act !== undefined) return this.proposeAct(query!, filter.act, labels, signal);
     const done = await this.processed();
-    const ids = await this.o.provider.inbox(MAX_PROPOSE, id => id in done, signal);
-    if (!ids.length) return { status: 'empty', note: 'No new inbox mail to organize.' };
+    const ids = query ? await this.o.provider.search(query, MAX_PROPOSE, signal) : await this.o.provider.inbox(MAX_PROPOSE, id => id in done, signal);
+    if (!ids.length) return { status: 'empty', note: query ? 'No matching mail.' : 'No new inbox mail to organize.' };
     const metas = await mapLimit(ids, 5, id => this.o.provider.metadata(id, signal));
     const levels = await classifyAll(metas, this.o.settings.gmail_urgent_senders, await this.o.importance().catch(() => ''), this.o.model, signal);
     const entries: Entry[] = metas.map((m, i) => ({ id: m.id, level: levels[i], labels: sorted(m.labels), from: m.from, subject: m.subject }));
@@ -165,8 +196,64 @@ export class MailTriage {
           'ask "Uygulayayım mı?" and stop. Call apply with confirm_token only after the user\'s reply confirms.' }) };
   }
 
+  private async proposeAct(query: string, act: string, labels: Map<string, string>, signal: AbortSignal) {
+    const spec = parseAct(act, labels);
+    if ('missing' in spec) return { status: 'label_missing', missing_labels: [spec.missing], note: 'Labels are never created; the user creates it in Gmail.' };
+    const found = await this.o.provider.search(query, MAX_FILTER + 1, signal), ids = found.slice(0, MAX_FILTER);
+    if (!ids.length) return { status: 'empty', note: 'No matching mail.' };
+    const metas = await mapLimit(ids, 5, id => this.o.provider.metadata(id, signal));
+    const plan: Plan = { kind: 'act', act: act.trim(), entries: metas.map(m => ({ id: m.id, labels: sorted(m.labels) })), ...spec };
+    return { status: 'proposal', act: plan.act, total: ids.length, ...(found.length > MAX_FILTER ? { more: true } : {}), senders: groups(metas),
+      ...(spec.trash ? { note: 'Trash is recoverable for 30 days; nothing is deleted permanently.' } : {}),
+      ...(this.o.proposeOnly ? { plan_only: true } : { confirm_token: this.issue(plan, 'apply'),
+        next: 'Reply in 1-2 short sentences: count, action and main senders; ask "Uygulayayım mı?" and stop. Call apply with confirm_token only after the user\'s reply confirms.' }) };
+  }
+
+  private async applyAct(plan: Extract<Plan, { kind: 'act' }>, signal: AbortSignal) {
+    const remaining = await this.remaining();
+    if (remaining <= 0) throw new GmailError('gmail_daily_limit');
+    const result = { applied: 0, skipped_changed: 0, failed: 0, limited: 0 };
+    const current = await mapLimit(plan.entries, 5, e => this.o.provider.metadata(e.id, signal).catch(error => {
+      if (error instanceof GmailError && ['gmail_auth_expired', 'gmail_rate_limited', 'cancelled'].includes(error.code)) throw error;
+      return undefined;
+    }));
+    const unchanged = plan.entries.filter((e, i) => current[i] && JSON.stringify(sorted(current[i]!.labels)) === JSON.stringify(e.labels));
+    result.skipped_changed = plan.entries.length - unchanged.length;
+    const items = unchanged.slice(0, remaining), batch = 'b_' + randomBytes(6).toString('hex');
+    result.limited = unchanged.length - items.length;
+    if (plan.trash) {
+      for (const e of items) {
+        try { await this.o.provider.trash(e.id, signal); result.applied++; await this.append([{ at: this.o.now(), batch, kind: 'trash', id: e.id, before: e.labels }]); }
+        catch (error) {
+          if (error instanceof GmailError && ['gmail_auth_expired', 'gmail_rate_limited', 'cancelled'].includes(error.code)) { result.failed += items.length - result.applied - result.failed; break; }
+          result.failed++;
+        }
+      }
+    } else {
+      const groups = new Map<string, { add: string[]; remove: string[]; items: { id: string; before: string[]; after: string[] }[] }>();
+      for (const e of items) {
+        const add = plan.add.filter(l => !e.labels.includes(l)), remove = plan.remove.filter(l => e.labels.includes(l));
+        const key = JSON.stringify([add, remove]);
+        if (!groups.has(key)) groups.set(key, { add, remove, items: [] });
+        groups.get(key)!.items.push({ id: e.id, before: e.labels, after: sorted([...e.labels.filter(l => !remove.includes(l)), ...add]) });
+      }
+      for (const group of groups.values()) {
+        if (!group.add.length && !group.remove.length) { result.applied += group.items.length; continue; }
+        try { await this.o.provider.modify(group.items.map(x => x.id), group.add, group.remove, signal); }
+        catch (error) {
+          if (error instanceof GmailError && ['gmail_auth_expired', 'cancelled'].includes(error.code) && !result.applied) throw error;
+          result.failed += group.items.length; continue;
+        }
+        result.applied += group.items.length;
+        await this.append(group.items.map(x => ({ at: this.o.now(), batch, kind: 'apply' as const, id: x.id, before: x.before, after: x.after })));
+      }
+    }
+    return { status: 'applied', act: plan.act, ...result, ...(result.applied ? { undo: 'undo restores this change' } : {}) };
+  }
+
   async apply(token: string | undefined, signal: AbortSignal) {
     const plan = this.redeem(token, 'apply');
+    if (plan.kind === 'act') return this.applyAct(plan, signal);
     if (plan.kind !== 'apply') throw new GmailError('confirmation_invalid');
     let remaining = await this.remaining();
     if (remaining <= 0) throw new GmailError('gmail_daily_limit');
@@ -245,13 +332,14 @@ export class MailTriage {
         next: 'Ask the user to confirm moving these to Trash, then stop. Call purge_junk with confirm_token only after their reply confirms.' }) };
   }
 
-  /** Restores the labels of the last apply that is not undone yet. Harmless, so no confirmation. */
+  /** Restores the last change not undone yet: labels of an apply, or Trash → back (untrash). Harmless, so no confirmation. */
   async undo(signal: AbortSignal) {
     const lines = await this.log();
     const undone = new Set(lines.filter(l => l.kind === 'undo').map(l => l.batch));
-    const last = [...lines].reverse().find(l => l.kind === 'apply' && !undone.has(l.batch));
+    const last = [...lines].reverse().find(l => (l.kind === 'apply' || l.kind === 'trash') && l.id && !undone.has(l.batch));
     if (!last) throw new GmailError('nothing_to_undo');
     const items = lines.filter(l => l.kind === 'apply' && l.batch === last.batch && l.id && l.before && l.after);
+    const trashed = lines.filter(l => l.kind === 'trash' && l.batch === last.batch && l.id);
     const groups = new Map<string, { add: string[]; remove: string[]; ids: string[] }>();
     for (const l of items) {
       const add = l.before!.filter(x => !l.after!.includes(x)), remove = l.after!.filter(x => !l.before!.includes(x));
@@ -260,6 +348,10 @@ export class MailTriage {
       groups.get(key)!.ids.push(l.id!);
     }
     let restored = 0, failed = 0;
+    for (const l of trashed) {
+      try { await this.o.provider.untrash(l.id!, signal); restored++; }
+      catch (error) { if (error instanceof GmailError && error.code === 'gmail_auth_expired') throw error; failed++; }
+    }
     for (const g of groups.values()) {
       if (!g.add.length && !g.remove.length) { restored += g.ids.length; continue; }
       try { await this.o.provider.modify(g.ids, g.add, g.remove, signal); restored += g.ids.length; }

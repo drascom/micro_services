@@ -15,6 +15,8 @@ export interface MailProvider {
   labels(signal: AbortSignal): Promise<Map<string, string>>;
   /** Up to `max` inbox message ids, newest first, skipping ids for which `skip` is true. */
   inbox(max: number, skip: (id: string) => boolean, signal: AbortSignal): Promise<string[]>;
+  /** Up to `max` ids matching a Gmail search query (`q`), newest first. */
+  search(query: string, max: number, signal: AbortSignal): Promise<string[]>;
   /** Up to `max` ids carrying a label. */
   labeled(labelId: string, max: number, signal: AbortSignal): Promise<string[]>;
   metadata(id: string, signal: AbortSignal): Promise<MessageMeta>;
@@ -22,6 +24,8 @@ export interface MailProvider {
   modify(ids: string[], add: string[], remove: string[], signal: AbortSignal): Promise<void>;
   /** Moves to Trash (recoverable for 30 days). Permanent deletion is deliberately not part of this interface. */
   trash(id: string, signal: AbortSignal): Promise<void>;
+  /** Undo of `trash`. */
+  untrash(id: string, signal: AbortSignal): Promise<void>;
 }
 
 const BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
@@ -78,6 +82,7 @@ export class GmailProvider implements MailProvider {
     return found;
   }
   inbox(max: number, skip: (id: string) => boolean, signal: AbortSignal) { return this.ids('labelIds=INBOX', max, skip, signal); }
+  search(query: string, max: number, signal: AbortSignal) { return this.ids('q=' + encodeURIComponent(query), max, () => false, signal); }
   labeled(labelId: string, max: number, signal: AbortSignal) { return this.ids('labelIds=' + encodeURIComponent(labelId), max, () => false, signal); }
 
   async metadata(id: string, signal: AbortSignal): Promise<MessageMeta> {
@@ -99,5 +104,10 @@ export class GmailProvider implements MailProvider {
   async trash(id: string, signal: AbortSignal) {
     if (!ID.test(id)) throw new GmailError('invalid_request');
     await this.call('POST', `/messages/${id}/trash`, undefined, signal);
+  }
+
+  async untrash(id: string, signal: AbortSignal) {
+    if (!ID.test(id)) throw new GmailError('invalid_request');
+    await this.call('POST', `/messages/${id}/untrash`, undefined, signal);
   }
 }

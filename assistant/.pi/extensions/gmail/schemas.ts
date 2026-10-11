@@ -3,7 +3,10 @@ import { Type, type Static } from 'typebox';
 /** One model-facing tool, kept tiny: its schema is sent with every request that enables it. */
 export const OrganizeParams = Type.Object({
   action: Type.Enum(['propose', 'apply', 'purge_junk', 'undo']),
-  confirm_token: Type.Optional(Type.String({ maxLength: 40 }))
+  confirm_token: Type.Optional(Type.String({ maxLength: 40 })),
+  // Lengths are enforced in code (triage.ts) to keep this schema small.
+  query: Type.Optional(Type.String()),
+  act: Type.Optional(Type.String())
 }, { additionalProperties: false });
 export type OrganizeInput = Static<typeof OrganizeParams>;
 
@@ -58,5 +61,6 @@ const MESSAGES: Record<GmailErrorCode, string> = {
 
 export class GmailError extends Error {
   readonly code: GmailErrorCode;
-  constructor(code: GmailErrorCode) { super(MESSAGES[code]); this.code = code; this.name = 'GmailError'; }
+  /** `detail`: a fixed, data-free hint replacing the generic message. */
+  constructor(code: GmailErrorCode, detail?: string) { super(detail ?? MESSAGES[code]); this.code = code; this.name = 'GmailError'; }
 }

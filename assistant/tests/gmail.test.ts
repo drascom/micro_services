@@ -47,12 +47,17 @@ function fakeGmail(messages: Msg[], options: { email?: string; labels?: { id: st
     const u = new URL(url), route = u.pathname.replace('/gmail/v1/users/me', '');
     if (init.method === 'GET' && route === '/labels') return json({ labels });
     if (init.method === 'GET' && route === '/messages') {
-      const label = u.searchParams.get('labelIds')!;
-      return json({ messages: messages.filter(m => m.labels.includes(label)).map(m => ({ id: m.id })) });
+      const label = u.searchParams.get('labelIds'), q = u.searchParams.get('q');
+      // Tiny Gmail search: in:inbox / label:<id> scope, from:<text>, other words match the subject; Trash is never searched.
+      const match = (m: Msg) => !m.labels.includes('TRASH') && (q ?? '').split(' ').filter(Boolean).every(t =>
+        t === 'in:inbox' ? m.labels.includes('INBOX') : t.startsWith('label:') ? m.labels.includes(t.slice(6))
+          : t.startsWith('from:') ? m.from.toLowerCase().includes(t.slice(5).toLowerCase()) : m.subject.toLowerCase().includes(t.toLowerCase()));
+      return json({ messages: messages.filter(m => label ? m.labels.includes(label) : match(m)).map(m => ({ id: m.id })) });
     }
-    const one = /^\/messages\/([^/]+)(\/trash)?$/.exec(route), m = one && messages.find(x => x.id === one[1]);
+    const one = /^\/messages\/([^/]+)(\/trash|\/untrash)?$/.exec(route), m = one && messages.find(x => x.id === one[1]);
     if (init.method === 'GET' && m) return json({ id: m.id, labelIds: m.labels, snippet: m.snippet ?? 'snippet', internalDate: String(m.date ?? 0),
       payload: { headers: [{ name: 'From', value: m.from }, { name: 'Subject', value: m.subject }, ...(m.auth ?? []).map(value => ({ name: 'Authentication-Results', value }))] } });
+    if (init.method === 'POST' && one?.[2] === '/untrash' && m) { m.labels = ['INBOX', ...m.labels.filter(l => l !== 'TRASH')]; return json({ id: m.id }); }
     if (init.method === 'POST' && one?.[2] && m) { m.labels = ['TRASH', ...m.labels.filter(l => l !== 'INBOX')]; return json({ id: m.id }); }
     if (init.method === 'POST' && route === '/messages/batchModify') {
       const body = JSON.parse(init.body!) as { ids: string[]; addLabelIds: string[]; removeLabelIds: string[] };
@@ -292,6 +297,48 @@ test('daily limit, purge_junk → Trash only (never permanent delete), undo rest
   } finally { await f.close(); }
 });
 
+test('filtered propose: query limits the importance plan; explicit act → Trash/archive/label in the next turn; daily limit and undo cover it', async () => {
+  const cloud = (id: string, extra: Partial<Msg> = {}) => msg(id, { from: `Google Cloud <noreply-${id}@cloud.example>`, subject: 'Billing alert', ...extra });
+  const messages = [cloud('c1'), cloud('c2'), cloud('c3', { labels: ['CATEGORY_UPDATES'] }), msg('o1'), msg('o2')];
+  const f = await setup(messages, { labels: [{ id: 'Label_1', name: 'Sonra Oku' }, { id: 'Label_2', name: 'Gereksiz' }, { id: 'Label_9', name: 'Faturalar' }] });
+  try {
+    // No act: the usual importance plan, only for matching inbox mail.
+    const sorted = await f.triage(1).propose(live(), { query: 'from:google' }) as any;
+    assert.equal(sorted.total, 2);
+    // act trash ("sil"): count + sender groups, nothing changes until the next turn.
+    const plan = await f.triage(2).propose(live(), { query: 'from:google', act: 'trash' }) as any;
+    assert.deepEqual([plan.status, plan.act, plan.total], ['proposal', 'trash', 2]);
+    assert.match(plan.senders[0], /^Google Cloud \(2\)/); assert.ok(!JSON.stringify(plan).includes('c1'));
+    assert.equal(await code(f.triage(2).apply(plan.confirm_token, live())), 'confirmation_needs_reply');
+    assert.ok(messages.every(m => !m.labels.includes('TRASH')));
+    const done = await f.triage(3).apply(plan.confirm_token, live()) as any;
+    assert.equal(done.applied, 2);
+    assert.deepEqual(messages.filter(m => m.labels.includes('TRASH')).map(m => m.id), ['c1', 'c2']);
+    assert.ok(!f.gmail.calls.some(c => c.method === 'DELETE' || /batchDelete/.test(c.url)));
+    // Undo brings trashed mail back.
+    assert.equal((await f.triage(4).undo(live()) as any).restored, 2);
+    assert.ok(messages.every(m => !m.labels.includes('TRASH')));
+    // in:all reaches mail outside the inbox; label:X needs an existing label (never created).
+    const label = await f.triage(5).propose(live(), { query: 'from:google in:all', act: 'label:faturalar' }) as any;
+    assert.equal(label.total, 3);
+    await f.triage(6).apply(label.confirm_token, live());
+    assert.ok(messages.filter(m => m.id.startsWith('c')).every(m => m.labels.includes('Label_9')));
+    const missing = await f.triage(7).propose(live(), { query: 'from:google', act: 'label:Yok' }) as any;
+    assert.deepEqual([missing.status, missing.missing_labels], ['label_missing', ['Yok']]);
+    assert.ok(!f.gmail.calls.some(c => c.method === 'POST' && c.url.endsWith('/labels')));
+    // Daily limit covers explicit actions.
+    const archive = await f.triage(8, { settings: { gmail_daily_limit: 6 } }).propose(live(), { query: 'from:google', act: 'archive' }) as any;
+    const limited = await f.triage(9, { settings: { gmail_daily_limit: 6 } }).apply(archive.confirm_token, live()) as any;
+    assert.deepEqual([limited.applied, limited.limited], [1, 1]);
+    // Invalid input says what is wrong.
+    for (const [filter, hint] of [[{ act: 'trash' }, /needs a query/], [{ query: 'x', act: 'delete_forever' }, /act must be one of/],
+      [{ query: 'in:trash x', act: 'archive' }, /Trash and Spam/], [{ query: 'x'.repeat(201) }, /too long/]] as const) {
+      const error = await f.triage(10).propose(live(), filter).catch(e => e);
+      assert.equal(error.code, 'invalid_request'); assert.match(error.message, hint);
+    }
+  } finally { await f.close(); }
+});
+
 test('automated task: propose only (plan, no token), and apply is blocked', async () => {
   const f = await setup([msg('a')]);
   try {
@@ -306,6 +353,10 @@ test('harness: mail_organize exists only when enabled and connected; online; new
   assert.deepEqual(harnessTools('mail-triage', false, false, false), []);
   assert.deepEqual(harnessTools('mail-triage', true, false, true), []);
   assert.ok(!harnessTools(undefined, true, false, true).includes('mail_organize'));
+  // A mail request routed to the read-only skill can still ask for a change: mail_organize only when on and online.
+  assert.deepEqual(harnessTools('mail-assistant', false, false, true), ['mail_list_messages', 'mail_read_message', 'mail_organize']);
+  assert.deepEqual(harnessTools('mail-assistant', false, false, false), ['mail_list_messages', 'mail_read_message']);
+  assert.deepEqual(harnessTools('mail-assistant', true, false, true), ['mail_list_messages', 'mail_read_message']);
   const dir = await mkdtemp(path.join(tmpdir(), 'ayhan-gmail-harness-'));
   await mkdir(path.join(dir, '.pi/skills'), { recursive: true }); await mkdir(path.join(dir, '.pi/extensions'), { recursive: true });
   await writeFile(path.join(dir, '.pi/permissions.json'), JSON.stringify({ mail_organize: 'allow' }));

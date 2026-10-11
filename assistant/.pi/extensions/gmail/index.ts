@@ -31,13 +31,14 @@ export function gmailOrganize(options: { enabled: boolean; settings: TriageSetti
     pi.registerTool({
       name: 'mail_organize', label: 'Organize Gmail', executionMode: 'sequential',
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
-      description: 'Gmail inbox triage. propose: classify new inbox mail, no change, returns confirm_token. apply/purge_junk ' +
-        '(junk to Trash) need confirm_token, valid after the user\'s next reply. undo: revert the last apply.',
+      description: 'propose: plan+confirm_token, no change; query: Gmail search (inbox unless in:all/label:); ' +
+        'act: trash|archive|mark_read|mark_unread|star|unstar|label:X|unlabel:X, else importance. ' +
+        'apply/purge_junk (Gereksiz→Trash): token after user reply. undo: last change.',
       parameters: OrganizeParams,
       async execute(_id, params, signal) {
         const live = signal ?? new AbortController().signal;
         try {
-          const result: Record<string, unknown> = params.action === 'propose' ? await triage.propose(live)
+          const result: Record<string, unknown> = params.action === 'propose' ? await triage.propose(live, { query: params.query, act: params.act })
             : params.action === 'apply' ? await triage.apply(params.confirm_token, live)
             : params.action === 'purge_junk' ? await triage.purgeJunk(params.confirm_token, live)
             : await triage.undo(live);

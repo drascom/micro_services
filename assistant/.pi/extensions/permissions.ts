@@ -26,8 +26,9 @@ const TASK_ALLOWED = /^(read|web_search|web_read|fetch_content|mail_[a-z_]+|remi
 export function permissionsExtension(options: { root: string; offline: boolean; automated?: boolean }) {
   return (pi: ExtensionAPI) => {
     let calls = 0;
-    // Read-only Apple Mail: per-request budgets inside the overall 12-call limit.
-    const mailBudgets: Record<string, number> = { mail_list_messages: 2, mail_read_message: 5 };
+    // Read-only Apple Mail: per-request budgets inside the overall 12-call limit. Only successful calls count (a rejected
+    // date or filter returns no data); 3 listings leave room for one narrower retry while results stay small for local models.
+    const mailBudgets: Record<string, number> = { mail_list_messages: 3, mail_read_message: 5 };
     const mailCalls: Record<string, number> = {};
     let reminderCalls = 0, organizeCalls = 0;
     const check = async (event: ToolCallEvent): Promise<ToolCallEventResult | undefined> => {
@@ -84,9 +85,8 @@ export function permissionsExtension(options: { root: string; offline: boolean; 
           const permissions = JSON.parse(await readFile(path.join(options.root, '.pi/permissions.json'), 'utf8'));
           if (permissions?.mail_read !== 'allow') return { block: true, reason: 'Mail reading is disabled in Pi permissions. No permission has been granted.' };
         } catch { return { block: true, reason: 'Mail reading is disabled in Pi permissions. No permission has been granted.' }; }
-        mailCalls[event.toolName] = (mailCalls[event.toolName] ?? 0) + 1;
-        if (mailCalls[event.toolName] > mailBudgets[event.toolName])
-          return { block: true, reason: event.toolName === 'mail_list_messages' ? 'Mail listing budget (2 per request) is exhausted. Use the messages already listed.'
+        if ((mailCalls[event.toolName] ?? 0) >= mailBudgets[event.toolName])
+          return { block: true, reason: event.toolName === 'mail_list_messages' ? 'Mail listing budget (3 per request) is exhausted. Use the messages already listed.'
             : 'Mail body budget (5 per request) is exhausted. Summarize from the bodies and metadata already retrieved.' };
         return; // Local, read-only: available in offline mode too.
       }
@@ -115,6 +115,9 @@ export function permissionsExtension(options: { root: string; offline: boolean; 
       activity('permission_checked', { tool: event.toolName, allowed: !decision?.block,
         ...(decision?.reason ? { reason: decision.reason } : {}) });
       return decision;
+    });
+    pi.on('tool_result', event => {
+      if (!event.isError && Object.hasOwn(mailBudgets, event.toolName)) mailCalls[event.toolName] = (mailCalls[event.toolName] ?? 0) + 1;
     });
     pi.on('user_bash', () => ({ result: { output: 'Shell execution is not an approved assistant ability.', exitCode: 1, cancelled: false, truncated: false } }));
   };

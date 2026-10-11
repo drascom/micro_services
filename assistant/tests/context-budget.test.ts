@@ -82,6 +82,10 @@ test('Gmail triage adds one compact tool only when enabled and connected', async
   const plain = await measure(undefined, false), organize = await measure(undefined, false, false, true);
   assert.deepEqual(organize.names.filter(name => !plain.names.includes(name)), ['mail_organize']);
   assert.ok(organize.chars - plain.chars <= LIMITS.unrouted_gmail_added, `${organize.chars - plain.chars} chars added`);
+  // mail-assistant route with Gmail on: the same one tool, no more.
+  const mail = await measure('mail-assistant', false), mailOrganize = await measure('mail-assistant', false, false, true);
+  assert.deepEqual(mailOrganize.names.filter(name => !mail.names.includes(name)), ['mail_organize']);
+  assert.ok(mailOrganize.chars - mail.chars <= LIMITS.unrouted_gmail_added, `${mailOrganize.chars - mail.chars} chars added`);
 });
 
 test('missing tools are never faked, routed or not', async () => {
