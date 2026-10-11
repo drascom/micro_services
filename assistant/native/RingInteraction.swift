@@ -1,17 +1,17 @@
 import AppKit
 import SwiftUI
 
-// Handle click and drag explicitly: SwiftUI hosting consumes background mouse events.
+// Handle double-click and drag explicitly: SwiftUI hosting consumes background mouse events.
 struct RingInteraction: NSViewRepresentable {
-    let onClick: () -> Void
+    let onDoubleClick: () -> Void
     let onRightClick: () -> Void
-    func makeNSView(context: Context) -> RingMouseView { let view = RingMouseView(); view.onClick = onClick; view.onRightClick = onRightClick; return view }
-    func updateNSView(_ view: RingMouseView, context: Context) { view.onClick = onClick; view.onRightClick = onRightClick }
+    func makeNSView(context: Context) -> RingMouseView { let view = RingMouseView(); view.onDoubleClick = onDoubleClick; view.onRightClick = onRightClick; return view }
+    func updateNSView(_ view: RingMouseView, context: Context) { view.onDoubleClick = onDoubleClick; view.onRightClick = onRightClick }
 }
 
 @MainActor
 final class RingMouseView: NSView {
-    var onClick: () -> Void = {}
+    var onDoubleClick: () -> Void = {}
     var onRightClick: () -> Void = {}
     override func rightMouseDown(with event: NSEvent) { onRightClick() }
     private var downPoint = NSPoint.zero
@@ -28,7 +28,7 @@ final class RingMouseView: NSView {
         if hypot(dx, dy) > 4 { dragged = true }
         if dragged { window?.setFrameOrigin(NSPoint(x: downOrigin.x + dx, y: downOrigin.y + dy)) }
     }
-    override func mouseUp(with event: NSEvent) { if !dragged { onClick() } }
+    override func mouseUp(with event: NSEvent) { if !dragged && event.clickCount == 2 { onDoubleClick() } }
 }
 
 @MainActor

@@ -52,6 +52,6 @@ struct RingView: View {
                     do { try await Task.sleep(for: .seconds(2)) } catch { return }
                 }
             }
-            .overlay(RingInteraction(onClick: model.toggleInput, onRightClick: model.contextMenu))
+            .overlay(RingInteraction(onDoubleClick: model.toggleInput, onRightClick: model.contextMenu))
     }
 }

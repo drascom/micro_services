@@ -58,7 +58,7 @@ final class RingModel {
     private var ready = false
 
     init(backend: any AssistantBackend, audio: any AudioCapture) { self.backend = backend; self.audio = audio }
-    private var idleStatus: String { "\(shortcutLabel) • click to type" }
+    private var idleStatus: String { "\(shortcutLabel) • double-click to type" }
     func connect() {
         Task { do { try await backend.connect(); ready = true; phase = .idle; status = idleStatus }
             catch { fail(error) } }
