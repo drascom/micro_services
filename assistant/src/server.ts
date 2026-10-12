@@ -5,8 +5,9 @@ import type { Orchestrator } from './orchestrator.ts';
 import { NoSpeechError } from './speech.ts';
 import { activity, observeRequest } from './activity.ts';
 import { root } from './config.ts';
-import { collectStatus, connectGmail, createExtension, createSkill, deleteResource, disconnectGmail, gmailActions, gmailStatus, listMailAccounts, listResources,
-  readResource, saveGmail, saveMailAccounts, saveReminders, undoGmail, writeResource } from './admin.ts';
+import { collectStatus, connectGmail, createExtension, createSkill, deleteResource, disconnectGmail, filesStatus, gmailActions, gmailStatus, listMailAccounts, listResources,
+  readResource, saveFiles, saveGmail, saveMailAccounts, saveReminders, undoGmail, writeResource } from './admin.ts';
+import { fileService, type FileService } from './files.ts';
 import { readPronunciations, savePronunciations } from './pronounce.ts';
 import { gmailService, type GmailService } from '../.pi/extensions/gmail/service.ts';
 import { GmailError } from '../.pi/extensions/gmail/schemas.ts';
@@ -41,8 +42,9 @@ async function readBody(request: IncomingMessage, limit: number): Promise<Buffer
 
 export async function makeServer(config: Config, app: Orchestrator, lifecycle: AbortSignal, activityFile: string | null = path.join(root, 'data/activity.log'), resourceRoot = root,
   trashDirs = [path.join(homedir(), '.Trash'), path.join(resourceRoot, 'data/trash')],
-  mail: { configPath?: string; transport?: MailTransport; gmail?: GmailService } = {}, tasks?: TaskOptions) {
+  mail: { configPath?: string; transport?: MailTransport; gmail?: GmailService; files?: FileService } = {}, tasks?: TaskOptions) {
   const gmail = mail.gmail ?? gmailService(root);
+  const files = mail.files ?? fileService(config);
   const configPath = mail.configPath ?? path.join(root, 'config.json');
   const observe = <T>(details: Record<string, string | number | boolean>, action: () => Promise<T>) => activityFile ? observeRequest(activityFile, details, action) : action();
   const token = randomBytes(32).toString('base64url');
@@ -54,6 +56,8 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
   let offlineMode = false;
   const transcriptions = new Set<AbortController>();
   const beginRequest = beginRequestSlot;
+  // Background file indexing waits while the user's request or a task runs.
+  files.busy = () => Boolean(active || task || unloading);
   const lane = {
     async acquire(signal: AbortSignal) {
       while (active || unloading || task) await sleep(250, undefined, { signal: AbortSignal.any([signal, lifecycle]) });
@@ -97,7 +101,7 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
       if (!data || typeof data !== 'object' || Array.isArray(data)) throw Error('Expected an object');
       const input = data as { text?: unknown; offline?: unknown };
       // Native admin window (user actions; read-only status plus app-owned skill/extension files).
-      if (request.url === '/status') return reply(200, await collectStatus(config, app, { busy: Boolean(active || task), unloading }, activityFile));
+      if (request.url === '/status') return reply(200, await collectStatus(config, app, { busy: Boolean(active || task), unloading }, activityFile, files));
       if (request.url?.startsWith('/admin/')) {
         const value = data as { kind?: unknown; path?: unknown; content?: unknown; name?: unknown; description?: unknown };
         if (request.url === '/admin/resources') return reply(200, await listResources(resourceRoot));
@@ -120,6 +124,9 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         if (request.url === '/admin/pronunciations/save') return reply(200, await savePronunciations((data as { content?: unknown }).content));
         if (request.url === '/admin/gmail/actions') return reply(200, await gmailActions(config, gmail));
         if (request.url === '/admin/gmail/undo') return reply(200, await undoGmail(config, gmail));
+        if (request.url === '/admin/files') return reply(200, await filesStatus(config, files));
+        if (request.url === '/admin/files/save') return reply(200, await saveFiles(config, configPath, files, data));
+        if (request.url === '/admin/files/reindex') return reply(200, { ...files.reindex(lifecycle), ...await filesStatus(config, files) });
         return reply(404, { error: 'Not found' });
       }
       if (request.url === '/cancel') { active?.controller.abort(); for (const t of transcriptions) t.abort(); return reply(200, { ok: true }); }

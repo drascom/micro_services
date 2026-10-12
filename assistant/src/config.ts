@@ -31,6 +31,12 @@ const scalars = {
   reminders_enabled: false, tasks_enabled: false, tasks_list: 'Asistan',
   mail_max_age_days: 30, mail_max_list_results: 25, mail_max_body_chars: 8000,
   gmail_triage_enabled: false, gmail_account: '', gmail_daily_limit: 500,
+  embedding_enabled: false, embedding_bin: 'runtime/llama-embed/llama-server',
+  embedding_model: 'models/embeddinggemma-2/embeddinggemma-2-Q8_0.gguf',
+  embedding_mmproj: 'models/embeddinggemma-2/mmproj-embeddinggemma-2-Q8_0.gguf',
+  embedding_url: 'http://127.0.0.1:8093', embedding_dims: 256, embedding_context: 4096,
+  embedding_idle_ms: 600000, embedding_start_timeout_ms: 60000,
+  file_max_mb: 100, file_max_chunks: 20, file_index_interval_ms: 1800000, file_organize_threshold: 0.75,
   system_prompt: 'Concise personal assistant. Reply in the language of the latest message (Turkish or English); keep technical terms. No emoji. ' +
     'Calendar is not connected. Email is read-only via the Mail tools; never claim to send, move, delete or mark email.'
 } as const;
@@ -38,9 +44,26 @@ const scalars = {
 export type MailAccount = { readonly account: string; readonly mailbox: string; readonly enabled: boolean };
 export const MAX_MAIL_ACCOUNTS = 10;
 export const MAX_URGENT_SENDERS = 100;
-export const defaults = { ...scalars, mail_accounts: Object.freeze([]) as readonly MailAccount[], gmail_urgent_senders: Object.freeze([]) as readonly string[] };
+export const MAX_FILE_ROOTS = 10;
+export const defaults = { ...scalars, mail_accounts: Object.freeze([]) as readonly MailAccount[], gmail_urgent_senders: Object.freeze([]) as readonly string[],
+  file_roots: Object.freeze(['~/Documents']) as readonly string[] };
 export type Config = { -readonly [K in keyof typeof scalars]: typeof scalars[K] extends number ? number :
-  typeof scalars[K] extends boolean ? boolean : string } & { mail_accounts: readonly MailAccount[]; gmail_urgent_senders: readonly string[] };
+  typeof scalars[K] extends boolean ? boolean : string } & { mail_accounts: readonly MailAccount[]; gmail_urgent_senders: readonly string[]; file_roots: readonly string[] };
+
+/** `~/x` → home directory; other paths must be absolute. */
+export const expandHome = (value: string) => value.replace(/^~(?=\/|$)/, homedir());
+/** File search roots (Admin): absolute or `~/` paths, never `/` or the home folder itself, no duplicates. */
+export function validateFileRoots(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > MAX_FILE_ROOTS) throw Error(`file_roots must be a list of at most ${MAX_FILE_ROOTS}`);
+  const result = value.map(item => {
+    const text = typeof item === 'string' ? item.trim().replace(/\/+$/, '') : '';
+    const full = path.resolve(expandHome(text || '/'));
+    if (!text || text.length > 500 || /[\u0000-\u001f\u007f]/.test(text) || !path.isAbsolute(expandHome(text)) ||
+        full === path.parse(full).root || full === homedir()) throw Error(`Geçersiz klasör / Invalid folder: ${String(item).slice(0, 60)}`);
+    return text;
+  });
+  return [...new Set(result)];
+}
 
 /** Gmail urgent senders (Admin only): `a@b.c`, `@b.c` or `@*.b.c` (subdomains), normalised, no duplicates. */
 export function validateUrgentSenders(value: unknown): string[] {
@@ -84,7 +107,7 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
       if (typeof value !== LEGACY_MAIL[key as keyof typeof LEGACY_MAIL]) throw Error(`Invalid setting: ${key}`);
       legacy[key] = value; delete settings[key]; continue;
     }
-    if (key === 'mail_accounts' || key === 'gmail_urgent_senders') continue;
+    if (key === 'mail_accounts' || key === 'gmail_urgent_senders' || key === 'file_roots') continue;
     if (!(key in defaults) || typeof value !== typeof defaults[key as keyof typeof defaults]) throw Error(`Invalid setting: ${key}`);
     if (typeof value === 'number' && !Number.isFinite(value)) throw Error(`Invalid number: ${key}`);
   }
@@ -97,11 +120,13 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
     else if (legacy.mail_mailbox !== undefined && !mailName(legacy.mail_mailbox)) throw Error('Invalid mail account or mailbox');
   }
   const urgent = 'gmail_urgent_senders' in settings ? validateUrgentSenders(settings.gmail_urgent_senders) : defaults.gmail_urgent_senders;
-  const config: Config = { ...defaults, ...settings, mail_accounts: mailAccounts, gmail_urgent_senders: urgent } as Config;
-  for (const key of ['whisper_bin', 'whisper_model', 'whisper_server_bin', 'llama_bin', 'llama_model', 'language_detector',
+  const fileRoots = 'file_roots' in settings ? validateFileRoots(settings.file_roots) : defaults.file_roots;
+  const config: Config = { ...defaults, ...settings, mail_accounts: mailAccounts, gmail_urgent_senders: urgent, file_roots: fileRoots } as Config;
+  for (const key of ['whisper_bin', 'whisper_model', 'whisper_server_bin', 'llama_bin', 'llama_model', 'language_detector', 'embedding_bin', 'embedding_model',
     'ema_python', 'ema_worker', 'ema_cache', 'kokoro_python', 'kokoro_worker', 'kokoro_model',
     'kokoro_voices', 'piper_bin', 'piper_model_tr', 'piper_model_en'] as const)
     config[key] = path.resolve(root, config[key]);
+  if (config.embedding_mmproj) config.embedding_mmproj = path.resolve(root, config.embedding_mmproj); // Empty: text only.
   config.pi_agent_dir = path.resolve(root, config.pi_agent_dir.replace(/^~(?=\/|$)/, homedir()));
   if (!['ema', 'piper', 'say'].includes(config.tts_engine)) throw Error('tts_engine must be ema, piper or say');
   if (!['cpu', 'auto', 'cuda', 'mps'].includes(config.ema_device)) throw Error('ema_device must be cpu, auto, cuda or mps');
@@ -130,6 +155,16 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
       whisper.pathname !== '/' || whisper.username || whisper.search || whisper.hash ||
       [config.port, Number(local.port)].includes(Number(whisper.port)))
     throw Error('whisper_url must be a loopback HTTP URL with its own port');
+  const embed = new URL(config.embedding_url);
+  if (embed.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(embed.hostname) || !embed.port ||
+      embed.pathname !== '/' || embed.username || embed.search || embed.hash ||
+      [config.port, Number(local.port), Number(whisper.port)].includes(Number(embed.port)))
+    throw Error('embedding_url must be a loopback HTTP URL with its own port');
+  if (![768, 512, 256, 128].includes(config.embedding_dims)) throw Error('embedding_dims must be 768, 512, 256 or 128');
+  if (!Number.isInteger(config.embedding_context) || config.embedding_context < 1024 || config.embedding_context > 8192)
+    throw Error('embedding_context must be an integer between 1024 and 8192');
+  if (!Number.isInteger(config.file_max_chunks) || config.file_max_chunks > 200) throw Error('file_max_chunks must be an integer between 1 and 200');
+  if (config.file_organize_threshold >= 1) throw Error('file_organize_threshold must be between 0 and 1');
   for (const [key, value] of Object.entries(config))
     if (typeof value === 'number' && !key.startsWith('min_') && key !== 'local_reasoning_budget' && value <= 0) throw Error(`${key} must be positive`);
   if (!Number.isInteger(config.whisper_beam_size) || config.whisper_beam_size > 16)

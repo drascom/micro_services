@@ -34,5 +34,9 @@
   "gmail_triage_enabled": false,
   "gmail_account": "",
   "gmail_daily_limit": 500,
-  "gmail_urgent_senders": []
+  "gmail_urgent_senders": [],
+  "embedding_enabled": false,
+  "file_roots": [
+    "~/Documents"
+  ]
 }

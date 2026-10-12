@@ -10,6 +10,7 @@ import { LocalRuntime } from './processes.ts';
 import { Speech } from './speech.ts';
 import { Orchestrator } from './orchestrator.ts';
 import { makeServer } from './server.ts';
+import { fileService } from './files.ts';
 
 export async function main(args = process.argv.slice(2)) {
   await loadEnv(); const config = await loadConfig();
@@ -38,6 +39,8 @@ export async function main(args = process.argv.slice(2)) {
         audio_player: await exists('/usr/bin/afplay'),
         pi_credentials: await new FileCredentials(path.join(config.pi_agent_dir, 'auth.json')).list(),
         jev_key_configured: Boolean(process.env.TYPESAFE_API_KEY), local_running: await runtime.healthy(),
+        embedding_enabled: config.embedding_enabled, embedding_binary: await exists(config.embedding_bin, true),
+        embedding_model: await exists(config.embedding_model), embedding_mmproj: config.embedding_mmproj ? await exists(config.embedding_mmproj) : false,
       }, null, 2));
     } else if (command === 'models') {
       console.log(models.getModels().filter(m => ['openai', 'openai-codex'].includes(m.provider)).map(m => `${m.provider}/${m.id}`).join('\n'));
@@ -56,7 +59,9 @@ export async function main(args = process.argv.slice(2)) {
       if (!args[0]) throw Error('Usage: ./run.sh transcribe /path/to/audio.wav');
       console.log(await speech.transcribe(await readFile(args[0]), lifecycle.signal));
     } else if (command === 'serve') {
-      const server = await makeServer(config, app, lifecycle.signal, undefined, undefined, undefined, {},
+      const files = fileService(config);
+      files.start(lifecycle.signal);
+      const server = await makeServer(config, app, lifecycle.signal, undefined, undefined, undefined, { files },
         { stateFile: path.join(root, 'data/tasks-state.json') });
       await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(config.port, '127.0.0.1', resolve); });
       const url = `http://127.0.0.1:${config.port}`;
@@ -67,7 +72,7 @@ export async function main(args = process.argv.slice(2)) {
         if (lifecycle.signal.aborted) stop();
       });
     } else throw Error('Commands: serve, ask, classify, transcribe, doctor, models, login');
-  } finally { await app.close(); process.off('SIGINT', abort); process.off('SIGTERM', abort); }
+  } finally { await app.close(); await fileService(config).close(); process.off('SIGINT', abort); process.off('SIGTERM', abort); }
 }
 
 if (import.meta.url === new URL(`file://${process.argv[1]}`).href) {

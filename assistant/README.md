@@ -415,6 +415,12 @@ Optional `mail_organize` tool: classify new Gmail INBOX mail (urgent/important/l
 next-turn confirmation, move `Gereksiz` to Trash, undo. OAuth Desktop client, tokens in Keychain. Off by default
 (Admin → Ayarlar → Gmail → Mail düzenleme). Setup: see [GMAIL.md](GMAIL.md).
 
+### Local files (EmbeddingGemma 2)
+
+Optional `file_search` / `file_read` / `file_organize` tools over an index of `~/Documents` (text, PDF, Office,
+images, audio, video by content) built with a local EmbeddingGemma 2 server. Off by default (Admin → Ayarlar →
+Dosyalar). Works offline. Details: see [FILES.md](FILES.md).
+
 ### Apple Reminders
 
 One `reminders` tool (`.pi/extensions/apple-reminders`): `list` (list name, open/done/all,

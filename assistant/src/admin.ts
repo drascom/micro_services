@@ -12,6 +12,9 @@ import { FileCredentials } from './credentials.ts';
 import { liveRequests, recentActivity } from './activity.ts';
 import { runProcess, type OwnedProcess } from './processes.ts';
 import { PiChat } from './providers.ts';
+import type { FileService } from './files.ts';
+import { lastFilePlan } from './files-organize.ts';
+import { validateFileRoots } from './config.ts';
 
 /** Native admin window data. User actions only: nothing here is sent to or callable by the model. */
 
@@ -29,8 +32,8 @@ async function memory(processes: OwnedProcess[]): Promise<Map<number, number>> {
   return result;
 }
 
-export async function collectStatus(config: Config, app: Orchestrator, state: { busy: boolean; unloading: boolean }, activityFile: string | null) {
-  const owned = [...(app.runtime.processes?.() ?? []), ...(app.speech.processes?.() ?? [])];
+export async function collectStatus(config: Config, app: Orchestrator, state: { busy: boolean; unloading: boolean }, activityFile: string | null, files?: FileService) {
+  const owned = [...(app.runtime.processes?.() ?? []), ...(app.speech.processes?.() ?? []), ...(config.embedding_enabled ? files?.processes() ?? [] : [])];
   const [rss, localHealthy, credentials, remoteModel, activity] = await Promise.all([
     memory(owned),
     app.runtime.healthy?.(AbortSignal.timeout(1500)) ?? Promise.resolve(false),
@@ -55,7 +58,7 @@ export type ResourceKind = 'skill' | 'extension';
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
 const MAX_FILE = 256 * 1024;
-const FACTORY = new Set(['permissions.ts', 'request-workflow.ts', 'macos-mail', 'apple-reminders', 'gmail']);
+const FACTORY = new Set(['permissions.ts', 'request-workflow.ts', 'macos-mail', 'apple-reminders', 'gmail', 'files']);
 
 function base(root: string, kind: unknown): string {
   if (kind !== 'skill' && kind !== 'extension') throw Error('Invalid resource kind');
@@ -321,4 +324,22 @@ export async function gmailActions(config: Config, service: GmailService) {
 export async function undoGmail(config: Config, service: GmailService) {
   const result = await adminTriage(config, service).undo(AbortSignal.timeout(60_000));
   return { ...result, batches: await adminTriage(config, service).recent(10) };
+}
+
+/** Local files (EmbeddingGemma index): switch, folders, index counts and the latest organize plan; never file contents. */
+export async function filesStatus(config: Config, files: FileService) {
+  return { enabled: config.embedding_enabled, roots: config.file_roots, index: config.embedding_enabled ? await files.index.status() : null,
+    last_plan: lastFilePlan() ?? null };
+}
+/** Only the fields present are changed. Off: the file tools are not registered and the embedding server stops. */
+export async function saveFiles(config: Config, configPath: string, files: FileService, value: unknown) {
+  const input = (value && typeof value === 'object' ? value : {}) as { enabled?: unknown; roots?: unknown };
+  const change: Partial<Pick<Config, 'embedding_enabled' | 'file_roots'>> = {};
+  if (input.enabled !== undefined) { if (typeof input.enabled !== 'boolean') throw Error('enabled must be a boolean'); change.embedding_enabled = input.enabled; }
+  if (input.roots !== undefined) change.file_roots = validateFileRoots(input.roots);
+  if (!Object.keys(change).length) throw Error('Nothing to save');
+  await updateConfigFile(configPath, settings => { Object.assign(settings, change); });
+  Object.assign(config, change);
+  if (!config.embedding_enabled) await files.embedder.close();
+  return filesStatus(config, files);
 }

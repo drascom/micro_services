@@ -8,7 +8,7 @@ import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completio
 import { FileCredentials } from './credentials.ts';
 import type { Config } from './config.ts';
 
-export type HarnessSkill = 'online-search' | 'skill-manager' | 'mail-assistant' | 'reminders' | 'mail-triage';
+export type HarnessSkill = 'online-search' | 'skill-manager' | 'mail-assistant' | 'reminders' | 'mail-triage' | 'file-assistant';
 export interface Chat { complete(context: Context, signal: AbortSignal, options?: { offline: boolean; skill?: HarnessSkill; briefNews?: boolean; turn?: number; automated?: boolean; steering?: Steering }): Promise<AssistantMessage>; }
 
 /** Barge-in: extra user text for a request that is still generating. Accepted only while a live Pi session
@@ -97,6 +97,7 @@ export class Jev implements Classifier {
         mail_triage: 'Change existing Gmail mail: delete/trash, archive, label, mark read, star, sort by importance, clean up or undo, also for specific senders or subjects (mail sil, düzenle, temizle)',
         calendar: 'Read or modify calendar events, availability, meetings, or appointments',
         reminders: 'Add, list, update, complete or delete reminders or to-dos (hatırlatıcı, yapılacaklar)',
+        files: "Find, read, answer from or organize the user's own files, documents, photos, recordings or folders on this computer (dosya, belge, klasör, fotoğraf bul/düzenle)",
         news: 'Brief latest/recent news, headlines or a short news roundup about a place/topic, including Turkish haber/haberler requests; use web_search for requested detailed investigation',
         web_search: 'General online research, current facts, or detailed investigation needing public web verification; use news for brief headlines',
         skill_management: 'Create, edit, inspect, test or improve the assistant harness skills or extensions'
@@ -104,7 +105,7 @@ export class Jev implements Classifier {
     } }, { signal });
     const answer = result.answers.intent;
     if (result.stopReason !== 'stop' || answer?.type !== 'choice' ||
-        !['conversation', 'email', 'mail_triage', 'calendar', 'reminders', 'news', 'web_search', 'skill_management'].includes(answer.choice) ||
+        !['conversation', 'email', 'mail_triage', 'calendar', 'reminders', 'files', 'news', 'web_search', 'skill_management'].includes(answer.choice) ||
         !Number.isFinite(answer.confidence) || answer.confidence < 0 || answer.confidence > 1)
       throw Error('Jev classification unavailable');
     return { choice: answer.choice, confidence: answer.confidence, provider: 'jev' };

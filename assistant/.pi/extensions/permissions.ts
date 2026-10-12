@@ -21,7 +21,7 @@ async function within(directory: string, filename: string, allowMissing = false)
 }
 
 /** Same list as TASK_TOOLS in src/harness.ts (kept here so Pi CLI sessions load without the app). */
-const TASK_ALLOWED = /^(read|web_search|web_read|fetch_content|mail_[a-z_]+|reminders)$/;
+const TASK_ALLOWED = /^(read|web_search|web_read|fetch_content|mail_[a-z_]+|reminders|file_search|file_read)$/;
 
 export function permissionsExtension(options: { root: string; offline: boolean; automated?: boolean }) {
   return (pi: ExtensionAPI) => {
@@ -30,7 +30,7 @@ export function permissionsExtension(options: { root: string; offline: boolean; 
     // date or filter returns no data); 3 listings leave room for one narrower retry while results stay small for local models.
     const mailBudgets: Record<string, number> = { mail_list_messages: 3, mail_read_message: 5 };
     const mailCalls: Record<string, number> = {};
-    let reminderCalls = 0, organizeCalls = 0;
+    let reminderCalls = 0, organizeCalls = 0, fileCalls = 0, fileOrganizeCalls = 0;
     const check = async (event: ToolCallEvent): Promise<ToolCallEventResult | undefined> => {
       if (++calls > 12) return { block: true, reason: 'Tool budget exhausted. Finish with the evidence already retrieved.', terminate: true };
       // Automated Reminders task: no user can confirm, so only read-only/safe tools and never a deletion.
@@ -89,6 +89,21 @@ export function permissionsExtension(options: { root: string; offline: boolean; 
           return { block: true, reason: event.toolName === 'mail_list_messages' ? 'Mail listing budget (3 per request) is exhausted. Use the messages already listed.'
             : 'Mail body budget (5 per request) is exhausted. Summarize from the bodies and metadata already retrieved.' };
         return; // Local, read-only: available in offline mode too.
+      }
+      if (['file_search', 'file_read', 'file_organize'].includes(event.toolName)) {
+        // Local files: on by default once the index is enabled in Admin; an explicit "deny" turns them off. Moves are
+        // additionally gated by the extension's next-turn token; a task may not move files. Available offline.
+        try {
+          const permissions = JSON.parse(await readFile(path.join(options.root, '.pi/permissions.json'), 'utf8'));
+          if (permissions?.files === 'deny') return { block: true, reason: 'Local files are disabled in Pi permissions.' };
+        } catch {}
+        if (event.toolName === 'file_organize') {
+          if (options.automated) return { block: true, reason: 'Automated tasks cannot organize files.' };
+          if (++fileOrganizeCalls > 3) return { block: true, reason: 'File organize budget (3 per request) is exhausted. Report what was done.' };
+          return;
+        }
+        if (++fileCalls > 8) return { block: true, reason: 'File budget (8 per request) is exhausted. Answer from what was found.' };
+        return;
       }
       if (event.toolName === 'reminders') {
         // Full access by default (list/add/update/complete); only an explicit "deny" turns it off. Deletion is

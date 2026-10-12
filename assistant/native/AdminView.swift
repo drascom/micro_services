@@ -39,6 +39,10 @@ struct GmailBatch: Decodable, Identifiable {
 struct GmailPlanItem: Decodable { let level: String; let from: String; let subject: String }
 struct GmailPlan: Decodable { let at: Double; let counts: [String: Int]; let missing_labels: [String]; let items: [GmailPlanItem] }
 struct GmailBatches: Decodable { let batches: [GmailBatch]; var last_plan: GmailPlan? }
+struct FilesIndex: Decodable { let files: Int; let chunks: Int; let running: Bool; let last_run: Double?; let multimodal: Bool; let last_error: String? }
+struct FilesPlanGroup: Decodable { let folder: String; let existing: Bool; let files: [String] }
+struct FilesPlan: Decodable { let at: Double; let folder: String; let groups: [FilesPlanGroup]; let left: [String] }
+struct FilesStatus: Decodable { var enabled = false; var roots: [String] = []; var index: FilesIndex?; var last_plan: FilesPlan? }
 
 struct ActivityRow: Identifiable { let id: Int; let time: String; let request: String; let event: String; let details: String }
 
@@ -87,6 +91,10 @@ final class AdminModel {
     var pronunciationsMessage = ""
     var gmailBatches: [GmailBatch] = []
     var gmailPlan: GmailPlan?
+    var files = FilesStatus()
+    var fileRoots = ""
+    var fileRootsOriginal = ""
+    var filesMessage = ""
     private var polling: Task<Void, Never>?
 
     init(backend: BackendClient, ring: RingModel) { self.backend = backend; self.ring = ring }
@@ -104,6 +112,7 @@ final class AdminModel {
         Task { await loadReminders() }
         Task { await loadGmail(); await loadImportance(); await loadGmailActions() }
         Task { await loadPronunciations() }
+        Task { await loadFiles() }
     }
     func stopPolling() { polling?.cancel(); polling = nil }
 
@@ -293,6 +302,30 @@ final class AdminModel {
         } catch { gmailMessage = error.localizedDescription }
     }
 
+    // MARK: Local files (EmbeddingGemma index)
+    private func applyFiles(_ data: Data, roots: Bool) {
+        guard let value = try? JSONDecoder().decode(FilesStatus.self, from: data) else { return }
+        files = value
+        if roots { fileRoots = value.roots.joined(separator: "\n"); fileRootsOriginal = fileRoots }
+    }
+    func loadFiles(roots: Bool = true) async {
+        do { applyFiles(try await backend.admin("admin/files"), roots: roots) } catch { filesMessage = error.localizedDescription }
+    }
+    private func saveFiles(_ body: [String: Any]) async {
+        do {
+            let json = try JSONSerialization.data(withJSONObject: body)
+            applyFiles(try await backend.admin("admin/files/save", data: json), roots: true); filesMessage = ""
+        }
+        catch { filesMessage = error.localizedDescription; await loadFiles() }
+    }
+    func setFiles(_ on: Bool) async { files.enabled = on; await saveFiles(["enabled": on]) }
+    func saveFileRoots() async {
+        await saveFiles(["roots": fileRoots.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }])
+    }
+    func reindexFiles() async {
+        do { applyFiles(try await backend.admin("admin/files/reindex"), roots: false); filesMessage = "" } catch { filesMessage = error.localizedDescription }
+    }
+
     func createExtension(name: String) async {
         do {
             _ = try await backend.admin("admin/create-extension", ["name": name])
@@ -324,7 +357,7 @@ private struct StatusTab: View {
           "tool_finished": "araç bitti / tool finished", "local_fallback": "yerel yedek / local fallback",
           "local_load_started": "yerel model yükleniyor / loading local model", "local_load_finished": "yerel model hazır / local model ready",
           "speech_prepared": "seslendirme / speaking", "tts_fallback": "TTS yedek / TTS fallback", "stt_fallback": "STT yedek / STT fallback",
-          "dictation": "dikte / dictation" ][stage] ?? stage
+          "dictation": "dikte / dictation", "file_index_finished": "dosya dizini / file index" ][stage] ?? stage
     }
     var body: some View {
         Form {
@@ -394,11 +427,39 @@ private struct StatusTab: View {
                     }
                 }
             }
+            if admin.files.enabled, let index = admin.files.index {
+                Section("Dosyalar / Files") {
+                    LabeledContent("Dizinlenen / Indexed", value: "\(index.files) dosya / files • \(index.chunks) parça / chunks" + (index.multimodal ? "" : " • yalnız metin / text only"))
+                    LabeledContent("Son tarama / Last run", value: index.running ? "Çalışıyor / Running"
+                        : index.last_run.map { Date(timeIntervalSince1970: $0 / 1000).formatted(date: .abbreviated, time: .shortened) } ?? "Yok / None")
+                    if let error = index.last_error { Text(error).font(.caption).foregroundStyle(.orange) }
+                    HStack {
+                        Spacer()
+                        Button("Yenile / Refresh") { Task { await admin.loadFiles(roots: false) } }
+                        Button("Yeniden dizinle / Reindex") { Task { await admin.reindexFiles() } }.disabled(index.running)
+                    }
+                }
+            }
+            if let plan = admin.files.last_plan {
+                Section("Son dosya planı / Last file plan") {
+                    LabeledContent(Date(timeIntervalSince1970: plan.at / 1000).formatted(date: .abbreviated, time: .shortened), value: plan.folder)
+                    ForEach(Array(plan.groups.enumerated()), id: \.offset) { _, group in
+                        DisclosureGroup("\(group.folder)\(group.existing ? "" : " (yeni / new)") • \(group.files.count)") {
+                            ForEach(Array(group.files.enumerated()), id: \.offset) { _, name in Text(name).lineLimit(1).truncationMode(.middle) }
+                        }
+                    }
+                    if !plan.left.isEmpty {
+                        DisclosureGroup("Yerinde kalan / Left in place • \(plan.left.count)") {
+                            ForEach(Array(plan.left.enumerated()), id: \.offset) { _, name in Text(name).lineLimit(1).truncationMode(.middle) }
+                        }
+                    }
+                }
+            }
             if let updated = admin.updated {
                 Text("Güncellendi / Updated \(updated.formatted(date: .omitted, time: .standard))").font(.caption).foregroundStyle(.secondary)
             }
         }.formStyle(.grouped)
-        .task { await admin.loadGmailActions() }
+        .task { await admin.loadGmailActions(); await admin.loadFiles(roots: false) }
     }
 }
 
@@ -458,6 +519,15 @@ private struct SettingsTab: View {
             }
             MailAccountsSection(admin: admin, removing: $removing)
             GmailSection(admin: admin)
+            Section("Dosyalar / Files") {
+                Toggle("Dosya arama / File search", isOn: Binding(get: { admin.files.enabled }, set: { on in Task { await admin.setFiles(on) } }))
+                TextEditor(text: $admin.fileRoots).font(.system(.body, design: .monospaced)).frame(minHeight: 60)
+                HStack {
+                    if !admin.filesMessage.isEmpty { Text(admin.filesMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+                    Spacer()
+                    Button("Kaydet / Save") { Task { await admin.saveFileRoots() } }.disabled(admin.fileRoots == admin.fileRootsOriginal)
+                }
+            }
             Section("Okunuşlar / Pronunciations") {
                 TextEditor(text: $admin.pronunciations).font(.system(.body, design: .monospaced)).frame(minHeight: 120)
                 HStack {
