@@ -31,7 +31,7 @@ const scalars = {
   reminders_enabled: false, tasks_enabled: false, tasks_list: 'Asistan',
   mail_max_age_days: 30, mail_max_list_results: 25, mail_max_body_chars: 8000,
   gmail_triage_enabled: false, gmail_account: '', gmail_daily_limit: 500,
-  embedding_enabled: false, embedding_bin: 'runtime/llama-embed/llama-server',
+  embedding_enabled: false, embedding_bin: 'runtime/llama/llama-server',
   embedding_model: 'models/embeddinggemma-2/embeddinggemma-2-Q8_0.gguf',
   embedding_mmproj: 'models/embeddinggemma-2/mmproj-embeddinggemma-2-Q8_0.gguf',
   embedding_url: 'http://127.0.0.1:8093', embedding_dims: 256, embedding_context: 4096,

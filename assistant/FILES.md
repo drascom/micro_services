@@ -5,8 +5,8 @@ retrieval over the user's own files. Text, images and audio share one vector spa
 matching document, photo, recording or video.
 
 ## Runtime
-- `runtime/llama-embed/llama-server`: llama.cpp b11570 (needs ≥ PR #30054, `gemma-embedding2`). Separate from the
-  Gemma 4 `runtime/llama` build.
+- `runtime/llama/llama-server`: the same llama.cpp build as Gemma 4 (pinned in `scripts/install-llama.sh`, needs
+  ≥ PR #30054, `gemma-embedding2`).
 - `models/embeddinggemma-2/embeddinggemma-2-Q8_0.gguf` (310 MB) + `mmproj-embeddinggemma-2-Q8_0.gguf` (555 MB,
   image/audio) from `ggml-org/embeddinggemma-2-GGUF`. Empty `embedding_mmproj` = text only.
 - Started on demand on `embedding_url` (default `127.0.0.1:8093`): `--embeddings --pooling mean -c/-b/-ub 4096`,

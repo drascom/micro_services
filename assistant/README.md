@@ -228,8 +228,10 @@ every listed model.
 - macOS 14+ for the native SwiftUI desktop ring; Apple Command Line Tools to rebuild it.
 - Existing global Pi OAuth login for subscription chat.
 
-Both inference runtimes are bundled locally. `runtime/llama/` includes
-llama.cpp and dylibs. `runtime/whisper/whisper-cli` and `whisper-server` are whisper.cpp v1.9.4,
+Both inference runtimes are bundled locally. `runtime/llama/` is the official
+llama.cpp macOS arm64 (Metal) prebuilt, pinned with its SHA-256 in
+`scripts/install-llama.sh` (b11574; run it to reinstall/upgrade, writes
+`runtime/llama/BUILD.json`). One build serves Gemma 4 (:8091) and EmbeddingGemma 2 (:8093). `runtime/whisper/whisper-cli` and `whisper-server` are whisper.cpp v1.9.4,
 built with static Whisper/ggml libraries, embedded Metal GPU kernels, CPU,
 and Accelerate BLAS. It depends only on macOS system frameworks; no Homebrew
 backend paths or OpenMP dylibs are needed. Source URL, checksum, and build

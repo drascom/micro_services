@@ -88,7 +88,8 @@ while rejecting all-boilerplate output and repeated words.
 
 Gemma's compatible llama-server and dylibs were found inside GemmaServer.app;
 its CLI build path was absent. Its configured app port was 8090, despite the
-README's 8080 default. The new app bundles its own copy and uses 8091. The
+README's 8080 default. The app now uses the pinned upstream prebuilt
+(`scripts/install-llama.sh`) on 8091. The
 separate legacy `swift_app/` path was an audio/paste prototype, not the reliable
 Whisper dictation app. Original model asset names and files were inspected
 locally; no new model compatibility claims or downloads were needed.
