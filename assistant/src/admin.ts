@@ -14,7 +14,7 @@ import { runProcess, type OwnedProcess } from './processes.ts';
 import { PiChat } from './providers.ts';
 import type { FileService } from './files.ts';
 import { lastFilePlan } from './files-organize.ts';
-import { validateFileRoots } from './config.ts';
+import { validateFileRoots, validateSkipDirs } from './config.ts';
 
 /** Native admin window data. User actions only: nothing here is sent to or callable by the model. */
 
@@ -328,15 +328,16 @@ export async function undoGmail(config: Config, service: GmailService) {
 
 /** Local files (EmbeddingGemma index): switch, folders, index counts and the latest organize plan; never file contents. */
 export async function filesStatus(config: Config, files: FileService) {
-  return { enabled: config.embedding_enabled, roots: config.file_roots, index: config.embedding_enabled ? await files.index.status() : null,
+  return { enabled: config.embedding_enabled, roots: config.file_roots, skip_dirs: config.file_skip_dirs, index: config.embedding_enabled ? await files.index.status() : null,
     last_plan: lastFilePlan() ?? null };
 }
 /** Only the fields present are changed. Off: the file tools are not registered and the embedding server stops. */
 export async function saveFiles(config: Config, configPath: string, files: FileService, value: unknown) {
-  const input = (value && typeof value === 'object' ? value : {}) as { enabled?: unknown; roots?: unknown };
-  const change: Partial<Pick<Config, 'embedding_enabled' | 'file_roots'>> = {};
+  const input = (value && typeof value === 'object' ? value : {}) as { enabled?: unknown; roots?: unknown; skip_dirs?: unknown };
+  const change: Partial<Pick<Config, 'embedding_enabled' | 'file_roots' | 'file_skip_dirs'>> = {};
   if (input.enabled !== undefined) { if (typeof input.enabled !== 'boolean') throw Error('enabled must be a boolean'); change.embedding_enabled = input.enabled; }
   if (input.roots !== undefined) change.file_roots = validateFileRoots(input.roots);
+  if (input.skip_dirs !== undefined) change.file_skip_dirs = validateSkipDirs(input.skip_dirs);
   if (!Object.keys(change).length) throw Error('Nothing to save');
   await updateConfigFile(configPath, settings => { Object.assign(settings, change); });
   Object.assign(config, change);

@@ -13,17 +13,48 @@ import { activity } from './activity.ts';
  * file and its chunk vectors (a "card" from name/path/date, text chunks, image/frames/audio segments). Search is
  * brute-force cosine in memory. Nothing here logs file names or contents; activity carries counts and durations only.
  */
-export type IndexSettings = Pick<Config, 'file_roots' | 'file_max_mb' | 'file_max_chunks' | 'embedding_dims' | 'embedding_model' | 'embedding_mmproj'>;
+export type IndexSettings = Pick<Config, 'file_roots' | 'file_skip_dirs' | 'file_max_mb' | 'file_max_chunks' | 'embedding_dims' | 'embedding_model' | 'embedding_mmproj'>;
 export type ChunkKind = 'card' | 'text' | 'image' | 'frame' | 'audio';
 export type SearchHit = { path: string; name: string; modified: string; kind: FileKind; score: number; snippet: string; chunk?: number };
-export type IndexStatus = { files: number; chunks: number; running: boolean; last_run: number | null; last_duration_ms: number | null;
+export type IndexStatus = { files: number; found: number; chunks: number; running: boolean; last_run: number | null; last_duration_ms: number | null;
   last_indexed: number | null; last_error: string | null; multimodal: boolean };
 
-const SKIP_DIRS = new Set(['node_modules', '.git', '__pycache__', 'venv', '.venv', 'Library']);
 /** Packages and app bundles are opaque: never walked into. */
 const BUNDLE = /\.(app|photoslibrary|photolibrary|musiclibrary|tvlibrary|imovielibrary|fcpbundle|lrdata|lrlibrary|bundle|framework|plugin|kext|pkg|xcodeproj|xcworkspace|xcassets|playground|band|logicx|rtfd|pages|numbers|key|sparsebundle|dmg)$/i;
 export const MAX_FILES = 50_000;
 const CHUNK = 1500;
+export type Found = { mtime: number; size: number; depth: number };
+
+/** Lowercase, no diacritics (ı/İ too), separators (`_ - .` …) → single spaces. */
+export function normalizeName(value: string): string {
+  return value.toLocaleLowerCase('en').replace(/ı/g, 'i').normalize('NFKD').replace(/\p{M}/gu, '')
+    .replace(/([\p{L}])(?=\p{N})|([\p{N}])(?=\p{L})/gu, '$1$2 ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+const queryTokens = (query: string) => [...new Set(normalizeName(query).split(' ').filter(Boolean))];
+/**
+ * How well a file name matches the query words (0-1, share of query characters matched): a name word starts with the
+ * token, or the name without separators contains a longer token (`mlphealth`, `uk014`). Below 0.5 or without a
+ * ≥ 3-character match: 0.
+ */
+export function nameScore(query: string | string[], name: string): number {
+  const tokens = typeof query === 'string' ? queryTokens(query) : query;
+  if (!tokens.length) return 0;
+  const words = normalizeName(name).split(' '), compact = words.join('');
+  let matched = 0, total = 0, strong = false;
+  for (const token of tokens) {
+    total += token.length;
+    const hit = words.some(w => w.startsWith(token)) || ((token.length >= 4 || /^\d{3,}$/.test(token)) && compact.includes(token));
+    if (hit) { matched += token.length; if (token.length >= 3) strong = true; }
+  }
+  const score = matched / total;
+  return strong && score >= 0.5 ? score : 0;
+}
+const group = (kind: FileKind) => ['pdf', 'office', 'text'].includes(kind) ? 0 : ['image', 'audio', 'video'].includes(kind) ? 1 : 2;
+/** Embedding order: documents (shallow, then recent) first, then images/audio/video (recent first), then the rest. */
+export function priority(a: [string, Found], b: [string, Found]): number {
+  const ga = group(kindOf(a[0])), gb = group(kindOf(b[0]));
+  return ga - gb || (ga === 0 ? a[1].depth - b[1].depth : 0) || b[1].mtime - a[1].mtime;
+}
 
 export const displayPath = (absolute: string) => {
   const home = homedir();
@@ -43,6 +74,7 @@ const clock = (seconds = 0) => `${Math.floor(seconds / 60)}:${String(Math.floor(
 
 type Cache = { dims: number; vectors: Float32Array; rows: { file: number; idx: number; kind: ChunkKind; at: number | null; text: string }[];
   files: Map<number, { path: string; mtime: number; kind: FileKind }> };
+type Name = { path: string; name: string; mtime: number; kind: FileKind };
 
 export class FileIndex {
   readonly settings: IndexSettings;
@@ -50,6 +82,7 @@ export class FileIndex {
   readonly dbFile: string;
   private db?: DatabaseSync;
   private cache?: Cache;
+  private names?: Name[];
   private running?: Promise<void>;
   private lastError: string | null = null;
   constructor(settings: IndexSettings, embedder: Embedder, dbFile: string) { this.settings = settings; this.embedder = embedder; this.dbFile = dbFile; }
@@ -73,7 +106,8 @@ export class FileIndex {
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
       CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL, kind TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS chunks (file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE, idx INTEGER NOT NULL, kind TEXT NOT NULL,
-        at REAL, text TEXT NOT NULL, vector BLOB NOT NULL, PRIMARY KEY (file_id, idx));`);
+        at REAL, text TEXT NOT NULL, vector BLOB NOT NULL, PRIMARY KEY (file_id, idx));
+      CREATE TABLE IF NOT EXISTS catalog (path TEXT PRIMARY KEY, mtime REAL NOT NULL, size INTEGER NOT NULL, kind TEXT NOT NULL);`);
     const current = db.prepare("SELECT value FROM meta WHERE key = 'signature'").get() as { value?: string } | undefined;
     if (current?.value !== this.signature()) {
       // Another model, size or modality set: vectors are not comparable, start over.
@@ -83,7 +117,7 @@ export class FileIndex {
     this.db = db;
     return db;
   }
-  close(): void { this.db?.close(); this.db = undefined; this.cache = undefined; }
+  close(): void { this.db?.close(); this.db = undefined; this.cache = undefined; this.names = undefined; }
   private meta(db: DatabaseSync, key: string): number | null {
     const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(key) as { value?: string } | undefined;
     return row?.value ? Number(row.value) : null;
@@ -92,32 +126,68 @@ export class FileIndex {
   async status(): Promise<IndexStatus> {
     const db = await this.open();
     const count = (sql: string) => Number((db.prepare(sql).get() as { n: number }).n);
-    return { files: count('SELECT COUNT(*) AS n FROM files'), chunks: count('SELECT COUNT(*) AS n FROM chunks'), running: Boolean(this.running),
+    return { files: count('SELECT COUNT(*) AS n FROM files'), found: count('SELECT COUNT(*) AS n FROM catalog'), chunks: count('SELECT COUNT(*) AS n FROM chunks'), running: Boolean(this.running),
       last_run: this.meta(db, 'last_run'), last_duration_ms: this.meta(db, 'last_duration_ms'), last_indexed: this.meta(db, 'last_indexed'),
       last_error: this.lastError, multimodal: this.embedder.multimodal };
   }
 
-  /** All indexable files under the roots: no hidden entries, packages, symlinks or skipped folders. */
-  async walk(signal: AbortSignal): Promise<Map<string, { mtime: number; size: number }>> {
-    const result = new Map<string, { mtime: number; size: number }>();
-    const visit = async (directory: string, depth: number): Promise<void> => {
-      if (depth > 20 || result.size >= MAX_FILES) return;
-      signal.throwIfAborted();
-      let entries;
-      try { entries = await readdir(directory, { withFileTypes: true }); } catch { return; }
-      for (const entry of entries) {
-        if (entry.name.startsWith('.') || entry.isSymbolicLink() || result.size >= MAX_FILES) continue;
-        const full = path.join(directory, entry.name);
-        if (entry.isDirectory()) { if (!SKIP_DIRS.has(entry.name) && !BUNDLE.test(entry.name)) await visit(full, depth + 1); continue; }
-        if (!entry.isFile()) continue;
-        try { const info = await stat(full); result.set(full, { mtime: info.mtimeMs, size: info.size }); } catch {}
+  /**
+   * All indexable files under the roots, breadth-first (shallow files first under the cap): no hidden entries, packages,
+   * symlinks, `file_skip_dirs` or code repositories (a folder with `.git`) unless the folder is itself a root.
+   */
+  async walk(signal: AbortSignal): Promise<Map<string, Found>> {
+    const result = new Map<string, Found>();
+    const skip = new Set(this.settings.file_skip_dirs.map(d => d.toLowerCase()));
+    let level: string[] = [];
+    for (const { real } of await this.realRoots()) { try { if ((await lstat(real)).isDirectory() && !level.includes(real)) level.push(real); } catch {} }
+    const roots = new Set(level);
+    for (let depth = 0; level.length && depth <= 20 && result.size < MAX_FILES; depth++) {
+      const next: string[] = [];
+      for (const directory of level) {
+        if (result.size >= MAX_FILES) break;
+        signal.throwIfAborted();
+        let entries;
+        try { entries = await readdir(directory, { withFileTypes: true }); } catch { continue; }
+        if (!roots.has(directory) && entries.some(e => e.name === '.git')) continue;
+        for (const entry of entries) {
+          if (entry.name.startsWith('.') || entry.isSymbolicLink()) continue;
+          const full = path.join(directory, entry.name);
+          if (entry.isDirectory()) { if (!skip.has(entry.name.toLowerCase()) && !BUNDLE.test(entry.name) && !roots.has(full)) next.push(full); continue; }
+          if (!entry.isFile() || result.size >= MAX_FILES) continue;
+          try { const info = await stat(full); result.set(full, { mtime: info.mtimeMs, size: info.size, depth }); } catch {}
+        }
       }
-    };
-    for (const { real } of await this.realRoots()) {
-      try { if (!(await lstat(real)).isDirectory()) continue; } catch { continue; }
-      await visit(real, 0);
+      level = next;
     }
     return result;
+  }
+
+  /** Every walked file by name (no embedding): exact-name search works right after the walk. */
+  private async saveCatalog(found: Map<string, Found>): Promise<void> {
+    const db = await this.open();
+    db.exec('BEGIN');
+    try {
+      db.exec('DELETE FROM catalog');
+      const insert = db.prepare('INSERT INTO catalog (path, mtime, size, kind) VALUES (?, ?, ?, ?)');
+      for (const [file, info] of found) insert.run(file, info.mtime, info.size, kindOf(file));
+      db.exec('COMMIT');
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
+    this.names = undefined;
+  }
+  private async catalog(): Promise<Name[]> {
+    if (this.names) return this.names;
+    const db = await this.open();
+    const rows = db.prepare('SELECT path, mtime, kind FROM catalog UNION SELECT path, mtime, kind FROM files WHERE path NOT IN (SELECT path FROM catalog)')
+      .all() as { path: string; mtime: number; kind: FileKind }[];
+    this.names = rows.map(r => ({ ...r, name: path.basename(r.path) }));
+    return this.names;
+  }
+  /** Files whose name matches the query words (case/diacritic-insensitive), best first, then newest. */
+  async nameMatches(query: string): Promise<(Name & { score: number })[]> {
+    const tokens = queryTokens(query);
+    if (!tokens.length) return [];
+    return (await this.catalog()).flatMap(n => { const score = nameScore(tokens, n.name); return score ? [{ ...n, score }] : []; })
+      .sort((a, b) => b.score - a.score || b.mtime - a.mtime);
   }
 
   /** Embedding inputs for one file (card first). Large or unknown files get the card only. */
@@ -167,8 +237,9 @@ export class FileIndex {
   }
 
   /**
-   * Incremental pass: new/changed files are embedded, removed ones dropped. `busy()` pauses work while the user's
-   * request runs. One pass at a time; a second call waits for the running one.
+   * Incremental pass: the name catalog is refreshed, new/changed files are embedded (documents first, see `priority`),
+   * removed ones dropped. Every file is committed on its own, so an aborted pass resumes where it stopped. `busy()`
+   * pauses work while the user's request runs. One pass at a time; a second call waits for the running one.
    */
   run(signal: AbortSignal, busy: () => boolean = () => false, full = false): Promise<void> {
     if (this.running) return this.running;
@@ -181,12 +252,13 @@ export class FileIndex {
     try {
       if (full) { db.exec('DELETE FROM chunks; DELETE FROM files;'); this.cache = undefined; }
       const found = await this.walk(signal);
+      await this.saveCatalog(found);
       const known = new Map((db.prepare('SELECT path, mtime, size FROM files').all() as { path: string; mtime: number; size: number }[]).map(r => [r.path, r]));
       for (const file of known.keys()) if (!found.has(file)) { db.prepare('DELETE FROM files WHERE path = ?').run(file); removed++; }
       if (removed) this.cache = undefined;
-      for (const [file, info] of found) {
-        const old = known.get(file);
-        if (old && old.mtime === info.mtime && old.size === info.size) continue;
+      // Unknown types (binaries, archives, …) stay in the name catalog only.
+      const todo = [...found].filter(([file, info]) => { const old = known.get(file); return kindOf(file) !== 'other' && (!old || old.mtime !== info.mtime || old.size !== info.size); });
+      for (const [file, info] of todo.sort(priority)) {
         while (busy()) await delay(1000, undefined, { signal });
         signal.throwIfAborted();
         try { chunks += await this.indexFile(file, info, signal); indexed++; }
@@ -232,17 +304,32 @@ export class FileIndex {
     }).sort((a, b) => b.score - a.score);
   }
 
+  /**
+   * Name matches (catalog, no embedding needed) merged with semantic hits: a full name match scores 1, a partial one
+   * 0.75-1; semantic hits keep their cosine. Without the embedding server, name matches alone are returned.
+   */
   async search(query: string, limit: number, signal: AbortSignal): Promise<SearchHit[]> {
-    const [vector] = await this.embedder.embed([{ text: queryText(query) }], signal);
+    const merged = new Map<string, { score: number; mtime: number; kind: FileKind; row?: Cache['rows'][number] }>();
+    for (const n of await this.nameMatches(query)) merged.set(n.path, { score: 0.5 + 0.5 * n.score, mtime: n.mtime, kind: n.kind });
+    try {
+      if ((await this.load()).rows.length) {
+        const [vector] = await this.embedder.embed([{ text: queryText(query) }], signal);
+        for (const hit of await this.rank(vector)) {
+          const current = merged.get(hit.file);
+          if (current) { current.row = hit.row; current.score = Math.max(current.score, hit.score); }
+          else merged.set(hit.file, { score: hit.score, mtime: hit.meta.mtime, kind: hit.meta.kind, row: hit.row });
+        }
+      }
+    } catch (error) { signal.throwIfAborted(); if (!merged.size) throw error; }
     const hits: SearchHit[] = [];
-    for (const hit of await this.rank(vector)) {
+    for (const [file, m] of [...merged].sort((a, b) => b[1].score - a[1].score || b[1].mtime - a[1].mtime)) {
       if (hits.length >= limit) break;
-      try { await stat(hit.file); } catch { continue; } // Moved or deleted since the last pass.
-      const r = hit.row;
-      const snippet = r.kind === 'text' ? clip(r.text, 200) : r.kind === 'image' ? '[image]' : r.kind === 'frame' ? `[video frame ${clock(r.at ?? 0)}]`
+      try { await stat(file); } catch { continue; } // Moved or deleted since the last pass.
+      const r = m.row;
+      const snippet = !r ? '' : r.kind === 'text' ? clip(r.text, 200) : r.kind === 'image' ? '[image]' : r.kind === 'frame' ? `[video frame ${clock(r.at ?? 0)}]`
         : r.kind === 'audio' ? `[audio ${clock(r.at ?? 0)}]` : (await this.firstText(r.file)) ?? '';
-      hits.push({ path: displayPath(hit.file), name: path.basename(hit.file), modified: day(hit.meta.mtime), kind: hit.meta.kind,
-        score: Math.round(hit.score * 100) / 100, snippet, ...(r.kind === 'text' ? { chunk: r.idx - 1 } : {}) });
+      hits.push({ path: displayPath(file), name: path.basename(file), modified: day(m.mtime), kind: m.kind,
+        score: Math.round(m.score * 100) / 100, snippet, ...(r?.kind === 'text' ? { chunk: r.idx - 1 } : {}) });
     }
     return hits;
   }
@@ -284,7 +371,8 @@ export class FileIndex {
   async renamed(from: string, to: string): Promise<void> {
     const db = await this.open();
     try { db.prepare('UPDATE files SET path = ? WHERE path = ?').run(to, from); } catch { db.prepare('DELETE FROM files WHERE path = ?').run(from); }
-    this.cache = undefined;
+    try { db.prepare('UPDATE catalog SET path = ? WHERE path = ?').run(to, from); } catch { db.prepare('DELETE FROM catalog WHERE path = ?').run(from); }
+    this.cache = undefined; this.names = undefined;
   }
 
   /** Resolves a user/model path (`Documents/x.pdf`, `~/…` or absolute) strictly inside a root; real path, no symlink escape. */

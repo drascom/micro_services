@@ -34,16 +34,20 @@ export class FileService {
     const pass = () => this.index.run(signal, this.busy, full);
     await (this.activityFile ? observeRequest(this.activityFile, { kind: 'file_index', full }, pass) : pass());
   }
-  /** Background schedule: first pass after `firstMs`, then every `file_index_interval_ms` (skipped while off). */
-  start(lifecycle: AbortSignal, firstMs = 60_000): void {
+  /**
+   * Background schedule: first pass after `firstMs`, then every `file_index_interval_ms` (skipped while off). A pass
+   * that fails is retried after `retryMs`, doubling up to the interval; finished files are never redone.
+   */
+  start(lifecycle: AbortSignal, firstMs = 60_000, retryMs = 60_000): void {
     this.controller = new AbortController();
     const signal = AbortSignal.any([lifecycle, this.controller.signal]);
     void (async () => {
       try {
         await sleep(firstMs, undefined, { signal });
-        for (;;) {
-          try { await this.runOnce(signal); } catch { if (signal.aborted) return; }
-          await sleep(this.config.file_index_interval_ms, undefined, { signal });
+        for (let failures = 0; ;) {
+          try { await this.runOnce(signal); failures = 0; } catch { if (signal.aborted) return; failures++; }
+          const wait = failures ? Math.min(retryMs * 2 ** (failures - 1), this.config.file_index_interval_ms) : this.config.file_index_interval_ms;
+          await sleep(wait, undefined, { signal });
         }
       } catch {}
     })();

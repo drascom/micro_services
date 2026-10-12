@@ -46,9 +46,12 @@ export const MAX_MAIL_ACCOUNTS = 10;
 export const MAX_URGENT_SENDERS = 100;
 export const MAX_FILE_ROOTS = 10;
 export const defaults = { ...scalars, mail_accounts: Object.freeze([]) as readonly MailAccount[], gmail_urgent_senders: Object.freeze([]) as readonly string[],
-  file_roots: Object.freeze(['~/Documents']) as readonly string[] };
+  file_roots: Object.freeze(['~/Documents']) as readonly string[],
+  file_skip_dirs: Object.freeze(['node_modules', 'venv', '.venv', '__pycache__', 'build', 'dist', '.build', 'target', 'DerivedData', 'Pods',
+    'runtime', 'models', '.git', 'Library']) as readonly string[] };
 export type Config = { -readonly [K in keyof typeof scalars]: typeof scalars[K] extends number ? number :
-  typeof scalars[K] extends boolean ? boolean : string } & { mail_accounts: readonly MailAccount[]; gmail_urgent_senders: readonly string[]; file_roots: readonly string[] };
+  typeof scalars[K] extends boolean ? boolean : string } & { mail_accounts: readonly MailAccount[]; gmail_urgent_senders: readonly string[]; file_roots: readonly string[];
+  file_skip_dirs: readonly string[] };
 
 /** `~/x` → home directory; other paths must be absolute. */
 export const expandHome = (value: string) => value.replace(/^~(?=\/|$)/, homedir());
@@ -60,6 +63,18 @@ export function validateFileRoots(value: unknown): string[] {
     const full = path.resolve(expandHome(text || '/'));
     if (!text || text.length > 500 || /[\u0000-\u001f\u007f]/.test(text) || !path.isAbsolute(expandHome(text)) ||
         full === path.parse(full).root || full === homedir()) throw Error(`Geçersiz klasör / Invalid folder: ${String(item).slice(0, 60)}`);
+    return text;
+  });
+  return [...new Set(result)];
+}
+
+export const MAX_SKIP_DIRS = 100;
+/** Folder names never walked by the file index (any depth): plain names, no paths, no duplicates. */
+export function validateSkipDirs(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > MAX_SKIP_DIRS) throw Error(`file_skip_dirs must be a list of at most ${MAX_SKIP_DIRS}`);
+  const result = value.map(item => {
+    const text = typeof item === 'string' ? item.trim() : '';
+    if (!text || text.length > 100 || /[\/\u0000-\u001f\u007f]/.test(text) || text === '.' || text === '..') throw Error(`Geçersiz / Invalid: ${String(item).slice(0, 60)}`);
     return text;
   });
   return [...new Set(result)];
@@ -107,7 +122,7 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
       if (typeof value !== LEGACY_MAIL[key as keyof typeof LEGACY_MAIL]) throw Error(`Invalid setting: ${key}`);
       legacy[key] = value; delete settings[key]; continue;
     }
-    if (key === 'mail_accounts' || key === 'gmail_urgent_senders' || key === 'file_roots') continue;
+    if (key === 'mail_accounts' || key === 'gmail_urgent_senders' || key === 'file_roots' || key === 'file_skip_dirs') continue;
     if (!(key in defaults) || typeof value !== typeof defaults[key as keyof typeof defaults]) throw Error(`Invalid setting: ${key}`);
     if (typeof value === 'number' && !Number.isFinite(value)) throw Error(`Invalid number: ${key}`);
   }
@@ -121,7 +136,9 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
   }
   const urgent = 'gmail_urgent_senders' in settings ? validateUrgentSenders(settings.gmail_urgent_senders) : defaults.gmail_urgent_senders;
   const fileRoots = 'file_roots' in settings ? validateFileRoots(settings.file_roots) : defaults.file_roots;
-  const config: Config = { ...defaults, ...settings, mail_accounts: mailAccounts, gmail_urgent_senders: urgent, file_roots: fileRoots } as Config;
+  const skipDirs = 'file_skip_dirs' in settings ? validateSkipDirs(settings.file_skip_dirs) : defaults.file_skip_dirs;
+  const config: Config = { ...defaults, ...settings, mail_accounts: mailAccounts, gmail_urgent_senders: urgent, file_roots: fileRoots,
+    file_skip_dirs: skipDirs } as Config;
   for (const key of ['whisper_bin', 'whisper_model', 'whisper_server_bin', 'llama_bin', 'llama_model', 'language_detector', 'embedding_bin', 'embedding_model',
     'ema_python', 'ema_worker', 'ema_cache', 'kokoro_python', 'kokoro_worker', 'kokoro_model',
     'kokoro_voices', 'piper_bin', 'piper_model_tr', 'piper_model_en'] as const)

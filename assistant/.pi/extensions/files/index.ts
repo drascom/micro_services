@@ -37,14 +37,15 @@ export function localFiles(options: { service?: FileService; enabled: boolean; t
     pi.registerTool({
       name: 'file_search', label: 'Search files', executionMode: 'sequential',
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-      description: "Find the user's files (docs, photos, audio, video) by meaning.",
+      description: "Find the user's files (docs, photos, audio, video) by name or meaning.",
       parameters: SearchParams,
       async execute(_id, params, signal) {
         const live = signal ?? new AbortController().signal;
         try {
           const query = params.query.trim().slice(0, 300);
           if (!query) throw new FileToolError('invalid_request', 'query is empty.');
-          if (!(await service.index.status()).files) throw new FileToolError('index_empty');
+          const status = await service.index.status();
+          if (!status.files && !status.found) throw new FileToolError('index_empty');
           const results = await service.index.search(query, Math.max(1, Math.min(10, Math.floor(params.limit ?? 5))), live);
           return { content: [{ type: 'text', text: text({ results }) }], details: { result_count: results.length } as Details };
         } catch (error) { return failure(error, live); }

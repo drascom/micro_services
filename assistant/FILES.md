@@ -15,14 +15,23 @@ matching document, photo, recording or video.
   prefix. Vectors are cut to `embedding_dims` (256, MRL) and re-normalized.
 
 ## Index (`src/files-index.ts`, `data/files-index.sqlite`)
-- Roots: `file_roots` (Admin → Ayarlar → Dosyalar, one path per line; default `~/Documents`). Skipped: hidden
-  entries, `node_modules`, `.git`, packages/bundles (`.app`, `.photoslibrary`, …), symlinks.
+- Roots: `file_roots` (Admin → Ayarlar → Dosyalar, one path per line; default `~/Documents`). Walked breadth-first
+  (cap 50,000). Skipped: hidden entries, packages/bundles (`.app`, `.photoslibrary`, …), symlinks, folders named in
+  `file_skip_dirs` (Admin; default `node_modules`, `venv`, `.venv`, `__pycache__`, `build`, `dist`, `.build`,
+  `target`, `DerivedData`, `Pods`, `runtime`, `models`, `.git`, `Library`) and code repositories (a folder with
+  `.git`) unless the folder is itself a root.
+- Name catalog (`catalog` table): every walked file, saved right after the walk, no embedding. `file_search` merges
+  name matches (case/diacritic-insensitive, `_ - .` separators, partial tokens like invoice numbers; full match
+  scores 1) with semantic hits, so a file is findable by name before it is embedded. Unknown types (binaries,
+  archives) stay catalog-only.
 - Per file: a card (name, path, type, date) plus content chunks: text/Markdown/code/CSV/JSON/HTML directly, PDF via
   `pdftotext` (optional), docx/xlsx/pptx/odt by unzipping their XML; images (downscaled via ffmpeg), audio
   (≤ 4 × 30 s, 16 kHz mono), video (4 frames + 30 s of its audio track). Files over `file_max_mb` and other types:
   card only. Without ffmpeg: JPEG/PNG/GIF/BMP and WAV/MP3 only.
-- Incremental (mtime + size), removed files dropped; first pass 60 s after start, then every
-  `file_index_interval_ms`; waits while a user request or task runs. Admin → Durum: counts, last run, Reindex.
+- Incremental (mtime + size), removed files dropped; each file committed on its own, so an aborted pass resumes
+  where it stopped. Order: documents (shallow, then newest), then images/audio/video (newest first). First pass
+  60 s after start, then every `file_index_interval_ms`; a failed pass is retried after 60 s (doubling up to the
+  interval); waits while a user request or task runs. Admin → Durum: indexed / found, running, last run, Reindex.
 - Activity log: counts and durations only (`file_index_finished`); no paths or contents.
 
 ## Tools (`.pi/extensions/files`, skill `file-assistant`)

@@ -39,10 +39,10 @@ struct GmailBatch: Decodable, Identifiable {
 struct GmailPlanItem: Decodable { let level: String; let from: String; let subject: String }
 struct GmailPlan: Decodable { let at: Double; let counts: [String: Int]; let missing_labels: [String]; let items: [GmailPlanItem] }
 struct GmailBatches: Decodable { let batches: [GmailBatch]; var last_plan: GmailPlan? }
-struct FilesIndex: Decodable { let files: Int; let chunks: Int; let running: Bool; let last_run: Double?; let multimodal: Bool; let last_error: String? }
+struct FilesIndex: Decodable { let files: Int; let found: Int?; let chunks: Int; let running: Bool; let last_run: Double?; let multimodal: Bool; let last_error: String? }
 struct FilesPlanGroup: Decodable { let folder: String; let existing: Bool; let files: [String] }
 struct FilesPlan: Decodable { let at: Double; let folder: String; let groups: [FilesPlanGroup]; let left: [String] }
-struct FilesStatus: Decodable { var enabled = false; var roots: [String] = []; var index: FilesIndex?; var last_plan: FilesPlan? }
+struct FilesStatus: Decodable { var enabled = false; var roots: [String] = []; var skip_dirs: [String]? = nil; var index: FilesIndex?; var last_plan: FilesPlan? }
 
 struct ActivityRow: Identifiable { let id: Int; let time: String; let request: String; let event: String; let details: String }
 
@@ -94,6 +94,8 @@ final class AdminModel {
     var files = FilesStatus()
     var fileRoots = ""
     var fileRootsOriginal = ""
+    var fileSkip = ""
+    var fileSkipOriginal = ""
     var filesMessage = ""
     private var polling: Task<Void, Never>?
 
@@ -306,7 +308,10 @@ final class AdminModel {
     private func applyFiles(_ data: Data, roots: Bool) {
         guard let value = try? JSONDecoder().decode(FilesStatus.self, from: data) else { return }
         files = value
-        if roots { fileRoots = value.roots.joined(separator: "\n"); fileRootsOriginal = fileRoots }
+        if roots {
+            fileRoots = value.roots.joined(separator: "\n"); fileRootsOriginal = fileRoots
+            fileSkip = (value.skip_dirs ?? []).joined(separator: "\n"); fileSkipOriginal = fileSkip
+        }
     }
     func loadFiles(roots: Bool = true) async {
         do { applyFiles(try await backend.admin("admin/files"), roots: roots) } catch { filesMessage = error.localizedDescription }
@@ -321,6 +326,9 @@ final class AdminModel {
     func setFiles(_ on: Bool) async { files.enabled = on; await saveFiles(["enabled": on]) }
     func saveFileRoots() async {
         await saveFiles(["roots": fileRoots.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }])
+    }
+    func saveFileSkip() async {
+        await saveFiles(["skip_dirs": fileSkip.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }])
     }
     func reindexFiles() async {
         do { applyFiles(try await backend.admin("admin/files/reindex"), roots: false); filesMessage = "" } catch { filesMessage = error.localizedDescription }
@@ -429,7 +437,7 @@ private struct StatusTab: View {
             }
             if admin.files.enabled, let index = admin.files.index {
                 Section("Dosyalar / Files") {
-                    LabeledContent("Dizinlenen / Indexed", value: "\(index.files) dosya / files • \(index.chunks) parça / chunks" + (index.multimodal ? "" : " • yalnız metin / text only"))
+                    LabeledContent("Dizinlenen / Bulunan • Indexed / Found", value: "\(index.files) / \(index.found ?? index.files) • \(index.chunks) parça / chunks" + (index.multimodal ? "" : " • yalnız metin / text only"))
                     LabeledContent("Son tarama / Last run", value: index.running ? "Çalışıyor / Running"
                         : index.last_run.map { Date(timeIntervalSince1970: $0 / 1000).formatted(date: .abbreviated, time: .shortened) } ?? "Yok / None")
                     if let error = index.last_error { Text(error).font(.caption).foregroundStyle(.orange) }
@@ -526,6 +534,12 @@ private struct SettingsTab: View {
                     if !admin.filesMessage.isEmpty { Text(admin.filesMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
                     Spacer()
                     Button("Kaydet / Save") { Task { await admin.saveFileRoots() } }.disabled(admin.fileRoots == admin.fileRootsOriginal)
+                }
+                Text("Atlanan klasörler / Skipped folders").font(.caption)
+                TextEditor(text: $admin.fileSkip).font(.system(.body, design: .monospaced)).frame(minHeight: 60)
+                HStack {
+                    Spacer()
+                    Button("Kaydet / Save") { Task { await admin.saveFileSkip() } }.disabled(admin.fileSkip == admin.fileSkipOriginal)
                 }
             }
             Section("Okunuşlar / Pronunciations") {
