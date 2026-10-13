@@ -32,13 +32,14 @@ const BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 const str = (value: unknown, max: number) => typeof value === 'string' ? value.slice(0, max) : '';
 
+/** One connected account's mailbox. */
 export class GmailProvider implements MailProvider {
-  private readonly auth: GmailAuth; private readonly http: Http;
-  constructor(auth: GmailAuth, http: Http = (url, init) => fetch(url, init)) { this.auth = auth; this.http = http; }
+  private readonly auth: GmailAuth; private readonly email: string; private readonly http: Http;
+  constructor(auth: GmailAuth, email: string, http: Http = (url, init) => fetch(url, init)) { this.auth = auth; this.email = email; this.http = http; }
 
   private async call(method: string, path: string, body?: unknown, signal = new AbortController().signal): Promise<any> {
     for (let attempt = 0; ; attempt++) {
-      const token = await this.auth.accessToken(signal, attempt > 0);
+      const token = await this.auth.accessToken(this.email, signal, attempt > 0);
       let response: Response;
       try {
         response = await this.http(BASE + path, { method, signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]),
@@ -46,11 +47,12 @@ export class GmailProvider implements MailProvider {
           ...(body ? { body: JSON.stringify(body) } : {}) });
       } catch { throw new GmailError(signal.aborted ? 'cancelled' : 'gmail_unavailable'); }
       if (response.status === 401 && attempt === 0) continue; // Access token expired early: refresh once.
-      if (response.status === 401) throw new GmailError('gmail_auth_expired');
+      if (response.status === 401) { this.auth.fail(this.email, 'gmail_auth_expired'); throw new GmailError('gmail_auth_expired'); }
       if (response.status === 429) throw new GmailError('gmail_rate_limited');
       if (response.status === 403) {
         const text = await response.text().catch(() => '');
-        throw new GmailError(/rateLimitExceeded|userRateLimitExceeded|quotaExceeded/.test(text) ? 'gmail_rate_limited' : 'gmail_auth_expired');
+        if (/rateLimitExceeded|userRateLimitExceeded|quotaExceeded/.test(text)) throw new GmailError('gmail_rate_limited');
+        this.auth.fail(this.email, 'gmail_auth_expired'); throw new GmailError('gmail_auth_expired');
       }
       if (!response.ok) throw new GmailError('gmail_unavailable');
       if (response.status === 204) return {};

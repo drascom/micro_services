@@ -15,8 +15,10 @@ export const SCOPE = 'https://www.googleapis.com/auth/gmail.modify';
 export const CONNECT_TIMEOUT_MS = 5 * 60_000;
 
 type Client = { client_id: string; client_secret: string };
-type Token = { refresh_token: string; email: string };
-const CLIENT = 'client', TOKEN = 'token';
+/** Secret names: `client`, `accounts` (JSON list of emails) and one `token-<email>` per account; `token` is the pre-list single account. */
+const CLIENT = 'client', ACCOUNTS = 'accounts', LEGACY_TOKEN = 'token';
+const tokenName = (email: string) => 'token-' + email;
+const EMAIL = /^[a-z0-9._+-]{1,64}@[a-z0-9.-]{1,60}\.[a-z]{2,}$/;
 
 const pkce = () => {
   const verifier = randomBytes(48).toString('base64url');
@@ -33,26 +35,54 @@ const PAGE = (text: string) => `<!doctype html><meta charset="utf-8"><title>Ayha
  */
 export class GmailAuth {
   private readonly store: SecretStore; private readonly http: Http; private readonly now: () => number;
-  private access?: { token: string; expires: number };
-  private refreshing?: Promise<string>;
+  private readonly access = new Map<string, { token: string; expires: number }>();
+  private readonly refreshing = new Map<string, Promise<string>>();
+  /** Per-account error code (e.g. gmail_auth_expired) until it works again or is reconnected. */
+  private readonly errors = new Map<string, string>();
   private pending?: { server: Server; done: Promise<string> };
-  private cached?: { client?: Client; token?: Token };
+  private cached?: { client?: Client; tokens: Map<string, string> };
+  /** The latest browser-consent error. */
   lastError = '';
   constructor(options: { store: SecretStore; http?: Http; now?: () => number }) {
     this.store = options.store; this.http = options.http ?? ((url, init) => fetch(url, init)); this.now = options.now ?? (() => Date.now());
   }
 
+  /** Client and per-account refresh tokens; a pre-list single `token` moves to its own `token-<email>` once (no reconnect). */
+  private reading?: Promise<{ client?: Client; tokens: Map<string, string> }>;
   private async read() {
     if (this.cached) return this.cached;
+    return this.reading ??= this.load().finally(() => { this.reading = undefined; });
+  }
+  private async load() {
     const parse = <T>(text: string | undefined) => { try { return text ? JSON.parse(text) as T : undefined; } catch { return undefined; } };
-    const [client, token] = await Promise.all([this.store.get(CLIENT), this.store.get(TOKEN)]);
-    return this.cached = { client: parse<Client>(client), token: parse<Token>(token) };
+    const [client, list, legacy] = await Promise.all([this.store.get(CLIENT), this.store.get(ACCOUNTS), this.store.get(LEGACY_TOKEN)]);
+    let emails = (parse<unknown[]>(list) ?? []).filter((e): e is string => typeof e === 'string' && EMAIL.test(e));
+    const old = parse<{ refresh_token?: unknown; email?: unknown }>(legacy);
+    if (old && typeof old.refresh_token === 'string' && typeof old.email === 'string' && EMAIL.test(old.email.toLowerCase())) {
+      const email = old.email.toLowerCase();
+      if (!emails.includes(email)) {
+        await this.store.set(tokenName(email), JSON.stringify({ refresh_token: old.refresh_token }));
+        emails = [email, ...emails];
+        await this.store.set(ACCOUNTS, JSON.stringify(emails));
+      }
+      await this.store.delete(LEGACY_TOKEN);
+    }
+    const tokens = new Map<string, string>();
+    for (const email of emails) {
+      const token = parse<{ refresh_token?: unknown }>(await this.store.get(tokenName(email)));
+      if (typeof token?.refresh_token === 'string') tokens.set(email, token.refresh_token);
+    }
+    return this.cached = { client: parse<Client>(client), tokens };
   }
 
-  /** Metadata only: whether a client is configured and which account is connected (never secrets). */
+  /** Connected account emails, in connection order. */
+  async accounts(): Promise<string[]> { return [...(await this.read()).tokens.keys()]; }
+
+  /** Metadata only: whether a client is configured and which accounts are connected (never secrets). */
   async status() {
-    const { client, token } = await this.read().catch(() => ({ client: undefined, token: undefined }));
-    return { client_configured: Boolean(client), connected: Boolean(token), email: token?.email ?? '', connecting: Boolean(this.pending) };
+    const { client, tokens } = await this.read().catch(() => ({ client: undefined, tokens: new Map<string, string>() }));
+    return { client_configured: Boolean(client), connected: tokens.size > 0,
+      accounts: [...tokens.keys()].map(email => ({ email, error: this.errors.get(email) ?? '' })), connecting: Boolean(this.pending) };
   }
 
   async saveClient(clientId: unknown, clientSecret: unknown) {
@@ -63,10 +93,11 @@ export class GmailAuth {
   }
 
   /**
-   * Starts the browser consent: returns the URL to open; `done` resolves with the verified account email once the
-   * loopback redirect arrives (or rejects on denial, wrong state, wrong account or timeout).
+   * Starts the browser consent for any Google account: returns the URL to open; `done` resolves with the verified account
+   * email (added, or its token replaced when already connected) once the loopback redirect arrives (or rejects on denial,
+   * wrong state or timeout).
    */
-  async connect(expectedEmail: string, timeoutMs = CONNECT_TIMEOUT_MS): Promise<{ auth_url: string; done: Promise<string> }> {
+  async connect(timeoutMs = CONNECT_TIMEOUT_MS): Promise<{ auth_url: string; done: Promise<string> }> {
     const { client } = await this.read();
     if (!client) throw new GmailError('gmail_not_configured');
     if (this.pending) { this.pending.server.close(); this.pending = undefined; }
@@ -77,8 +108,7 @@ export class GmailAuth {
     if (!address || typeof address !== 'object') { server.close(); throw new GmailError('gmail_unavailable'); }
     const redirect = `http://127.0.0.1:${address.port}`;
     const url = AUTH_URL + '?' + form({ client_id: client.client_id, redirect_uri: redirect, response_type: 'code', scope: SCOPE,
-      code_challenge: challenge, code_challenge_method: 'S256', state, access_type: 'offline', prompt: 'consent',
-      ...(expectedEmail ? { login_hint: expectedEmail } : {}) });
+      code_challenge: challenge, code_challenge_method: 'S256', state, access_type: 'offline', prompt: 'select_account consent' });
     const done = new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => finish(new GmailError('timeout')), timeoutMs);
       const finish = (error?: Error, email?: string) => {
@@ -95,7 +125,7 @@ export class GmailAuth {
         const code = query.get('code');
         if (!code) { reply(400, 'Not connected.'); return finish(new GmailError('gmail_not_connected')); }
         try {
-          const email = await this.exchange(client, code, verifier, redirect, expectedEmail);
+          const email = await this.exchange(client, code, verifier, redirect);
           reply(200, 'Gmail bağlandı / connected. Bu sekmeyi kapatabilirsiniz.'); finish(undefined, email);
         } catch (error) { reply(400, 'Not connected.'); finish(error as Error); }
       });
@@ -105,7 +135,7 @@ export class GmailAuth {
     return { auth_url: url, done };
   }
 
-  private async exchange(client: Client, code: string, verifier: string, redirect: string, expectedEmail: string): Promise<string> {
+  private async exchange(client: Client, code: string, verifier: string, redirect: string): Promise<string> {
     const response = await this.http(TOKEN_URL, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form({ code, client_id: client.client_id, client_secret: client.client_secret, redirect_uri: redirect,
         grant_type: 'authorization_code', code_verifier: verifier }), signal: AbortSignal.timeout(20_000) });
@@ -114,15 +144,14 @@ export class GmailAuth {
     if (typeof value.access_token !== 'string' || typeof value.refresh_token !== 'string') throw new GmailError('invalid_response');
     if (typeof value.scope === 'string' && !value.scope.split(' ').includes(SCOPE)) throw new GmailError('gmail_not_connected');
     const profile = await this.http(PROFILE_URL, { method: 'GET', headers: { Authorization: `Bearer ${value.access_token}` }, signal: AbortSignal.timeout(20_000) });
-    const email = profile.ok ? (await profile.json() as { emailAddress?: unknown }).emailAddress : undefined;
-    if (typeof email !== 'string' || !email.includes('@')) throw new GmailError('invalid_response');
-    if (expectedEmail && email.toLowerCase() !== expectedEmail.toLowerCase()) {
-      await this.revoke(value.refresh_token);
-      throw new GmailError('gmail_wrong_account');
-    }
-    await this.store.set(TOKEN, JSON.stringify({ refresh_token: value.refresh_token, email }));
-    this.cached = undefined;
-    this.access = { token: value.access_token, expires: this.now() + (Number(value.expires_in) || 3600) * 1000 };
+    const address = profile.ok ? (await profile.json() as { emailAddress?: unknown }).emailAddress : undefined;
+    const email = typeof address === 'string' ? address.toLowerCase() : '';
+    if (!EMAIL.test(email)) { await this.revoke(value.refresh_token); throw new GmailError('invalid_response'); }
+    const emails = await this.accounts();
+    await this.store.set(tokenName(email), JSON.stringify({ refresh_token: value.refresh_token }));
+    if (!emails.includes(email)) await this.store.set(ACCOUNTS, JSON.stringify([...emails, email]));
+    this.cached = undefined; this.errors.delete(email);
+    this.access.set(email, { token: value.access_token, expires: this.now() + (Number(value.expires_in) || 3600) * 1000 });
     return email;
   }
 
@@ -131,37 +160,48 @@ export class GmailAuth {
       signal: AbortSignal.timeout(10_000) }).catch(() => undefined);
   }
 
-  /** Revokes (best effort) and forgets the refresh token; the OAuth client stays configured. */
-  async disconnect() {
-    const { token } = await this.read();
-    if (token) await this.revoke(token.refresh_token);
-    await this.store.delete(TOKEN);
-    this.cached = undefined; this.access = undefined;
+  /** Revokes (best effort) and forgets one account's refresh token; the OAuth client and other accounts stay. */
+  async disconnect(email: string) {
+    const { tokens } = await this.read(), key = email.trim().toLowerCase(), token = tokens.get(key);
+    if (!token) throw new GmailError('gmail_not_connected');
+    await this.revoke(token);
+    await this.store.set(ACCOUNTS, JSON.stringify([...tokens.keys()].filter(e => e !== key)));
+    await this.store.delete(tokenName(key));
+    this.cached = undefined; this.access.delete(key); this.errors.delete(key);
   }
 
-  /** The cached access token, refreshed a minute before expiry; `force` after a 401. */
-  async accessToken(signal: AbortSignal, force = false): Promise<string> {
-    if (!force && this.access && this.access.expires - 60_000 > this.now()) return this.access.token;
-    return this.refreshing ??= this.refresh(signal).finally(() => { this.refreshing = undefined; });
+  /** Records an account-level failure seen by the provider (shown in Admin until it works again). */
+  fail(email: string, code: string) { this.errors.set(email, code); }
+
+  /** One account's cached access token, refreshed a minute before expiry; `force` after a 401. */
+  async accessToken(email: string, signal: AbortSignal, force = false): Promise<string> {
+    const access = this.access.get(email);
+    if (!force && access && access.expires - 60_000 > this.now()) return access.token;
+    let refreshing = this.refreshing.get(email);
+    if (!refreshing) {
+      refreshing = this.refresh(email, signal).finally(() => this.refreshing.delete(email));
+      this.refreshing.set(email, refreshing);
+    }
+    return refreshing;
   }
 
-  private async refresh(signal: AbortSignal): Promise<string> {
-    const { client, token } = await this.read();
+  private async refresh(email: string, signal: AbortSignal): Promise<string> {
+    const { client, tokens } = await this.read(), token = tokens.get(email);
     if (!token) throw new GmailError('gmail_not_connected');
     if (!client) throw new GmailError('gmail_not_configured');
     let response: Response;
     try {
       response = await this.http(TOKEN_URL, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: form({ client_id: client.client_id, client_secret: client.client_secret, refresh_token: token.refresh_token, grant_type: 'refresh_token' }),
+        body: form({ client_id: client.client_id, client_secret: client.client_secret, refresh_token: token, grant_type: 'refresh_token' }),
         signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]) });
     } catch { throw new GmailError(signal.aborted ? 'cancelled' : 'gmail_unavailable'); }
-    if (response.status === 400 || response.status === 401) { this.lastError = 'gmail_auth_expired'; throw new GmailError('gmail_auth_expired'); }
+    if (response.status === 400 || response.status === 401) { this.errors.set(email, 'gmail_auth_expired'); throw new GmailError('gmail_auth_expired'); }
     if (response.status === 429) throw new GmailError('gmail_rate_limited');
     if (!response.ok) throw new GmailError('gmail_unavailable');
     const value = await response.json() as { access_token?: unknown; expires_in?: unknown };
     if (typeof value.access_token !== 'string') throw new GmailError('invalid_response');
-    this.access = { token: value.access_token, expires: this.now() + (Number(value.expires_in) || 3600) * 1000 };
-    this.lastError = '';
+    this.access.set(email, { token: value.access_token, expires: this.now() + (Number(value.expires_in) || 3600) * 1000 });
+    this.errors.delete(email);
     return value.access_token;
   }
 }

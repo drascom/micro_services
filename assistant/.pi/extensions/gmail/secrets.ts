@@ -18,7 +18,8 @@ export class MemorySecretStore implements SecretStore {
   async delete(name: string) { this.values.delete(name); }
 }
 
-const NAME = /^[a-z0-9_-]{1,40}$/;
+/** Secret names: fixed words or `token-<email>` (lowercase; no quote, space or backslash can reach `security -i`). */
+const NAME = /^[a-z0-9_-][a-z0-9_.@+-]{0,119}$/;
 
 /**
  * Generic passwords via /usr/bin/security. Secrets never appear on argv: writes go through `security -i` on stdin,

@@ -28,9 +28,10 @@ struct MailAccount: Codable, Identifiable, Equatable {
 struct MailAccounts: Decodable { let accounts: [MailAccount]; let available: [String]?; let available_error: String? }
 struct SavedMailAccounts: Decodable { let accounts: [MailAccount] }
 
+struct GmailAccount: Decodable, Identifiable { let email: String; let error: String; let missing_labels: [String]; var id: String { email } }
 struct GmailStatus: Decodable {
-    var client_configured = false; var connected = false; var email = ""; var connecting = false; var account = ""
-    var triage_enabled = false; var urgent_senders: [String] = []; var missing_labels: [String] = []; var error = ""
+    var client_configured = false; var connected = false; var accounts: [GmailAccount] = []; var connecting = false
+    var triage_enabled = false; var urgent_senders: [String] = []; var error = ""
 }
 struct GmailBatch: Decodable, Identifiable {
     let batch: String; let at: Double; let kind: String; let count: Int; let undone: Bool; let levels: [String: Int]
@@ -81,7 +82,6 @@ final class AdminModel {
     var gmail = GmailStatus()
     var gmailClientId = ""
     var gmailClientSecret = ""
-    var gmailAccount = ""
     var gmailUrgent = ""
     var gmailImportance = ""
     var gmailImportanceOriginal = ""
@@ -235,7 +235,7 @@ final class AdminModel {
     // MARK: Gmail (OAuth client in Keychain via the backend; the backend never returns secrets)
     private func applyGmail(_ data: Data) {
         guard let value = try? JSONDecoder().decode(GmailStatus.self, from: data) else { return }
-        gmail = value; gmailAccount = value.account; gmailUrgent = value.urgent_senders.joined(separator: ", ")
+        gmail = value; gmailUrgent = value.urgent_senders.joined(separator: ", ")
     }
     func loadGmail() async {
         do { applyGmail(try await backend.admin("admin/gmail")) } catch { gmailMessage = error.localizedDescription }
@@ -251,13 +251,12 @@ final class AdminModel {
         await saveGmail(["client_id": gmailClientId, "client_secret": gmailClientSecret])
         if gmailMessage.isEmpty { gmailClientId = ""; gmailClientSecret = "" }
     }
-    func saveGmailAccount() async { await saveGmail(["account": gmailAccount]) }
     func setGmailTriage(_ on: Bool) async { gmail.triage_enabled = on; await saveGmail(["triage_enabled": on]) }
     func saveGmailUrgent() async {
         let list = gmailUrgent.split(whereSeparator: { $0 == "," || $0 == "\n" || $0 == " " }).map(String.init).filter { !$0.isEmpty }
         await saveGmail(["urgent_senders": list])
     }
-    /// Opens Google's consent page in the default browser; the backend's loopback listener completes the connection.
+    /// Adds an account: opens Google's consent page in the default browser; the backend's loopback listener completes it.
     func connectGmail() async {
         do {
             let data = try await backend.admin("admin/gmail/connect")
@@ -267,13 +266,13 @@ final class AdminModel {
             for _ in 0..<150 { // Up to 5 minutes, like the backend's consent timeout.
                 try? await Task.sleep(for: .seconds(2))
                 await loadGmail()
-                if gmail.connected || !gmail.connecting { break }
+                if !gmail.connecting { break }
             }
-            if !gmail.connected, !gmail.error.isEmpty { gmailMessage = gmail.error }
+            if !gmail.error.isEmpty { gmailMessage = gmail.error }
         } catch { gmailMessage = error.localizedDescription }
     }
-    func disconnectGmail() async {
-        do { applyGmail(try await backend.admin("admin/gmail/disconnect")); gmailMessage = "" } catch { gmailMessage = error.localizedDescription }
+    func disconnectGmail(_ email: String) async {
+        do { applyGmail(try await backend.admin("admin/gmail/disconnect", ["account": email])); gmailMessage = "" } catch { gmailMessage = error.localizedDescription }
     }
     func loadImportance() async {
         guard let data = try? await backend.admin("admin/gmail/importance"),
@@ -644,20 +643,27 @@ private struct GmailSection: View {
                 Button("Kaydet / Save") { Task { await admin.saveGmailClient() } }
                     .disabled(admin.gmailClientId.isEmpty || admin.gmailClientSecret.isEmpty)
             }
-            TextField("Hesap / Account", text: $admin.gmailAccount, prompt: Text("name@gmail.com"))
-                .onSubmit { Task { await admin.saveGmailAccount() } }
-            HStack {
-                Text(admin.gmail.connected ? "Bağlı / Connected: \(admin.gmail.email)" : admin.gmail.connecting ? "Tarayıcıda onay bekleniyor / Waiting for browser…" : "Bağlı değil / Not connected")
-                    .foregroundStyle(admin.gmail.connected ? .primary : .secondary)
-                Spacer()
-                if admin.gmail.connected {
-                    Button("Bağlantıyı kes / Disconnect") { Task { await admin.disconnectGmail() } }
-                } else {
-                    Button("Bağlan / Connect") { Task { await admin.connectGmail() } }.disabled(!admin.gmail.client_configured)
+            ForEach(admin.gmail.accounts) { account in
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text(account.email)
+                        Spacer()
+                        Button("Bağlantıyı kes / Disconnect") { Task { await admin.disconnectGmail(account.email) } }
+                    }
+                    if account.error == "gmail_auth_expired" {
+                        Text("Yeniden bağlan / Reconnect").font(.caption).foregroundStyle(.red)
+                    } else if !account.error.isEmpty {
+                        Text(account.error).font(.caption).foregroundStyle(.red)
+                    }
+                    if !account.missing_labels.isEmpty {
+                        Text("Eksik etiket / Missing label: \(account.missing_labels.joined(separator: ", "))").font(.caption).foregroundStyle(.orange)
+                    }
                 }
             }
-            if !admin.gmail.missing_labels.isEmpty {
-                Text("Eksik etiket / Missing label: \(admin.gmail.missing_labels.joined(separator: ", "))").font(.caption).foregroundStyle(.orange)
+            HStack {
+                if admin.gmail.connecting { Text("Tarayıcıda onay bekleniyor / Waiting for browser…").foregroundStyle(.secondary) }
+                Spacer()
+                Button("Hesap ekle / Add account") { Task { await admin.connectGmail() } }.disabled(!admin.gmail.client_configured || admin.gmail.connecting)
             }
             Toggle("Mail düzenleme / Mail organizing", isOn: Binding(get: { admin.gmail.triage_enabled }, set: { on in Task { await admin.setGmailTriage(on) } }))
                 .disabled(!admin.gmail.connected)

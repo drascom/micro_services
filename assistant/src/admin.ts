@@ -272,51 +272,46 @@ export async function saveReminders(config: Config, configPath: string, value: u
   return { enabled: config.reminders_enabled, tasks_enabled: config.tasks_enabled, tasks_list: config.tasks_list };
 }
 
-/** Gmail: connection metadata and triage settings for Admin; never secrets or tokens. */
+/** Gmail: connected accounts (each with its missing labels and error), shared triage settings; never secrets or tokens. */
 export async function gmailStatus(config: Config, service: GmailService) {
   const auth = await service.auth.status();
-  return { ...auth, account: config.gmail_account, triage_enabled: config.gmail_triage_enabled,
-    urgent_senders: config.gmail_urgent_senders, daily_limit: config.gmail_daily_limit,
-    missing_labels: auth.connected ? await service.missingLabels() : [], error: service.auth.lastError };
+  const accounts = await Promise.all(auth.accounts.map(async a => ({ ...a, missing_labels: a.error ? [] : await service.missingLabels(a.email) })));
+  return { ...auth, accounts, triage_enabled: config.gmail_triage_enabled,
+    urgent_senders: config.gmail_urgent_senders, daily_limit: config.gmail_daily_limit, error: service.auth.lastError };
 }
 
 /**
- * Gmail settings: OAuth client (Keychain only, never config.json) and account, triage switch and urgent senders
- * (config.json). Only the fields present are changed.
+ * Gmail settings: OAuth client (Keychain only, never config.json), triage switch and urgent senders (config.json, shared
+ * by all accounts). Only the fields present are changed.
  */
 export async function saveGmail(config: Config, configPath: string, service: GmailService, value: unknown) {
   const input = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
   if (input.client_id !== undefined || input.client_secret !== undefined) await service.auth.saveClient(input.client_id, input.client_secret);
-  const change: Partial<Pick<Config, 'gmail_account' | 'gmail_triage_enabled' | 'gmail_urgent_senders'>> = {};
-  if (input.account !== undefined) {
-    if (typeof input.account !== 'string' || (input.account.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.account.trim()))) throw Error('Invalid Gmail address');
-    change.gmail_account = input.account.trim().toLowerCase();
-  }
+  const change: Partial<Pick<Config, 'gmail_triage_enabled' | 'gmail_urgent_senders'>> = {};
   if (input.triage_enabled !== undefined) { if (typeof input.triage_enabled !== 'boolean') throw Error('triage_enabled must be a boolean'); change.gmail_triage_enabled = input.triage_enabled; }
   if (input.urgent_senders !== undefined) change.gmail_urgent_senders = validateUrgentSenders(input.urgent_senders);
   if (Object.keys(change).length) {
-    await updateConfigFile(configPath, settings => { Object.assign(settings, change); });
+    await updateConfigFile(configPath, settings => { Object.assign(settings, change); delete settings.gmail_account; });
     Object.assign(config, change);
   }
   return gmailStatus(config, service);
 }
 
-/** Starts the browser consent; the Mac app opens `auth_url`. A first connection records the account in config.json. */
-export async function connectGmail(config: Config, configPath: string, service: GmailService) {
-  const { auth_url, done } = await service.auth.connect(config.gmail_account);
-  done.then(async email => {
-    service.forgetLabels();
-    if (!config.gmail_account) await saveGmail(config, configPath, service, { account: email }).catch(() => {});
-  }, () => {});
+/** Adds an account (or renews one): starts the browser consent for any Google account; the Mac app opens `auth_url`. */
+export async function connectGmail(service: GmailService) {
+  const { auth_url, done } = await service.auth.connect();
+  done.then(() => service.forgetLabels(), () => {});
   return { auth_url };
 }
 
-export async function disconnectGmail(config: Config, service: GmailService) {
-  await service.auth.disconnect(); service.forgetLabels();
+export async function disconnectGmail(config: Config, service: GmailService, value: unknown) {
+  const account = (value && typeof value === 'object' ? (value as { account?: unknown }).account : undefined);
+  if (typeof account !== 'string' || !account.trim()) throw Error('account is required');
+  await service.auth.disconnect(account); service.forgetLabels();
   return gmailStatus(config, service);
 }
 
-const adminTriage = (config: Config, service: GmailService) => new MailTriage({ provider: service.provider, settings: config, memory: triageMemory,
+const adminTriage = (config: Config, service: GmailService) => new MailTriage({ mailboxes: service, settings: config, memory: triageMemory,
   turn: 0, logFile: service.logFile, stateFile: service.stateFile, importance: () => service.importance() });
 export async function gmailActions(config: Config, service: GmailService) {
   return { batches: await adminTriage(config, service).recent(10), last_plan: lastPlan() ?? null };

@@ -30,7 +30,7 @@ const scalars = {
   language_detector: 'runtime/detect-language',
   reminders_enabled: false, tasks_enabled: false, tasks_list: 'Asistan',
   mail_max_age_days: 30, mail_max_list_results: 25, mail_max_body_chars: 8000,
-  gmail_triage_enabled: false, gmail_account: '', gmail_daily_limit: 500,
+  gmail_triage_enabled: false, gmail_daily_limit: 500,
   embedding_enabled: false, embedding_bin: 'runtime/llama/llama-server',
   embedding_model: 'models/embeddinggemma-2/embeddinggemma-2-Q8_0.gguf',
   embedding_mmproj: 'models/embeddinggemma-2/mmproj-embeddinggemma-2-Q8_0.gguf',
@@ -110,6 +110,8 @@ export function validateMailAccounts(value: unknown): MailAccount[] {
 }
 /** Pre-list config: mail_enabled/mail_account/mail_mailbox become one list entry. */
 const LEGACY_MAIL = { mail_enabled: 'boolean', mail_account: 'string', mail_mailbox: 'string' } as const;
+/** Pre-multi-account Gmail address: accounts now come from the secret store, so it is accepted and ignored. */
+const LEGACY_IGNORED = { gmail_account: 'string' } as const;
 
 export async function loadConfig(configPath = path.join(root, 'config.json')): Promise<Config> {
   let settings: Record<string, unknown> = {};
@@ -121,6 +123,10 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
     if (key in LEGACY_MAIL) {
       if (typeof value !== LEGACY_MAIL[key as keyof typeof LEGACY_MAIL]) throw Error(`Invalid setting: ${key}`);
       legacy[key] = value; delete settings[key]; continue;
+    }
+    if (key in LEGACY_IGNORED) {
+      if (typeof value !== LEGACY_IGNORED[key as keyof typeof LEGACY_IGNORED]) throw Error(`Invalid setting: ${key}`);
+      delete settings[key]; continue;
     }
     if (key === 'mail_accounts' || key === 'gmail_urgent_senders' || key === 'file_roots' || key === 'file_skip_dirs') continue;
     if (!(key in defaults) || typeof value !== typeof defaults[key as keyof typeof defaults]) throw Error(`Invalid setting: ${key}`);
@@ -160,7 +166,6 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
     throw Error('tasks_list must be a Reminders list name (1-100 characters)');
   if (!Number.isInteger(config.gmail_daily_limit) || config.gmail_daily_limit > 5000)
     throw Error('gmail_daily_limit must be an integer between 1 and 5000');
-  if (config.gmail_account && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.gmail_account)) throw Error('gmail_account must be an email address');
   const local = new URL(config.local_url);
   if (local.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(local.hostname) ||
       !local.port || local.pathname.replace(/\/$/, '') !== '/v1' || local.username || local.search || local.hash)

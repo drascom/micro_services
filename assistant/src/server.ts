@@ -116,8 +116,8 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         if (request.url === '/admin/reminders/save') return reply(200, await saveReminders(config, configPath, data));
         if (request.url === '/admin/gmail') return reply(200, await gmailStatus(config, gmail));
         if (request.url === '/admin/gmail/save') return reply(200, await saveGmail(config, configPath, gmail, data));
-        if (request.url === '/admin/gmail/connect') return reply(200, await connectGmail(config, configPath, gmail));
-        if (request.url === '/admin/gmail/disconnect') return reply(200, await disconnectGmail(config, gmail));
+        if (request.url === '/admin/gmail/connect') return reply(200, await connectGmail(gmail));
+        if (request.url === '/admin/gmail/disconnect') return reply(200, await disconnectGmail(config, gmail, data));
         if (request.url === '/admin/gmail/importance') return reply(200, { content: await gmail.importance() });
         if (request.url === '/admin/gmail/importance/save') return reply(200, await gmail.saveImportance((data as { content?: unknown }).content));
         if (request.url === '/admin/pronunciations') return reply(200, { content: await readPronunciations() });

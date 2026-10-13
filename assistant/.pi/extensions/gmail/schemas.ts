@@ -3,10 +3,11 @@ import { Type, type Static } from 'typebox';
 /** One model-facing tool, kept tiny: its schema is sent with every request that enables it. */
 export const OrganizeParams = Type.Object({
   action: Type.Enum(['propose', 'apply', 'purge_junk', 'undo']),
-  confirm_token: Type.Optional(Type.String({ maxLength: 40 })),
-  // Lengths are enforced in code (triage.ts) to keep this schema small.
+  // Lengths are enforced in code (triage.ts) to keep this schema small; `account` omitted = every connected account.
+  confirm_token: Type.Optional(Type.String()),
   query: Type.Optional(Type.String()),
-  act: Type.Optional(Type.String())
+  act: Type.Optional(Type.String()),
+  account: Type.Optional(Type.String())
 }, { additionalProperties: false });
 export type OrganizeInput = Static<typeof OrganizeParams>;
 
@@ -35,7 +36,7 @@ export function findLabel(labels: ReadonlyMap<string, string>, name: string): st
 }
 
 export const GMAIL_ERROR_CODES = ['gmail_not_connected', 'gmail_auth_expired', 'gmail_rate_limited', 'gmail_unavailable',
-  'gmail_wrong_account', 'gmail_not_configured', 'gmail_daily_limit', 'gmail_disabled', 'confirmation_invalid', 'confirmation_expired',
+  'gmail_not_configured', 'gmail_daily_limit', 'gmail_disabled', 'confirmation_invalid', 'confirmation_expired',
   'confirmation_needs_reply', 'nothing_to_undo', 'invalid_request', 'invalid_response', 'cancelled', 'timeout'] as const;
 export type GmailErrorCode = typeof GMAIL_ERROR_CODES[number];
 
@@ -45,7 +46,6 @@ const MESSAGES: Record<GmailErrorCode, string> = {
   gmail_auth_expired: 'Gmail access expired or was revoked. The user must reconnect in Admin > Settings > Gmail. Do not retry.',
   gmail_rate_limited: 'Gmail rate limit reached. Try again later; do not retry now.',
   gmail_unavailable: 'Gmail did not respond. Try again later.',
-  gmail_wrong_account: 'The connected Google account is not the configured Gmail account.',
   gmail_not_configured: 'Gmail OAuth client ID/secret are missing in Admin.',
   gmail_daily_limit: 'The daily mail change limit is reached. Try again tomorrow.',
   gmail_disabled: 'Mail organizing is turned off in Admin.',

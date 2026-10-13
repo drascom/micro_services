@@ -27,23 +27,34 @@ const GOOGLE_OK = (domain: string) => `mx.google.com; dkim=pass header.i=@${doma
 type Msg = { id: string; labels: string[]; from: string; subject: string; snippet?: string; auth?: string[]; date?: number };
 const msg = (id: string, extra: Partial<Msg> = {}): Msg => ({ id, labels: ['INBOX', 'UNREAD', 'CATEGORY_PERSONAL'], from: `Sender ${id} <s${id}@example.org>`, subject: `Subject ${id}`, ...extra });
 
-function fakeGmail(messages: Msg[], options: { email?: string; labels?: { id: string; name: string }[] } = {}) {
-  const calls: { method: string; url: string; body?: string }[] = [];
-  let access = 0, valid = '', refreshToken = 'rt-good';
+/** One fake Google: `messages` is the main account's mailbox (`email`, default me@gmail.com); `others` adds more accounts. */
+function fakeGmail(messages: Msg[], options: { email?: string; labels?: { id: string; name: string }[]; others?: Record<string, Msg[]> } = {}) {
+  const calls: { method: string; url: string; body?: string; account?: string }[] = [];
+  const main = options.email ?? 'me@gmail.com', boxes: Record<string, Msg[]> = { [main]: messages, ...options.others };
+  const refresh: Record<string, string> = Object.fromEntries(Object.keys(boxes).map(e => [e, e === main ? 'rt-good' : 'rt-' + e]));
+  const valid = new Map<string, string>(); // access token → account
+  let access = 0;
+  const issue = (email: string) => { const token = 'at' + ++access; valid.set(token, email); return token; };
   const labels = options.labels ?? [{ id: 'Label_1', name: 'Sonra Oku' }, { id: 'Label_2', name: 'Gereksiz' }, { id: 'INBOX', name: 'INBOX' }];
   const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
   const http: Http = async (url, init) => {
-    calls.push({ method: init.method, url, ...(init.body ? { body: init.body } : {}) });
+    const bearer = init.headers?.Authorization?.replace('Bearer ', '') ?? '', account = valid.get(bearer);
+    calls.push({ method: init.method, url, ...(init.body ? { body: init.body } : {}), ...(account ? { account } : {}) });
     if (url === TOKEN_URL) {
       const form = new URLSearchParams(init.body);
-      if (form.get('grant_type') === 'refresh_token')
-        return form.get('refresh_token') === refreshToken ? json({ access_token: valid = 'at' + ++access, expires_in: 3600 }) : json({ error: 'invalid_grant' }, 400);
-      if (form.get('code') !== 'code-1' || !form.get('code_verifier')) return json({ error: 'invalid_grant' }, 400);
-      return json({ access_token: valid = 'at' + ++access, refresh_token: refreshToken, expires_in: 3600, scope: SCOPE, verifier: form.get('code_verifier') });
+      if (form.get('grant_type') === 'refresh_token') {
+        const email = Object.keys(refresh).find(e => refresh[e] === form.get('refresh_token'));
+        return email ? json({ access_token: issue(email), expires_in: 3600 }) : json({ error: 'invalid_grant' }, 400);
+      }
+      const email = form.get('code') === 'code-1' ? main : form.get('code')?.replace(/^code-/, '') ?? '';
+      if (!boxes[email] || !form.get('code_verifier')) return json({ error: 'invalid_grant' }, 400);
+      refresh[email] ??= 'rt-' + email;
+      return json({ access_token: issue(email), refresh_token: refresh[email], expires_in: 3600, scope: SCOPE, verifier: form.get('code_verifier') });
     }
     if (url === REVOKE_URL) return new Response('', { status: 200 });
-    if (url === PROFILE_URL) return json({ emailAddress: options.email ?? 'me@gmail.com' });
-    if (init.headers?.Authorization !== `Bearer ${valid}`) return json({ error: { code: 401 } }, 401);
+    if (url === PROFILE_URL) return account ? json({ emailAddress: account === main ? main.replace(/^me@/, 'Me@') : account }) : json({}, 401);
+    if (!account) return json({ error: { code: 401 } }, 401);
+    const messages = boxes[account];
     const u = new URL(url), route = u.pathname.replace('/gmail/v1/users/me', '');
     if (init.method === 'GET' && route === '/labels') return json({ labels });
     if (init.method === 'GET' && route === '/messages') {
@@ -66,21 +77,25 @@ function fakeGmail(messages: Msg[], options: { email?: string; labels?: { id: st
     }
     return json({ error: 'not found' }, 404);
   };
-  return { http, calls, messages, revokeRefresh: () => { refreshToken = 'revoked'; } };
+  return { http, calls, messages, boxes, revokeRefresh: (email = main) => { refresh[email] = 'revoked-' + email; } };
 }
 
-async function setup(messages: Msg[], options: { email?: string; labels?: { id: string; name: string }[]; connected?: boolean } = {}) {
+async function setup(messages: Msg[], options: { email?: string; labels?: { id: string; name: string }[]; connected?: boolean; others?: Record<string, Msg[]> } = {}) {
   const dir = await mkdtemp(path.join(tmpdir(), 'ayhan-gmail-'));
   const gmail = fakeGmail(messages, options), store = new MemorySecretStore();
   store.values.set('client', JSON.stringify({ client_id: 'id-123456.apps.googleusercontent.com', client_secret: 'GOCSPX-secret' }));
+  // The main account as the pre-multi-account single `token` (migrated on first read); other accounts in the new layout.
   if (options.connected !== false) store.values.set('token', JSON.stringify({ refresh_token: 'rt-good', email: 'me@gmail.com' }));
+  const others = Object.keys(options.others ?? {});
+  if (others.length) store.values.set('accounts', JSON.stringify(others));
+  for (const email of others) store.values.set('token-' + email, JSON.stringify({ refresh_token: 'rt-' + email }));
   const service = new GmailService({ dataDir: path.join(dir, 'data'), exampleFile: path.join(dir, 'example.md'), store, http: gmail.http });
   let now = Date.UTC(2026, 9, 11, 9);
   const memory = new TriageMemory(new ConfirmationStore(() => now));
   const reminders: BridgeRequest[] = [], notes: string[] = [];
   const settings = { ...defaults, gmail_urgent_senders: ['@work.example', 'mom@example.net'], reminders_enabled: true };
   const triage = (turn: number, extra: { model?: (s: string, u: string) => Promise<string>; settings?: Partial<Config>; proposeOnly?: boolean } = {}) =>
-    new MailTriage({ provider: service.provider, settings: { ...settings, ...extra.settings }, memory, turn, logFile: service.logFile, stateFile: service.stateFile,
+    new MailTriage({ mailboxes: service, settings: { ...settings, ...extra.settings }, memory, turn, logFile: service.logFile, stateFile: service.stateFile,
       importance: () => service.importance(), model: extra.model ?? (async () => '{}'), proposeOnly: extra.proposeOnly, now: () => now,
       notify: async (_t, body) => { notes.push(body); },
       reminders: { request: async request => { reminders.push(request); return JSON.stringify({ ok: true }); } } as RemindersTransport });
@@ -93,10 +108,10 @@ async function code(promise: Promise<unknown>) {
   return 'ok';
 }
 
-test('OAuth: PKCE + loopback consent stores the refresh token in the secret store; state and account are checked', async () => {
+test('OAuth: PKCE + loopback consent stores one refresh token per account in the secret store; state is checked', async () => {
   const f = await setup([], { connected: false });
   try {
-    const { auth_url, done } = await f.service.auth.connect('me@gmail.com');
+    const { auth_url, done } = await f.service.auth.connect();
     const url = new URL(auth_url);
     assert.equal(url.origin + url.pathname, 'https://accounts.google.com/o/oauth2/v2/auth');
     assert.equal(url.searchParams.get('scope'), SCOPE);
@@ -109,34 +124,63 @@ test('OAuth: PKCE + loopback consent stores the refresh token in the secret stor
     // The verifier sent to the token endpoint matches the challenge in the consent URL.
     const exchange = new URLSearchParams(f.gmail.calls.find(c => c.url === TOKEN_URL)!.body);
     assert.equal(createHash('sha256').update(exchange.get('code_verifier')!).digest('base64url'), url.searchParams.get('code_challenge'));
-    assert.deepEqual(JSON.parse(f.store.values.get('token')!), { refresh_token: 'rt-good', email: 'me@gmail.com' });
+    assert.deepEqual(JSON.parse(f.store.values.get('token-me@gmail.com')!), { refresh_token: 'rt-good' });
+    assert.deepEqual(JSON.parse(f.store.values.get('accounts')!), ['me@gmail.com']);
     const status = await f.service.auth.status();
-    assert.deepEqual(status, { client_configured: true, connected: true, email: 'me@gmail.com', connecting: false });
+    assert.deepEqual(status, { client_configured: true, connected: true, accounts: [{ email: 'me@gmail.com', error: '' }], connecting: false });
     assert.ok(!JSON.stringify(status).includes('secret') && !JSON.stringify(status).includes('rt-good'));
   } finally { await f.close(); }
-  // Another Google account than the configured one: revoked, nothing stored.
-  const g = await setup([], { connected: false, email: 'other@gmail.com' });
+  // "Add account": any other Google account is added next to the first; reconnecting one only renews its token.
+  const g = await setup([], { others: { 'work@corp.example': [] } });
   try {
-    const { auth_url, done } = await g.service.auth.connect('me@gmail.com');
-    const url = new URL(auth_url);
-    await fetch(`${url.searchParams.get('redirect_uri')}/?code=code-1&state=${url.searchParams.get('state')}`);
-    assert.equal(await code(done), 'gmail_wrong_account');
-    assert.ok(!g.store.values.has('token') && g.gmail.calls.some(c => c.url === REVOKE_URL));
+    for (const email of ['new@gmail.com', 'me@gmail.com']) {
+      const { auth_url, done } = await g.service.auth.connect();
+      const url = new URL(auth_url);
+      assert.equal(url.searchParams.get('login_hint'), null);
+      g.gmail.boxes[email] ??= [];
+      await fetch(`${url.searchParams.get('redirect_uri')}/?code=code-${email}&state=${url.searchParams.get('state')}`);
+      assert.equal(await done, email);
+    }
+    assert.deepEqual(await g.service.accounts(), ['me@gmail.com', 'work@corp.example', 'new@gmail.com']);
+    assert.ok(g.store.values.has('token-new@gmail.com') && !g.store.values.has('token'));
   } finally { await g.close(); }
+});
+
+test('migration: the single pre-list token becomes token-<email> without a reconnect; old config gmail_account is ignored', async () => {
+  const f = await setup([msg('1')]);
+  try {
+    assert.deepEqual(await f.service.accounts(), ['me@gmail.com']);
+    assert.ok(!f.store.values.has('token'));
+    assert.deepEqual(JSON.parse(f.store.values.get('token-me@gmail.com')!), { refresh_token: 'rt-good' });
+    assert.equal((await f.service.provider('me@gmail.com').labels(live())).get('Gereksiz'), 'Label_2');
+    // A second read (new process) finds the migrated layout.
+    const again = new GmailService({ dataDir: path.join(f.dir, 'data'), exampleFile: '', store: f.store, http: f.gmail.http });
+    assert.deepEqual(await again.accounts(), ['me@gmail.com']);
+    const file = path.join(f.dir, 'config.json');
+    await writeFile(file, JSON.stringify({ gmail_account: 'me@gmail.com', gmail_triage_enabled: true }));
+    const config = await loadConfig(file);
+    assert.equal(config.gmail_triage_enabled, true); assert.ok(!('gmail_account' in config));
+    // Processed ids of the single account keep counting after the migration.
+    await mkdir(f.service.dataDir, { recursive: true });
+    await writeFile(f.service.stateFile, JSON.stringify({ processed: { '1': Date.UTC(2026, 9, 11, 8) } }));
+    assert.equal((await f.triage(1).propose(live()) as any).status, 'empty');
+  } finally { await f.close(); }
 });
 
 test('OAuth: access token refreshes once on 401; a revoked refresh token is gmail_auth_expired; disconnect forgets it', async () => {
   const f = await setup([msg('1')]);
   try {
-    assert.equal((await f.service.provider.labels(live())).get('Gereksiz'), 'Label_2');
+    const me = f.service.provider('me@gmail.com');
+    assert.equal((await me.labels(live())).get('Gereksiz'), 'Label_2');
     assert.equal(f.gmail.calls.filter(c => c.url === TOKEN_URL).length, 1);
-    await f.service.provider.labels(live()); // Cached access token.
+    await me.labels(live()); // Cached access token.
     assert.equal(f.gmail.calls.filter(c => c.url === TOKEN_URL).length, 1);
     f.gmail.revokeRefresh();
-    assert.equal(await code(f.service.provider.labels(live()).then(() => f.service.auth.accessToken(live(), true))), 'gmail_auth_expired');
-    await f.service.auth.disconnect();
-    assert.ok(!f.store.values.has('token') && f.store.values.has('client'));
-    assert.equal(await code(f.service.provider.labels(live())), 'gmail_not_connected');
+    assert.equal(await code(me.labels(live()).then(() => f.service.auth.accessToken('me@gmail.com', live(), true))), 'gmail_auth_expired');
+    assert.deepEqual((await f.service.auth.status()).accounts, [{ email: 'me@gmail.com', error: 'gmail_auth_expired' }]);
+    await f.service.auth.disconnect('me@gmail.com');
+    assert.ok(!f.store.values.has('token-me@gmail.com') && f.store.values.has('client'));
+    assert.equal(await code(me.labels(live())), 'gmail_not_connected');
   } finally { await f.close(); }
 });
 
@@ -339,6 +383,67 @@ test('filtered propose: query limits the importance plan; explicit act → Trash
   } finally { await f.close(); }
 });
 
+test('multiple accounts: propose over all or one, one token applies everywhere, undo across accounts, an expired account is isolated', async () => {
+  const work = [msg('w1', { labels: ['INBOX', 'CATEGORY_PROMOTIONS'] }), msg('w2', { from: 'Boss <boss@work.example>', auth: [GOOGLE_OK('work.example')] })];
+  const messages = [msg('m1', { labels: ['INBOX', 'CATEGORY_SOCIAL'] })];
+  const f = await setup(messages, { others: { 'work@corp.example': work } });
+  try {
+    assert.deepEqual(await f.service.accounts(), ['me@gmail.com', 'work@corp.example']);
+    // Account filter: full address or a unique part; unknown names say which accounts exist.
+    const one = await f.triage(1).propose(live(), { account: 'corp' }) as any;
+    assert.deepEqual([one.total, one.accounts], [2, undefined]);
+    assert.ok(!f.gmail.calls.some(c => c.account === 'me@gmail.com' && c.url.includes('/messages')));
+    const unknown = await f.triage(1).propose(live(), { account: 'nope' }).catch(e => e);
+    assert.equal(unknown.code, 'invalid_request'); assert.match(unknown.message, /connected: me@gmail.com, work@corp.example/);
+    // All accounts: per-account counts, one token for the whole plan.
+    const snap = () => JSON.stringify([...messages, ...work].map(m => [m.id, [...m.labels].sort()]));
+    const before = snap();
+    const all = await f.triage(2).propose(live()) as any;
+    assert.equal(all.total, 3);
+    assert.deepEqual(all.accounts, { 'me@gmail.com': { later: 1 }, 'work@corp.example': { urgent: 1, junk: 1 } });
+    assert.equal(snap(), before);
+    assert.deepEqual(lastPlan()!.items.map(i => i.account).sort(), ['me@gmail.com', 'work@corp.example', 'work@corp.example']);
+    const applied = await f.triage(3).apply(all.confirm_token, live()) as any;
+    assert.deepEqual([applied.applied, applied.urgent, applied.errors], [3, 1, undefined]);
+    assert.ok(messages[0].labels.includes('Label_1') && work[0].labels.includes('Label_2') && work[1].labels.includes('STARRED'));
+    // Each account's changes went to its own mailbox; the log names the account; processed ids are per account.
+    assert.ok(f.gmail.calls.filter(c => c.url.endsWith('/batchModify')).every(c => JSON.parse(c.body!).ids.every((id: string) => id.startsWith(c.account === 'me@gmail.com' ? 'm' : 'w'))));
+    const log = (await readFile(f.service.logFile, 'utf8')).trim().split('\n').map(l => JSON.parse(l));
+    assert.deepEqual([...new Set(log.map(l => l.account))].sort(), ['me@gmail.com', 'work@corp.example']);
+    assert.deepEqual(Object.keys(JSON.parse(await readFile(f.service.stateFile, 'utf8')).accounts).sort(), ['me@gmail.com', 'work@corp.example']);
+    assert.equal((await f.triage(4).propose(live()) as any).status, 'empty');
+    // Undo reverses the whole last apply in both accounts.
+    assert.equal((await f.triage(5).undo(live()) as any).restored, 3);
+    assert.equal(snap(), before);
+    // Explicit action with a label that exists in one account only: the other is reported, not changed.
+    const act = await f.triage(6).propose(live(), { query: 'from:sender', act: 'archive' }) as any;
+    assert.deepEqual([act.total, act.accounts], [2, { 'me@gmail.com': 1, 'work@corp.example': 1 }]);
+    // Daily cap is shared by all accounts: 3 used above, limit 4 → one more change across both.
+    const capped = await f.triage(7, { settings: { gmail_daily_limit: 4 } }).apply(act.confirm_token, live()) as any;
+    assert.deepEqual([capped.applied, capped.limited], [1, 1]);
+    await f.triage(8).undo(live());
+    // One account's token revoked: the other still works; the plan says which account needs reconnecting.
+    f.gmail.revokeRefresh('work@corp.example');
+    f.service.auth['access'].clear();
+    messages.push(msg('m2'));
+    const partial = await f.triage(9).propose(live()) as any;
+    assert.deepEqual([partial.total, partial.errors], [1, { 'work@corp.example': 'gmail_auth_expired' }]);
+    assert.deepEqual((await f.service.auth.status()).accounts.map(a => a.error), ['', 'gmail_auth_expired']);
+    const done = await f.triage(10).apply(partial.confirm_token, live()) as any;
+    assert.equal(done.applied, 1);
+    // Only the expired account selected: its error is the result.
+    assert.equal(await code(f.triage(11).propose(live(), { account: 'work@corp.example' })), 'gmail_auth_expired');
+    // Purge over both: the expired account is listed under errors.
+    const purge = await f.triage(12).purgeJunk(undefined, live()) as any;
+    assert.deepEqual([purge.status, purge.errors], ['empty', { 'work@corp.example': 'gmail_auth_expired' }]);
+    // Disconnect one account: the other stays connected and usable.
+    await f.service.auth.disconnect('work@corp.example');
+    assert.deepEqual(await f.service.accounts(), ['me@gmail.com']);
+    assert.ok(!f.store.values.has('token-work@corp.example') && f.store.values.has('token-me@gmail.com'));
+    assert.equal((await f.triage(13).propose(live(), { query: 'from:sender' }) as any).accounts, undefined);
+  } finally { await f.close(); }
+});
+
 test('automated task: propose only (plan, no token), and apply is blocked', async () => {
   const f = await setup([msg('a')]);
   try {
@@ -442,7 +547,7 @@ test('admin Gmail: client secret only in the secret store, settings in config.js
   const app = new Orchestrator(config, reply, reply, { ensure: async () => {}, close: async () => {} },
     { transcribe: async () => '', speak: async () => {}, stop: () => {}, close: async () => {} });
   const configPath = path.join(f.dir, 'config.json'), lifecycle = new AbortController();
-  await writeFile(configPath, JSON.stringify({ language: 'tr' }));
+  await writeFile(configPath, JSON.stringify({ language: 'tr', gmail_account: 'me@gmail.com' }));
   const server = await makeServer(config, app, lifecycle.signal, null, f.dir, [], { configPath, gmail: f.service });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
@@ -455,20 +560,19 @@ test('admin Gmail: client secret only in the secret store, settings in config.js
     assert.equal((await call('/admin/gmail/connect')).body.error, 'gmail_not_configured');
     assert.equal((await call('/admin/gmail/save', { client_id: 'bad', client_secret: 'x' })).status, 400);
     const saved = await call('/admin/gmail/save', { client_id: 'id-123456.apps.googleusercontent.com', client_secret: 'GOCSPX-secret',
-      account: 'Me@Gmail.com', triage_enabled: true, urgent_senders: ['@Work.example'] });
+      triage_enabled: true, urgent_senders: ['@Work.example'] });
     assert.equal(saved.status, 200, JSON.stringify(saved.body));
-    assert.deepEqual([saved.body.client_configured, saved.body.connected, saved.body.account, saved.body.urgent_senders], [true, false, 'me@gmail.com', ['@work.example']]);
+    assert.deepEqual([saved.body.client_configured, saved.body.connected, saved.body.accounts, saved.body.urgent_senders], [true, false, [], ['@work.example']]);
     const file = await readFile(configPath, 'utf8');
     assert.ok(!file.includes('GOCSPX') && !file.includes('googleusercontent'));
-    assert.deepEqual(JSON.parse(file), { language: 'tr', gmail_account: 'me@gmail.com', gmail_triage_enabled: true, gmail_urgent_senders: ['@work.example'] });
+    assert.deepEqual(JSON.parse(file), { language: 'tr', gmail_triage_enabled: true, gmail_urgent_senders: ['@work.example'] });
     assert.ok(f.store.values.get('client')!.includes('GOCSPX-secret'));
     const connect = await call('/admin/gmail/connect');
     const url = new URL(connect.body.auth_url);
-    assert.equal(url.searchParams.get('login_hint'), 'me@gmail.com');
     await fetch(`${url.searchParams.get('redirect_uri')}/?code=code-1&state=${url.searchParams.get('state')}`);
     await new Promise(resolve => setTimeout(resolve, 50));
     const status = (await call('/admin/gmail')).body;
-    assert.deepEqual([status.connected, status.email, status.missing_labels], [true, 'me@gmail.com', []]);
+    assert.deepEqual([status.connected, status.accounts], [true, [{ email: 'me@gmail.com', error: '', missing_labels: [] }]]);
     assert.ok(!JSON.stringify(status).includes('GOCSPX') && !JSON.stringify(status).includes('rt-good'));
     // Importance definition: example until saved; bounded.
     await writeFile(path.join(f.dir, 'example.md'), '- Hemen cevapla: iş yeri');
@@ -484,6 +588,7 @@ test('admin Gmail: client secret only in the secret store, settings in config.js
     const undone = (await call('/admin/gmail/undo')).body;
     assert.deepEqual([undone.restored, undone.batches[0].undone], [1, true]);
     assert.equal((await call('/admin/gmail/undo')).body.error, 'nothing_to_undo');
-    assert.equal((await call('/admin/gmail/disconnect')).body.connected, false);
+    assert.equal((await call('/admin/gmail/disconnect', {})).status, 400);
+    assert.equal((await call('/admin/gmail/disconnect', { account: 'me@gmail.com' })).body.connected, false);
   } finally { lifecycle.abort(); await new Promise<void>(resolve => server.close(() => resolve())); await f.close(); }
 });

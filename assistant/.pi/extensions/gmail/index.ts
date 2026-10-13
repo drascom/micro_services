@@ -25,22 +25,22 @@ export function gmailOrganize(options: { enabled: boolean; settings: TriageSetti
   memory?: TriageMemory; model?: ClassifyModel; automated?: boolean; notify?: (title: string, body: string) => Promise<void>; reminders?: RemindersTransport }) {
   return (pi: ExtensionAPI) => {
     if (!options.enabled) return;
-    const triage = new MailTriage({ provider: options.service.provider, settings: options.settings, memory: options.memory ?? triageMemory,
+    const triage = new MailTriage({ mailboxes: options.service, settings: options.settings, memory: options.memory ?? triageMemory,
       turn: options.turn, logFile: options.service.logFile, stateFile: options.service.stateFile, importance: () => options.service.importance(),
       model: options.model, notify: options.notify, reminders: options.reminders, proposeOnly: options.automated === true });
     pi.registerTool({
       name: 'mail_organize', label: 'Organize Gmail', executionMode: 'sequential',
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
       description: 'propose: plan+confirm_token, no change; query: Gmail search (inbox unless in:all/label:); ' +
-        'act: trash|archive|mark_read|mark_unread|star|unstar|label:X|unlabel:X, else importance. ' +
-        'apply/purge_junk (Gereksiz→Trash): token after user reply. undo: last change.',
+        'act: trash|archive|mark_read|mark_unread|star|unstar|label:X|unlabel:X, else levels. ' +
+        'apply/purge_junk (Gereksiz→Trash): token after reply. undo: last change.',
       parameters: OrganizeParams,
       async execute(_id, params, signal) {
         const live = signal ?? new AbortController().signal;
         try {
-          const result: Record<string, unknown> = params.action === 'propose' ? await triage.propose(live, { query: params.query, act: params.act })
+          const result: Record<string, unknown> = params.action === 'propose' ? await triage.propose(live, { query: params.query, act: params.act, account: params.account })
             : params.action === 'apply' ? await triage.apply(params.confirm_token, live)
-            : params.action === 'purge_junk' ? await triage.purgeJunk(params.confirm_token, live)
+            : params.action === 'purge_junk' ? await triage.purgeJunk(params.confirm_token, live, params.account)
             : await triage.undo(live);
           const count = typeof result.applied === 'number' ? result.applied : typeof result.trashed === 'number' ? result.trashed
             : typeof result.count === 'number' ? result.count : typeof result.restored === 'number' ? result.restored : undefined;
