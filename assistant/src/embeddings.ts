@@ -79,7 +79,7 @@ export class EmbeddingRuntime implements Embedder {
     const n = String(c.embedding_context);
     // Bidirectional attention: the micro-batch must hold the longest input, so -c, -b and -ub move together.
     const args = ['-m', c.embedding_model, ...(c.embedding_mmproj ? ['--mmproj', c.embedding_mmproj] : []), '--embeddings', '--pooling', 'mean',
-      '-c', n, '-b', n, '-ub', n, '-ngl', '999', '--parallel', '1', '--no-webui', '--host', '127.0.0.1', '--port', new URL(c.embedding_url).port];
+      '-c', n, '-b', n, '-ub', n, '-ngl', '999', '--poll', '0', '--parallel', '1', '--no-webui', '--host', '127.0.0.1', '--port', new URL(c.embedding_url).port];
     try { this.child = spawn(c.embedding_bin, args, { stdio: ['ignore', log.fd, log.fd] }); }
     finally { await log.close(); }
     // Background work: below the chat model and the user's apps.

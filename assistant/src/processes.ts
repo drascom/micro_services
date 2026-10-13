@@ -69,7 +69,9 @@ export class LocalRuntime implements Runtime {
     const args = ['-m', c.llama_model, '--alias', c.local_model, '-ngl', '999', '-c', String(c.local_context),
       '--flash-attn', 'on', '--cache-type-k', 'q8_0', '--cache-type-v', 'q8_0', '--reasoning-budget', String(c.local_reasoning_budget),
       // A clean hand-off line keeps a cut-off thought from leaking into the reply.
-      '--reasoning-budget-message', ' Enough thinking, I will answer now.', '--parallel', '1', '--jinja', '--host', '127.0.0.1', '--port', new URL(c.local_url).port];
+      '--reasoning-budget-message', ' Enough thinking, I will answer now.', '--parallel', '1', '--jinja',
+      // Busy-polling CPU threads (default --poll 50) slow GPU decode ~12% on Apple Silicon.
+      '--poll', '0', '--host', '127.0.0.1', '--port', new URL(c.local_url).port];
     if (process.env.ASSISTANT_LOCAL_API_KEY) args.push('--api-key', process.env.ASSISTANT_LOCAL_API_KEY);
     try { this.child = spawn(c.llama_bin, args, { stdio: ['ignore', log.fd, log.fd] }); }
     finally { await log.close(); }
