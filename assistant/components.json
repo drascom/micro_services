@@ -5,8 +5,8 @@
       "id": "llama-cpp",
       "name": "llama.cpp",
       "kind": "binary",
-      "version": "b11574",
-      "sha256": "85da72af68fce98663c8dc028d89d79d0083b1bf0d3df34340224c6fdf3a812b",
+      "version": "b11617",
+      "sha256": "051bb0b55b3e5e72081aa819131ba30c74d910acc915b28bab298757472e39d9",
       "source": {
         "type": "github",
         "repo": "ggml-org/llama.cpp",
@@ -37,8 +37,7 @@
       "id": "whisper-cpp",
       "name": "whisper.cpp",
       "kind": "binary",
-      "version": "v1.9.4",
-      "sha256": "57e280cee375ab02425b806ad5146b99f6eb9357e3c2b31357c8a6af2e2e44ae",
+      "version": "v1.9.5",
       "source": {
         "type": "github",
         "repo": "ggml-org/whisper.cpp"
@@ -87,7 +86,7 @@
       "id": "bitwarden-cli",
       "name": "Bitwarden CLI (bw)",
       "kind": "npm-runtime",
-      "version": "2026.9.0",
+      "version": "2026.9.1",
       "source": {
         "type": "npm",
         "package": "@bitwarden/cli",

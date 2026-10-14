@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile, access } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
-import { compareVersions, pinRequirement, type Component, type Manifest } from '../src/components.ts';
+import { compareVersions, discard, firstFailure, smoke, stage, testEnv, type Component, type Exec, type Manifest } from '../src/components.ts';
 import { detect, parseSummary, UpdateManager, type Http } from '../src/updates.ts';
 import type { TaskLane } from '../src/tasks.ts';
 import { ConfirmationStore, currentTurn, newTurn } from '../.pi/extensions/apple-reminders/confirmations.ts';
@@ -37,7 +37,63 @@ test('versions order across tag styles', () => {
   assert.ok(compareVersions('2026.9.1', '2026.9.0') > 0);
   assert.ok(compareVersions('1.2.0-beta.1', '1.2.0') < 0);
   assert.equal(compareVersions('1.0', '1.0.0'), 0);
-  assert.equal(pinRequirement('a==1\nkokoro-onnx==0.6.1\n', 'kokoro_onnx', '0.7.0'), 'a==1\nkokoro-onnx==0.7.0\n');
+});
+
+test('python-venv: pinned set synced (file path, no -r), then only the new version installed; failure leaves no staging', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'ayhan-venv-'));
+  try {
+    await writeFile(path.join(root, 'requirements.txt'), 'normalizer-tr==0.4.0\nema-lightning==1.0.4\n');
+    const calls: string[][] = [];
+    let installOk = true;
+    const exec: Exec = async (cmd, args) => {
+      calls.push([cmd, ...args]);
+      if (args[0] === 'venv') { await mkdir(path.join(args.at(-1)!, 'bin'), { recursive: true }); return { code: 0, stdout: '', stderr: '' }; }
+      if (args[1] === 'install' && !installOk) return { code: 1, stdout: '', stderr: 'resolution failed' };
+      return { code: 0, stdout: '', stderr: '' };
+    };
+    const c = component({ id: 'ema', kind: 'python-venv', path: 'runtime/ema', python: '3.12', requirements: 'requirements.txt', version: '1.0.4',
+      source: { type: 'pypi', package: 'ema-lightning' } });
+    const ctx = { root, signal, exec };
+    const staging = path.join(root, 'runtime/ema.staging'), python = path.join(staging, 'bin/python');
+    assert.deepEqual(await stage(c, { version: '1.1.2' }, ctx), { dir: staging });
+    assert.deepEqual(calls.slice(1).map(c => c.slice(1)), [
+      ['pip', 'sync', '--quiet', '--python', python, path.join(staging, 'requirements.txt')],
+      ['pip', 'install', '--quiet', '--python', python, 'ema-lightning==1.1.2']]);
+    assert.equal(await readFile(path.join(staging, 'requirements.txt'), 'utf8'), 'normalizer-tr==0.4.0\nema-lightning==1.0.4\n', 'old pins are a start, not constraints');
+    calls.length = 0;
+    await stage(c, { version: '1.0.4' }, ctx);
+    assert.ok(!calls.some(c => c[2] === 'install'), 'reinstall of the pinned version is a sync only');
+    installOk = false;
+    await assert.rejects(stage(c, { version: '1.1.2' }, ctx), /uv failed: resolution failed/);
+    await discard(c, undefined, ctx);
+    await assert.rejects(access(staging));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('npm smoke test: developer-like env without the app\'s keys; the first failing test is named', async () => {
+  const env = testEnv('/tmp/x', { HOME: '/Users/u', LANG: 'en_GB.UTF-8', TYPESAFE_API_KEY: 'k', ASSISTANT_LOCAL_API_KEY: 'k', PI_OFFLINE: '1',
+    HTTPS_PROXY: 'http://p', XPC_SERVICE_NAME: 'app', __CFBundleIdentifier: 'com.x', NODE_OPTIONS: '--inspect' });
+  assert.equal(env.HOME, '/Users/u'); assert.equal(env.TMPDIR, '/tmp/x'); assert.ok(env.PATH);
+  for (const name of ['TYPESAFE_API_KEY', 'ASSISTANT_LOCAL_API_KEY', 'PI_OFFLINE', 'HTTPS_PROXY', 'XPC_SERVICE_NAME', '__CFBundleIdentifier', 'NODE_OPTIONS'])
+    assert.equal(env[name], undefined, name);
+  const output = ['✔ fine (1ms)', '✖ broken one (3ms)', 'ℹ fail 1', '', '✖ failing tests:', '', 'test at tests/harness.test.ts:171:1',
+    '✖ web requests block local URLs (2.1ms)', '  AssertionError [ERR_ASSERTION]: Missing expected rejection.', '      at x', '    operator: \'rejects\',', '    diff: \'simple\'', '  }'].join('\n');
+  assert.equal(firstFailure(output), 'harness.test.ts › web requests block local URLs: AssertionError [ERR_ASSERTION]: Missing expected rejection.');
+  const root = await mkdtemp(path.join(tmpdir(), 'ayhan-smoke-test-'));
+  try {
+    const seen: { args: string[]; clean?: boolean; env?: Record<string, string> }[] = [];
+    const exec: Exec = async (_cmd, args, options) => {
+      seen.push({ args, clean: options.cleanEnv, env: options.env });
+      return args[0] === 'test' ? { code: 1, stdout: output, stderr: '' } : { code: 0, stdout: '', stderr: '' };
+    };
+    const c = component({ id: 'cheerio', kind: 'npm-dep', packages: ['cheerio'], source: { type: 'npm', package: 'cheerio' } });
+    const result = await smoke(c, { inPlace: true }, '1.2.0', { root, signal, exec });
+    assert.equal(result.ok, false);
+    assert.equal(result.detail, 'npm test: harness.test.ts › web requests block local URLs: AssertionError [ERR_ASSERTION]: Missing expected rejection.');
+    assert.deepEqual(seen.map(s => s.args), [['run', 'check'], ['test']]);
+    assert.ok(seen.every(s => s.clean && s.env?.TMPDIR && !('TYPESAFE_API_KEY' in s.env)));
+    assert.match(await readFile(path.join(root, 'data/updates/smoke-cheerio.log'), 'utf8'), /Missing expected rejection/);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test('GitHub: prerelease policy, asset and tag family filters, digest and notes', async () => {

@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { access, cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { access, cp, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { stopProcess } from './processes.ts';
@@ -109,14 +109,16 @@ export async function installedVersion(c: Component, root: string): Promise<stri
 }
 
 export type ExecResult = { code: number; stdout: string; stderr: string };
-export type Exec = (cmd: string, args: string[], options: { cwd: string; env?: Record<string, string>; signal: AbortSignal; timeoutMs?: number }) => Promise<ExecResult>;
+/** `env` is merged into the app's environment; `cleanEnv` replaces it (smoke tests run like a developer shell). */
+export type Exec = (cmd: string, args: string[], options: { cwd: string; env?: Record<string, string>; cleanEnv?: boolean; signal: AbortSignal; timeoutMs?: number }) => Promise<ExecResult>;
 /** PATH for installers: Homebrew, ~/.local/bin and this Node (the app may be launched with a minimal PATH). */
 export function toolPath(): string {
   return [path.dirname(process.execPath), '/opt/homebrew/bin', '/usr/local/bin', path.join(homedir(), '.local/bin'), process.env.PATH || '/usr/bin:/bin'].join(path.delimiter);
 }
 export const exec: Exec = (cmd, args, options) => new Promise((resolve, reject) => {
   options.signal.throwIfAborted();
-  const child = spawn(cmd, args, { cwd: options.cwd, env: { ...process.env, PATH: toolPath(), ...options.env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const env = options.cleanEnv ? { ...options.env } : { ...process.env, PATH: toolPath(), ...options.env };
+  const child = spawn(cmd, args, { cwd: options.cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '', stderr = '';
   child.stdout.setEncoding('utf8').on('data', (d: string) => { stdout = (stdout + d).slice(-200_000); });
   child.stderr.setEncoding('utf8').on('data', (d: string) => { stderr = (stderr + d).slice(-200_000); });
@@ -167,18 +169,6 @@ export async function downloadFile(ctx: InstallContext, url: string, file: Model
   return staging;
 }
 
-/** Python requirements with the component's own pin replaced (other pins kept). */
-export function pinRequirement(text: string, pkg: string, version: string): string {
-  let found = false;
-  const lines = text.split('\n').map(line => {
-    const m = /^([A-Za-z0-9_.-]+)\s*==/.exec(line);
-    if (m && normalize(m[1]) === normalize(pkg)) { found = true; return `${m[1]}==${version}`; }
-    return line;
-  });
-  if (!found) lines.splice(lines.length - (lines.at(-1) === '' ? 1 : 0), 0, `${pkg}==${version}`);
-  return lines.join('\n');
-}
-
 /** Installs `target` next to the live copy; nothing in use is touched (npm-dep: package files are backed up first). */
 export async function stage(c: Component, target: Target, ctx: InstallContext): Promise<Staged> {
   const root = ctx.root;
@@ -210,10 +200,12 @@ export async function stage(c: Component, target: Target, ctx: InstallContext): 
   if (c.kind === 'python-venv') {
     if (!c.python || !c.requirements || !('package' in c.source)) throw Error(`${c.id}: python/requirements missing`);
     await run(ctx, 'uv', ['venv', '--quiet', '--python', c.python, dir]);
-    const requirements = path.join(dir, 'requirements.txt');
-    await writeFile(requirements, pinRequirement(await readFile(path.join(root, c.requirements), 'utf8'), c.source.package, target.version));
-    // The pinned set installs exactly (sync); a newer package may need newer dependencies (install resolves them).
-    await run(ctx, 'uv', ['pip', target.version === c.version ? 'sync' : 'install', '--quiet', '--python', path.join(dir, 'bin/python'), requirements]);
+    const requirements = path.join(dir, 'requirements.txt'), python = path.join(dir, 'bin/python');
+    await cp(path.join(root, c.requirements), requirements);
+    // The pinned set installs exactly (sync). A newer version starts from that set and changes only what it needs: its new
+    // dependencies may conflict with old exact pins (e.g. normalizer-tr==0.4.0 vs >=0.6), so the pins are not constraints.
+    await run(ctx, 'uv', ['pip', 'sync', '--quiet', '--python', python, requirements]);
+    if (target.version !== c.version) await run(ctx, 'uv', ['pip', 'install', '--quiet', '--python', python, `${c.source.package}==${target.version}`]);
     return { dir };
   }
   if (!c.install?.script) throw Error(`${c.id}: no installer`);
@@ -222,12 +214,47 @@ export async function stage(c: Component, target: Target, ctx: InstallContext): 
   return { dir };
 }
 
-/** Smoke test of a staged install (command + expected output; npm deps: type check and tests). */
+/**
+ * Environment for `npm run check` / `npm test` during an update: what a developer shell has (HOME, USER, LANG, PATH, a fresh
+ * TMPDIR), nothing the running app added (API keys from .env, Pi/agent flags, proxies, its bundle/XPC identity).
+ */
+export function testEnv(tmp: string, source: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const env: Record<string, string> = { PATH: toolPath(), TMPDIR: tmp, CI: '1', NO_COLOR: '1', FORCE_COLOR: '0' };
+  for (const name of ['HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'TZ']) if (source[name]) env[name] = source[name]!;
+  return env;
+}
+/** First failing test and its message from node:test spec output (short), e.g. `harness.test.ts › search parser: Missing expected rejection`. */
+export function firstFailure(output: string): string | undefined {
+  const lines = output.split('\n');
+  let start = lines.findIndex(l => /^\s*✖ failing tests:/.test(l));
+  if (start < 0) start = 0;
+  for (let i = start; i < lines.length; i++) {
+    const m = /^\s*✖ (.+?)(?: \([\d.]+m?s\))?\s*$/.exec(lines[i]);
+    if (!m || /failing tests:/.test(m[1])) continue;
+    const file = lines.slice(Math.max(start, i - 2), i).map(l => /^\s*test at (.+?):\d+:\d+/.exec(l)?.[1]).find(Boolean);
+    const message = lines.slice(i + 1, i + 8).map(l => l.trim()).find(l => /Error|expected|Missing|rejection|!==|Expected/.test(l)) ?? '';
+    return `${file ? path.basename(file) + ' › ' : ''}${m[1]}${message ? ': ' + message : ''}`.slice(0, 240);
+  }
+  return undefined;
+}
+
+/** Smoke test of a staged install (command + expected output; npm deps: type check and tests in a developer-like env). */
 export async function smoke(c: Component, staged: Staged, version: string, ctx: InstallContext): Promise<{ ok: boolean; detail: string }> {
   try {
     if (c.kind === 'npm-dep') {
-      await run(ctx, npmBin(), ['run', 'check'], {}, 10 * 60_000);
-      await run(ctx, npmBin(), ['test'], {}, 20 * 60_000);
+      const tmp = await mkdtemp(path.join(tmpdir(), 'ayhan-smoke-'));
+      try {
+        for (const script of [['run', 'check'], ['test']]) {
+          ctx.log?.(`$ npm ${script.join(' ')}`);
+          const result = await (ctx.exec ?? exec)(npmBin(), script, { cwd: ctx.root, env: testEnv(tmp), cleanEnv: true, signal: ctx.signal, timeoutMs: 20 * 60_000 });
+          if (result.code === 0) continue;
+          const output = result.stdout + '\n' + result.stderr;
+          await mkdir(path.join(ctx.root, 'data/updates'), { recursive: true });
+          await writeFile(path.join(ctx.root, 'data/updates', `smoke-${c.id}.log`), output.slice(-200_000), { mode: 0o600 }).catch(() => {});
+          const reason = script[0] === 'test' ? firstFailure(output) : output.trim().split('\n').find(l => /error TS\d+/.test(l))?.trim();
+          return { ok: false, detail: `npm ${script.join(' ')}: ${(reason ?? output.trim().split('\n').slice(-3).join(' ')).slice(0, 240)}` };
+        }
+      } finally { await rm(tmp, { recursive: true, force: true }); }
       return { ok: true, detail: 'check + test' };
     }
     if (!c.smoke || !staged.dir) return { ok: true, detail: c.kind === 'model' ? 'sha256' : 'none' };
