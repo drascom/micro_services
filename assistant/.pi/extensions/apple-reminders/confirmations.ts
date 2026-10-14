@@ -11,6 +11,8 @@ export const CONFIRM_TTL_MS = 2 * 60_000;
 let turns = 0;
 /** Monotonic turn sequence for the whole process: call once per user message. */
 export function newTurn(): number { return ++turns; }
+/** The latest turn (no increment): a question asked outside a request (e.g. the update offer) is answered in the next one. */
+export function currentTurn(): number { return turns; }
 
 export type DeleteTarget = { id: string; title: string; ref: string };
 type Pending = DeleteTarget & { token: string; turn: number; issued: number };

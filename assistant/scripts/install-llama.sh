@@ -1,13 +1,14 @@
 #!/bin/sh
 # Installs the pinned llama.cpp macOS arm64 (Metal) prebuilt into runtime/llama/ (chat :8091 and embeddings :8093).
 # Usage: scripts/install-llama.sh [target-dir]   (default runtime/llama; existing dir is replaced only after success)
+# components.json drives version/checksum via COMPONENT_VERSION, COMPONENT_SHA256 and COMPONENT_TARGET (setup.sh, updates).
 set -eu
-VERSION=b11574
-SHA256=85da72af68fce98663c8dc028d89d79d0083b1bf0d3df34340224c6fdf3a812b
+VERSION=${COMPONENT_VERSION:-b11574}
+SHA256=${COMPONENT_SHA256:-85da72af68fce98663c8dc028d89d79d0083b1bf0d3df34340224c6fdf3a812b}
 URL="https://github.com/ggml-org/llama.cpp/releases/download/$VERSION/llama-$VERSION-bin-macos-arm64.tar.gz"
 
 cd "$(dirname "$0")/.."
-TARGET=${1:-runtime/llama}
+TARGET=${COMPONENT_TARGET:-${1:-runtime/llama}}
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 curl -fsSL -o "$TMP/llama.tgz" "$URL"

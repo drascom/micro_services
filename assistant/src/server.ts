@@ -17,12 +17,17 @@ import { defaultMailTransport } from '../.pi/extensions/macos-mail/mail-db.ts';
 import path from 'node:path';
 import { homedir } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { TaskScheduler, type Notify } from './tasks.ts';
-import { Steering } from './providers.ts';
+import { TaskScheduler, osascriptNotify, type Notify } from './tasks.ts';
+import { registerUpdates, UpdateManager, type Summarize } from './updates.ts';
+import { exec, type Restart } from './components.ts';
+import type { Speech } from './speech.ts';
+import { PiChat, Steering, type Chat } from './providers.ts';
 import { osascriptTransport, type RemindersTransport } from '../.pi/extensions/apple-reminders/client.ts';
 
 /** Assistant tasks (Reminders list) wiring; omitted = no scheduler (tests). */
 export type TaskOptions = { transport?: RemindersTransport; notify?: Notify; stateFile: string | null; firstMs?: number; everyMs?: number };
+/** Component updates wiring; omitted = no updater (tests). */
+export type UpdateOptions = { manager?: UpdateManager; stateFile: string | null; notify?: Notify; firstMs?: number; everyMs?: number };
 
 function beginRequestSlot() {
   let finish!: () => void;
@@ -43,7 +48,7 @@ async function readBody(request: IncomingMessage, limit: number): Promise<Buffer
 
 export async function makeServer(config: Config, app: Orchestrator, lifecycle: AbortSignal, activityFile: string | null = path.join(root, 'data/activity.log'), resourceRoot = root,
   trashDirs = [path.join(homedir(), '.Trash'), path.join(resourceRoot, 'data/trash')],
-  mail: { configPath?: string; transport?: MailTransport; gmail?: GmailService; files?: FileService; vault?: VaultService } = {}, tasks?: TaskOptions) {
+  mail: { configPath?: string; transport?: MailTransport; gmail?: GmailService; files?: FileService; vault?: VaultService } = {}, tasks?: TaskOptions, updateOptions?: UpdateOptions) {
   const vault = mail.vault ?? vaultService(config);
   const gmail = mail.gmail ?? gmailService(root);
   const files = mail.files ?? fileService(config);
@@ -72,6 +77,44 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
     stateFile: tasks.stateFile, activityFile,
     run: (prompt, intentText, signal) => app.ask(prompt, offlineMode, signal, { automated: true, intentText }) })
     .start(lifecycle, tasks.firstMs, tasks.everyMs);
+  // Release-note summaries: the local model in the request lane (never during a request); remote only if local is unavailable.
+  const plain = (chat: Chat, local: boolean): Chat => chat instanceof PiChat ? new PiChat(chat.models, config, local) : chat;
+  const summarize: Summarize = async (system, user, signal) => {
+    const slot = await lane.acquire(signal);
+    const context = { systemPrompt: system, messages: [{ role: 'user' as const, content: user, timestamp: Date.now() }] };
+    const text = (message: { content: { type: string; text?: string }[] }) => message.content.filter(b => b.type === 'text').map(b => b.text ?? '').join('\n');
+    try {
+      const started = !(await app.runtime.healthy?.(slot.signal));
+      try {
+        await app.runtime.ensure(slot.signal);
+        return text(await plain(app.local, true).complete(context, AbortSignal.any([slot.signal, AbortSignal.timeout(config.local_timeout_ms)])));
+      } catch (error) {
+        slot.signal.throwIfAborted();
+        if (offlineMode) throw error;
+        return text(await plain(app.remote, false).complete(context, AbortSignal.any([slot.signal, AbortSignal.timeout(config.remote_timeout_ms)])));
+      } finally { if (started && !offlineMode) await app.runtime.close(); }
+    } finally { slot.release(); }
+  };
+  /** Restarts only what an update touched; runs inside the lane, so no request is using it. Lazy processes start again on use. */
+  const restart = async (target: Restart): Promise<string | void> => {
+    const speech = app.speech as Partial<Speech>;
+    if (target === 'llama') { await app.runtime.close(); await files.embedder.close(); }
+    else if (target === 'whisper') await speech.whisper?.close();
+    else if (target === 'ema') await speech.ema?.close();
+    else if (target === 'kokoro') await speech.kokoro?.close();
+    else if (target === 'app') {
+      if (process.platform !== 'darwin') return 'Ayhan\'ı yeniden başlatın';
+      const result = await exec(path.join(path.dirname(process.execPath), 'npm'), ['run', 'rebuild-app'], { cwd: root, signal: lifecycle, timeoutMs: 10 * 60_000 });
+      return result.code === 0 ? 'uygulama yeniden derlendi, Ayhan\'ı yeniden başlatın' : 'uygulama derlenemedi (npm run rebuild-app)';
+    }
+  };
+  const updates = updateOptions ? updateOptions.manager ?? new UpdateManager({ root, stateFile: updateOptions.stateFile, lane, restart, summarize,
+    notify: updateOptions.notify ?? osascriptNotify, activityFile, checkHour: () => config.update_check_hour, llamaModel: config.llama_model }) : undefined;
+  if (updates && updateOptions) {
+    registerUpdates(updates);
+    lifecycle.addEventListener('abort', () => registerUpdates(undefined), { once: true });
+    updates.start(lifecycle, updateOptions.firstMs, updateOptions.everyMs);
+  }
   const server = createServer(async (request, response) => {
     const reply = (code: number, data: unknown) => {
       if (response.destroyed) return;
@@ -133,6 +176,17 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         if (request.url === '/admin/bitwarden/lock') { await vault.lock(); return reply(200, await vaultStatus(config, vault)); }
         if (request.url === '/admin/files') return reply(200, await filesStatus(config, files));
         if (request.url === '/admin/files/save') return reply(200, await saveFiles(config, configPath, files, data));
+        if (request.url?.startsWith('/admin/updates')) {
+          if (!updates) return reply(404, { error: 'Updates are off' });
+          const value = data as { id?: unknown; ids?: unknown; version?: unknown };
+          const ids = Array.isArray(value.ids) ? value.ids.filter((id): id is string => typeof id === 'string') : typeof value.id === 'string' ? [value.id] : [];
+          if (request.url === '/admin/updates') return reply(200, await updates.list());
+          if (request.url === '/admin/updates/check') { void updates.check(lifecycle).catch(() => []); await sleep(100); return reply(200, await updates.list()); }
+          if (request.url === '/admin/updates/apply') { updates.startApply(ids); return reply(200, await updates.list()); }
+          if (request.url === '/admin/updates/rollback') { updates.startRollback(ids); return reply(200, await updates.list()); }
+          if (request.url === '/admin/updates/skip') return reply(200, await updates.skip(value.id, value.version));
+          return reply(404, { error: 'Not found' });
+        }
         if (request.url === '/admin/files/reindex') return reply(200, { ...files.reindex(lifecycle), ...await filesStatus(config, files) });
         return reply(404, { error: 'Not found' });
       }
@@ -146,6 +200,18 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         const value = data as { id?: unknown; value?: unknown; cancel?: unknown };
         return reply(200, { ok: vault.prompts.answer(value.id, value.cancel === true ? undefined : value.value) });
       }
+      // Proactive messages (update offer, update results): the ring long-polls; only offered while nothing runs.
+      if (request.url === '/announce/wait') {
+        const closed = new AbortController(); response.once('close', () => closed.abort());
+        const wait = AbortSignal.any([lifecycle, closed.signal, AbortSignal.timeout(25_000)]);
+        while (updates && !wait.aborted) {
+          const next = !active && !task && !unloading ? await updates.announcement() : undefined;
+          if (next) return reply(200, next);
+          await sleep(1000, undefined, { signal: wait }).catch(() => {});
+        }
+        return reply(200, {});
+      }
+      if (request.url === '/announce/shown') return reply(200, { ok: updates ? await updates.shown((data as { id?: unknown }).id) : false });
       if (request.url === '/cancel') { active?.controller.abort(); for (const t of transcriptions) t.abort(); return reply(200, { ok: true }); }
       if (request.url === '/mode') {
         if (typeof input.offline !== 'boolean') throw Error('Invalid mode');

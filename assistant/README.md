@@ -5,6 +5,19 @@ local Whisper transcription, EMA Lightning Turkish speech, Kokoro English speech
 fallback. All app source, UI, model files, native binaries, and launch scripts
 are in this folder. You do not need the old Dictate or Gemma projects running.
 
+## Setup
+
+```bash
+scripts/setup.sh              # prerequisites, runtimes, models, npm deps, app, doctor (idempotent, resumable)
+scripts/setup.sh --dry-run    # report only; nothing is downloaded or built
+scripts/setup.sh --skip-big-models   # Gemma/Whisper (>= 1 GB) later
+```
+
+Every runtime, model and pinned npm dependency is listed in `components.json` (version, upstream, checksum, smoke
+test, process to restart). `npm run doctor` reports `components_mismatch`. Daily update checks, proactive offers,
+apply/rollback: see `UPDATES.md`. Remaining manual steps (Pi login, macOS permissions, Gmail, Bitwarden) are printed
+at the end of setup.
+
 ## Start
 
 ```bash
@@ -220,10 +233,8 @@ every listed model.
 
 ## Dependencies and assets
 
-- Node.js 24+, already installed; application code runs TypeScript natively.
-- `@earendil-works/pi-ai` and `pi-coding-agent` pinned to 1.1.0; `package-lock.json` locks dependencies.
-  Reinstall with `npm ci --ignore-scripts` if needed.
-- Apple Silicon macOS, installed Python 3.12 for EMA/Kokoro, Python 3.13 for Piper, and built-in `afplay`.
+- Versions and sources: `components.json`; install/repair: `scripts/setup.sh`.
+- Node.js 24+, Apple Silicon macOS, Python 3.12 (EMA/Kokoro) and 3.13 (Piper, yt-dlp), uv, cmake, built-in `afplay`.
 - An installed `say` voice only if opting into the previous speech engine.
 - macOS 14+ for the native SwiftUI desktop ring; Apple Command Line Tools to rebuild it.
 - Existing global Pi OAuth login for subscription chat.

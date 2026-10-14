@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         panel.orderFrontRegardless(); pet = panel
         model.showInput = { [weak self] in self?.showInput() }
         model.toggleInput = { [weak self] in self?.toggleInput() }
+        model.revealInput = { [weak self] in self?.revealInput() }
         hotkey = HotkeyMonitor(model: model); hotkey?.start()
         model.contextMenu = { [weak self] in self?.showContextMenu() }
         // Minimal context menu; settings, status and activity live in the Admin window.
@@ -60,6 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         updateStatusIcon()
         model.connect()
         secretPrompts()
+        announcements()
         // Set only by a restart that happened while Admin was open; a normal launch never opens Admin.
         // The one-shot defaults flag is the primary signal (LaunchServices may drop --args); consume it at once.
         let defaults = UserDefaults.standard
@@ -100,10 +102,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         field.stringValue = ""
         return saved && !value.isEmpty ? value : nil
     }
+    /// Proactive messages (update offer, update results): the backend answers only while nothing runs; the ring shows
+    /// one when it is idle (waits up to a minute), then reports it shown so an offer is asked at most once a day.
+    private func announcements() {
+        Task { [weak self] in
+            while !Task.isCancelled {
+                guard let client = self?.client else { return }
+                do {
+                    let data = try await client.admin("announce/wait")
+                    guard let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let id = value["id"] as? String, let text = value["text"] as? String else { continue }
+                    var shown = false
+                    for _ in 0..<60 {
+                        if self?.model.announce(text) == true { shown = true; break }
+                        try await Task.sleep(for: .seconds(1)) // Wait for an idle ring.
+                    }
+                    if shown { _ = try? await client.admin("announce/shown", ["id": id]) }
+                } catch { try? await Task.sleep(for: .seconds(5)) } // Backend not up yet or restarting.
+            }
+        }
+    }
+    private func revealInput() {
+        if input?.isVisible == true { return }
+        showInput(activate: false)
+    }
     @objc private func systemWillSleep() { Task { _ = try? await client.admin("admin/bitwarden/lock") } }
     private static let openAdminArgument = "--open-admin"
     private static let reopenAdminKey = "reopenAdminOnLaunch"
-    private func showInput() {
+    private func showInput(activate: Bool = true) {
         if input == nil {
             // Keep the native title bar outside the hosted view so its close button receives clicks.
             let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 360, height: 230),
@@ -116,7 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             input = panel
         }
         positionInput()
-        input?.makeKeyAndOrderFront(nil); NSApp.activate()
+        if activate { input?.makeKeyAndOrderFront(nil); NSApp.activate() } else { input?.orderFrontRegardless() }
     }
     private func toggleInput() {
         if input?.isVisible == true { input?.orderOut(nil) } else { showInput() }

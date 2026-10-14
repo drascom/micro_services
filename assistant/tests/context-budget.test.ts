@@ -12,6 +12,8 @@ import { GmailService } from '../.pi/extensions/gmail/service.ts';
 import { MemorySecretStore } from '../.pi/extensions/gmail/secrets.ts';
 import { FileService } from '../src/files.ts';
 import { VaultService } from '../src/vault.ts';
+import type { UpdateService } from '../src/updates.ts';
+import { ConfirmationStore } from '../.pi/extensions/apple-reminders/confirmations.ts';
 
 // Context budget rule (local and remote): system prompt + skill catalog/body + tool schemas stay small.
 // Limits are characters (about 4 per token), set about 10% above the measured values (offline 3907, mail-assistant 3359; 2026-10-09).
@@ -21,9 +23,10 @@ import { VaultService } from '../src/vault.ts';
 // 2026-10-11: Gmail triage (off by default) measured mail-triage route 1709; unrouted online adds 831 when on.
 // 2026-10-12: local files (off by default) measured file-assistant route 2119; unrouted offline adds 1165 when on.
 // 2026-10-14: Bitwarden vault (off by default, local model only) measured vault route 2594; unrouted local adds 1072 when unlocked.
+// 2026-10-14: component updates (user requests only) measured updates route 1633; a pending offer adds 571 to an unrouted request.
 const LIMITS = { unrouted_offline: 4360, 'mail-assistant': 3600, unrouted_offline_reminders: 5900, reminders: 2250,
   'mail-triage': 1880, unrouted_gmail_added: 920, 'file-assistant': 2330, unrouted_files_added: 1290,
-  vault: 2850, unrouted_vault_added: 1180 } as const;
+  vault: 2850, unrouted_vault_added: 1180, updates: 1800, updates_pending_added: 630 } as const;
 
 /** A connected Gmail (fake secret store) for the mail_organize cases; no network call happens while measuring. */
 function connectedGmail() {
@@ -134,4 +137,37 @@ test('upstream web tool schemas are compacted to first sentences', () => {
     properties: { q: { type: 'string', description: 'x'.repeat(200) } } });
   assert.equal(schema.description, 'First sentence.');
   assert.equal(schema.properties.q.description.length, 80);
+});
+
+const fakeUpdates: UpdateService = { list: async () => { throw Error('unused'); }, describe: async () => ({ ids: [], items: [] }), startApply: () => [], startRollback: () => [] };
+async function measureUpdates(skill: 'updates' | undefined, pending: boolean, automated = false) {
+  const agent = await mkdtemp(path.join(tmpdir(), 'ayhan-budget-'));
+  const fake = fauxProvider({ provider: 'budget-test', models: [{ id: 'test' }], tokensPerSecond: 1000000 });
+  fake.setResponses([fauxAssistantMessage('ok')]);
+  const runtime = await ModelRuntime.create({ modelsPath: null, refreshOnCreate: false }); runtime.registerNativeProvider(fake.provider);
+  const store = new ConfirmationStore();
+  if (pending) store.issue(1, { id: 'updates', title: 'apply llama.cpp b11617, Pi 1.2.0', ref: '{}' });
+  const session = await createHarnessSession({ root, config: { ...defaults, pi_agent_dir: agent },
+    context: { systemPrompt: defaults.system_prompt, messages: [{ role: 'user', content: 'test', timestamp: 1 }] },
+    model: fake.getModel(), runtime, offline: false, skill, extensionPaths: [], turn: 2, automated, updates: fakeUpdates, updatesStore: store });
+  try {
+    const tools = session.getActiveToolNames().map(name => {
+      const tool = session.getToolDefinition(name)!;
+      return JSON.stringify({ name, description: tool.description, parameters: tool.parameters });
+    });
+    const body = skill ? await (await import('node:fs/promises')).readFile(path.join(root, '.pi/skills', skill, 'SKILL.md'), 'utf8') : '';
+    return { names: session.getActiveToolNames(), prompt: session.systemPrompt, chars: session.systemPrompt.length + tools.join('').length + body.length };
+  } finally { session.dispose(); await rm(agent, { recursive: true, force: true }); }
+}
+
+test('updates: one compact tool when routed or when the offer awaits an answer; never for tasks', async () => {
+  const routed = await measureUpdates('updates', false);
+  assert.deepEqual(routed.names, ['updates']);
+  assert.ok(routed.chars <= LIMITS.updates, `${routed.chars} chars`);
+  const plain = await measureUpdates(undefined, false), pending = await measureUpdates(undefined, true);
+  assert.ok(!plain.names.includes('updates') && !plain.prompt.includes('updates'), 'unrouted: not sent without a pending offer');
+  assert.deepEqual(pending.names.filter(name => !plain.names.includes(name)), ['updates']);
+  assert.match(pending.prompt, /Pending updates apply llama\.cpp b11617, Pi 1\.2\.0: if this message agrees, call updates apply with confirm_token c_/);
+  assert.ok(pending.chars - plain.chars <= LIMITS.updates_pending_added, `${pending.chars - plain.chars} chars added`);
+  assert.ok(!(await measureUpdates(undefined, true, true)).names.includes('updates'), 'automated task');
 });

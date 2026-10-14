@@ -12,6 +12,8 @@ import { Orchestrator } from './orchestrator.ts';
 import { makeServer } from './server.ts';
 import { fileService } from './files.ts';
 import { vaultService } from './vault.ts';
+import { installedVersion, loadManifest } from './components.ts';
+import { detect, httpJson } from './updates.ts';
 
 export async function main(args = process.argv.slice(2)) {
   await loadEnv(); const config = await loadConfig();
@@ -42,7 +44,28 @@ export async function main(args = process.argv.slice(2)) {
         jev_key_configured: Boolean(process.env.TYPESAFE_API_KEY), local_running: await runtime.healthy(),
         embedding_enabled: config.embedding_enabled, embedding_binary: await exists(config.embedding_bin, true),
         embedding_model: await exists(config.embedding_model), embedding_mmproj: config.embedding_mmproj ? await exists(config.embedding_mmproj) : false,
+        // components.json entries whose installed version differs from the pin (scripts/setup.sh installs them).
+        components_mismatch: await (async () => {
+          const result: string[] = [];
+          for (const c of (await loadManifest(path.join(root, 'components.json'))).components) {
+            const installed = await installedVersion(c, root);
+            if (installed !== c.version) result.push(`${c.id}: ${installed ?? 'missing'} != ${c.version}`);
+          }
+          return result;
+        })(),
       }, null, 2));
+    } else if (command === 'updates-check') {
+      // Read-only: asks each upstream once and prints what is newer; nothing is installed or written. --all includes manual (models).
+      const all = args.includes('--all'), rows = [];
+      for (const c of (await loadManifest(path.join(root, 'components.json'))).components) {
+        if ((!all && c.channel === 'manual') || !['github', 'npm', 'pypi', 'hf'].includes(c.source.type)) continue;
+        const current = await installedVersion(c, root) ?? c.version;
+        try {
+          const up = await detect(c, current, httpJson, lifecycle.signal);
+          rows.push({ id: c.id, channel: c.channel, current, latest: up?.latest ?? current, update: Boolean(up), ...(up?.sha256 ? { sha256: up.sha256 } : {}) });
+        } catch (error) { rows.push({ id: c.id, channel: c.channel, current, error: error instanceof Error ? error.message : 'failed' }); }
+      }
+      console.log(JSON.stringify(rows, null, 1));
     } else if (command === 'models') {
       console.log(models.getModels().filter(m => ['openai', 'openai-codex'].includes(m.provider)).map(m => `${m.provider}/${m.id}`).join('\n'));
     } else if (command === 'login') {
@@ -63,7 +86,7 @@ export async function main(args = process.argv.slice(2)) {
       const files = fileService(config);
       files.start(lifecycle.signal);
       const server = await makeServer(config, app, lifecycle.signal, undefined, undefined, undefined, { files },
-        { stateFile: path.join(root, 'data/tasks-state.json') });
+        { stateFile: path.join(root, 'data/tasks-state.json') }, { stateFile: path.join(root, 'data/updates.json') });
       await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(config.port, '127.0.0.1', resolve); });
       const url = `http://127.0.0.1:${config.port}`;
       console.log(`Assistant: ${url}`);
@@ -72,7 +95,7 @@ export async function main(args = process.argv.slice(2)) {
         lifecycle.signal.addEventListener('abort', stop, { once: true });
         if (lifecycle.signal.aborted) stop();
       });
-    } else throw Error('Commands: serve, ask, classify, transcribe, doctor, models, login');
+    } else throw Error('Commands: serve, ask, classify, transcribe, doctor, updates-check, models, login');
   } finally { await vaultService(config).close(); await app.close(); await fileService(config).close(); process.off('SIGINT', abort); process.off('SIGTERM', abort); }
 }
 

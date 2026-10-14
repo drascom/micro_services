@@ -46,6 +46,15 @@ struct FilesPlan: Decodable { let at: Double; let folder: String; let groups: [F
 struct FilesStatus: Decodable { var enabled = false; var roots: [String] = []; var skip_dirs: [String]? = nil; var index: FilesIndex?; var last_plan: FilesPlan? }
 
 struct VaultStatus: Decodable { var enabled = false; var server = ""; var email = ""; var installed = false; var state = "unknown"; var error = "" }
+struct UpdateItem: Decodable, Identifiable {
+    let id: String; let name: String; let current: String; let latest: String; let status: String
+    let summary: String?; let breaking: Bool?; let security: Bool?; let affects_our_flags: Bool?; let size_mb: Int?
+}
+struct UpdateRollback: Decodable, Identifiable { let id: String; let name: String; let version: String }
+struct UpdatesStatus: Decodable {
+    var last_check: Double? = nil; var last_error = ""; var checking = false; var applying: String? = nil; var queued: [String] = []
+    var manifest_changed = false; var updates: [UpdateItem] = []; var rollback: [UpdateRollback] = []
+}
 struct ActivityRow: Identifiable { let id: Int; let time: String; let request: String; let event: String; let details: String }
 
 @MainActor @Observable
@@ -104,6 +113,8 @@ final class AdminModel {
     var vaultCode = ""
     var vaultMessage = ""
     var vaultBusy = false
+    var updates = UpdatesStatus()
+    var updatesMessage = ""
     private var polling: Task<Void, Never>?
 
     init(backend: BackendClient, ring: RingModel) { self.backend = backend; self.ring = ring }
@@ -113,6 +124,7 @@ final class AdminModel {
         polling = Task {
             while !Task.isCancelled {
                 await refreshStatus()
+                if updates.checking || updates.applying != nil || !updates.queued.isEmpty { await loadUpdates() }
                 try? await Task.sleep(for: .seconds(3)) // Intentional status refresh cadence.
             }
         }
@@ -123,6 +135,7 @@ final class AdminModel {
         Task { await loadPronunciations() }
         Task { await loadFiles() }
         Task { await loadVault() }
+        Task { await loadUpdates() }
     }
     func stopPolling() { polling?.cancel(); polling = nil }
 
@@ -379,6 +392,24 @@ final class AdminModel {
         do { applyVault(try await backend.admin("admin/bitwarden/lock"), email: false); vaultMessage = "" } catch { vaultMessage = error.localizedDescription }
     }
 
+    // MARK: Component updates
+    func loadUpdates() async {
+        do { updates = try JSONDecoder().decode(UpdatesStatus.self, from: try await backend.admin("admin/updates")); updatesMessage = "" }
+        catch { updatesMessage = error.localizedDescription }
+    }
+    private func updatesCall(_ route: String, _ body: [String: Any] = [:]) async {
+        do {
+            let json = try JSONSerialization.data(withJSONObject: body)
+            let data = try await backend.admin(route, data: json)
+            if let value = try? JSONDecoder().decode(UpdatesStatus.self, from: data) { updates = value }
+            updatesMessage = ""
+        } catch { updatesMessage = error.localizedDescription }
+    }
+    func checkUpdates() async { await updatesCall("admin/updates/check") }
+    func applyUpdate(_ id: String) async { await updatesCall("admin/updates/apply", ["id": id]) }
+    func skipUpdate(_ item: UpdateItem) async { await updatesCall("admin/updates/skip", ["id": item.id, "version": item.latest]) }
+    func rollbackUpdate(_ id: String) async { await updatesCall("admin/updates/rollback", ["id": id]) }
+
     func createExtension(name: String) async {
         do {
             _ = try await backend.admin("admin/create-extension", ["name": name])
@@ -395,6 +426,7 @@ struct AdminView: View {
             StatusTab(admin: admin).tabItem { Text("Durum / Status") }
             ActivityTab(admin: admin).tabItem { Text("Etkinlik / Activity") }
             SettingsTab(admin: admin, ring: admin.ring).tabItem { Text("Ayarlar / Settings") }
+            UpdatesTab(admin: admin).tabItem { Text("Güncellemeler / Updates") }
             ResourcesTab(admin: admin).tabItem { Text("Skill & Extension") }
         }.padding(12).frame(minWidth: 720, minHeight: 480)
     }
@@ -519,6 +551,72 @@ private struct StatusTab: View {
 extension StatusTab {
     static func levelMark(_ level: String) -> String {
         switch level { case "urgent": "🔴"; case "important": "🟠"; case "later": "🔵"; default: "⚪️" }
+    }
+}
+
+private struct UpdatesTab: View {
+    let admin: AdminModel
+    @State private var confirming: UpdateItem?
+    private var busy: Bool { admin.updates.applying != nil || !admin.updates.queued.isEmpty }
+    private func lastCheck(_ ms: Double?) -> String {
+        ms.map { Date(timeIntervalSince1970: $0 / 1000).formatted(date: .abbreviated, time: .shortened) } ?? "—"
+    }
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Son kontrol / Last check", value: lastCheck(admin.updates.last_check))
+                if let applying = admin.updates.applying { LabeledContent("Kuruluyor / Installing", value: applying) }
+                if !admin.updates.queued.isEmpty { LabeledContent("Sırada / Queued", value: admin.updates.queued.joined(separator: ", ")) }
+                if admin.updates.manifest_changed { Text("components.json değişti, commit edilmedi").font(.caption).foregroundStyle(.orange) }
+                if !admin.updates.last_error.isEmpty { Text(admin.updates.last_error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
+                HStack {
+                    if !admin.updatesMessage.isEmpty { Text(admin.updatesMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+                    Spacer()
+                    Button("Şimdi kontrol et / Check now") { Task { await admin.checkUpdates() } }.disabled(admin.updates.checking)
+                }
+            }
+            Section("Güncellemeler / Updates") {
+                ForEach(admin.updates.updates) { item in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(item.name).bold()
+                            Text("\(item.current) → \(item.latest)").monospaced()
+                            if let size = item.size_mb { Text("\(size) MB").foregroundStyle(.secondary) }
+                            if item.breaking == true { Text("breaking").font(.caption).foregroundStyle(.red) }
+                            if item.security == true { Text("security").font(.caption).foregroundStyle(.orange) }
+                            if item.affects_our_flags == true { Text("flags").font(.caption).foregroundStyle(.orange) }
+                            if item.status != "pending" { Text(item.status).font(.caption).foregroundStyle(.secondary) }
+                            Spacer()
+                            Button("Güncelle / Update") {
+                                if item.size_mb != nil { confirming = item } else { Task { await admin.applyUpdate(item.id) } }
+                            }.disabled(busy)
+                            Button("Atla / Skip") { Task { await admin.skipUpdate(item) } }.disabled(item.status == "skipped")
+                        }
+                        if let summary = item.summary { Text(summary).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
+                    }
+                }
+            }
+            if !admin.updates.rollback.isEmpty {
+                Section("Geri al / Rollback") {
+                    ForEach(admin.updates.rollback) { item in
+                        HStack {
+                            Text(item.name); Text("→ \(item.version)").monospaced()
+                            Spacer()
+                            Button("Geri al / Rollback") { Task { await admin.rollbackUpdate(item.id) } }.disabled(busy)
+                        }
+                    }
+                }
+            }
+        }.formStyle(.grouped)
+        .task { await admin.loadUpdates() }
+        .confirmationDialog("\(confirming?.name ?? "") • \(confirming?.size_mb ?? 0) MB",
+                            isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })) {
+            Button("İndir ve kur / Download and install") {
+                if let item = confirming { Task { await admin.applyUpdate(item.id) } }
+                confirming = nil
+            }
+            Button("İptal / Cancel", role: .cancel) { confirming = nil }
+        }
     }
 }
 

@@ -18,6 +18,8 @@ final class RingModel {
     var level = 0.0
     var showInput: () -> Void = {}
     var toggleInput: () -> Void = {}
+    /// Shows the reply panel without taking focus from the user's app (proactive messages).
+    var revealInput: () -> Void = {}
     var contextMenu: () -> Void = {}
     /// Focused editable text field of another app at recording start (opaque; nil = none).
     var dictationLabel = Shortcut.loadDictation().label
@@ -236,6 +238,21 @@ final class RingModel {
         jobPhase = value; jobStatus = text
         guard !capturing, phase != .noSpeech, phase != .copied else { return }
         phase = value ?? .idle; status = text
+    }
+    /// Proactive message (update offer/result): only at an idle moment, never over a request, recording or speech.
+    /// Shown in the panel without focus and read aloud when enabled; false = not now (the backend offers it again later).
+    func announce(_ text: String) -> Bool {
+        guard ready, phase == .idle, jobs.isEmpty, !capturing, !changingMode, !text.isEmpty else { return false }
+        response = text; provider = "Ayhan"; revealInput()
+        guard readAloud else { return true }
+        lastJob += 1; let id = lastJob
+        jobs[id] = Job(asking: false, speaking: true); shownJob = id; refreshJob()
+        jobs[id]?.task = Task { [weak self] in
+            try? await self?.backend.speak(text)
+            guard let self, !Task.isCancelled, self.jobs[id] != nil else { return }
+            self.end(id)
+        }
+        return true
     }
     func setOffline(_ value: Bool) {
         guard ready, !changingMode else { return }

@@ -1,0 +1,474 @@
+{
+  "schema": 1,
+  "components": [
+    {
+      "id": "llama-cpp",
+      "name": "llama.cpp",
+      "kind": "binary",
+      "version": "b11574",
+      "sha256": "85da72af68fce98663c8dc028d89d79d0083b1bf0d3df34340224c6fdf3a812b",
+      "source": {
+        "type": "github",
+        "repo": "ggml-org/llama.cpp",
+        "asset": "llama-{version}-bin-macos-arm64.tar.gz"
+      },
+      "channel": "prerelease",
+      "platform": "darwin-arm64",
+      "path": "runtime/llama",
+      "installed": {
+        "json": "runtime/llama/BUILD.json",
+        "key": "version"
+      },
+      "install": {
+        "script": "scripts/install-llama.sh"
+      },
+      "smoke": {
+        "cmd": [
+          "{dir}/llama-server",
+          "--version"
+        ],
+        "expect": "version: \\d+"
+      },
+      "perf": "llama",
+      "restart": "llama",
+      "uses": "llama-server -m --alias -ngl 999 -c --flash-attn on --cache-type-k/v q8_0 --reasoning-budget --reasoning-budget-message --parallel 1 --jinja --poll 0 --api-key; embeddings server (--embeddings --pooling, mmproj); OpenAI /v1/chat/completions tool calls, /health, /embedding"
+    },
+    {
+      "id": "whisper-cpp",
+      "name": "whisper.cpp",
+      "kind": "binary",
+      "version": "v1.9.4",
+      "sha256": "57e280cee375ab02425b806ad5146b99f6eb9357e3c2b31357c8a6af2e2e44ae",
+      "source": {
+        "type": "github",
+        "repo": "ggml-org/whisper.cpp"
+      },
+      "channel": "stable",
+      "platform": "darwin-arm64",
+      "path": "runtime/whisper",
+      "installed": {
+        "json": "runtime/whisper/BUILD.json",
+        "key": "version"
+      },
+      "install": {
+        "script": "scripts/install-whisper.sh"
+      },
+      "smoke": {
+        "cmd": [
+          "{dir}/whisper-cli",
+          "--help"
+        ],
+        "expect": "usage"
+      },
+      "restart": "whisper",
+      "uses": "whisper-cli/whisper-server -m -l auto -t 8 -nt -bs -bo --host --port; server POST /inference (multipart file, response_format json); static Metal build flags"
+    },
+    {
+      "id": "detect-language",
+      "name": "detect-language",
+      "kind": "binary",
+      "version": "local",
+      "source": {
+        "type": "local"
+      },
+      "channel": "manual",
+      "platform": "darwin",
+      "path": "runtime/detect-language",
+      "installed": {
+        "exists": "runtime/detect-language"
+      },
+      "install": {
+        "app_build": true
+      },
+      "restart": "none",
+      "uses": "scripts/detect-language.swift (NaturalLanguage), compiled by npm run build-app"
+    },
+    {
+      "id": "bitwarden-cli",
+      "name": "Bitwarden CLI (bw)",
+      "kind": "npm-runtime",
+      "version": "2026.9.0",
+      "source": {
+        "type": "npm",
+        "package": "@bitwarden/cli",
+        "notes": {
+          "repo": "bitwarden/clients",
+          "tag": "cli-v{version}"
+        }
+      },
+      "channel": "stable",
+      "platform": "any",
+      "path": "runtime/bitwarden",
+      "installed": {
+        "json": "runtime/bitwarden/node_modules/@bitwarden/cli/package.json",
+        "key": "version"
+      },
+      "install": {
+        "script": "scripts/install-bitwarden.sh"
+      },
+      "smoke": {
+        "cmd": [
+          "{node}",
+          "{dir}/node_modules/@bitwarden/cli/build/bw.js",
+          "--version"
+        ],
+        "expect": "^{version}"
+      },
+      "restart": "none",
+      "uses": "bw status/login/unlock --passwordenv --raw, list items --search, get item, get totp, create/edit item, generate, config server, lock; BW_SESSION env; BITWARDENCLI_APPDATA_DIR"
+    },
+    {
+      "id": "ema-lightning",
+      "name": "EMA Lightning",
+      "kind": "python-venv",
+      "version": "1.0.4",
+      "source": {
+        "type": "pypi",
+        "package": "ema-lightning"
+      },
+      "channel": "stable",
+      "platform": "any",
+      "path": "runtime/ema",
+      "python": "3.12",
+      "requirements": "scripts/ema-requirements.txt",
+      "smoke": {
+        "cmd": [
+          "{dir}/bin/python",
+          "-c",
+          "import importlib.metadata as m, ema_lightning; print(m.version('ema-lightning'))"
+        ],
+        "expect": "^{version}"
+      },
+      "restart": "ema",
+      "uses": "Python API used by scripts/ema-worker.py (model load from HF cache HF_HOME=models/ema, synthesize to WAV, device cpu, speed)"
+    },
+    {
+      "id": "kokoro-onnx",
+      "name": "kokoro-onnx",
+      "kind": "python-venv",
+      "version": "0.6.1",
+      "source": {
+        "type": "pypi",
+        "package": "kokoro-onnx",
+        "notes": {
+          "repo": "thewh1teagle/kokoro-onnx",
+          "tag": "v{version}"
+        }
+      },
+      "channel": "stable",
+      "platform": "any",
+      "path": "runtime/kokoro",
+      "python": "3.12",
+      "requirements": "scripts/kokoro-requirements.txt",
+      "smoke": {
+        "cmd": [
+          "{dir}/bin/python",
+          "-c",
+          "import importlib.metadata as m, kokoro_onnx; print(m.version('kokoro-onnx'))"
+        ],
+        "expect": "^{version}"
+      },
+      "restart": "kokoro",
+      "uses": "Kokoro(model, voices).create(text, voice, speed, lang) in scripts/kokoro-worker.py; v1.0 fp16 model and voices-v1.0.bin"
+    },
+    {
+      "id": "piper-tts",
+      "name": "Piper",
+      "kind": "python-venv",
+      "version": "1.8.0",
+      "source": {
+        "type": "pypi",
+        "package": "piper-tts",
+        "notes": {
+          "repo": "OHF-Voice/piper1-gpl",
+          "tag": "v{version}"
+        }
+      },
+      "channel": "stable",
+      "platform": "any",
+      "path": "runtime/piper",
+      "python": "3.13",
+      "requirements": "scripts/piper-requirements.txt",
+      "smoke": {
+        "cmd": [
+          "{dir}/bin/python",
+          "-c",
+          "import importlib.metadata as m, piper; print(m.version('piper-tts'))"
+        ],
+        "expect": "^{version}"
+      },
+      "restart": "none",
+      "uses": "python -m piper -m <voice.onnx> -f <wav> --length-scale (stdin text)"
+    },
+    {
+      "id": "yt-dlp",
+      "name": "yt-dlp",
+      "kind": "python-venv",
+      "version": "2026.8.19",
+      "source": {
+        "type": "pypi",
+        "package": "yt-dlp",
+        "notes": {
+          "repo": "yt-dlp/yt-dlp",
+          "tag": "{version}"
+        }
+      },
+      "channel": "stable",
+      "platform": "any",
+      "path": "runtime/web-access",
+      "python": "3.13",
+      "requirements": "scripts/web-access-requirements.txt",
+      "smoke": {
+        "cmd": [
+          "{dir}/bin/yt-dlp",
+          "--version"
+        ],
+        "expect": "^{version}"
+      },
+      "restart": "none",
+      "uses": "yt-dlp on PATH for pi-web-access fetch_content (video metadata/subtitles)"
+    },
+    {
+      "id": "pi",
+      "name": "Pi (pi-ai + pi-coding-agent)",
+      "kind": "npm-dep",
+      "version": "1.1.0",
+      "source": {
+        "type": "npm",
+        "package": "@earendil-works/pi-coding-agent"
+      },
+      "packages": [
+        "@earendil-works/pi-ai",
+        "@earendil-works/pi-coding-agent"
+      ],
+      "channel": "stable",
+      "platform": "any",
+      "restart": "app",
+      "uses": "createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager.inMemory, SettingsManager.inMemory, ExtensionAPI registerTool/on(tool_call, before_agent_start), session.steer/prompt/abort, loadSkillsFromDir; pi-ai createModels, createProvider, completeSimple, classify, faux provider, openai/openai-codex/typesafe providers"
+    },
+    {
+      "id": "pi-web-access",
+      "name": "pi-web-access",
+      "kind": "npm-dep",
+      "version": "0.38.0",
+      "source": {
+        "type": "npm",
+        "package": "pi-web-access"
+      },
+      "packages": [
+        "pi-web-access"
+      ],
+      "channel": "stable",
+      "platform": "any",
+      "restart": "app",
+      "uses": "default extension export loaded by .pi/extensions/web-access.ts; tools web_search, fetch_content, source_check, get_search_content; web-search.json config"
+    },
+    {
+      "id": "cheerio",
+      "name": "cheerio",
+      "kind": "npm-dep",
+      "version": "1.1.2",
+      "source": {
+        "type": "npm",
+        "package": "cheerio"
+      },
+      "packages": [
+        "cheerio"
+      ],
+      "channel": "stable",
+      "platform": "any",
+      "restart": "app",
+      "uses": "load(html), text extraction in web_read"
+    },
+    {
+      "id": "ipaddr",
+      "name": "ipaddr.js",
+      "kind": "npm-dep",
+      "version": "2.2.0",
+      "source": {
+        "type": "npm",
+        "package": "ipaddr.js"
+      },
+      "packages": [
+        "ipaddr.js"
+      ],
+      "channel": "stable",
+      "platform": "any",
+      "restart": "app",
+      "uses": "parse/range checks for private address blocking in web_read"
+    },
+    {
+      "id": "typebox",
+      "name": "typebox",
+      "kind": "npm-dep",
+      "version": "1.3.27",
+      "source": {
+        "type": "npm",
+        "package": "typebox"
+      },
+      "packages": [
+        "typebox"
+      ],
+      "channel": "stable",
+      "platform": "any",
+      "restart": "app",
+      "uses": "Type.Object/String/Enum/Optional/Integer tool schemas"
+    },
+    {
+      "id": "gemma-4-12b",
+      "name": "Gemma 4 12B QAT Q4_0",
+      "kind": "model",
+      "version": "29d0977",
+      "source": {
+        "type": "hf",
+        "repo": "google/gemma-4-12B-it-qat-q4_0-gguf"
+      },
+      "channel": "manual",
+      "platform": "any",
+      "restart": "llama",
+      "files": [
+        {
+          "path": "models/gemma-4-12b-it-qat-q4_0.gguf",
+          "remote": "gemma-4-12b-it-qat-q4_0.gguf",
+          "size": 6975879296,
+          "sha256": "93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b"
+        }
+      ]
+    },
+    {
+      "id": "whisper-large-v3",
+      "name": "Whisper Large v3 Q5_0",
+      "kind": "model",
+      "version": "5359861",
+      "source": {
+        "type": "hf",
+        "repo": "ggerganov/whisper.cpp"
+      },
+      "channel": "manual",
+      "platform": "any",
+      "restart": "whisper",
+      "files": [
+        {
+          "path": "models/ggml-large-v3-q5_0.bin",
+          "remote": "ggml-large-v3-q5_0.bin",
+          "size": 1081140203,
+          "sha256": "d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1"
+        }
+      ]
+    },
+    {
+      "id": "embeddinggemma-2",
+      "name": "EmbeddingGemma 2 Q8_0 + mmproj",
+      "kind": "model",
+      "version": "bfcd298",
+      "source": {
+        "type": "hf",
+        "repo": "ggml-org/embeddinggemma-2-GGUF"
+      },
+      "channel": "manual",
+      "platform": "any",
+      "restart": "llama",
+      "files": [
+        {
+          "path": "models/embeddinggemma-2/embeddinggemma-2-Q8_0.gguf",
+          "remote": "embeddinggemma-2-Q8_0.gguf",
+          "size": 309855456,
+          "sha256": "2188ac1deca4b77dffefd603c2776a9d76d9d74ec01841392982ebb840b09135"
+        },
+        {
+          "path": "models/embeddinggemma-2/mmproj-embeddinggemma-2-Q8_0.gguf",
+          "remote": "mmproj-embeddinggemma-2-Q8_0.gguf",
+          "size": 554821024,
+          "sha256": "c4a8a52691ecef40618438928bdf9e68379b854e24166f292592353db0aab64f"
+        }
+      ]
+    },
+    {
+      "id": "ema-model",
+      "name": "EMA Lightning weights",
+      "kind": "model",
+      "version": "7a6ba1a",
+      "source": {
+        "type": "hf",
+        "repo": "canberkkkkkk/ema-lightning",
+        "revision": "7a6ba1ad216bb2f1da9863f80ac8770a6a807632"
+      },
+      "channel": "manual",
+      "platform": "any",
+      "restart": "ema",
+      "install": {
+        "hf_snapshot": "models/ema",
+        "python": "runtime/ema/bin/python"
+      },
+      "installed": {
+        "exists": "models/ema/hub/models--canberkkkkkk--ema-lightning/refs/main"
+      }
+    },
+    {
+      "id": "kokoro-model",
+      "name": "Kokoro-82M v1.0 FP16 + voices",
+      "kind": "model",
+      "version": "model-files-v1.1",
+      "source": {
+        "type": "url"
+      },
+      "channel": "manual",
+      "platform": "any",
+      "restart": "kokoro",
+      "files": [
+        {
+          "path": "models/kokoro/kokoro-v1.0.fp16.onnx",
+          "size": 163527961,
+          "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/kokoro-v1.0.fp16.onnx",
+          "sha256": "f3a290d384fbb27966d462905c71a46cef9e5fd00516b40df32a0b4afe77ac96"
+        },
+        {
+          "path": "models/kokoro/voices-v1.0.bin",
+          "size": 28214398,
+          "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.0.bin",
+          "sha256": "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"
+        }
+      ]
+    },
+    {
+      "id": "piper-voices",
+      "name": "Piper voices (tr_TR dfki, en_GB alan)",
+      "kind": "model",
+      "version": "c10ece1",
+      "source": {
+        "type": "hf",
+        "repo": "rhasspy/piper-voices",
+        "revision": "c10ece1aade47bb51c153c893d14e5bf8e5b7117"
+      },
+      "channel": "manual",
+      "platform": "any",
+      "restart": "none",
+      "files": [
+        {
+          "path": "models/piper/tr_TR-dfki-medium.onnx",
+          "remote": "tr/tr_TR/dfki/medium/tr_TR-dfki-medium.onnx",
+          "size": 63201294,
+          "sha256": "2844717f524ab965d3fe86e60562cbb601d3e456836efcc2196cc3a14112a8fb"
+        },
+        {
+          "path": "models/piper/tr_TR-dfki-medium.onnx.json",
+          "remote": "tr/tr_TR/dfki/medium/tr_TR-dfki-medium.onnx.json",
+          "size": 4960,
+          "sha256": "13ebd7810f1b61b5027583cf3131a0a233b6ea81c38f2200ebc4ff41c3cca039"
+        },
+        {
+          "path": "models/piper/en_GB-alan-medium.onnx",
+          "remote": "en/en_GB/alan/medium/en_GB-alan-medium.onnx",
+          "size": 63201294,
+          "sha256": "0a309668932205e762801f1efc2736cd4b0120329622adf62be09e56339d3330"
+        },
+        {
+          "path": "models/piper/en_GB-alan-medium.onnx.json",
+          "remote": "en/en_GB/alan/medium/en_GB-alan-medium.onnx.json",
+          "size": 4888,
+          "sha256": "c0f0d124e5895c00e7c03b35dcc8287f319a6998a365b182deb5c8e752ee8c1e"
+        }
+      ]
+    }
+  ]
+}
