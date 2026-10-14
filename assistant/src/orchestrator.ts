@@ -69,7 +69,8 @@ export class Orchestrator {
     let answer: AssistantMessage | undefined;
     const skill = ['web_search', 'news'].includes(intent?.choice || '') ? 'online-search' as const : intent?.choice === 'skill_management' ? 'skill-manager' as const :
       intent?.choice === 'email' ? 'mail-assistant' as const : intent?.choice === 'mail_triage' && this.config.gmail_triage_enabled ? 'mail-triage' as const : intent?.choice === 'reminders' && this.config.reminders_enabled ? 'reminders' as const :
-      intent?.choice === 'files' && this.config.embedding_enabled ? 'file-assistant' as const : undefined;
+      intent?.choice === 'files' && this.config.embedding_enabled ? 'file-assistant' as const :
+      intent?.choice === 'vault' && this.config.bitwarden_enabled ? 'vault' as const : undefined;
     const briefNews = intent?.choice === 'news';
     if (!offline) {
       try { answer = await this.remote.complete(remoteContext, AbortSignal.any([signal, AbortSignal.timeout(this.config.remote_timeout_ms)]), { offline: false, skill, briefNews, turn, automated, steering }); }

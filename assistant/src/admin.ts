@@ -14,7 +14,8 @@ import { runProcess, type OwnedProcess } from './processes.ts';
 import { PiChat } from './providers.ts';
 import type { FileService } from './files.ts';
 import { lastFilePlan } from './files-organize.ts';
-import { validateFileRoots, validateSkipDirs } from './config.ts';
+import { validateFileRoots, validateSkipDirs, validateVaultSettings } from './config.ts';
+import { VaultError, type VaultService } from './vault.ts';
 
 /** Native admin window data. User actions only: nothing here is sent to or callable by the model. */
 
@@ -58,7 +59,7 @@ export type ResourceKind = 'skill' | 'extension';
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
 const MAX_FILE = 256 * 1024;
-const FACTORY = new Set(['permissions.ts', 'request-workflow.ts', 'macos-mail', 'apple-reminders', 'gmail', 'files']);
+const FACTORY = new Set(['permissions.ts', 'request-workflow.ts', 'macos-mail', 'apple-reminders', 'gmail', 'files', 'vault']);
 
 function base(root: string, kind: unknown): string {
   if (kind !== 'skill' && kind !== 'extension') throw Error('Invalid resource kind');
@@ -319,6 +320,44 @@ export async function gmailActions(config: Config, service: GmailService) {
 export async function undoGmail(config: Config, service: GmailService) {
   const result = await adminTriage(config, service).undo(AbortSignal.timeout(60_000));
   return { ...result, batches: await adminTriage(config, service).recent(10) };
+}
+
+/** Bitwarden: switch, server, email, CLI state; never the password, session key or any vault item. */
+export async function vaultStatus(config: Config, vault: VaultService) {
+  const installed = await vault.installed();
+  let state = 'unknown', cli_server = '', error = vault.lastError;
+  if (installed) {
+    try { ({ state, server: cli_server } = await vault.status()); }
+    catch (e) { error = e instanceof VaultError ? e.code : 'vault_failed'; }
+  }
+  return { enabled: config.bitwarden_enabled, server: config.bitwarden_server, email: config.bitwarden_email,
+    idle_lock_min: config.bitwarden_idle_lock_min, installed, state, cli_server, error };
+}
+/** Only the fields present are changed. Off: the vault is locked and its tools are not registered. */
+export async function saveVault(config: Config, configPath: string, vault: VaultService, value: unknown) {
+  const input = (value && typeof value === 'object' ? value : {}) as { enabled?: unknown; email?: unknown; server?: unknown; idle_lock_min?: unknown };
+  const change: Partial<Pick<Config, 'bitwarden_enabled' | 'bitwarden_email' | 'bitwarden_server' | 'bitwarden_idle_lock_min'>> = {};
+  if (input.enabled !== undefined) { if (typeof input.enabled !== 'boolean') throw Error('enabled must be a boolean'); change.bitwarden_enabled = input.enabled; }
+  if (input.email !== undefined) { if (typeof input.email !== 'string') throw Error('email must be text'); change.bitwarden_email = input.email.trim(); }
+  if (input.server !== undefined) { if (typeof input.server !== 'string') throw Error('server must be text'); change.bitwarden_server = input.server.trim().replace(/\/+$/, ''); }
+  if (input.idle_lock_min !== undefined) { if (typeof input.idle_lock_min !== 'number') throw Error('idle_lock_min must be a number'); change.bitwarden_idle_lock_min = input.idle_lock_min; }
+  if (!Object.keys(change).length) throw Error('Nothing to save');
+  validateVaultSettings({ ...config, ...change });
+  await updateConfigFile(configPath, settings => { Object.assign(settings, change); });
+  Object.assign(config, change);
+  if (!config.bitwarden_enabled) await vault.lock();
+  return vaultStatus(config, vault);
+}
+/** Admin unlock (logs in first if needed). The password is used once and never stored, logged or returned. */
+export async function unlockVault(config: Config, vault: VaultService, value: unknown) {
+  const input = (value && typeof value === 'object' ? value : {}) as { password?: unknown; code?: unknown };
+  if (!config.bitwarden_enabled) throw new VaultError('disabled');
+  if (!await vault.installed()) throw new VaultError('not_installed');
+  const { state, server } = await vault.status();
+  if (state === 'unauthenticated' && server.replace(/\/+$/, '') !== config.bitwarden_server) await vault.setServer(config.bitwarden_server);
+  try { await vault.unlock(input.password, input.code); }
+  catch (error) { throw error instanceof VaultError ? error : new VaultError('vault_failed'); }
+  return vaultStatus(config, vault);
 }
 
 /** Local files (EmbeddingGemma index): switch, folders, index counts and the latest organize plan; never file contents. */

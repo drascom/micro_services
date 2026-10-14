@@ -36,6 +36,10 @@
   "gmail_daily_limit": 500,
   "gmail_urgent_senders": [],
   "embedding_enabled": false,
+  "bitwarden_enabled": false,
+  "bitwarden_server": "https://pass.drascom.uk",
+  "bitwarden_email": "",
+  "bitwarden_idle_lock_min": 15,
   "file_roots": [
     "~/Documents"
   ]

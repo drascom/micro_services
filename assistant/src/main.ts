@@ -11,6 +11,7 @@ import { Speech } from './speech.ts';
 import { Orchestrator } from './orchestrator.ts';
 import { makeServer } from './server.ts';
 import { fileService } from './files.ts';
+import { vaultService } from './vault.ts';
 
 export async function main(args = process.argv.slice(2)) {
   await loadEnv(); const config = await loadConfig();
@@ -72,7 +73,7 @@ export async function main(args = process.argv.slice(2)) {
         if (lifecycle.signal.aborted) stop();
       });
     } else throw Error('Commands: serve, ask, classify, transcribe, doctor, models, login');
-  } finally { await app.close(); await fileService(config).close(); process.off('SIGINT', abort); process.off('SIGTERM', abort); }
+  } finally { await vaultService(config).close(); await app.close(); await fileService(config).close(); process.off('SIGINT', abort); process.off('SIGTERM', abort); }
 }
 
 if (import.meta.url === new URL(`file://${process.argv[1]}`).href) {

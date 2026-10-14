@@ -6,7 +6,8 @@ import { NoSpeechError } from './speech.ts';
 import { activity, observeRequest } from './activity.ts';
 import { root } from './config.ts';
 import { collectStatus, connectGmail, createExtension, createSkill, deleteResource, disconnectGmail, filesStatus, gmailActions, gmailStatus, listMailAccounts, listResources,
-  readResource, saveFiles, saveGmail, saveMailAccounts, saveReminders, undoGmail, writeResource } from './admin.ts';
+  readResource, saveFiles, saveGmail, saveMailAccounts, saveReminders, saveVault, undoGmail, unlockVault, vaultStatus, writeResource } from './admin.ts';
+import { vaultService, type VaultService } from './vault.ts';
 import { fileService, type FileService } from './files.ts';
 import { readPronunciations, savePronunciations } from './pronounce.ts';
 import { gmailService, type GmailService } from '../.pi/extensions/gmail/service.ts';
@@ -42,7 +43,8 @@ async function readBody(request: IncomingMessage, limit: number): Promise<Buffer
 
 export async function makeServer(config: Config, app: Orchestrator, lifecycle: AbortSignal, activityFile: string | null = path.join(root, 'data/activity.log'), resourceRoot = root,
   trashDirs = [path.join(homedir(), '.Trash'), path.join(resourceRoot, 'data/trash')],
-  mail: { configPath?: string; transport?: MailTransport; gmail?: GmailService; files?: FileService } = {}, tasks?: TaskOptions) {
+  mail: { configPath?: string; transport?: MailTransport; gmail?: GmailService; files?: FileService; vault?: VaultService } = {}, tasks?: TaskOptions) {
+  const vault = mail.vault ?? vaultService(config);
   const gmail = mail.gmail ?? gmailService(root);
   const files = mail.files ?? fileService(config);
   const configPath = mail.configPath ?? path.join(root, 'config.json');
@@ -124,10 +126,25 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         if (request.url === '/admin/pronunciations/save') return reply(200, await savePronunciations((data as { content?: unknown }).content));
         if (request.url === '/admin/gmail/actions') return reply(200, await gmailActions(config, gmail));
         if (request.url === '/admin/gmail/undo') return reply(200, await undoGmail(config, gmail));
+        // Bitwarden: the unlock body holds the master password; it is passed to the vault only and never logged.
+        if (request.url === '/admin/bitwarden') return reply(200, await vaultStatus(config, vault));
+        if (request.url === '/admin/bitwarden/save') return reply(200, await saveVault(config, configPath, vault, data));
+        if (request.url === '/admin/bitwarden/unlock') return reply(200, await unlockVault(config, vault, data));
+        if (request.url === '/admin/bitwarden/lock') { await vault.lock(); return reply(200, await vaultStatus(config, vault)); }
         if (request.url === '/admin/files') return reply(200, await filesStatus(config, files));
         if (request.url === '/admin/files/save') return reply(200, await saveFiles(config, configPath, files, data));
         if (request.url === '/admin/files/reindex') return reply(200, { ...files.reindex(lifecycle), ...await filesStatus(config, files) });
         return reply(404, { error: 'Not found' });
+      }
+      // Native secure input for vault_save (source "prompt"): the app long-polls, shows NSSecureTextField and answers.
+      // The answer body holds the secret; it goes to the vault only and is never logged or returned.
+      if (request.url === '/secret-prompt/wait') {
+        const closed = new AbortController(); response.once('close', () => closed.abort());
+        return reply(200, await vault.prompts.wait(AbortSignal.any([lifecycle, closed.signal, AbortSignal.timeout(25_000)])) ?? {});
+      }
+      if (request.url === '/secret-prompt/answer') {
+        const value = data as { id?: unknown; value?: unknown; cancel?: unknown };
+        return reply(200, { ok: vault.prompts.answer(value.id, value.cancel === true ? undefined : value.value) });
       }
       if (request.url === '/cancel') { active?.controller.abort(); for (const t of transcriptions) t.abort(); return reply(200, { ok: true }); }
       if (request.url === '/mode') {

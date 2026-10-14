@@ -11,7 +11,8 @@ Native SwiftUI desktop ring / CLI
            ├─ Pi AgentSession → bundled llama.cpp/Gemma + offline permission policy
            ├─ Speech → bundled whisper-server (lazy, idle-stopped, greedy decode; whisper-cli fallback) + warm local EMA/Kokoro + Piper fallback + macOS audio playback; Turkish TTS text respelled offline (`pronounce.ts`: user dictionary, CMUdict, `lexicon/`)
            ├─ Files → EmbeddingGemma 2 llama-server (:8093, lazy, idle-stopped) + SQLite index of ~/Documents (`files-index.ts`, background, paused during requests)
-           └─ Pi extensions/skills → web search, skill management, read-only Apple Mail, local files; future calendar
+           ├─ Vault → `bw` CLI (runtime/bitwarden, data/bitwarden) with an in-memory session key (`vault.ts`); local model only
+           └─ Pi extensions/skills → web search, skill management, read-only Apple Mail, local files, Bitwarden vault; future calendar
 ```
 
 Pi's coding-agent harness owns the model/tool loop, resource loading, skills and

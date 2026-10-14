@@ -36,6 +36,8 @@ const scalars = {
   embedding_mmproj: 'models/embeddinggemma-2/mmproj-embeddinggemma-2-Q8_0.gguf',
   embedding_url: 'http://127.0.0.1:8093', embedding_dims: 256, embedding_context: 4096,
   embedding_idle_ms: 600000, embedding_start_timeout_ms: 60000,
+  bitwarden_enabled: false, bitwarden_server: 'https://pass.drascom.uk', bitwarden_email: '', bitwarden_idle_lock_min: 15,
+  bitwarden_bin: 'runtime/bitwarden/node_modules/@bitwarden/cli/build/bw.js',
   file_max_mb: 100, file_max_chunks: 20, file_index_interval_ms: 1800000, file_organize_threshold: 0.75,
   system_prompt: 'Concise personal assistant. Reply in the language of the latest message (Turkish or English); keep technical terms. No emoji. ' +
     'Calendar is not connected. Email is read-only via the Mail tools; never claim to send, move, delete or mark email.'
@@ -66,6 +68,16 @@ export function validateFileRoots(value: unknown): string[] {
     return text;
   });
   return [...new Set(result)];
+}
+
+/** Bitwarden: HTTPS server URL, plain email (or empty), idle lock 1-240 minutes. */
+export function validateVaultSettings(value: { bitwarden_server: string; bitwarden_email: string; bitwarden_idle_lock_min: number }): void {
+  let server: URL;
+  try { server = new URL(value.bitwarden_server); } catch { throw Error('bitwarden_server must be an https URL'); }
+  if (server.protocol !== 'https:' || server.username || server.password || server.search || server.hash) throw Error('bitwarden_server must be an https URL');
+  if (value.bitwarden_email && !/^[^\s@"'\\]{1,100}@[^\s@"'\\]{1,150}$/.test(value.bitwarden_email)) throw Error('bitwarden_email is not an email address');
+  if (!Number.isInteger(value.bitwarden_idle_lock_min) || value.bitwarden_idle_lock_min < 1 || value.bitwarden_idle_lock_min > 240)
+    throw Error('bitwarden_idle_lock_min must be an integer between 1 and 240');
 }
 
 export const MAX_SKIP_DIRS = 100;
@@ -145,7 +157,7 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
   const skipDirs = 'file_skip_dirs' in settings ? validateSkipDirs(settings.file_skip_dirs) : defaults.file_skip_dirs;
   const config: Config = { ...defaults, ...settings, mail_accounts: mailAccounts, gmail_urgent_senders: urgent, file_roots: fileRoots,
     file_skip_dirs: skipDirs } as Config;
-  for (const key of ['whisper_bin', 'whisper_model', 'whisper_server_bin', 'llama_bin', 'llama_model', 'language_detector', 'embedding_bin', 'embedding_model',
+  for (const key of ['whisper_bin', 'whisper_model', 'whisper_server_bin', 'llama_bin', 'llama_model', 'language_detector', 'embedding_bin', 'embedding_model', 'bitwarden_bin',
     'ema_python', 'ema_worker', 'ema_cache', 'kokoro_python', 'kokoro_worker', 'kokoro_model',
     'kokoro_voices', 'piper_bin', 'piper_model_tr', 'piper_model_en'] as const)
     config[key] = path.resolve(root, config[key]);
@@ -186,6 +198,7 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
   if (!Number.isInteger(config.embedding_context) || config.embedding_context < 1024 || config.embedding_context > 8192)
     throw Error('embedding_context must be an integer between 1024 and 8192');
   if (!Number.isInteger(config.file_max_chunks) || config.file_max_chunks > 200) throw Error('file_max_chunks must be an integer between 1 and 200');
+  validateVaultSettings(config);
   if (config.file_organize_threshold >= 1) throw Error('file_organize_threshold must be between 0 and 1');
   for (const [key, value] of Object.entries(config))
     if (typeof value === 'number' && !key.startsWith('min_') && key !== 'local_reasoning_budget' && value <= 0) throw Error(`${key} must be positive`);

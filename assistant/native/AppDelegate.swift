@@ -55,8 +55,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             restart: { [weak self] in self?.restart() },
             setMenuBarIcon: { [weak self] visible in self?.setStatusIcon(visible) })
         self.menu = menu
+        // System sleep locks the password vault (the backend drops its in-memory session key).
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(systemWillSleep), name: NSWorkspace.willSleepNotification, object: nil)
         updateStatusIcon()
         model.connect()
+        secretPrompts()
         // Set only by a restart that happened while Admin was open; a normal launch never opens Admin.
         // The one-shot defaults flag is the primary signal (LaunchServices may drop --args); consume it at once.
         let defaults = UserDefaults.standard
@@ -67,6 +70,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.openAdmin(forceFront: true) }
         }
     }
+    /// vault_save "prompt": the backend asks for a secret through this long-poll; it is typed here (secure field)
+    /// and sent straight back over the token-protected loopback, never through the model.
+    private func secretPrompts() {
+        Task { [weak self] in
+            while !Task.isCancelled {
+                guard let client = self?.client else { return }
+                do {
+                    let data = try await client.admin("secret-prompt/wait")
+                    guard let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let id = value["id"] as? String else { continue }
+                    let secret = self?.askSecret(value["title"] as? String ?? "")
+                    let body: [String: Any] = secret.map { ["id": id, "value": $0] } ?? ["id": id, "cancel": true]
+                    if let json = try? JSONSerialization.data(withJSONObject: body) { _ = try? await client.admin("secret-prompt/answer", data: json) }
+                } catch { try? await Task.sleep(for: .seconds(2)) } // Backend not up yet or restarting.
+            }
+        }
+    }
+    private func askSecret(_ title: String) -> String? {
+        let alert = NSAlert()
+        alert.messageText = "Ayhan • \(title)"
+        alert.informativeText = "Kasaya kaydedilecek değer / Value to save in the vault"
+        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Kaydet / Save"); alert.addButton(withTitle: "İptal / Cancel")
+        alert.window.initialFirstResponder = field
+        NSApp.activate(ignoringOtherApps: true)
+        let saved = alert.runModal() == .alertFirstButtonReturn
+        let value = field.stringValue
+        field.stringValue = ""
+        return saved && !value.isEmpty ? value : nil
+    }
+    @objc private func systemWillSleep() { Task { _ = try? await client.admin("admin/bitwarden/lock") } }
     private static let openAdminArgument = "--open-admin"
     private static let reopenAdminKey = "reopenAdminOnLaunch"
     private func showInput() {

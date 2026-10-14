@@ -45,6 +45,7 @@ struct FilesPlanGroup: Decodable { let folder: String; let existing: Bool; let f
 struct FilesPlan: Decodable { let at: Double; let folder: String; let groups: [FilesPlanGroup]; let left: [String] }
 struct FilesStatus: Decodable { var enabled = false; var roots: [String] = []; var skip_dirs: [String]? = nil; var index: FilesIndex?; var last_plan: FilesPlan? }
 
+struct VaultStatus: Decodable { var enabled = false; var server = ""; var email = ""; var installed = false; var state = "unknown"; var error = "" }
 struct ActivityRow: Identifiable { let id: Int; let time: String; let request: String; let event: String; let details: String }
 
 @MainActor @Observable
@@ -97,6 +98,12 @@ final class AdminModel {
     var fileSkip = ""
     var fileSkipOriginal = ""
     var filesMessage = ""
+    var vault = VaultStatus()
+    var vaultEmail = ""
+    var vaultPassword = ""
+    var vaultCode = ""
+    var vaultMessage = ""
+    var vaultBusy = false
     private var polling: Task<Void, Never>?
 
     init(backend: BackendClient, ring: RingModel) { self.backend = backend; self.ring = ring }
@@ -115,6 +122,7 @@ final class AdminModel {
         Task { await loadGmail(); await loadImportance(); await loadGmailActions() }
         Task { await loadPronunciations() }
         Task { await loadFiles() }
+        Task { await loadVault() }
     }
     func stopPolling() { polling?.cancel(); polling = nil }
 
@@ -333,6 +341,44 @@ final class AdminModel {
         do { applyFiles(try await backend.admin("admin/files/reindex"), roots: false); filesMessage = "" } catch { filesMessage = error.localizedDescription }
     }
 
+    // MARK: Bitwarden (the master password lives only in this field until Unlock, then it is cleared)
+    private func applyVault(_ data: Data, email: Bool = true) {
+        guard let value = try? JSONDecoder().decode(VaultStatus.self, from: data) else { return }
+        vault = value
+        if email { vaultEmail = value.email }
+    }
+    static func vaultText(_ code: String) -> String {
+        switch code {
+        case "invalid_password": "Ana parola yanlış / Wrong master password"
+        case "two_factor_required": "2FA kodu gerekli / 2FA code required"
+        case "not_installed": "bw kurulu değil (scripts/install-bitwarden.sh) / bw not installed"
+        case "server_unreachable": "Sunucuya ulaşılamıyor / Server unreachable"
+        case "disabled": "Bitwarden kapalı / Bitwarden is off"
+        default: code
+        }
+    }
+    func loadVault() async {
+        do { applyVault(try await backend.admin("admin/bitwarden")) } catch { vaultMessage = error.localizedDescription }
+    }
+    private func saveVault(_ body: [String: Any]) async {
+        do {
+            let json = try JSONSerialization.data(withJSONObject: body)
+            applyVault(try await backend.admin("admin/bitwarden/save", data: json)); vaultMessage = ""
+        }
+        catch { vaultMessage = Self.vaultText(error.localizedDescription); await loadVault() }
+    }
+    func setVault(_ on: Bool) async { vault.enabled = on; await saveVault(["enabled": on]) }
+    func saveVaultEmail() async { await saveVault(["email": vaultEmail]) }
+    func unlockVault() async {
+        let password = vaultPassword, code = vaultCode
+        vaultPassword = ""; vaultBusy = true; defer { vaultBusy = false }
+        do { applyVault(try await backend.admin("admin/bitwarden/unlock", ["password": password, "code": code]), email: false); vaultCode = ""; vaultMessage = "" }
+        catch { vaultMessage = Self.vaultText(error.localizedDescription); await loadVault() }
+    }
+    func lockVault() async {
+        do { applyVault(try await backend.admin("admin/bitwarden/lock"), email: false); vaultMessage = "" } catch { vaultMessage = error.localizedDescription }
+    }
+
     func createExtension(name: String) async {
         do {
             _ = try await backend.admin("admin/create-extension", ["name": name])
@@ -539,6 +585,23 @@ private struct SettingsTab: View {
                 HStack {
                     Spacer()
                     Button("Kaydet / Save") { Task { await admin.saveFileSkip() } }.disabled(admin.fileSkip == admin.fileSkipOriginal)
+                }
+            }
+            Section("Bitwarden") {
+                Toggle("Bitwarden", isOn: Binding(get: { admin.vault.enabled }, set: { on in Task { await admin.setVault(on) } }))
+                LabeledContent("Durum / Status", value: "\(admin.vault.state == "unlocked" ? "Açık / Unlocked" : admin.vault.state == "unauthenticated" ? "Giriş yok / Logged out" : admin.vault.state == "locked" ? "Kilitli / Locked" : admin.vault.state) • \(admin.vault.server)")
+                TextField("E-posta / Email", text: $admin.vaultEmail).textContentType(.username)
+                    .onSubmit { Task { await admin.saveVaultEmail() } }
+                SecureField("Ana parola / Master password", text: $admin.vaultPassword)
+                    .onSubmit { Task { await admin.unlockVault() } }
+                if admin.vault.state == "unauthenticated" { TextField("2FA kodu / 2FA code", text: $admin.vaultCode) }
+                HStack {
+                    if !admin.vaultMessage.isEmpty { Text(admin.vaultMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+                    Spacer()
+                    if admin.vaultEmail != admin.vault.email { Button("Kaydet / Save") { Task { await admin.saveVaultEmail() } } }
+                    Button("Kilidi aç / Unlock") { Task { await admin.unlockVault() } }
+                        .disabled(!admin.vault.enabled || admin.vaultPassword.isEmpty || admin.vaultBusy || admin.vaultEmail != admin.vault.email)
+                    Button("Kilitle / Lock") { Task { await admin.lockVault() } }.disabled(admin.vault.state != "unlocked")
                 }
             }
             Section("Okunuşlar / Pronunciations") {

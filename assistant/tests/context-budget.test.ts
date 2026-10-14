@@ -5,12 +5,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { fauxProvider, fauxAssistantMessage } from '@earendil-works/pi-ai';
-import { defaults, root } from '../src/config.ts';
+import { defaults, root, type Config } from '../src/config.ts';
 import { createHarnessSession, harnessTools } from '../src/harness.ts';
 import { compactSchema } from '../.pi/extensions/web-access.ts';
 import { GmailService } from '../.pi/extensions/gmail/service.ts';
 import { MemorySecretStore } from '../.pi/extensions/gmail/secrets.ts';
 import { FileService } from '../src/files.ts';
+import { VaultService } from '../src/vault.ts';
 
 // Context budget rule (local and remote): system prompt + skill catalog/body + tool schemas stay small.
 // Limits are characters (about 4 per token), set about 10% above the measured values (offline 3907, mail-assistant 3359; 2026-10-09).
@@ -19,8 +20,10 @@ import { FileService } from '../src/files.ts';
 // 2026-10-10: "never pretend it was done" rule (+56) measured unrouted offline 4330.
 // 2026-10-11: Gmail triage (off by default) measured mail-triage route 1709; unrouted online adds 831 when on.
 // 2026-10-12: local files (off by default) measured file-assistant route 2119; unrouted offline adds 1165 when on.
+// 2026-10-14: Bitwarden vault (off by default, local model only) measured vault route 2594; unrouted local adds 1072 when unlocked.
 const LIMITS = { unrouted_offline: 4360, 'mail-assistant': 3600, unrouted_offline_reminders: 5900, reminders: 2250,
-  'mail-triage': 1880, unrouted_gmail_added: 920, 'file-assistant': 2330, unrouted_files_added: 1290 } as const;
+  'mail-triage': 1880, unrouted_gmail_added: 920, 'file-assistant': 2330, unrouted_files_added: 1290,
+  vault: 2850, unrouted_vault_added: 1180 } as const;
 
 /** A connected Gmail (fake secret store) for the mail_organize cases; no network call happens while measuring. */
 function connectedGmail() {
@@ -29,15 +32,25 @@ function connectedGmail() {
   return new GmailService({ dataDir: tmpdir(), exampleFile: '', store, http: async () => { throw Error('no network in tests'); } });
 }
 
-async function measure(skill: 'mail-assistant' | 'reminders' | 'mail-triage' | 'file-assistant' | undefined, offline: boolean, reminders = false, organize = false, files = false) {
+/** An unlocked vault (fake `bw`), for the local-model vault cases. */
+async function unlockedVault(config: Config) {
+  const vault = new VaultService({ ...config, bitwarden_enabled: true, bitwarden_bin: path.join(root, 'package.json') } as never, {
+    transport: async args => ({ code: 0, stdout: args[0] === 'status' ? '{"status":"locked"}' : 'c2Vzc2lvbktleUZvclRlc3RzMTIzNDU2Nzg5MA==', stderr: '' }) });
+  await vault.unlock('x');
+  return vault;
+}
+
+async function measure(skill: 'mail-assistant' | 'reminders' | 'mail-triage' | 'file-assistant' | 'vault' | undefined, offline: boolean, reminders = false, organize = false, files = false,
+  vault = false) {
   const agent = await mkdtemp(path.join(tmpdir(), 'ayhan-budget-'));
-  const fake = fauxProvider({ provider: 'budget-test', models: [{ id: 'test' }], tokensPerSecond: 1000000 });
+  const fake = fauxProvider({ provider: vault ? 'local-gemma' : 'budget-test', models: [{ id: 'test' }], tokensPerSecond: 1000000 });
   fake.setResponses([fauxAssistantMessage('ok')]);
   const runtime = await ModelRuntime.create({ modelsPath: null, refreshOnCreate: false }); runtime.registerNativeProvider(fake.provider);
-  const config = { ...defaults, pi_agent_dir: agent, reminders_enabled: reminders, gmail_triage_enabled: organize, embedding_enabled: files };
+  const config = { ...defaults, pi_agent_dir: agent, reminders_enabled: reminders, gmail_triage_enabled: organize, embedding_enabled: files, bitwarden_enabled: vault };
   const session = await createHarnessSession({ root, config, ...(files ? { files: new FileService(config, { dataDir: null }) } : {}),
     context: { systemPrompt: defaults.system_prompt, messages: [{ role: 'user', content: 'test', timestamp: 1 }] },
-    model: fake.getModel(), runtime, offline, skill, extensionPaths: [], ...(organize ? { gmail: connectedGmail() } : {}) });
+    model: fake.getModel(), runtime, offline, skill, extensionPaths: [], ...(organize ? { gmail: connectedGmail() } : {}),
+    ...(vault ? { vault: await unlockedVault(config) } : {}) });
   try {
     const tools = session.getActiveToolNames().map(name => {
       const tool = session.getToolDefinition(name)!;
@@ -99,6 +112,16 @@ test('local files add three compact tools only when enabled', async () => {
   assert.deepEqual(routed.names, ['file_search', 'file_read', 'file_organize']);
   assert.ok(routed.chars <= LIMITS['file-assistant'], `${routed.chars} chars`);
   assert.ok(!plain.prompt.includes('file-assistant'), 'the skill is not advertised while off');
+});
+
+test('vault adds three compact tools only for the local model when on and unlocked', async () => {
+  const plain = await measure(undefined, true), vault = await measure(undefined, true, false, false, false, true);
+  assert.deepEqual(vault.names.filter(name => !plain.names.includes(name)), ['vault_search', 'vault_copy', 'vault_save']);
+  assert.ok(vault.chars - plain.chars <= LIMITS.unrouted_vault_added, `${vault.chars - plain.chars} chars added`);
+  const routed = await measure('vault', true, false, false, false, true);
+  assert.deepEqual(routed.names, ['vault_search', 'vault_copy', 'vault_save']);
+  assert.ok(routed.chars <= LIMITS.vault, `${routed.chars} chars`);
+  assert.ok(!plain.prompt.includes('vault'), 'the skill is not advertised while off');
 });
 
 test('missing tools are never faked, routed or not', async () => {
