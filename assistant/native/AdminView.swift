@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import Observation
 
-/// Native "Yönetim / Admin" window: read-only status, settings moved from the context menu,
+/// Native "Yönetim" (Admin) window: read-only status, settings moved from the context menu,
 /// and user editing of app-owned harness skills/extensions. Talks only to the protected loopback API.
 struct AdminStatus: Decodable {
     struct Backend: Decodable { let pid: Int; let port: Int; let uptime_s: Int; let memory_mb: Int? }
@@ -174,7 +174,7 @@ final class AdminModel {
             let data = try await backend.admin("admin/read", ["kind": kind, "path": path])
             guard selectedKind == kind, selectedPath == path else { return }
             guard let text = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["content"] as? String else {
-                loadError = "Geçersiz yanıt / Invalid response"; return
+                loadError = "Geçersiz yanıt"; return
             }
             content = text; original = text
         } catch {
@@ -185,7 +185,7 @@ final class AdminModel {
         do {
             let data = try await backend.admin("admin/write", ["kind": selectedKind, "path": selectedPath, "content": content])
             original = content
-            message = ((try JSONSerialization.jsonObject(with: data) as? [String: Any])?["note"] as? String) ?? "Kaydedildi / Saved"
+            message = ((try JSONSerialization.jsonObject(with: data) as? [String: Any])?["note"] as? String) ?? "Kaydedildi"
             await loadResources()
         } catch { message = error.localizedDescription }
     }
@@ -193,7 +193,7 @@ final class AdminModel {
         do {
             _ = try await backend.admin("admin/create-skill", ["name": name, "description": description])
             await loadResources(); await open(kind: "skill", path: name + "/SKILL.md")
-            message = "Skill oluşturuldu / Skill created"
+            message = "Skill oluşturuldu"
         } catch { message = error.localizedDescription }
     }
     /// The skill/extension that owns the selected file (top-level folder, or the single extension file).
@@ -207,7 +207,7 @@ final class AdminModel {
             let data = try await backend.admin("admin/delete", ["kind": resource.kind, "name": resource.name])
             if selectedResource?.id == resource.id { selectedKind = ""; selectedPath = ""; content = ""; original = ""; loadError = "" }
             await loadResources()
-            message = ((try JSONSerialization.jsonObject(with: data) as? [String: Any])?["note"] as? String) ?? "Silindi / Deleted"
+            message = ((try JSONSerialization.jsonObject(with: data) as? [String: Any])?["note"] as? String) ?? "Silindi"
         } catch { message = error.localizedDescription }
     }
     private func applyReminders(_ data: Data) {
@@ -280,7 +280,7 @@ final class AdminModel {
         do {
             let data = try await backend.admin("admin/gmail/connect")
             guard let text = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["auth_url"] as? String,
-                  let url = URL(string: text), url.scheme == "https" else { gmailMessage = "Geçersiz yanıt / Invalid response"; return }
+                  let url = URL(string: text), url.scheme == "https" else { gmailMessage = "Geçersiz yanıt"; return }
             NSWorkspace.shared.open(url); gmailMessage = ""
             for _ in 0..<150 { // Up to 5 minutes, like the backend's consent timeout.
                 try? await Task.sleep(for: .seconds(2))
@@ -360,11 +360,11 @@ final class AdminModel {
     }
     static func vaultText(_ code: String) -> String {
         switch code {
-        case "invalid_password": "Ana parola yanlış / Wrong master password"
-        case "two_factor_required": "2FA kodu gerekli / 2FA code required"
-        case "not_installed": "bw kurulu değil (scripts/install-bitwarden.sh) / bw not installed"
-        case "server_unreachable": "Sunucuya ulaşılamıyor / Server unreachable"
-        case "disabled": "Bitwarden kapalı / Bitwarden is off"
+        case "invalid_password": "Ana parola yanlış"
+        case "two_factor_required": "2FA kodu gerekli"
+        case "not_installed": "bw kurulu değil (scripts/install-bitwarden.sh)"
+        case "server_unreachable": "Sunucuya ulaşılamıyor"
+        case "disabled": "Bitwarden kapalı"
         default: code
         }
     }
@@ -433,7 +433,7 @@ final class AdminModel {
         do {
             _ = try await backend.admin("admin/create-extension", ["name": name])
             await loadResources(); await open(kind: "extension", path: name + ".ts")
-            message = "Extension oluşturuldu / Extension created"
+            message = "Extension oluşturuldu"
         } catch { message = error.localizedDescription }
     }
 }
@@ -442,11 +442,10 @@ struct AdminView: View {
     @Bindable var admin: AdminModel
     var body: some View {
         TabView {
-            StatusTab(admin: admin).tabItem { Text("Durum / Status") }
-            ActivityTab(admin: admin).tabItem { Text("Etkinlik / Activity") }
-            SettingsTab(admin: admin, ring: admin.ring).tabItem { Text("Ayarlar / Settings") }
-            MemoryTab(admin: admin).tabItem { Text("Hafıza / Memory") }
-            UpdatesTab(admin: admin).tabItem { Text("Güncellemeler / Updates") }
+            StatusTab(admin: admin).tabItem { Text("Durum") }
+            SettingsTab(admin: admin, ring: admin.ring).tabItem { Text("Ayarlar") }
+            MemoryTab(admin: admin).tabItem { Text("Hafıza") }
+            UpdatesTab(admin: admin).tabItem { Text("Güncellemeler") }
             ResourcesTab(admin: admin).tabItem { Text("Skill & Extension") }
         }.padding(12).frame(minWidth: 720, minHeight: 480)
     }
@@ -455,73 +454,73 @@ struct AdminView: View {
 private struct StatusTab: View {
     let admin: AdminModel
     private func label(_ stage: String) -> String {
-        [ "request_started": "başladı / started", "classification_started": "sınıflandırma / classification",
-          "classification_finished": "sınıflandırma bitti / classified", "harness_ready": "harness hazır / harness ready",
-          "skill_selected": "skill seçildi / skill selected", "model_started": "model yanıtlıyor / model running",
-          "model_finished": "model bitti / model finished", "tool_started": "araç çalışıyor / tool running",
-          "tool_finished": "araç bitti / tool finished", "local_fallback": "yerel yedek / local fallback",
-          "local_load_started": "yerel model yükleniyor / loading local model", "local_load_finished": "yerel model hazır / local model ready",
-          "speech_prepared": "seslendirme / speaking", "tts_fallback": "TTS yedek / TTS fallback", "stt_fallback": "STT yedek / STT fallback",
-          "dictation": "dikte / dictation", "file_index_finished": "dosya dizini / file index" ][stage] ?? stage
+        [ "request_started": "başladı", "classification_started": "sınıflandırma",
+          "classification_finished": "sınıflandırma bitti", "harness_ready": "harness hazır",
+          "skill_selected": "skill seçildi", "model_started": "model yanıtlıyor",
+          "model_finished": "model bitti", "tool_started": "araç çalışıyor",
+          "tool_finished": "araç bitti", "local_fallback": "yerel yedek",
+          "local_load_started": "yerel model yükleniyor", "local_load_finished": "yerel model hazır",
+          "speech_prepared": "seslendirme", "tts_fallback": "TTS yedek", "stt_fallback": "STT yedek",
+          "dictation": "dikte", "file_index_finished": "dosya dizini" ][stage] ?? stage
     }
     var body: some View {
         Form {
             if !admin.statusError.isEmpty { Text(admin.statusError).foregroundStyle(.orange) }
             Section("Backend") {
                 if let s = admin.status {
-                    LabeledContent("Durum / State", value: s.unloading ? "Model boşaltılıyor / Unloading" : s.busy ? "Meşgul / Busy" : "Hazır / Idle")
+                    LabeledContent("Durum", value: s.unloading ? "Model boşaltılıyor" : s.busy ? "Meşgul" : "Hazır")
                     LabeledContent("PID / Port", value: "\(s.backend.pid) / \(s.backend.port)")
-                    LabeledContent("Çalışma süresi / Uptime", value: Duration.seconds(s.backend.uptime_s).formatted(.time(pattern: .hourMinuteSecond)))
-                    if let mb = s.backend.memory_mb { LabeledContent("Bellek / Memory", value: "\(mb) MB") }
-                    LabeledContent("Arayüz / Ring", value: "\(admin.ring.phase.rawValue) • \(admin.ring.status)")
-                    if s.requests.isEmpty { LabeledContent("Aktif istek / Active request", value: "Yok / None") }
+                    LabeledContent("Çalışma süresi", value: Duration.seconds(s.backend.uptime_s).formatted(.time(pattern: .hourMinuteSecond)))
+                    if let mb = s.backend.memory_mb { LabeledContent("Bellek", value: "\(mb) MB") }
+                    LabeledContent("Arayüz", value: "\(admin.ring.phase.rawValue) • \(admin.ring.status)")
+                    if s.requests.isEmpty { LabeledContent("Aktif istek", value: "Yok") }
                     ForEach(s.requests) { r in
-                        LabeledContent("Aktif / Active (\(r.kind))", value: "\(label(r.stage)) • \(r.elapsed_ms / 1000) s")
+                        LabeledContent("Aktif (\(r.kind))", value: "\(label(r.stage)) • \(r.elapsed_ms / 1000) s")
                     }
-                } else { Text("Bağlanıyor… / Connecting…").foregroundStyle(.secondary) }
+                } else { Text("Bağlanıyor…").foregroundStyle(.secondary) }
             }
             if let s = admin.status {
-                Section("Mod / Mode") {
-                    LabeledContent("Mod / Mode", value: admin.ring.offline ? "Yerel / Local only" : "Remote (yerel yedek / local fallback)")
-                    LabeledContent("Remote model", value: s.remote_model)
-                    LabeledContent("Pi giriş / Pi login", value: s.pi_login.isEmpty ? "Yok / None" : s.pi_login.map { "\($0.provider) (\($0.type))" }.joined(separator: ", "))
-                    LabeledContent("Jev", value: s.jev_enabled ? "Açık / On" : "Kapalı / Off")
+                Section("Mod") {
+                    LabeledContent("Mod", value: admin.ring.offline ? "Yalnız yerel" : "Uzak (yerel yedek)")
+                    LabeledContent("Uzak model", value: s.remote_model)
+                    LabeledContent("Pi giriş", value: s.pi_login.isEmpty ? "Yok" : s.pi_login.map { "\($0.provider) (\($0.type))" }.joined(separator: ", "))
+                    LabeledContent("Jev", value: s.jev_enabled ? "Açık" : "Kapalı")
                     LabeledContent("TTS", value: s.tts_engine)
-                    LabeledContent("Geçmiş / History", value: "\(s.history_messages) mesaj / messages")
+                    LabeledContent("Geçmiş", value: "\(s.history_messages) mesaj")
                 }
-                Section("Süreçler / Processes") {
+                Section("Süreçler") {
                     ForEach(s.processes) { p in
                         LabeledContent(p.name, value: p.running
-                            ? "Çalışıyor / Running • PID \(p.pid.map(String.init) ?? "?")" + (p.port.map { " • :\($0)" } ?? "") + (p.memory_mb.map { " • \($0) MB" } ?? "")
-                            : "Durdu / Stopped" + (p.port.map { " • :\($0)" } ?? ""))
+                            ? "Çalışıyor • PID \(p.pid.map(String.init) ?? "?")" + (p.port.map { " • :\($0)" } ?? "") + (p.memory_mb.map { " • \($0) MB" } ?? "")
+                            : "Durdu" + (p.port.map { " • :\($0)" } ?? ""))
                     }
-                    LabeledContent("Yerel model sağlığı / Local health", value: s.local_healthy ? "OK" : "Kapalı / Down")
+                    LabeledContent("Yerel model sağlığı", value: s.local_healthy ? "OK" : "Kapalı")
                 }
             }
             if !admin.gmailBatches.isEmpty {
-                Section("Mail işlemleri / Mail actions") {
+                Section("Mail işlemleri") {
                     ForEach(admin.gmailBatches) { b in
                         LabeledContent(Date(timeIntervalSince1970: b.at / 1000).formatted(date: .abbreviated, time: .shortened),
-                                       value: "\(b.kind == "trash" ? "Çöp / Trash" : "Düzenleme / Organize") • \(b.count)" +
+                                       value: "\(b.kind == "trash" ? "Çöp" : "Düzenleme") • \(b.count)" +
                                               (b.levels.isEmpty ? "" : " • " + b.levels.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")) +
-                                              (b.undone ? " • geri alındı / undone" : ""))
+                                              (b.undone ? " • geri alındı" : ""))
                     }
                     HStack {
                         Spacer()
-                        Button("Yenile / Refresh") { Task { await admin.loadGmailActions() } }
-                        Button("Geri al / Undo") { Task { await admin.undoGmail() } }
+                        Button("Yenile") { Task { await admin.loadGmailActions() } }
+                        Button("Geri al") { Task { await admin.undoGmail() } }
                             .disabled(!admin.gmailBatches.contains { $0.kind == "apply" && !$0.undone })
                     }
                 }
             }
             if let plan = admin.gmailPlan {
-                Section("Son plan / Last plan") {
+                Section("Son plan") {
                     LabeledContent(Date(timeIntervalSince1970: plan.at / 1000).formatted(date: .abbreviated, time: .shortened),
                                    value: ["urgent", "important", "later", "junk"].map { "\(Self.levelMark($0)) \(plan.counts[$0] ?? 0)" }.joined(separator: "  "))
                     if !plan.missing_labels.isEmpty {
-                        Text("Eksik etiket / Missing label: " + plan.missing_labels.joined(separator: ", ")).foregroundStyle(.orange)
+                        Text("Eksik etiket: " + plan.missing_labels.joined(separator: ", ")).foregroundStyle(.orange)
                     }
-                    DisclosureGroup("Mailler / Mails (\(plan.items.count))") {
+                    DisclosureGroup("Mailler (\(plan.items.count))") {
                         ForEach(Array(plan.items.enumerated()), id: \.offset) { _, item in
                             HStack(alignment: .firstTextBaseline) {
                                 Text(Self.levelMark(item.level))
@@ -533,35 +532,36 @@ private struct StatusTab: View {
                 }
             }
             if admin.files.enabled, let index = admin.files.index {
-                Section("Dosyalar / Files") {
-                    LabeledContent("Dizinlenen / Bulunan • Indexed / Found", value: "\(index.files) / \(index.found ?? index.files) • \(index.chunks) parça / chunks" + (index.multimodal ? "" : " • yalnız metin / text only"))
-                    LabeledContent("Son tarama / Last run", value: index.running ? "Çalışıyor / Running"
-                        : index.last_run.map { Date(timeIntervalSince1970: $0 / 1000).formatted(date: .abbreviated, time: .shortened) } ?? "Yok / None")
+                Section("Dosyalar") {
+                    LabeledContent("Dizinlenen / Bulunan", value: "\(index.files) / \(index.found ?? index.files) • \(index.chunks) parça" + (index.multimodal ? "" : " • yalnız metin"))
+                    LabeledContent("Son tarama", value: index.running ? "Çalışıyor"
+                        : index.last_run.map { Date(timeIntervalSince1970: $0 / 1000).formatted(date: .abbreviated, time: .shortened) } ?? "Yok")
                     if let error = index.last_error { Text(error).font(.caption).foregroundStyle(.orange) }
                     HStack {
                         Spacer()
-                        Button("Yenile / Refresh") { Task { await admin.loadFiles(roots: false) } }
-                        Button("Yeniden dizinle / Reindex") { Task { await admin.reindexFiles() } }.disabled(index.running)
+                        Button("Yenile") { Task { await admin.loadFiles(roots: false) } }
+                        Button("Yeniden dizinle") { Task { await admin.reindexFiles() } }.disabled(index.running)
                     }
                 }
             }
             if let plan = admin.files.last_plan {
-                Section("Son dosya planı / Last file plan") {
+                Section("Son dosya planı") {
                     LabeledContent(Date(timeIntervalSince1970: plan.at / 1000).formatted(date: .abbreviated, time: .shortened), value: plan.folder)
                     ForEach(Array(plan.groups.enumerated()), id: \.offset) { _, group in
-                        DisclosureGroup("\(group.folder)\(group.existing ? "" : " (yeni / new)") • \(group.files.count)") {
+                        DisclosureGroup("\(group.folder)\(group.existing ? "" : " (yeni)") • \(group.files.count)") {
                             ForEach(Array(group.files.enumerated()), id: \.offset) { _, name in Text(name).lineLimit(1).truncationMode(.middle) }
                         }
                     }
                     if !plan.left.isEmpty {
-                        DisclosureGroup("Yerinde kalan / Left in place • \(plan.left.count)") {
+                        DisclosureGroup("Yerinde kalan • \(plan.left.count)") {
                             ForEach(Array(plan.left.enumerated()), id: \.offset) { _, name in Text(name).lineLimit(1).truncationMode(.middle) }
                         }
                     }
                 }
             }
+            ActivitySection(admin: admin)
             if let updated = admin.updated {
-                Text("Güncellendi / Updated \(updated.formatted(date: .omitted, time: .standard))").font(.caption).foregroundStyle(.secondary)
+                Text("Güncellendi \(updated.formatted(date: .omitted, time: .standard))").font(.caption).foregroundStyle(.secondary)
             }
         }.formStyle(.grouped)
         .task { await admin.loadGmailActions(); await admin.loadFiles(roots: false) }
@@ -584,45 +584,45 @@ private struct UpdatesTab: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("Son kontrol / Last check", value: lastCheck(admin.updates.last_check))
-                if let applying = admin.updates.applying { LabeledContent("Kuruluyor / Installing", value: applying) }
-                if !admin.updates.queued.isEmpty { LabeledContent("Sırada / Queued", value: admin.updates.queued.joined(separator: ", ")) }
+                LabeledContent("Son kontrol", value: lastCheck(admin.updates.last_check))
+                if let applying = admin.updates.applying { LabeledContent("Kuruluyor", value: applying) }
+                if !admin.updates.queued.isEmpty { LabeledContent("Sırada", value: admin.updates.queued.joined(separator: ", ")) }
                 if admin.updates.manifest_changed { Text("components.json değişti, commit edilmedi").font(.caption).foregroundStyle(.orange) }
                 if !admin.updates.last_error.isEmpty { Text(admin.updates.last_error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
                 HStack {
                     if !admin.updatesMessage.isEmpty { Text(admin.updatesMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
                     Spacer()
-                    Button("Şimdi kontrol et / Check now") { Task { await admin.checkUpdates() } }.disabled(admin.updates.checking)
+                    Button("Şimdi kontrol et") { Task { await admin.checkUpdates() } }.disabled(admin.updates.checking)
                 }
             }
-            Section("Güncellemeler / Updates") {
+            Section("Güncellemeler") {
                 ForEach(admin.updates.updates) { item in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text(item.name).bold()
                             Text("\(item.current) → \(item.latest)").monospaced()
                             if let size = item.size_mb { Text("\(size) MB").foregroundStyle(.secondary) }
-                            if item.breaking == true { Text("breaking").font(.caption).foregroundStyle(.red) }
-                            if item.security == true { Text("security").font(.caption).foregroundStyle(.orange) }
-                            if item.affects_our_flags == true { Text("flags").font(.caption).foregroundStyle(.orange) }
-                            if item.status != "pending" { Text(item.status).font(.caption).foregroundStyle(.secondary) }
+                            if item.breaking == true { Text("uyumsuz").font(.caption).foregroundStyle(.red) }
+                            if item.security == true { Text("güvenlik").font(.caption).foregroundStyle(.orange) }
+                            if item.affects_our_flags == true { Text("ayarları etkiler").font(.caption).foregroundStyle(.orange) }
+                            if item.status != "pending" { Text(item.status == "skipped" ? "atlandı" : item.status == "snoozed" ? "ertelendi" : item.status).font(.caption).foregroundStyle(.secondary) }
                             Spacer()
-                            Button("Güncelle / Update") {
+                            Button("Güncelle") {
                                 if item.size_mb != nil { confirming = item } else { Task { await admin.applyUpdate(item.id) } }
                             }.disabled(busy)
-                            Button("Atla / Skip") { Task { await admin.skipUpdate(item) } }.disabled(item.status == "skipped")
+                            Button("Atla") { Task { await admin.skipUpdate(item) } }.disabled(item.status == "skipped")
                         }
                         if let summary = item.summary { Text(summary).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
                     }
                 }
             }
             if !admin.updates.rollback.isEmpty {
-                Section("Geri al / Rollback") {
+                Section("Geri al") {
                     ForEach(admin.updates.rollback) { item in
                         HStack {
                             Text(item.name); Text("→ \(item.version)").monospaced()
                             Spacer()
-                            Button("Geri al / Rollback") { Task { await admin.rollbackUpdate(item.id) } }.disabled(busy)
+                            Button("Geri al") { Task { await admin.rollbackUpdate(item.id) } }.disabled(busy)
                         }
                     }
                 }
@@ -631,11 +631,11 @@ private struct UpdatesTab: View {
         .task { await admin.loadUpdates() }
         .confirmationDialog("\(confirming?.name ?? "") • \(confirming?.size_mb ?? 0) MB",
                             isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })) {
-            Button("İndir ve kur / Download and install") {
+            Button("İndir ve kur") {
                 if let item = confirming { Task { await admin.applyUpdate(item.id) } }
                 confirming = nil
             }
-            Button("İptal / Cancel", role: .cancel) { confirming = nil }
+            Button("İptal", role: .cancel) { confirming = nil }
         }
     }
 }
@@ -652,34 +652,34 @@ private struct MemoryTab: View {
                 HStack {
                     TextField("", text: Binding(get: { drafts[item.id] ?? item.text }, set: { drafts[item.id] = $0 }))
                     if let draft = drafts[item.id], draft != item.text {
-                        Button("Kaydet / Save") { Task { await admin.editMemory(item.id, text: draft); drafts[item.id] = nil } }
+                        Button("Kaydet") { Task { await admin.editMemory(item.id, text: draft); drafts[item.id] = nil } }
                     }
                     if item.source == "extracted" { Text("oto").font(.caption).foregroundStyle(.secondary) }
                     Button { Task { await admin.pinMemory(item.id, !item.pinned) } } label: { Image(systemName: item.pinned ? "pin.fill" : "pin") }
-                        .buttonStyle(.borderless).help("Sabitle / Pin")
+                        .buttonStyle(.borderless).help("Sabitle")
                     Button(role: .destructive) { Task { await admin.deleteMemory(item.id) } } label: { Image(systemName: "trash") }
-                        .buttonStyle(.borderless).help("Sil / Delete")
+                        .buttonStyle(.borderless).help("Sil")
                 }
             }
             HStack {
-                TextField("Yeni / New", text: Binding(get: { adding[kind] ?? "" }, set: { adding[kind] = $0 }))
-                Button("Ekle / Add") { let text = adding[kind] ?? ""; Task { await admin.addMemory(kind: kind, text: text); adding[kind] = "" } }
+                TextField("Yeni", text: Binding(get: { adding[kind] ?? "" }, set: { adding[kind] = $0 }))
+                Button("Ekle") { let text = adding[kind] ?? ""; Task { await admin.addMemory(kind: kind, text: text); adding[kind] = "" } }
                     .disabled((adding[kind] ?? "").trimmingCharacters(in: .whitespaces).isEmpty)
-                Button("Tümünü sil / Delete all", role: .destructive) { clearing = kind }.disabled(rows(kind).isEmpty)
+                Button("Tümünü sil", role: .destructive) { clearing = kind }.disabled(rows(kind).isEmpty)
             }
         }
     }
     var body: some View {
         Form {
             Section {
-                Toggle("Hafıza / Memory", isOn: Binding(get: { admin.memory.enabled }, set: { value in Task { await admin.setMemory(enabled: value) } }))
-                Toggle("Otomatik öğren / Learn automatically", isOn: Binding(get: { admin.memory.extract }, set: { value in Task { await admin.setMemory(extract: value) } }))
+                Toggle("Hafıza", isOn: Binding(get: { admin.memory.enabled }, set: { value in Task { await admin.setMemory(enabled: value) } }))
+                Toggle("Otomatik öğren", isOn: Binding(get: { admin.memory.extract }, set: { value in Task { await admin.setMemory(extract: value) } }))
                     .disabled(!admin.memory.enabled)
                 if !admin.memoryMessage.isEmpty { Text(admin.memoryMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
             }
-            section("Asistan / Assistant", "assistant")
-            section("Kişisel / Personal", "personal")
-            Section("Sohbet özetleri / Conversation summaries") {
+            section("Asistan", "assistant")
+            section("Kişisel", "personal")
+            Section("Sohbet özetleri") {
                 ForEach(admin.memory.episodes) { episode in
                     HStack(alignment: .top) {
                         Text(Date(timeIntervalSince1970: episode.ended / 1000).formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
@@ -689,32 +689,33 @@ private struct MemoryTab: View {
                     }
                 }
                 if !admin.memory.episodes.isEmpty {
-                    Button("Tümünü sil / Delete all", role: .destructive) { clearing = "episodes" }
+                    Button("Tümünü sil", role: .destructive) { clearing = "episodes" }
                 }
             }
         }.formStyle(.grouped)
         .task { await admin.loadMemory() }
-        .confirmationDialog("Tümünü sil? / Delete all?", isPresented: Binding(get: { clearing != nil }, set: { if !$0 { clearing = nil } })) {
-            Button("Sil / Delete", role: .destructive) { if let kind = clearing { Task { await admin.clearMemory(kind) } }; clearing = nil }
-            Button("İptal / Cancel", role: .cancel) { clearing = nil }
+        .confirmationDialog("Tümünü sil?", isPresented: Binding(get: { clearing != nil }, set: { if !$0 { clearing = nil } })) {
+            Button("Sil", role: .destructive) { if let kind = clearing { Task { await admin.clearMemory(kind) } }; clearing = nil }
+            Button("İptal", role: .cancel) { clearing = nil }
         }
     }
 }
 
-private struct ActivityTab: View {
+private struct ActivitySection: View {
     let admin: AdminModel
     var body: some View {
-        VStack(alignment: .leading) {
-            HStack {
-                Text("Son \(admin.activity.count) kayıt, yeni olan üstte / Latest entries, newest first").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button("Log dosyasını aç / Open log file…") { admin.actions.openActivityLog() }
-            }
+        Section {
             Table(admin.activity) {
-                TableColumn("Saat / Time", value: \.time).width(70)
-                TableColumn("İstek / Request", value: \.request).width(75)
-                TableColumn("Olay / Event", value: \.event).width(150)
-                TableColumn("Ayrıntı / Details", value: \.details)
+                TableColumn("Saat", value: \.time).width(70)
+                TableColumn("İstek", value: \.request).width(75)
+                TableColumn("Olay", value: \.event).width(150)
+                TableColumn("Ayrıntı", value: \.details)
+            }.frame(height: 220)
+        } header: {
+            HStack {
+                Text("Etkinlik")
+                Spacer()
+                Button("Log dosyasını aç…") { admin.actions.openActivityLog() }
             }
         }
     }
@@ -725,21 +726,21 @@ private struct SettingsTab: View {
     @Bindable var ring: RingModel
     var body: some View {
         Form {
-            Section("Etkileşim / Interaction") {
-                LabeledContent("Kısayol / Shortcut") {
-                    HStack { Text(ring.shortcutLabel).monospaced(); Button("Kısayolu değiştir / Change shortcut…") { admin.actions.changeShortcut() } }
+            Section("Etkileşim") {
+                LabeledContent("Kısayol") {
+                    HStack { Text(ring.shortcutLabel).monospaced(); Button("Kısayolu değiştir…") { admin.actions.changeShortcut() } }
                 }
-                LabeledContent("Dikte kısayolu / Dictation shortcut") {
-                    HStack { Text(ring.dictationLabel).monospaced(); Button("Değiştir / Change…") { admin.actions.changeDictationShortcut() } }
+                LabeledContent("Dikte kısayolu") {
+                    HStack { Text(ring.dictationLabel).monospaced(); Button("Değiştir…") { admin.actions.changeDictationShortcut() } }
                 }
-                LabeledContent("Talimatlar / Instructions") {
-                    Button("Talimatları düzenle / Edit instructions…") { admin.actions.editInstructions() }
+                LabeledContent("Talimatlar") {
+                    Button("Talimatları düzenle…") { admin.actions.editInstructions() }
                 }
             }
-            Section("Mod / Mode") {
-                Toggle("Yerel kullan / Local only", isOn: Binding(get: { ring.offline }, set: { ring.setOffline($0) }))
+            Section("Mod") {
+                Toggle("Yerel kullan", isOn: Binding(get: { ring.offline }, set: { ring.setOffline($0) }))
                     .disabled(ring.changingMode || ring.phase == .starting)
-                LabeledContent("Uzak model / Remote model") {
+                LabeledContent("Uzak model") {
                     HStack {
                         Picker("", selection: Binding(get: { admin.remote.model }, set: { model in Task { await admin.setRemoteModel(model) } })) {
                             Text("Pi varsayılanı").tag("")
@@ -752,59 +753,59 @@ private struct SettingsTab: View {
                 if !admin.remoteMessage.isEmpty {
                     Text(admin.remoteMessage).font(.caption).foregroundStyle(admin.remoteMessage.hasPrefix("✓") ? .green : .red).textSelection(.enabled)
                 }
-                Toggle("Sesli yanıt / Read aloud", isOn: $ring.readAloud)
-                Toggle("Menü çubuğu simgesi / Menu bar icon", isOn: Binding(get: { admin.menuBarIcon }, set: { admin.actions.setMenuBarIcon($0) }))
-                Toggle("Reminders", isOn: Binding(get: { admin.remindersEnabled }, set: { on in Task { await admin.setReminders(on) } }))
-                Toggle("Asistan görevleri / Assistant tasks", isOn: Binding(get: { admin.tasksEnabled }, set: { on in Task { await admin.setTasks(on) } }))
+                Toggle("Sesli yanıt", isOn: $ring.readAloud)
+                Toggle("Menü çubuğu simgesi", isOn: Binding(get: { admin.menuBarIcon }, set: { admin.actions.setMenuBarIcon($0) }))
+                Toggle("Anımsatıcılar", isOn: Binding(get: { admin.remindersEnabled }, set: { on in Task { await admin.setReminders(on) } }))
+                Toggle("Asistan görevleri", isOn: Binding(get: { admin.tasksEnabled }, set: { on in Task { await admin.setTasks(on) } }))
                     .disabled(!admin.remindersEnabled)
-                TextField("Görev listesi / Task list", text: $admin.tasksList)
+                TextField("Görev listesi", text: $admin.tasksList)
                     .onSubmit { Task { await admin.setTasksList(admin.tasksList) } }
                     .disabled(!admin.remindersEnabled || !admin.tasksEnabled)
                 if !admin.remindersMessage.isEmpty { Text(admin.remindersMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
             }
             MailSection(admin: admin)
-            Section("Dosyalar / Files") {
-                Toggle("Dosya arama / File search", isOn: Binding(get: { admin.files.enabled }, set: { on in Task { await admin.setFiles(on) } }))
+            Section("Dosyalar") {
+                Toggle("Dosya arama", isOn: Binding(get: { admin.files.enabled }, set: { on in Task { await admin.setFiles(on) } }))
                 TextEditor(text: $admin.fileRoots).font(.system(.body, design: .monospaced)).frame(minHeight: 60)
                 HStack {
                     if !admin.filesMessage.isEmpty { Text(admin.filesMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
                     Spacer()
-                    Button("Kaydet / Save") { Task { await admin.saveFileRoots() } }.disabled(admin.fileRoots == admin.fileRootsOriginal)
+                    Button("Kaydet") { Task { await admin.saveFileRoots() } }.disabled(admin.fileRoots == admin.fileRootsOriginal)
                 }
-                Text("Atlanan klasörler / Skipped folders").font(.caption)
+                Text("Atlanan klasörler").font(.caption)
                 TextEditor(text: $admin.fileSkip).font(.system(.body, design: .monospaced)).frame(minHeight: 60)
                 HStack {
                     Spacer()
-                    Button("Kaydet / Save") { Task { await admin.saveFileSkip() } }.disabled(admin.fileSkip == admin.fileSkipOriginal)
+                    Button("Kaydet") { Task { await admin.saveFileSkip() } }.disabled(admin.fileSkip == admin.fileSkipOriginal)
                 }
             }
             Section("Bitwarden") {
                 Toggle("Bitwarden", isOn: Binding(get: { admin.vault.enabled }, set: { on in Task { await admin.setVault(on) } }))
-                LabeledContent("Durum / Status", value: "\(admin.vault.state == "unlocked" ? "Açık / Unlocked" : admin.vault.state == "unauthenticated" ? "Giriş yok / Logged out" : admin.vault.state == "locked" ? "Kilitli / Locked" : admin.vault.state) • \(admin.vault.server)")
-                TextField("E-posta / Email", text: $admin.vaultEmail).textContentType(.username)
+                LabeledContent("Durum", value: "\(admin.vault.state == "unlocked" ? "Açık" : admin.vault.state == "unauthenticated" ? "Giriş yok" : admin.vault.state == "locked" ? "Kilitli" : admin.vault.state) • \(admin.vault.server)")
+                TextField("E-posta", text: $admin.vaultEmail).textContentType(.username)
                     .onSubmit { Task { await admin.saveVaultEmail() } }
-                SecureField("Ana parola / Master password", text: $admin.vaultPassword)
+                SecureField("Ana parola", text: $admin.vaultPassword)
                     .onSubmit { Task { await admin.unlockVault() } }
-                if admin.vault.state == "unauthenticated" { TextField("2FA kodu / 2FA code", text: $admin.vaultCode) }
+                if admin.vault.state == "unauthenticated" { TextField("2FA kodu", text: $admin.vaultCode) }
                 HStack {
                     if !admin.vaultMessage.isEmpty { Text(admin.vaultMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
                     Spacer()
-                    if admin.vaultEmail != admin.vault.email { Button("Kaydet / Save") { Task { await admin.saveVaultEmail() } } }
-                    Button("Kilidi aç / Unlock") { Task { await admin.unlockVault() } }
+                    if admin.vaultEmail != admin.vault.email { Button("Kaydet") { Task { await admin.saveVaultEmail() } } }
+                    Button("Kilidi aç") { Task { await admin.unlockVault() } }
                         .disabled(!admin.vault.enabled || admin.vaultPassword.isEmpty || admin.vaultBusy || admin.vaultEmail != admin.vault.email)
-                    Button("Kilitle / Lock") { Task { await admin.lockVault() } }.disabled(admin.vault.state != "unlocked")
+                    Button("Kilitle") { Task { await admin.lockVault() } }.disabled(admin.vault.state != "unlocked")
                 }
             }
-            Section("Okunuşlar / Pronunciations") {
+            Section("Okunuşlar") {
                 TextEditor(text: $admin.pronunciations).font(.system(.body, design: .monospaced)).frame(minHeight: 120)
                 HStack {
                     if !admin.pronunciationsMessage.isEmpty { Text(admin.pronunciationsMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
                     Spacer()
-                    Button("Kaydet / Save") { Task { await admin.savePronunciations() } }.disabled(admin.pronunciations == admin.pronunciationsOriginal)
+                    Button("Kaydet") { Task { await admin.savePronunciations() } }.disabled(admin.pronunciations == admin.pronunciationsOriginal)
                 }
             }
-            Section("Uygulama / Application") {
-                Button("Yeniden başlat / Restart Ayhan") { admin.actions.restart() }
+            Section("Uygulama") {
+                Button("Yeniden başlat") { admin.actions.restart() }
             }
         }.formStyle(.grouped)
     }
@@ -816,10 +817,10 @@ private struct MailSection: View {
     @Bindable var admin: AdminModel
     var body: some View {
         Section("Mail") {
-            TextField("Client ID", text: $admin.gmailClientId, prompt: Text(admin.gmail.client_configured ? "Kayıtlı / Saved" : ""))
+            TextField("Client ID", text: $admin.gmailClientId, prompt: Text(admin.gmail.client_configured ? "Kayıtlı" : ""))
             HStack {
                 SecureField("Client secret", text: $admin.gmailClientSecret)
-                Button("Kaydet / Save") { Task { await admin.saveGmailClient() } }
+                Button("Kaydet") { Task { await admin.saveGmailClient() } }
                     .disabled(admin.gmailClientId.isEmpty || admin.gmailClientSecret.isEmpty)
             }
             ForEach(admin.gmail.accounts) { account in
@@ -827,33 +828,33 @@ private struct MailSection: View {
                     HStack {
                         Text(account.email)
                         Spacer()
-                        Button("Bağlantıyı kes / Disconnect") { Task { await admin.disconnectGmail(account.email) } }
+                        Button("Bağlantıyı kes") { Task { await admin.disconnectGmail(account.email) } }
                     }
                     if account.error == "gmail_auth_expired" {
-                        Text("Yeniden bağlan / Reconnect").font(.caption).foregroundStyle(.red)
+                        Text("Yeniden bağlan").font(.caption).foregroundStyle(.red)
                     } else if !account.error.isEmpty {
                         Text(account.error).font(.caption).foregroundStyle(.red)
                     }
                     if !account.missing_labels.isEmpty {
-                        Text("Eksik etiket / Missing label: \(account.missing_labels.joined(separator: ", "))").font(.caption).foregroundStyle(.orange)
+                        Text("Eksik etiket: \(account.missing_labels.joined(separator: ", "))").font(.caption).foregroundStyle(.orange)
                     }
                 }
             }
             HStack {
-                if admin.gmail.connecting { Text("Tarayıcıda onay bekleniyor / Waiting for browser…").foregroundStyle(.secondary) }
+                if admin.gmail.connecting { Text("Tarayıcıda onay bekleniyor…").foregroundStyle(.secondary) }
                 Spacer()
-                Button("Hesap ekle / Add account") { Task { await admin.connectGmail() } }.disabled(!admin.gmail.client_configured || admin.gmail.connecting)
+                Button("Hesap ekle") { Task { await admin.connectGmail() } }.disabled(!admin.gmail.client_configured || admin.gmail.connecting)
             }
-            Toggle("Mail düzenleme / Mail organizing", isOn: Binding(get: { admin.gmail.triage_enabled }, set: { on in Task { await admin.setGmailTriage(on) } }))
+            Toggle("Mail düzenleme", isOn: Binding(get: { admin.gmail.triage_enabled }, set: { on in Task { await admin.setGmailTriage(on) } }))
                 .disabled(!admin.gmail.connected)
-            TextField("Acil gönderenler / Urgent senders", text: $admin.gmailUrgent, prompt: Text("boss@work.com, @*.gov.uk"))
+            TextField("Acil gönderenler", text: $admin.gmailUrgent, prompt: Text("boss@work.com, @*.gov.uk"))
                 .onSubmit { Task { await admin.saveGmailUrgent() } }
             VStack(alignment: .leading) {
-                Text("Önem tanımı / Importance").font(.caption).foregroundStyle(.secondary)
+                Text("Önem tanımı").font(.caption).foregroundStyle(.secondary)
                 TextEditor(text: $admin.gmailImportance).font(.system(.body, design: .monospaced)).frame(minHeight: 90)
                 HStack {
                     Spacer()
-                    Button("Kaydet / Save") { Task { await admin.saveImportance() } }.disabled(admin.gmailImportance == admin.gmailImportanceOriginal)
+                    Button("Kaydet") { Task { await admin.saveImportance() } }.disabled(admin.gmailImportance == admin.gmailImportanceOriginal)
                 }
             }
             if !admin.gmailMessage.isEmpty { Text(admin.gmailMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
@@ -888,7 +889,7 @@ private struct ResourcesTab: View {
         HSplitView {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Button("Yeni skill / New skill…") { newName = ""; newDescription = ""; creatingSkill = true }
+                    Button("Yeni skill…") { newName = ""; newDescription = ""; creatingSkill = true }
                     Button("Yeni extension…") { newName = ""; creatingExtension = true }
                 }
                 List(selection: $selectionKey) {
@@ -898,12 +899,12 @@ private struct ResourcesTab: View {
             }.frame(minWidth: 240, idealWidth: 280)
             VStack(alignment: .leading, spacing: 8) {
                 if admin.selectedPath.isEmpty {
-                    Text("Görmek veya düzenlemek için bir dosya seç / Select a file to view or edit").foregroundStyle(.secondary)
+                    Text("Görmek veya düzenlemek için bir dosya seç").foregroundStyle(.secondary)
                     Spacer()
                 } else {
                     Text("\(admin.selectedKind == "skill" ? ".pi/skills" : ".pi/extensions")/\(admin.selectedPath)").font(.headline).textSelection(.enabled)
                     if !admin.loadError.isEmpty {
-                        Text("Dosya yüklenemedi / Could not load file: \(admin.loadError)").foregroundStyle(.red).textSelection(.enabled)
+                        Text("Dosya yüklenemedi: \(admin.loadError)").foregroundStyle(.red).textSelection(.enabled)
                         Spacer()
                     } else {
                         TextEditor(text: $admin.content).font(.system(.body, design: .monospaced))
@@ -911,10 +912,10 @@ private struct ResourcesTab: View {
                     HStack {
                         Spacer()
                         if let resource = admin.selectedResource {
-                            Button("Sil / Delete…", role: .destructive) { deleting = resource }.disabled(resource.loading == "built-in")
+                            Button("Sil…", role: .destructive) { deleting = resource }.disabled(resource.loading == "built-in")
                         }
-                        Button("Geri al / Revert") { admin.content = admin.original }.disabled(!dirty)
-                        Button("Kaydet / Save") { Task { await admin.save() } }.disabled(!dirty).keyboardShortcut("s", modifiers: .command)
+                        Button("Geri al") { admin.content = admin.original }.disabled(!dirty)
+                        Button("Kaydet") { Task { await admin.save() } }.disabled(!dirty).keyboardShortcut("s", modifiers: .command)
                     }
                 }
                 if !admin.message.isEmpty { Text(admin.message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
@@ -923,20 +924,20 @@ private struct ResourcesTab: View {
         .onChange(of: selectionKey) { _, key in selectionChanged(key) }
         // Keep the List in sync when the model selects a file itself (create skill/extension); equal keys stop the loop.
         .onChange(of: currentKey, initial: true) { _, key in if selectionKey != key { selectionKey = key } }
-        .confirmationDialog("Kaydedilmemiş değişiklikler atılsın mı? / Discard unsaved changes?", isPresented: $confirmDiscard) {
-            Button("Değişiklikleri at / Discard", role: .destructive) { if let key = pendingKey { load(key) }; pendingKey = nil }
-            Button("İptal / Cancel", role: .cancel) { pendingKey = nil; selectionKey = currentKey }
+        .confirmationDialog("Kaydedilmemiş değişiklikler atılsın mı?", isPresented: $confirmDiscard) {
+            Button("Değişiklikleri at", role: .destructive) { if let key = pendingKey { load(key) }; pendingKey = nil }
+            Button("İptal", role: .cancel) { pendingKey = nil; selectionKey = currentKey }
         }
-        .confirmationDialog("\(deleting?.name ?? "") silinsin mi? / Delete \(deleting?.name ?? "")?",
+        .confirmationDialog("\(deleting?.name ?? "") silinsin mi?",
                             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
-            Button("Sil / Delete", role: .destructive) { if let resource = deleting { Task { await admin.delete(resource) } }; deleting = nil }
-            Button("İptal / Cancel", role: .cancel) { deleting = nil }
+            Button("Sil", role: .destructive) { if let resource = deleting { Task { await admin.delete(resource) } }; deleting = nil }
+            Button("İptal", role: .cancel) { deleting = nil }
         }
         .sheet(isPresented: $creatingSkill) {
-            form(title: "Yeni skill / New skill", description: true) { Task { await admin.createSkill(name: newName, description: newDescription) } }
+            form(title: "Yeni skill", description: true) { Task { await admin.createSkill(name: newName, description: newDescription) } }
         }
         .sheet(isPresented: $creatingExtension) {
-            form(title: "Yeni extension / New extension", description: false) { Task { await admin.createExtension(name: newName) } }
+            form(title: "Yeni extension", description: false) { Task { await admin.createExtension(name: newName) } }
         }
     }
 
@@ -944,8 +945,8 @@ private struct ResourcesTab: View {
         let header = VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Text(resource.name).bold()
-                if resource.valid == false { Text("geçersiz / invalid").font(.caption).foregroundStyle(.orange) }
-                if resource.loading == "built-in" { Text("yerleşik / built-in").font(.caption).foregroundStyle(.secondary) }
+                if resource.valid == false { Text("geçersiz").font(.caption).foregroundStyle(.orange) }
+                if resource.loading == "built-in" { Text("yerleşik").font(.caption).foregroundStyle(.secondary) }
             }
             if !resource.description.isEmpty { Text(resource.description).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
         }
@@ -963,18 +964,18 @@ private struct ResourcesTab: View {
     }
 
     @ViewBuilder private func deleteMenu(_ resource: AdminResource) -> some View {
-        Button("Sil / Delete…", role: .destructive) { deleting = resource }.disabled(resource.loading == "built-in")
+        Button("Sil…", role: .destructive) { deleting = resource }.disabled(resource.loading == "built-in")
     }
 
     private func form(title: String, description: Bool, create: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title).font(.headline)
-            TextField("Ad (küçük harf, rakam, tire) / Name (lowercase, digits, hyphens)", text: $newName)
-            if description { TextField("Kısa açıklama / Short description", text: $newDescription) }
+            TextField("Ad (küçük harf, rakam, tire)", text: $newName)
+            if description { TextField("Kısa açıklama", text: $newDescription) }
             HStack {
                 Spacer()
-                Button("İptal / Cancel") { creatingSkill = false; creatingExtension = false }.keyboardShortcut(.cancelAction)
-                Button("Oluştur / Create") { creatingSkill = false; creatingExtension = false; create() }
+                Button("İptal") { creatingSkill = false; creatingExtension = false }.keyboardShortcut(.cancelAction)
+                Button("Oluştur") { creatingSkill = false; creatingExtension = false; create() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(newName.isEmpty || (description && newDescription.trimmingCharacters(in: .whitespaces).isEmpty))
             }

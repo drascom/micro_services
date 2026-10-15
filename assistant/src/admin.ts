@@ -82,7 +82,7 @@ async function resolveFile(root: string, kind: unknown, relative: unknown, mustE
       if (info.isSymbolicLink()) throw Error('Symbolic links are not allowed');
       if (index === segments.length - 1 ? !info.isFile() : !info.isDirectory()) throw Error('Invalid path');
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') { if (mustExist || index < segments.length - 1) throw Error('File not found'); }
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') { if (mustExist || index < segments.length - 1) throw Error('Dosya bulunamadı'); }
       else throw error;
     }
   }
@@ -134,7 +134,7 @@ export async function readResource(root: string, kind: unknown, relative: unknow
   const file = await resolveFile(root, kind, relative);
   const handle = await open(file, 'r');
   try {
-    if ((await handle.stat()).size > MAX_FILE) throw Error('File too large to edit here');
+    if ((await handle.stat()).size > MAX_FILE) throw Error('Dosya burada düzenlemek için çok büyük');
     return { kind, path: relative, content: await handle.readFile('utf8') };
   } finally { await handle.close(); }
 }
@@ -148,14 +148,14 @@ async function validateSkill(name: string, content: string): Promise<void> {
     const result = loadSkillsFromDir({ dir: directory, source: 'ayhan' });
     const problems = result.diagnostics.map(d => d.message);
     if (!result.skills.some(s => s.name === name)) problems.unshift(`Skill name must be "${name}" with a description`);
-    if (problems.length) throw Error('Skill validation failed: ' + problems.join('; '));
+    if (problems.length) throw Error('Skill doğrulanamadı: ' + problems.join('; '));
   } finally { await rm(scratch, { recursive: true, force: true }); }
 }
 
 async function atomicWrite(file: string, content: string, exclusive = false): Promise<void> {
   if (exclusive) {
     try { await writeFile(file, content, { flag: 'wx', mode: 0o644 }); return; }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw Error('Already exists'); throw error; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw Error('Zaten var'); throw error; }
   }
   const temporary = `${file}.${process.pid}.admin.tmp`;
   await writeFile(temporary, content, { mode: 0o644 });
@@ -168,26 +168,26 @@ export async function writeResource(root: string, kind: unknown, relative: unkno
   const segments = (relative as string).split('/');
   if (kind === 'skill' && segments.length === 2 && segments[1] === 'SKILL.md') await validateSkill(segments[0], content);
   await atomicWrite(file, content);
-  return { ok: true, note: 'Saved.' };
+  return { ok: true, note: 'Kaydedildi.' };
 }
 
 export async function createSkill(root: string, name: unknown, description: unknown) {
-  if (typeof name !== 'string' || name.length > 64 || !NAME.test(name)) throw Error('Name: lowercase letters, digits and hyphens');
-  if (typeof description !== 'string' || !description.trim() || description.length > 300 || /[\r\n]/.test(description)) throw Error('Description: one line, up to 300 characters');
+  if (typeof name !== 'string' || name.length > 64 || !NAME.test(name)) throw Error('Ad: küçük harf, rakam ve tire');
+  if (typeof description !== 'string' || !description.trim() || description.length > 300 || /[\r\n]/.test(description)) throw Error('Açıklama: tek satır, en çok 300 karakter');
   const content = `---\nname: ${name}\ndescription: ${JSON.stringify(description.trim())}\n---\n# ${name}\n\nDescribe the workflow here. Keep it short.\n`;
   await validateSkill(name, content);
   const directory = path.join(await realpath(base(root, 'skill')), name);
   try { await mkdir(directory); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw Error('Already exists'); throw error; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw Error('Zaten var'); throw error; }
   await atomicWrite(path.join(directory, 'SKILL.md'), content, true);
-  return { ok: true, path: `${name}/SKILL.md`, note: 'Created.' };
+  return { ok: true, path: `${name}/SKILL.md`, note: 'Oluşturuldu.' };
 }
 
 /** Move a whole skill or extension out of the resource root into a trash directory (first that works); never a hard delete. */
 export async function deleteResource(root: string, kind: unknown, name: unknown, trashDirs: string[]) {
   const directory = base(root, kind);
   if (typeof name !== 'string' || !SEGMENT.test(name) || name.length > 100) throw Error('Invalid name');
-  if (kind === 'extension' && FACTORY.has(name)) throw Error('Built-in extensions cannot be deleted');
+  if (kind === 'extension' && FACTORY.has(name)) throw Error('Yerleşik extension silinemez');
   const realBase = await realpath(directory);
   const target = path.join(realBase, name);
   if (path.dirname(target) !== realBase) throw Error('Path outside resource directory');
@@ -205,17 +205,17 @@ export async function deleteResource(root: string, kind: unknown, name: unknown,
       await mkdir(trash, { recursive: true, mode: 0o700 });
       const destination = path.join(trash, trashed);
       await rename(target, destination);
-      return { ok: true, trashed: destination, note: `Moved to ${destination}.` };
+      return { ok: true, trashed: destination, note: `Çöp kutusuna taşındı: ${destination}` };
     } catch (error) { lastError = error; }
   }
   throw lastError;
 }
 
 export async function createExtension(root: string, name: unknown) {
-  if (typeof name !== 'string' || name.length > 64 || !NAME.test(name)) throw Error('Name: lowercase letters, digits and hyphens');
+  if (typeof name !== 'string' || name.length > 64 || !NAME.test(name)) throw Error('Ad: küçük harf, rakam ve tire');
   const content = `import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';\n\n/** ${name}: describe what this extension does. */\nexport default function ${name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase()).replace(/^[0-9]/, '_$&')}(_pi: ExtensionAPI) {\n  // Register tools with pi.registerTool(); new tools stay unavailable until approved in the harness.\n}\n`;
   await atomicWrite(path.join(await realpath(base(root, 'extension')), `${name}.ts`), content, true);
-  return { ok: true, path: `${name}.ts`, note: 'Created.' };
+  return { ok: true, path: `${name}.ts`, note: 'Oluşturuldu.' };
 }
 
 /** Changes config.json under a lock and atomically; the whole file must still load. Other settings are kept. */
@@ -250,7 +250,7 @@ export async function saveReminders(config: Config, configPath: string, value: u
   if (input.enabled !== undefined) { if (typeof input.enabled !== 'boolean') throw Error('enabled must be a boolean'); change.reminders_enabled = input.enabled; }
   if (input.tasks_enabled !== undefined) { if (typeof input.tasks_enabled !== 'boolean') throw Error('tasks_enabled must be a boolean'); change.tasks_enabled = input.tasks_enabled; }
   if (input.tasks_list !== undefined) { if (typeof input.tasks_list !== 'string') throw Error('tasks_list must be text'); change.tasks_list = input.tasks_list.trim(); }
-  if (!Object.keys(change).length) throw Error('Nothing to save');
+  if (!Object.keys(change).length) throw Error('Kaydedilecek bir şey yok');
   await updateConfigFile(configPath, settings => { Object.assign(settings, change); }); // The whole file is validated before replacing.
   Object.assign(config, change);
   return { enabled: config.reminders_enabled, tasks_enabled: config.tasks_enabled, tasks_list: config.tasks_list };
@@ -267,7 +267,7 @@ export async function saveMemorySettings(config: Config, configPath: string, mem
   const change: Partial<Pick<Config, 'memory_enabled' | 'memory_extract'>> = {};
   if (input.enabled !== undefined) { if (typeof input.enabled !== 'boolean') throw Error('enabled must be a boolean'); change.memory_enabled = input.enabled; }
   if (input.extract !== undefined) { if (typeof input.extract !== 'boolean') throw Error('extract must be a boolean'); change.memory_extract = input.extract; }
-  if (!Object.keys(change).length) throw Error('Nothing to save');
+  if (!Object.keys(change).length) throw Error('Kaydedilecek bir şey yok');
   await updateConfigFile(configPath, settings => { Object.assign(settings, change); });
   Object.assign(config, change);
   if (!config.memory_enabled || !config.memory_extract) memory.extractor.turns = [];
@@ -284,8 +284,8 @@ export async function saveMemoryItem(config: Config, memory: MemoryService, valu
     : input.kind === 'assistant' || input.kind === 'personal'
       ? await memory.store.save({ kind: input.kind, text: String(input.text ?? ''), source: 'explicit', pinned: input.pinned === true }, signal) : undefined;
   if (!result) throw Error('Invalid memory item');
-  if (result.status === 'rejected') throw Error(result.reason === 'private' ? 'Şifre, kod, hesap numarası veya mail içeriği saklanmaz / Secrets are never stored'
-    : result.reason === 'not_found' ? 'Kayıt yok / Not found' : 'Boş metin / Empty text');
+  if (result.status === 'rejected') throw Error(result.reason === 'private' ? 'Şifre, kod, hesap numarası veya mail içeriği saklanmaz'
+    : result.reason === 'not_found' ? 'Kayıt yok' : 'Boş metin');
   return memoryStatus(config, memory);
 }
 /** Delete one item (`id`), one summary (`episode`) or all of a kind (`all`: assistant | personal | episodes). */
@@ -366,7 +366,7 @@ export async function saveVault(config: Config, configPath: string, vault: Vault
   if (input.email !== undefined) { if (typeof input.email !== 'string') throw Error('email must be text'); change.bitwarden_email = input.email.trim(); }
   if (input.server !== undefined) { if (typeof input.server !== 'string') throw Error('server must be text'); change.bitwarden_server = input.server.trim().replace(/\/+$/, ''); }
   if (input.idle_lock_min !== undefined) { if (typeof input.idle_lock_min !== 'number') throw Error('idle_lock_min must be a number'); change.bitwarden_idle_lock_min = input.idle_lock_min; }
-  if (!Object.keys(change).length) throw Error('Nothing to save');
+  if (!Object.keys(change).length) throw Error('Kaydedilecek bir şey yok');
   validateVaultSettings({ ...config, ...change });
   await updateConfigFile(configPath, settings => { Object.assign(settings, change); });
   Object.assign(config, change);
@@ -397,7 +397,7 @@ export async function saveFiles(config: Config, configPath: string, files: FileS
   if (input.enabled !== undefined) { if (typeof input.enabled !== 'boolean') throw Error('enabled must be a boolean'); change.embedding_enabled = input.enabled; }
   if (input.roots !== undefined) change.file_roots = validateFileRoots(input.roots);
   if (input.skip_dirs !== undefined) change.file_skip_dirs = validateSkipDirs(input.skip_dirs);
-  if (!Object.keys(change).length) throw Error('Nothing to save');
+  if (!Object.keys(change).length) throw Error('Kaydedilecek bir şey yok');
   await updateConfigFile(configPath, settings => { Object.assign(settings, change); });
   Object.assign(config, change);
   if (!config.embedding_enabled) await files.embedder.close();
@@ -417,7 +417,7 @@ export async function saveRemoteModel(config: Config, configPath: string, models
   if (typeof model !== 'string') throw Error('model must be text');
   if (model) {
     const available = await remoteModels(config, models);
-    if (!available.models.includes(model)) throw Error('Model not available for the signed-in provider');
+    if (!available.models.includes(model)) throw Error('Model, giriş yapılan sağlayıcıda yok');
   }
   await updateConfigFile(configPath, settings => { settings.codex_model = model; });
   config.codex_model = model;

@@ -21,4 +21,8 @@ try {
   execFileSync('/usr/bin/xcrun', ['swiftc', '-swift-version', '6', '-parse-as-library', '-o', backend,
     ...['native/BackendClient.swift', 'native/LaunchGuard.swift', 'tests/backend-tests.swift'].map(file => path.join(root, file))], { stdio: 'inherit' });
   execFileSync(backend, [], { stdio: 'inherit' });
+  const menu = path.join(directory, 'menu-checks');
+  execFileSync('/usr/bin/xcrun', ['swiftc', '-swift-version', '6', '-parse-as-library', '-o', menu,
+    ...['native/MenuSymbol.swift', 'tests/menu-tests.swift'].map(file => path.join(root, file)), '-framework', 'AppKit'], { stdio: 'inherit' });
+  execFileSync(menu, [], { stdio: 'inherit' });
 } finally { rmSync(directory, { recursive: true, force: true }); }

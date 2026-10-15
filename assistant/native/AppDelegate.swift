@@ -49,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                                         ("Yeniden başlat", "arrow.clockwise", #selector(restart)),
                                         ("Çıkış", "power", #selector(quit))] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: ""); item.target = self
-            item.image = Self.menuSymbol(symbol, title)
+            MenuSymbol.apply(symbol, to: item)
             if action == #selector(openAdminMenu) || action == #selector(restart) { menu.addItem(.separator()) }
             menu.addItem(item)
         }
@@ -168,7 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if adminWindow == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 560),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            window.title = "Yönetim / Admin"; window.isReleasedWhenClosed = false
+            window.title = "Yönetim"; window.isReleasedWhenClosed = false
             window.isRestorable = false // Never brought back by macOS with stale content; a restart reopens it fresh.
             window.contentView = NSHostingView(rootView: AdminView(admin: admin))
             window.delegate = self; window.center()
@@ -198,19 +198,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // Reflects the current mode each time the menu opens (same setting as Admin "Yerel kullan").
             let remote = !model.offline
             item.state = remote ? .on : .off
-            item.image = Self.menuSymbol(remote ? "cloud" : "desktopcomputer", item.title)
+            MenuSymbol.apply(remote ? "cloud" : "desktopcomputer", to: item)
             return !model.changingMode
         }
         return true
     }
     /// on = remote provider (local fallback), off = local Gemma only.
     @objc private func toggleRemote() { model.setOffline(!model.offline) }
-    private static func menuSymbol(_ name: String, _ label: String) -> NSImage? {
-        let image = NSImage(systemSymbolName: name, accessibilityDescription: label)?
-            .withSymbolConfiguration(.init(pointSize: 13, weight: .regular, scale: .small))
-        image?.isTemplate = true
-        return image
-    }
     private func editInstructions() {
         openTextFile("instructions.md", initial: "Do not use emoji in your responses.\n")
     }
@@ -265,17 +259,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let other = dictation ? Shortcut.load() : Shortcut.loadDictation()
         let recorder = ShortcutCaptureView(shortcut: current)
         let alert = NSAlert()
-        alert.messageText = dictation ? "Dikte kısayolunu değiştir / Change dictation shortcut" : "Kısayolu değiştir / Change shortcut"
-        alert.informativeText = "Tuşlara birlikte bas, bırak ve Tamam'a tıkla. En az bir Control, Option, Command veya Shift tuşu kullan.\nPress a chord, release it, then click OK. Include a modifier key."
+        alert.messageText = dictation ? "Dikte kısayolunu değiştir" : "Kısayolu değiştir"
+        alert.informativeText = "Tuşlara birlikte bas, bırak ve Tamam'a tıkla. En az bir Control, Option, Command veya Shift tuşu kullan."
         alert.accessoryView = recorder
-        alert.addButton(withTitle: "Tamam / OK"); alert.addButton(withTitle: "İptal / Cancel")
+        alert.addButton(withTitle: "Tamam"); alert.addButton(withTitle: "İptal")
         alert.window.initialFirstResponder = recorder
         NSApp.activate()
         guard alert.runModal() == .alertFirstButtonReturn, recorder.candidate != current else { return }
         // The two chords must differ and neither may be held inside the other.
         guard !recorder.candidate.conflicts(with: other) else {
             let refusal = NSAlert()
-            refusal.messageText = "Kısayol çakışıyor / Shortcut conflict"
+            refusal.messageText = "Kısayol çakışıyor"
             refusal.informativeText = "\(recorder.candidate.label) ↔ \(other.label)"
             refusal.runModal(); return
         }

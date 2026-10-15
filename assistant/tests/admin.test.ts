@@ -66,13 +66,13 @@ test('admin lists, reads, validates and writes app-owned skills and extensions',
     assert.equal((await f.call('/admin/read', { kind: 'skill', path: 'demo/SKILL.md' })).body.content, skill('demo'));
     // Invalid skill content is rejected and the file is left unchanged.
     const invalid = await f.call('/admin/write', { kind: 'skill', path: 'demo/SKILL.md', content: skill('other') });
-    assert.equal(invalid.status, 400); assert.match(invalid.body.error, /validation failed/);
+    assert.equal(invalid.status, 400); assert.match(invalid.body.error, /doğrulanamadı/);
     assert.equal(await readFile(path.join(f.directory, '.pi/skills/demo/SKILL.md'), 'utf8'), skill('demo'));
     assert.equal((await f.call('/admin/write', { kind: 'skill', path: 'demo/SKILL.md', content: skill('demo', 'Changed.') })).status, 200);
     assert.match(await readFile(path.join(f.directory, '.pi/skills/demo/SKILL.md'), 'utf8'), /Changed/);
     assert.equal((await f.call('/admin/write', { kind: 'extension', path: 'tool.ts', content: 'export default function tool() {}\n' })).status, 200);
     assert.equal((await f.call('/admin/create-skill', { name: 'new-skill', description: 'Does things.' })).status, 200);
-    assert.equal((await f.call('/admin/create-skill', { name: 'new-skill', description: 'Again.' })).body.error, 'Already exists');
+    assert.equal((await f.call('/admin/create-skill', { name: 'new-skill', description: 'Again.' })).body.error, 'Zaten var');
     assert.equal((await f.call('/admin/create-extension', { name: 'new-ext' })).status, 200);
     const after = await f.call('/admin/resources');
     assert.ok(after.body.skills.some((s: { name: string; valid: boolean }) => s.name === 'new-skill' && s.valid));
@@ -104,7 +104,7 @@ test('admin deletes skills and extensions into the trash, refusing built-ins, tr
       ['skill', ''], ['skill', 'missing'], ['permissions', 'demo'], ['extension', 'mail'], ['extension', 'permissions.ts']]) {
       assert.equal((await f.call('/admin/delete', { kind, name })).status, 400, `${kind}:${name}`);
     }
-    assert.match((await f.call('/admin/delete', { kind: 'extension', name: 'mail' })).body.error, /Built-in/);
+    assert.match((await f.call('/admin/delete', { kind: 'extension', name: 'mail' })).body.error, /Yerleşik/);
     await access(path.join(f.directory, '.pi/extensions/permissions.ts'));
     await access(path.join(f.directory, 'secret.txt'));
     const removed = await f.call('/admin/delete', { kind: 'skill', name: 'demo' });

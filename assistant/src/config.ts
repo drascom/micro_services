@@ -63,7 +63,7 @@ export function validateFileRoots(value: unknown): string[] {
     const text = typeof item === 'string' ? item.trim().replace(/\/+$/, '') : '';
     const full = path.resolve(expandHome(text || '/'));
     if (!text || text.length > 500 || /[\u0000-\u001f\u007f]/.test(text) || !path.isAbsolute(expandHome(text)) ||
-        full === path.parse(full).root || full === homedir()) throw Error(`Geçersiz klasör / Invalid folder: ${String(item).slice(0, 60)}`);
+        full === path.parse(full).root || full === homedir()) throw Error(`Geçersiz klasör: ${String(item).slice(0, 60)}`);
     return text;
   });
   return [...new Set(result)];
@@ -85,7 +85,7 @@ export function validateSkipDirs(value: unknown): string[] {
   if (!Array.isArray(value) || value.length > MAX_SKIP_DIRS) throw Error(`file_skip_dirs must be a list of at most ${MAX_SKIP_DIRS}`);
   const result = value.map(item => {
     const text = typeof item === 'string' ? item.trim() : '';
-    if (!text || text.length > 100 || /[\/\u0000-\u001f\u007f]/.test(text) || text === '.' || text === '..') throw Error(`Geçersiz / Invalid: ${String(item).slice(0, 60)}`);
+    if (!text || text.length > 100 || /[\/\u0000-\u001f\u007f]/.test(text) || text === '.' || text === '..') throw Error(`Geçersiz: ${String(item).slice(0, 60)}`);
     return text;
   });
   return [...new Set(result)];
@@ -96,7 +96,7 @@ export function validateUrgentSenders(value: unknown): string[] {
   if (!Array.isArray(value) || value.length > MAX_URGENT_SENDERS) throw Error(`gmail_urgent_senders must be a list of at most ${MAX_URGENT_SENDERS}`);
   const result = value.map(item => {
     const entry = typeof item === 'string' ? urgentEntry(item) : '';
-    if (!entry) throw Error(`Geçersiz / Invalid: ${String(item).slice(0, 60)}`);
+    if (!entry) throw Error(`Geçersiz: ${String(item).slice(0, 60)}`);
     return entry;
   });
   return [...new Set(result)];
