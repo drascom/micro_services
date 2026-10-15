@@ -163,9 +163,9 @@ export class VaultService {
   }
 
   /** Drops the session key (Lock button, idle timeout, sleep, exit) and locks the CLI's local state. */
-  async lock(): Promise<void> {
+  async lock(timeoutMs = 20_000): Promise<void> {
     const had = this.session; this.forget();
-    if (had) await this.bw(['lock'], {}, AbortSignal.timeout(20_000)).catch(() => undefined);
+    if (had) await this.bw(['lock'], {}, AbortSignal.timeout(timeoutMs)).catch(() => undefined);
   }
   private forget() { this.session = undefined; clearTimeout(this.idle); this.idle = undefined; }
   /** Each use restarts the idle timer (`bitwarden_idle_lock_min`). */
@@ -291,7 +291,7 @@ export class VaultService {
   }
 
   /** Backend exit: lock and clear a pending copied secret if still on the clipboard. */
-  async close(): Promise<void> { await this.clearClipboard(); await this.lock(); }
+  async close(): Promise<void> { await this.clearClipboard(); await this.lock(2000); }
 }
 
 /**

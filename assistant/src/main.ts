@@ -6,10 +6,10 @@ import { observeRequest } from './activity.ts';
 import { createCollection, Jev } from './providers.ts';
 import { PiHarnessChat } from './harness.ts';
 import { FileCredentials } from './credentials.ts';
-import { LocalRuntime } from './processes.ts';
+import { LocalRuntime, setStopGrace, shutdown } from './processes.ts';
 import { Speech } from './speech.ts';
 import { Orchestrator } from './orchestrator.ts';
-import { makeServer } from './server.ts';
+import { closeServer, makeServer } from './server.ts';
 import { fileService } from './files.ts';
 import { vaultService } from './vault.ts';
 import { installedVersion, loadManifest } from './components.ts';
@@ -21,7 +21,12 @@ export async function main(args = process.argv.slice(2)) {
   const app = new Orchestrator(config, new PiHarnessChat(models, config), new PiHarnessChat(models, config, true), runtime, speech,
     process.env.TYPESAFE_API_KEY ? new Jev(models, config) : undefined);
   const lifecycle = new AbortController();
-  const abort = () => lifecycle.abort();
+  const abort = () => {
+    if (lifecycle.signal.aborted) return;
+    setStopGrace(1000); lifecycle.abort();
+    // Hard fallback: whatever still hangs (a child, a socket, a timer), the backend is gone within a few seconds.
+    setTimeout(() => { console.log(`${stamp()} shutdown: forced exit after 4s`); process.exit(0); }, 4000).unref();
+  };
   process.on('SIGINT', abort); process.on('SIGTERM', abort);
   try {
     const command = args.shift() || 'serve';
@@ -91,13 +96,18 @@ export async function main(args = process.argv.slice(2)) {
       const url = `http://127.0.0.1:${config.port}`;
       console.log(`Assistant: ${url}`);
       await new Promise<void>(resolve => {
-        const stop = () => { server.close(() => resolve()); server.closeIdleConnections(); };
-        lifecycle.signal.addEventListener('abort', stop, { once: true });
-        if (lifecycle.signal.aborted) stop();
+        if (lifecycle.signal.aborted) resolve(); else lifecycle.signal.addEventListener('abort', () => resolve(), { once: true });
       });
+      // Parallel and bounded; durations go to the backend log (data/native-launcher.log), never content.
+      await shutdown({ http: () => closeServer(server), vault: () => vaultService(config).close(),
+        speech: () => speech.close(), llama: () => runtime.close(), files: () => fileService(config).close() },
+        line => console.log(`${stamp()} ${line}`));
+      process.exit(0); // Pending handles (keep-alive fetch sockets, SDK timers) must not keep the process alive.
     } else throw Error('Commands: serve, ask, classify, transcribe, doctor, updates-check, models, login');
   } finally { await vaultService(config).close(); await app.close(); await fileService(config).close(); process.off('SIGINT', abort); process.off('SIGTERM', abort); }
 }
+
+function stamp() { return `[backend ${new Date().toISOString().replace(/\.\d+Z$/, 'Z')} pid ${process.pid}]`; }
 
 if (import.meta.url === new URL(`file://${process.argv[1]}`).href) {
   main().catch(error => { console.error(`Assistant: ${error instanceof Error ? error.message : 'Failed'}`); process.exitCode = 1; });

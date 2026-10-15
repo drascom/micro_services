@@ -1,4 +1,4 @@
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Config } from './config.ts';
 import type { Orchestrator } from './orchestrator.ts';
@@ -44,6 +44,21 @@ async function readBody(request: IncomingMessage, limit: number): Promise<Buffer
   }
   if (!size) throw Error('Empty request');
   return Buffer.concat(chunks);
+}
+
+/**
+ * Stops accepting, drops idle keep-alive sockets now and every socket after `graceMs` (long-polls answer on abort
+ * first). Without this a keep-alive client that keeps polling holds close() open.
+ */
+export function closeServer(server: Server, graceMs = 1000): Promise<void> {
+  return new Promise(resolve => {
+    if (!server.listening) return resolve();
+    server.close(() => resolve());
+    server.closeIdleConnections();
+    const idle = setInterval(() => server.closeIdleConnections(), 100); idle.unref();
+    const all = setTimeout(() => server.closeAllConnections(), graceMs); all.unref();
+    server.once('close', () => { clearInterval(idle); clearTimeout(all); });
+  });
 }
 
 export async function makeServer(config: Config, app: Orchestrator, lifecycle: AbortSignal, activityFile: string | null = path.join(root, 'data/activity.log'), resourceRoot = root,
@@ -121,7 +136,9 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
       const body = JSON.stringify(data);
       response.writeHead(code, { 'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
-        'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'" });
+        'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+        // Shutting down: no keep-alive, so the app's polling cannot hold server.close() open.
+        ...(lifecycle.aborted ? { Connection: 'close' } : {}) });
       response.end(body);
     };
     const address = server.address();

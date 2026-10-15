@@ -6,11 +6,15 @@ import { setTimeout as delay } from 'node:timers/promises';
 import path from 'node:path';
 import { root, type Config } from './config.ts';
 
-export async function stopProcess(child?: ChildProcess): Promise<void> {
+/** SIGTERM → SIGKILL grace; shortened while the backend shuts down so a stubborn helper cannot hold a restart. */
+let stopGraceMs = 3000;
+export function setStopGrace(ms: number): void { stopGraceMs = ms; }
+
+export async function stopProcess(child?: ChildProcess, graceMs = stopGraceMs): Promise<void> {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
   const exited = once(child, 'exit').catch(() => undefined);
   child.kill('SIGTERM');
-  const escalation = setTimeout(() => child.kill('SIGKILL'), 3000);
+  const escalation = setTimeout(() => child.kill('SIGKILL'), graceMs);
   escalation.unref();
   try { await exited; } finally { clearTimeout(escalation); }
 }
@@ -90,4 +94,20 @@ export class LocalRuntime implements Runtime {
   }
   processes(): OwnedProcess[] { return [ownedProcess('llama-server', this.child, Number(new URL(this.config.local_url).port))]; }
   async close(): Promise<void> { await stopProcess(this.child); this.child = undefined; }
+}
+
+/**
+ * Backend shutdown: every step runs in parallel, each bounded by `stepMs` (a step that overruns is left behind and
+ * logged), so the whole stop takes about max(step) ≤ stepMs. Only step names and durations are logged.
+ */
+export async function shutdown(steps: Record<string, () => Promise<unknown>>, log: (line: string) => void, stepMs = 2500): Promise<void> {
+  const started = Date.now();
+  const results = await Promise.all(Object.entries(steps).map(async ([name, step]) => {
+    const t0 = Date.now(); let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<string>(resolve => { timer = setTimeout(() => resolve('timeout'), stepMs); timer.unref(); });
+    const outcome = await Promise.race([Promise.resolve().then(step).then(() => 'ok', () => 'error'), timeout]);
+    clearTimeout(timer);
+    return `${name} ${Date.now() - t0}ms${outcome === 'ok' ? '' : ` (${outcome})`}`;
+  }));
+  log(`shutdown: ${results.join(', ')}; total ${Date.now() - started}ms`);
 }
