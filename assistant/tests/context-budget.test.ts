@@ -27,7 +27,9 @@ import { MemoryService } from '../src/memory.ts';
 // 2026-10-15: vault_copy `speak` + one skill line measured vault route 2777, unrouted local adds 1132 (limits unchanged).
 // 2026-10-14: component updates (user requests only) measured updates route 1633; a pending offer adds 571 to an unrouted request.
 // 2026-10-15: memory_save/memory_forget (only for a hatırla/unut request) measured 688 added.
-const LIMITS = { unrouted_offline: 4360, 'mail-assistant': 3600, unrouted_offline_reminders: 5900, reminders: 2250,
+// 2026-10-15: `account` hint "email or part; omit=all" (+40 per schema) on mail_list_messages/mail_organize measured
+//   mail-assistant 3607 (limit +40 = 3640); mail-triage 1878, unrouted Gmail added 910 (limits unchanged).
+const LIMITS = { unrouted_offline: 4360, 'mail-assistant': 3640, unrouted_offline_reminders: 5900, reminders: 2250,
   'mail-triage': 1880, unrouted_gmail_added: 920, 'file-assistant': 2330, unrouted_files_added: 1290,
   vault: 2850, unrouted_vault_added: 1180, updates: 1800, updates_pending_added: 630, memory_tools_added: 760 } as const;
 

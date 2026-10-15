@@ -265,6 +265,20 @@ test('harness runs Mail tools with mail_read=allow, wraps output as untrusted da
   } finally { await h.cleanup(); }
 });
 
+test('harness: a named account reaches mail_list_messages as `account`; omitted lists every account', async () => {
+  const boxes = { 'work@example.invalid': [synthetic(1)], 'home@example.invalid': [synthetic(2, { id: 'h2' })] };
+  const h = await harness([call('mail_list_messages', { account: 'home' }), call('mail_list_messages', {}), fauxAssistantMessage('done')],
+    { permission: 'allow', mail: fakeMail({ boxes }) });
+  try {
+    const hint = JSON.stringify(h.session.getToolDefinition('mail_list_messages')?.parameters);
+    await h.session.prompt('home hesabımdaki mailleri listele, sonra hepsini');
+    assert.match(hint, /"account":\{[^}]*"description":"email or part; omit=all"/);
+    assert.deepEqual(h.results().map(r => r.isError), [false, false]);
+    const searched = h.mail.calls.filter(c => c.op === 'search').map(c => c.account);
+    assert.deepEqual(searched, ['home@example.invalid', 'work@example.invalid', 'home@example.invalid']);
+  } finally { await h.cleanup(); }
+});
+
 for (const permission of [undefined, 'deny'] as const) {
   test(`harness blocks Mail tools before execution when permission is ${permission ?? 'missing'}`, async () => {
     const h = await harness([call('mail_list_messages', {}), fauxAssistantMessage('blocked')], { permission });

@@ -1,4 +1,5 @@
 import { Type, type Static } from 'typebox';
+import { ACCOUNT_HINT } from '../mail/schemas.ts';
 
 /** One model-facing tool, kept tiny: its schema is sent with every request that enables it. */
 export const OrganizeParams = Type.Object({
@@ -8,7 +9,7 @@ export const OrganizeParams = Type.Object({
   confirm_token: Type.Optional(Type.String()),
   query: Type.Optional(Type.String()),
   act: Type.Optional(Type.String()),
-  account: Type.Optional(Type.String())
+  account: Type.Optional(Type.String({ description: ACCOUNT_HINT }))
 }, { additionalProperties: false });
 export type OrganizeInput = Static<typeof OrganizeParams>;
 

@@ -1,5 +1,8 @@
 import { Type, type Static } from 'typebox';
 
+/** Same short `account` hint on every mail tool that takes one (mail_organize too). */
+export const ACCOUNT_HINT = 'email or part; omit=all';
+
 /** Model-facing inputs. The model never picks a mailbox (always the inbox); `account` only filters among the connected Gmail accounts. */
 export const ListParams = Type.Object({
   received_after: Type.Optional(Type.String({ minLength: 10, maxLength: 40, description: 'ISO-8601 date; default 7 days, older clamped to 30' })),
@@ -9,7 +12,7 @@ export const ListParams = Type.Object({
   sender_contains: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
   subject_contains: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 25 })),
-  account: Type.Optional(Type.String({ minLength: 1, maxLength: 200 }))
+  account: Type.Optional(Type.String({ minLength: 1, maxLength: 200, description: ACCOUNT_HINT }))
 }, { additionalProperties: false });
 export type ListInput = Static<typeof ListParams>;
 
