@@ -5,15 +5,13 @@ import type { Orchestrator } from './orchestrator.ts';
 import { NoSpeechError } from './speech.ts';
 import { activity, observeRequest } from './activity.ts';
 import { root } from './config.ts';
-import { collectStatus, connectGmail, createExtension, createSkill, deleteMemory, deleteResource, memoryStatus, saveMemoryItem, saveMemorySettings, disconnectGmail, filesStatus, gmailActions, gmailStatus, listMailAccounts, listResources,
-  readResource, saveFiles, saveGmail, saveMailAccounts, saveReminders, saveVault, undoGmail, unlockVault, vaultStatus, writeResource } from './admin.ts';
+import { collectStatus, connectGmail, createExtension, createSkill, deleteMemory, deleteResource, memoryStatus, saveMemoryItem, saveMemorySettings, disconnectGmail, filesStatus, gmailActions, gmailStatus, listResources,
+  readResource, saveFiles, saveGmail, saveReminders, saveVault, undoGmail, unlockVault, vaultStatus, writeResource } from './admin.ts';
 import { registerSecretSpeaker, registeredSecretSpeaker, VaultError, vaultService, type SecretSpeaker, type VaultService } from './vault.ts';
 import { fileService, type FileService } from './files.ts';
 import { readPronunciations, savePronunciations } from './pronounce.ts';
 import { gmailService, type GmailService } from '../.pi/extensions/gmail/service.ts';
 import { GmailError } from '../.pi/extensions/gmail/schemas.ts';
-import type { MailTransport } from '../.pi/extensions/macos-mail/client.ts';
-import { defaultMailTransport } from '../.pi/extensions/macos-mail/mail-db.ts';
 import path from 'node:path';
 import { homedir } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -63,7 +61,7 @@ export function closeServer(server: Server, graceMs = 1000): Promise<void> {
 
 export async function makeServer(config: Config, app: Orchestrator, lifecycle: AbortSignal, activityFile: string | null = path.join(root, 'data/activity.log'), resourceRoot = root,
   trashDirs = [path.join(homedir(), '.Trash'), path.join(resourceRoot, 'data/trash')],
-  mail: { configPath?: string; transport?: MailTransport; gmail?: GmailService; files?: FileService; vault?: VaultService } = {}, tasks?: TaskOptions, updateOptions?: UpdateOptions) {
+  mail: { configPath?: string; gmail?: GmailService; files?: FileService; vault?: VaultService } = {}, tasks?: TaskOptions, updateOptions?: UpdateOptions) {
   const vault = mail.vault ?? vaultService(config);
   const gmail = mail.gmail ?? gmailService(root);
   const files = mail.files ?? fileService(config);
@@ -198,8 +196,6 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         if (request.url === '/admin/create-skill') return reply(200, await createSkill(resourceRoot, value.name, value.description));
         if (request.url === '/admin/delete') return reply(200, await deleteResource(resourceRoot, value.kind, value.name, trashDirs));
         if (request.url === '/admin/create-extension') return reply(200, await createExtension(resourceRoot, value.name));
-        if (request.url === '/admin/mail/accounts') return reply(200, await listMailAccounts(config, mail.transport ?? defaultMailTransport()));
-        if (request.url === '/admin/mail/save') return reply(200, await saveMailAccounts(config, configPath, (data as { accounts?: unknown }).accounts));
         if (request.url === '/admin/reminders') return reply(200, { enabled: config.reminders_enabled, tasks_enabled: config.tasks_enabled, tasks_list: config.tasks_list });
         if (request.url === '/admin/reminders/save') return reply(200, await saveReminders(config, configPath, data));
         if (request.url === '/admin/gmail') return reply(200, await gmailStatus(config, gmail));

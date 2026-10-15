@@ -69,9 +69,10 @@ async function measure(skill: 'mail-assistant' | 'reminders' | 'mail-triage' | '
 }
 
 test('only request-relevant tools are sent to the model', () => {
-  assert.deepEqual(harnessTools(undefined, true), ['read', 'mail_list_messages', 'mail_read_message']);
+  assert.deepEqual(harnessTools(undefined, true), ['read']);
   assert.deepEqual(harnessTools(undefined, false), ['read', 'web_search', 'web_read', 'mail_list_messages', 'mail_read_message']);
-  assert.deepEqual(harnessTools('mail-assistant', true), ['mail_list_messages', 'mail_read_message']);
+  assert.deepEqual(harnessTools('mail-assistant', false), ['mail_list_messages', 'mail_read_message']);
+  assert.deepEqual(harnessTools('mail-assistant', true), []);
   assert.deepEqual(harnessTools('skill-manager', false), ['read', 'write', 'edit', 'test_skill']);
   assert.ok(!harnessTools('online-search', false).includes('write'));
   assert.deepEqual(harnessTools('online-search', true), []);
@@ -79,7 +80,7 @@ test('only request-relevant tools are sent to the model', () => {
 
 test('offline unrouted request stays within the context budget', async () => {
   const result = await measure(undefined, true);
-  assert.deepEqual(result.names.sort(), ['mail_list_messages', 'mail_read_message', 'read']);
+  assert.deepEqual(result.names.sort(), ['read']); // Gmail mail tools need the network.
   assert.ok(result.chars <= LIMITS.unrouted_offline, `${result.chars} chars`);
 });
 
@@ -90,7 +91,7 @@ test('mail-assistant request stays within the context budget', async () => {
 
 test('Reminders adds one compact tool only when enabled', async () => {
   const unrouted = await measure(undefined, true, true);
-  assert.deepEqual(unrouted.names.sort(), ['mail_list_messages', 'mail_read_message', 'read', 'reminders']);
+  assert.deepEqual(unrouted.names.sort(), ['read', 'reminders']);
   assert.ok(unrouted.chars <= LIMITS.unrouted_offline_reminders, `${unrouted.chars} chars`);
   const routed = await measure('reminders', false, true);
   assert.deepEqual(routed.names, ['reminders']);

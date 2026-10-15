@@ -34,7 +34,7 @@ const info = {
   PAInstallPath: path.resolve(app),
   LSMinimumSystemVersion: '14.0', LSUIElement: true, NSHighResolutionCapable: true,
   NSMicrophoneUsageDescription: 'Ayhan records your voice while you hold Control and Option. Audio is transcribed locally on this Mac.',
-  NSAppleEventsUsageDescription: 'Ayhan reads messages already available in Apple Mail only when you ask it to search, summarize, or classify email. It does not send or modify messages.'
+  NSAppleEventsUsageDescription: 'Ayhan uses Reminders and notifications only when you ask it to.'
 };
 const plist = path.join(staging, 'Contents/Info.plist'); await writeFile(plist, JSON.stringify(info));
 const packaging = spawnSync('/usr/bin/plutil', ['-convert', 'xml1', plist], { stdio: 'inherit' });

@@ -9,16 +9,15 @@ import { FileCredentials } from './credentials.ts';
 import { permissionsExtension } from '../.pi/extensions/permissions.ts';
 import { activity } from './activity.ts';
 import { requestWorkflow } from '../.pi/extensions/request-workflow.ts';
-import { macosMail } from '../.pi/extensions/macos-mail/index.ts';
-import type { MailTransport } from '../.pi/extensions/macos-mail/client.ts';
-import { MAIL_TOOL_NAMES } from '../.pi/extensions/macos-mail/schemas.ts';
+import { mailReader } from '../.pi/extensions/mail/index.ts';
+import { MAIL_TOOL_NAMES } from '../.pi/extensions/mail/schemas.ts';
 import { appleReminders } from '../.pi/extensions/apple-reminders/index.ts';
 import type { RemindersTransport } from '../.pi/extensions/apple-reminders/client.ts';
 import { ConfirmationStore, confirmations, newTurn } from '../.pi/extensions/apple-reminders/confirmations.ts';
 import { REMINDERS_TOOL_NAMES } from '../.pi/extensions/apple-reminders/schemas.ts';
 import { gmailOrganize } from '../.pi/extensions/gmail/index.ts';
 import { GMAIL_TOOL_NAMES } from '../.pi/extensions/gmail/schemas.ts';
-import { gmailService, type GmailService } from '../.pi/extensions/gmail/service.ts';
+import { gmailService, type GmailService, type Mailboxes } from '../.pi/extensions/gmail/service.ts';
 import { TriageMemory, triageMemory } from '../.pi/extensions/gmail/triage.ts';
 import type { ClassifyModel } from '../.pi/extensions/gmail/classify.ts';
 import { osascriptTransport } from '../.pi/extensions/apple-reminders/client.ts';
@@ -44,7 +43,8 @@ const SKILL_TOOLS: Record<HarnessSkill, readonly string[]> = {
   updates: UPDATE_TOOL_NAMES
 };
 /** Context budget: only the tools a request can use are sent to the model (local and remote). */
-/** `organize`: Gmail connected and "Mail düzenleme" on; Gmail needs the network, so never offline. A mail request routed
+/** Mail reading (Gmail) needs the network: no mail tools offline.
+ * `organize`: Gmail connected and "Mail düzenleme" on; Gmail needs the network, so never offline. A mail request routed
  * to the read-only skill may still ask for a change ("delete these"), so mail-assistant gets mail_organize too. */
 /** `files`: the local file index is on (Admin) and the request runs on the local model (see `filesReady`); offline too. */
 /** `vault`: Bitwarden on, unlocked and the request runs on the local model (see `vaultReady`); never remote. */
@@ -55,10 +55,10 @@ export function harnessTools(skill: HarnessSkill | undefined, offline: boolean, 
   if (skill === 'vault') return vault ? [...VAULT_TOOL_NAMES] : [];
   if (skill === 'file-assistant') return files ? [...FILE_TOOL_NAMES] : [];
   if (skill === 'mail-triage') return [...gmail];
-  if (skill === 'mail-assistant') return [...MAIL_TOOL_NAMES, ...gmail];
+  if (skill === 'mail-assistant') return offline ? [] : [...MAIL_TOOL_NAMES, ...gmail];
   if (skill) return SKILL_TOOLS[skill].filter(tool => !offline || !SKILL_TOOLS['online-search'].includes(tool));
-  // Unrouted request: `read` loads a matching skill; offline local Gemma routes email/reminders itself.
-  return ['read', ...(offline ? [] : ['web_search', 'web_read']), ...MAIL_TOOL_NAMES, ...(reminders ? REMINDERS_TOOL_NAMES : []), ...gmail,
+  // Unrouted request: `read` loads a matching skill; offline local Gemma routes reminders itself.
+  return ['read', ...(offline ? [] : ['web_search', 'web_read', ...MAIL_TOOL_NAMES]), ...(reminders ? REMINDERS_TOOL_NAMES : []), ...gmail,
     ...(files ? FILE_TOOL_NAMES : []), ...(vault ? VAULT_TOOL_NAMES : [])];
 }
 
@@ -101,7 +101,7 @@ function localTime(date = new Date()): string {
 export async function createHarnessSession(options: {
   root: string; config: Config; context: Context; model: Model<any>; runtime: ModelRuntime;
   offline: boolean; skill?: HarnessSkill; briefNews?: boolean; extensionPaths?: string[]; extensionFactories?: ExtensionFactory[];
-  mailTransport?: MailTransport; turn?: number; remindersTransport?: RemindersTransport; remindersStore?: ConfirmationStore;
+  mailboxes?: Mailboxes; turn?: number; remindersTransport?: RemindersTransport; remindersStore?: ConfirmationStore;
   automated?: boolean; gmail?: GmailService; gmailMemory?: TriageMemory; notify?: Notify; files?: FileService; filesMemory?: FilesMemory;
   vault?: VaultService; vaultStore?: ConfirmationStore; speakSecret?: SecretSpeaker; updates?: UpdateService | null; updatesStore?: ConfirmationStore;
   /** `memoryTools`: the request asked to remember/forget (orchestrator `memoryRequest`); a task never gets them. */
@@ -111,7 +111,7 @@ export async function createHarnessSession(options: {
     compaction: { enabled: false }, cacheWarming: 'off' });
   const directory = path.join(options.root, '.pi/extensions');
   const paths = options.extensionPaths ?? (await readdir(directory, { withFileTypes: true }))
-    .filter(entry => !['permissions.ts', 'request-workflow.ts', 'macos-mail', 'apple-reminders', 'gmail', 'files', 'vault', 'updates', 'memory'].includes(entry.name) && (entry.isDirectory() || /\.(ts|js)$/.test(entry.name)))
+    .filter(entry => !['permissions.ts', 'request-workflow.ts', 'mail', 'apple-reminders', 'gmail', 'files', 'vault', 'updates', 'memory'].includes(entry.name) && (entry.isDirectory() || /\.(ts|js)$/.test(entry.name)))
     .map(entry => path.join(directory, entry.name));
   const reminders = options.config.reminders_enabled, turn = options.turn ?? newTurn();
   const automated = options.automated === true;
@@ -166,7 +166,7 @@ export async function createHarnessSession(options: {
       'If a tool fails or is unavailable, say so; never pretend it was done, saved or remembered. ' +
       (tools.includes('write') ? 'Write only inside .pi/skills; extensions and permissions are read-only. ' : '') +
       (tools.includes('web_search') ? 'Cite retrieved source URLs. ' : '') +
-      `Date: ${new Date().toISOString().slice(0, 10)}.` + (options.offline ? ' Offline: no web access.' : '') +
+      `Date: ${new Date().toISOString().slice(0, 10)}.` + (options.offline ? ' Offline: no web or mail (Gmail) access.' : '') +
       (tools.includes('reminders') ? ` Local time: ${localTime()}.` : '') +
       (tools.includes('mail_organize') ? ' Report only what mail_organize returned.' : '') +
       (vaultBlocked ? vaultNote(options.config, options.model, vault) : '') +
@@ -178,7 +178,7 @@ export async function createHarnessSession(options: {
       (pending ? ` Pending reminder deletion ${JSON.stringify(pending.title)}: if this message confirms, call reminders delete with confirm_token ${pending.token}; otherwise do not delete.` : '')
     ],
     extensionFactories: [...(options.extensionFactories || []),
-      macosMail({ settings: options.config, ...(options.mailTransport ? { transport: options.mailTransport } : {}) }),
+      mailReader({ settings: options.config, mailboxes: options.mailboxes ?? gmail }),
       appleReminders({ settings: options.config, turn, store, ...(options.remindersTransport ? { transport: options.remindersTransport } : {}) }), gmailOrganize({ enabled: organize, settings: options.config, service: gmail, turn, automated,
         memory, model: classifyModel(options.runtime, options.model, options.model.provider === 'local-gemma', options.config.max_tokens),
         notify: options.notify ?? osascriptNotify, reminders: options.remindersTransport ?? osascriptTransport() }),

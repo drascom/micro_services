@@ -3,11 +3,10 @@ import { lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rename, rm, s
 import lockfile from 'proper-lockfile';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { loadConfig, validateMailAccounts, validateUrgentSenders, type Config, type MailAccount } from './config.ts';
+import { loadConfig, validateUrgentSenders, type Config } from './config.ts';
 import type { MemoryService } from './memory.ts';
 import type { GmailService } from '../.pi/extensions/gmail/service.ts';
 import { lastPlan, MailTriage, triageMemory } from '../.pi/extensions/gmail/triage.ts';
-import { MailError, mailAppAccounts, type MailTransport } from '../.pi/extensions/macos-mail/client.ts';
 import type { Orchestrator } from './orchestrator.ts';
 import { FileCredentials } from './credentials.ts';
 import { liveRequests, recentActivity } from './activity.ts';
@@ -60,7 +59,7 @@ export type ResourceKind = 'skill' | 'extension';
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
 const MAX_FILE = 256 * 1024;
-const FACTORY = new Set(['permissions.ts', 'request-workflow.ts', 'macos-mail', 'apple-reminders', 'gmail', 'files', 'vault', 'updates']);
+const FACTORY = new Set(['permissions.ts', 'request-workflow.ts', 'mail', 'apple-reminders', 'gmail', 'files', 'vault', 'updates']);
 
 function base(root: string, kind: unknown): string {
   if (kind !== 'skill' && kind !== 'extension') throw Error('Invalid resource kind');
@@ -218,14 +217,6 @@ export async function createExtension(root: string, name: unknown) {
   return { ok: true, path: `${name}.ts`, note: 'Created.' };
 }
 
-/** Configured accounts plus the names Mail.app knows (null + error code when Mail cannot be asked). */
-export async function listMailAccounts(config: Config, transport: MailTransport) {
-  let available: string[] | null = null, available_error: string | undefined;
-  try { available = await mailAppAccounts(transport, AbortSignal.timeout(15000)); }
-  catch (error) { available_error = error instanceof MailError ? error.code : 'mail_unavailable'; }
-  return { accounts: config.mail_accounts, available, ...(available_error ? { available_error } : {}) };
-}
-
 /** Changes config.json under a lock and atomically; the whole file must still load. Other settings are kept. */
 async function updateConfigFile(configPath: string, change: (settings: Record<string, unknown>) => void) {
   const release = await lockfile.lock(configPath, { realpath: false, stale: 10000, retries: { retries: 20, minTimeout: 50, maxTimeout: 250 } });
@@ -238,6 +229,7 @@ async function updateConfigFile(configPath: string, change: (settings: Record<st
       if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw Error('config.json must contain an object');
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     change(settings);
+    for (const key of ['mail_accounts', 'mail_enabled', 'mail_account', 'mail_mailbox']) delete settings[key]; // Removed Apple Mail reader.
     const temporary = `${configPath}.${process.pid}.admin.tmp`;
     try {
       await writeFile(temporary, JSON.stringify(settings, null, 2) + '\n', { mode });
@@ -245,17 +237,6 @@ async function updateConfigFile(configPath: string, change: (settings: Record<st
       await rename(temporary, configPath);
     } catch (error) { await rm(temporary, { force: true }); throw error; }
   } finally { await release(); }
-}
-
-/** Replaces mail_accounts in config.json (locked, validated, atomic); other settings are kept as they are. */
-export async function saveMailAccounts(config: Config, configPath: string, value: unknown) {
-  const accounts = validateMailAccounts(value);
-  await updateConfigFile(configPath, settings => {
-    for (const key of ['mail_enabled', 'mail_account', 'mail_mailbox']) delete settings[key];
-    settings.mail_accounts = accounts;
-  });
-  config.mail_accounts = accounts; // Shared config object: the next Mail tool call sees the change.
-  return { ok: true, accounts: accounts as readonly MailAccount[] };
 }
 
 /**
@@ -344,7 +325,7 @@ export async function saveGmail(config: Config, configPath: string, service: Gma
 /** Adds an account (or renews one): starts the browser consent for any Google account; the Mac app opens `auth_url`. */
 export async function connectGmail(service: GmailService) {
   const { auth_url, done } = await service.auth.connect();
-  done.then(() => service.forgetLabels(), () => {});
+  done.then(email => { service.forgetLabels(); return service.ensureLabels(email); }).catch(() => {});
   return { auth_url };
 }
 

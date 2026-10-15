@@ -12,7 +12,7 @@ Pi separates these responsibilities:
 
 The new adapter creates an ephemeral Pi session per request, imports the orchestrator's bounded visible history through `SessionManager`, and disposes it on completion/cancellation. Pi owns all tool execution inside the request. The existing orchestrator retains voice, provider fallback, cancellation, and bounded conversation history. Tool results/private reasoning are not retained between requests.
 
-Only reviewed app-owned extensions and skills are loaded. The permission extension permits approved tools and restricts the built-in `read` tool to all app-owned skill and extension files. Pi built-in `write` and `edit` are enabled only inside `.pi/skills/`, as authorized by the user. Shell execution, extension mutation and permission-file writes remain unavailable. `.pi/permissions.json` is local user configuration, not something the model can edit. Currently web search, reading public pages, read-only Apple Mail (`mail_read`) Apple Reminders (`reminders`, full access; missing entry = allowed, delete confirmed in the next user turn) and Gmail triage (`mail_organize`, apply/purge confirmed in the next user turn, tasks propose only, 3 calls per request) are approved; future abilities and every undefined `mail_*` tool default to denied. Offline mode denies all network abilities; the local Mail tools stay available. There is no second permissions engine in the native app.
+Only reviewed app-owned extensions and skills are loaded. The permission extension permits approved tools and restricts the built-in `read` tool to all app-owned skill and extension files. Pi built-in `write` and `edit` are enabled only inside `.pi/skills/`, as authorized by the user. Shell execution, extension mutation and permission-file writes remain unavailable. `.pi/permissions.json` is local user configuration, not something the model can edit. Currently web search, reading public pages, read-only Gmail mail (`mail_read`), Apple Reminders (`reminders`, full access; missing entry = allowed, delete confirmed in the next user turn) and Gmail triage (`mail_organize`, apply/purge confirmed in the next user turn, tasks propose only, 3 calls per request) are approved; future abilities and every undefined `mail_*` tool default to denied. Offline mode denies all network abilities, Gmail mail tools included. There is no second permissions engine in the native app.
 
 Online search uses a Pi extension with `web_search` and `web_read` plus an online-search skill. Search queries are sent to DuckDuckGo's public HTML search, without an extra API key. HTML scraping can be throttled or challenged; errors are surfaced and no results are invented. Web reads use public HTTPS URLs, bounded responses, redirect checks and public-IP validation. No authenticated browser, mailbox, unrestricted filesystem browsing or sending capability is granted.
 
@@ -35,12 +35,11 @@ trusted code, so reviewing executable extension changes remains necessary.
 Public web reads support HTML only (not PDFs, authenticated sites, or pages
 requiring JavaScript). The first tool set permits at most 12 tool calls per
 request, 15 seconds per web request, 3 redirects and 1 MiB per HTML response.
-Mail tools allow at most 2 listings and 5 body reads per request inside the same
-12-call limit, 12 seconds per Mail bridge call, 256 KiB bridge output, 64 KiB per
-tool result and 40,000 body characters per request. Mail results carry an
-"Untrusted local email data" header; activity logs keep only tool name, decision,
-duration, result count, truncation and error code. Mail data comes from Mail's local store
-(read-only, needs Full Disk Access) with the JXA bridge as fallback.
+Mail tools allow at most 3 listings and 5 body reads per request inside the same
+12-call limit, 64 KiB per tool result and 40,000 body characters per request. Mail
+results carry an "Untrusted email data" header; activity logs keep only tool name,
+decision, duration, result count, truncation and error code. Mail data comes from the
+connected Gmail accounts (Gmail API, online only).
 Local model tool quality is model-dependent. There is no interactive permission
 dialog bridge yet; new/unapproved operations are blocked rather than prompting
 through a separate app system. Native macOS microphone/Documents permissions

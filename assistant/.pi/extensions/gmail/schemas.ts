@@ -2,7 +2,8 @@ import { Type, type Static } from 'typebox';
 
 /** One model-facing tool, kept tiny: its schema is sent with every request that enables it. */
 export const OrganizeParams = Type.Object({
-  action: Type.Enum(['propose', 'apply', 'purge_junk', 'undo']),
+  // A string, not an enum: small local models often put the act here ("trash"); index.ts maps that to propose + act.
+  action: Type.String(),
   // Lengths are enforced in code (triage.ts) to keep this schema small; `account` omitted = every connected account.
   confirm_token: Type.Optional(Type.String()),
   query: Type.Optional(Type.String()),
@@ -16,7 +17,7 @@ export const GMAIL_TOOL_NAMES = ['mail_organize'] as const;
 export const LEVELS = ['urgent', 'important', 'later', 'junk'] as const;
 export type Level = typeof LEVELS[number];
 
-/** User-created labels the actions need; the app never creates labels. */
+/** Labels the actions need; Admin creates missing ones when an account connects (triage itself never creates labels). */
 export const LATER_LABEL = 'Sonra Oku', JUNK_LABEL = 'Gereksiz';
 
 /** Case (Turkish dotted/dotless i too), spacing and Unicode-normalization insensitive label name. */
@@ -42,8 +43,8 @@ export type GmailErrorCode = typeof GMAIL_ERROR_CODES[number];
 
 /** Generic messages only: never mail text, tokens or server bodies. */
 const MESSAGES: Record<GmailErrorCode, string> = {
-  gmail_not_connected: 'Gmail is not connected. The user connects it in Admin > Settings > Gmail.',
-  gmail_auth_expired: 'Gmail access expired or was revoked. The user must reconnect in Admin > Settings > Gmail. Do not retry.',
+  gmail_not_connected: 'Gmail is not connected. The user connects it in Admin > Mail.',
+  gmail_auth_expired: 'Gmail access expired or was revoked. The user must reconnect in Admin > Mail. Do not retry.',
   gmail_rate_limited: 'Gmail rate limit reached. Try again later; do not retry now.',
   gmail_unavailable: 'Gmail did not respond. Try again later.',
   gmail_not_configured: 'Gmail OAuth client ID/secret are missing in Admin.',

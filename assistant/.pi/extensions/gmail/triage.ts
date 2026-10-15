@@ -263,7 +263,7 @@ export class MailTriage {
     const missing = Object.fromEntries(ok.flatMap(({ account, value }) => 'missing' in value ? [[account, [value.missing!]]] : []));
     const parts = ok.flatMap(({ account, value }) => value.spec && value.metas.length ? [{ account, value }] : []);
     if (Object.keys(missing).length === ok.length)
-      return { status: 'label_missing', missing_labels: Object.values(missing)[0], note: 'Labels are never created; the user creates it in Gmail.', ...failed };
+      return { status: 'label_missing', missing_labels: Object.values(missing)[0], note: 'Label missing; reconnecting the account in Admin > Mail creates it.', ...failed };
     if (!parts.length) return { status: 'empty', note: 'No matching mail.', ...failed };
     const spec = parts[0].value.spec!;
     const plan: Plan = { kind: 'act', act: act.trim(), trash: spec.trash,

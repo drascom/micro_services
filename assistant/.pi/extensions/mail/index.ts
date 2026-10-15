@@ -1,25 +1,25 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
-import { loadConfig } from '../../../src/config.ts';
-import { MailClient, MailError, untrustedText, type MailSettings, type MailTransport } from './client.ts';
-import { defaultMailTransport } from './mail-db.ts';
+import { loadConfig, root } from '../../../src/config.ts';
+import { MailClient, mailError, untrustedText, type MailSettings } from './client.ts';
+import { gmailService, type Mailboxes } from '../gmail/service.ts';
 import { ListParams, ReadParams } from './schemas.ts';
 
 type Details = { error_code?: string; result_count?: number; truncated?: boolean };
 
 function failure(error: unknown) {
-  const mail = error instanceof MailError ? error : new MailError('invalid_response');
+  const mail = mailError(error);
   return { content: [{ type: 'text' as const, text: JSON.stringify({ error: mail.code, message: mail.message }) }],
     details: { error_code: mail.code } as Details, isError: true };
 }
 
-/** Read-only Apple Mail tools. One factory call = one Pi request: references and budgets do not outlive it. */
-export function macosMail(options: { settings: MailSettings; transport?: MailTransport }) {
+/** Read-only mail tools over the connected Gmail accounts. One factory call = one Pi request: references and budgets do not outlive it. */
+export function mailReader(options: { settings: MailSettings; mailboxes: Mailboxes }) {
   return (pi: ExtensionAPI) => {
-    const client = new MailClient(options.settings, options.transport ?? defaultMailTransport());
+    const client = new MailClient(options.settings, options.mailboxes);
     const annotations = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
     pi.registerTool({
       name: 'mail_list_messages', label: 'List Mail messages', annotations, executionMode: 'sequential',
-      description: 'Read-only: list recent messages, all accounts or one `account` (metadata only, works offline); message_ref is for mail_read_message. ' +
+      description: 'Read-only: list recent messages, inbox of all accounts or one `account` (metadata only); message_ref is for mail_read_message. ' +
         'Classify as acil, yanıt_gerekli, takip, bilgi, dusuk_oncelik from metadata; read a body only if subject/sender is not enough. ' +
         'For today/bugün (also with unread_only) set today_only: true. Reply in the user\'s language.',
       parameters: ListParams,
@@ -45,7 +45,7 @@ export function macosMail(options: { settings: MailSettings; transport?: MailTra
   };
 }
 
-// Standard Pi CLI sessions read the same app config; disabled until an account is active.
+// Standard Pi CLI sessions read the same app config and Gmail accounts; fails closed until an account is connected.
 export default async function (pi: ExtensionAPI) {
-  macosMail({ settings: await loadConfig() })(pi);
+  mailReader({ settings: await loadConfig(), mailboxes: gmailService(root) })(pi);
 }

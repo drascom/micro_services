@@ -9,11 +9,10 @@ import { defaults, type Config } from '../src/config.ts';
 import { Orchestrator } from '../src/orchestrator.ts';
 import { makeServer } from '../src/server.ts';
 import { observeRequest } from '../src/activity.ts';
-import type { MailTransport } from '../.pi/extensions/macos-mail/client.ts';
 
 const skill = (name: string, description = 'Test skill.') => `---\nname: ${name}\ndescription: ${description}\n---\n# ${name}\n`;
 
-async function setup(mailTransport?: MailTransport) {
+async function setup() {
   const directory = await mkdtemp(path.join(tmpdir(), 'ayhan-admin-'));
   await mkdir(path.join(directory, '.pi/skills/demo'), { recursive: true });
   await mkdir(path.join(directory, '.pi/extensions'), { recursive: true });
@@ -28,7 +27,7 @@ async function setup(mailTransport?: MailTransport) {
   const activityFile = path.join(directory, 'activity.log');
   const configPath = path.join(directory, 'config.json');
   const lifecycle = new AbortController(), server = await makeServer(config, app, lifecycle.signal, activityFile, directory, [path.join(directory, 'trash')],
-    { configPath, transport: mailTransport ?? { request: async () => JSON.stringify({ ok: false, error: 'automation_denied' }) } });
+    { configPath });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const address = server.address(); assert.ok(address && typeof address === 'object');
   const base = `http://127.0.0.1:${address.port}`;
@@ -98,14 +97,14 @@ test('admin rejects path traversal, symlinks, unknown kinds and missing files', 
 test('admin deletes skills and extensions into the trash, refusing built-ins, traversal and missing tokens', async () => {
   const f = await setup();
   try {
-    await mkdir(path.join(f.directory, '.pi/extensions/macos-mail'));
+    await mkdir(path.join(f.directory, '.pi/extensions/mail'));
     await writeFile(path.join(f.directory, '.pi/extensions/permissions.ts'), 'export default function p() {}\n');
     assert.equal((await f.call('/admin/delete', { kind: 'skill', name: 'demo' }, 'bad')).status, 403);
     for (const [kind, name] of [['skill', '..'], ['skill', '../extensions'], ['skill', '../../secret.txt'], ['extension', '../skills/demo'],
-      ['skill', ''], ['skill', 'missing'], ['permissions', 'demo'], ['extension', 'macos-mail'], ['extension', 'permissions.ts']]) {
+      ['skill', ''], ['skill', 'missing'], ['permissions', 'demo'], ['extension', 'mail'], ['extension', 'permissions.ts']]) {
       assert.equal((await f.call('/admin/delete', { kind, name })).status, 400, `${kind}:${name}`);
     }
-    assert.match((await f.call('/admin/delete', { kind: 'extension', name: 'macos-mail' })).body.error, /Built-in/);
+    assert.match((await f.call('/admin/delete', { kind: 'extension', name: 'mail' })).body.error, /Built-in/);
     await access(path.join(f.directory, '.pi/extensions/permissions.ts'));
     await access(path.join(f.directory, 'secret.txt'));
     const removed = await f.call('/admin/delete', { kind: 'skill', name: 'demo' });
@@ -121,40 +120,19 @@ test('admin deletes skills and extensions into the trash, refusing built-ins, tr
   } finally { await f.close(); }
 });
 
-test('admin mail accounts: lists Mail.app names, saves a validated list into config.json and keeps other settings', async () => {
-  const requests: unknown[] = [];
-  const f = await setup({ request: async request => { requests.push(request); return JSON.stringify({ ok: true, accounts: ['Work', 'Home', 'bad\u0007'] }); } });
-  try {
-    await writeFile(f.configPath, JSON.stringify({ language: 'tr', local_context: 16384, mail_enabled: true, mail_account: 'Work', mail_mailbox: 'INBOX' }, null, 2));
-    assert.equal((await f.call('/admin/mail/accounts', {}, 'bad')).status, 403);
-    assert.equal((await f.call('/admin/mail/save', { accounts: [] }, 'bad')).status, 403);
-    const listed = await f.call('/admin/mail/accounts');
-    assert.equal(listed.status, 200); assert.deepEqual(listed.body.available, ['Work', 'Home']); assert.deepEqual(listed.body.accounts, []);
-    assert.deepEqual(requests, [{ op: 'accounts' }]);
-    for (const accounts of [undefined, [{ account: '' }], [{ account: 'Work' }, { account: 'Work', mailbox: 'inbox' }], [{ account: 'A', enabled: 'yes' }]])
-      assert.equal((await f.call('/admin/mail/save', { accounts })).status, 400, JSON.stringify(accounts));
-    const accounts = [{ account: 'Work', mailbox: 'INBOX', enabled: true }, { account: 'Home', mailbox: 'INBOX', enabled: false }];
-    const saved = await f.call('/admin/mail/save', { accounts });
-    assert.equal(saved.status, 200); assert.deepEqual(saved.body.accounts, accounts);
-    const file = JSON.parse(await readFile(f.configPath, 'utf8'));
-    assert.deepEqual(file, { language: 'tr', local_context: 16384, mail_accounts: accounts });
-    assert.deepEqual(f.config.mail_accounts, accounts); // Live: the next Mail request uses it.
-    assert.deepEqual((await f.call('/admin/mail/accounts')).body.accounts, accounts);
-    assert.deepEqual(await readdir(f.directory).then(names => names.filter(n => n.includes('config.json'))), ['config.json']);
-  } finally { await f.close(); }
-});
-
-test('admin mail accounts reports a Mail permission error and still saves manual names; invalid config.json is left alone', async () => {
+test('Mail.app routes are gone; old Apple Mail settings in config.json are ignored and dropped on save; invalid config.json is left alone', async () => {
   const f = await setup();
   try {
-    const listed = await f.call('/admin/mail/accounts');
-    assert.equal(listed.body.available, null); assert.equal(listed.body.available_error, 'automation_denied');
-    assert.equal((await f.call('/admin/mail/save', { accounts: [{ account: 'Manual' }] })).status, 200);
-    assert.deepEqual(JSON.parse(await readFile(f.configPath, 'utf8')), { mail_accounts: [{ account: 'Manual', mailbox: 'INBOX', enabled: true }] });
+    assert.equal((await f.call('/admin/mail/accounts')).status, 404);
+    assert.equal((await f.call('/admin/mail/save', { accounts: [] })).status, 404);
+    await writeFile(f.configPath, JSON.stringify({ language: 'tr', mail_accounts: [{ account: 'Work', mailbox: 'INBOX', enabled: true }], mail_enabled: true, mail_account: 'Work' }));
+    assert.equal((await f.call('/admin/reminders/save', { enabled: true })).status, 200);
+    assert.deepEqual(JSON.parse(await readFile(f.configPath, 'utf8')), { language: 'tr', reminders_enabled: true });
     await writeFile(f.configPath, '{"language": "tr", broken');
-    const failed = await f.call('/admin/mail/save', { accounts: [] });
+    const failed = await f.call('/admin/reminders/save', { enabled: false });
     assert.equal(failed.status, 400); assert.ok(!failed.body.error.includes('broken'));
     assert.equal(await readFile(f.configPath, 'utf8'), '{"language": "tr", broken');
+    assert.deepEqual(await readdir(f.directory).then(names => names.filter(n => n.includes('config.json'))), ['config.json']);
   } finally { await f.close(); }
 });
 

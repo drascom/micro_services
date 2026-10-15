@@ -172,7 +172,7 @@ test('reminders skill parses with the harness native parser; config keeps Remind
   assert.deepEqual(result.diagnostics, []); assert.equal(result.skills[0]?.name, 'reminders');
   assert.equal(defaults.reminders_enabled, false);
   assert.ok(!harnessTools(undefined, true).includes('reminders'));
-  assert.deepEqual(harnessTools(undefined, true, true), ['read', 'mail_list_messages', 'mail_read_message', 'reminders']);
+  assert.deepEqual(harnessTools(undefined, true, true), ['read', 'reminders']);
   assert.deepEqual(harnessTools('reminders', false, true), ['reminders']);
 });
 

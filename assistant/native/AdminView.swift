@@ -21,13 +21,6 @@ struct AdminResource: Decodable, Identifiable {
 }
 struct AdminResources: Decodable { let skills: [AdminResource]; let extensions: [AdminResource] }
 
-struct MailAccount: Codable, Identifiable, Equatable {
-    var account: String; var mailbox: String; var enabled: Bool
-    var id: String { account + "\u{1}" + mailbox.lowercased() }
-}
-struct MailAccounts: Decodable { let accounts: [MailAccount]; let available: [String]?; let available_error: String? }
-struct SavedMailAccounts: Decodable { let accounts: [MailAccount] }
-
 struct GmailAccount: Decodable, Identifiable { let email: String; let error: String; let missing_labels: [String]; var id: String { email } }
 struct GmailStatus: Decodable {
     var client_configured = false; var connected = false; var accounts: [GmailAccount] = []; var connecting = false
@@ -86,10 +79,7 @@ final class AdminModel {
     var original = ""
     var message = ""
     var loadError = ""
-    var mailAccounts: [MailAccount] = []
-    var mailAvailable: [String]?
-    var mailAvailableError = ""
-    var mailMessage = ""
+    var remindersMessage = ""
     var remindersEnabled = false
     var tasksEnabled = false
     var tasksList = "Asistan"
@@ -135,7 +125,6 @@ final class AdminModel {
             }
         }
         Task { await loadResources() }
-        Task { await loadMailAccounts() }
         Task { await loadReminders() }
         Task { await loadGmail(); await loadImportance(); await loadGmailActions() }
         Task { await loadPronunciations() }
@@ -215,31 +204,6 @@ final class AdminModel {
             message = ((try JSONSerialization.jsonObject(with: data) as? [String: Any])?["note"] as? String) ?? "Silindi / Deleted"
         } catch { message = error.localizedDescription }
     }
-    func loadMailAccounts() async {
-        do {
-            let value = try JSONDecoder().decode(MailAccounts.self, from: try await backend.admin("admin/mail/accounts"))
-            mailAccounts = value.accounts; mailAvailable = value.available
-            mailAvailableError = switch value.available_error {
-            case nil: ""
-            case "automation_denied": "Mail için Otomasyon izni yok (Sistem Ayarları > Gizlilik ve Güvenlik > Otomasyon) / No Automation permission for Mail"
-            case "mail_unavailable": "Mail açık değil / Mail is not running"
-            default: "Mail hesapları okunamadı / Could not read Mail accounts"
-            }
-            mailMessage = ""
-        } catch { mailMessage = error.localizedDescription }
-    }
-    /// Saves the whole list; on failure the list is reloaded from the backend.
-    func saveMailAccounts(_ accounts: [MailAccount]) async {
-        do {
-            let list = accounts.map { ["account": $0.account, "mailbox": $0.mailbox, "enabled": $0.enabled] as [String: Any] }
-            let data = try await backend.admin("admin/mail/save", json: ["accounts": list])
-            mailAccounts = try JSONDecoder().decode(SavedMailAccounts.self, from: data).accounts
-            mailMessage = ""
-        } catch {
-            let text = error.localizedDescription
-            await loadMailAccounts(); mailMessage = text
-        }
-    }
     private func applyReminders(_ data: Data) {
         guard let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         if let on = value["enabled"] as? Bool { remindersEnabled = on }
@@ -256,9 +220,9 @@ final class AdminModel {
     private func saveReminders(_ body: [String: Any]) async {
         do {
             let json = try JSONSerialization.data(withJSONObject: body)
-            applyReminders(try await backend.admin("admin/reminders/save", data: json)); mailMessage = ""
+            applyReminders(try await backend.admin("admin/reminders/save", data: json)); remindersMessage = ""
         }
-        catch { await loadReminders(); mailMessage = error.localizedDescription }
+        catch { await loadReminders(); remindersMessage = error.localizedDescription }
     }
     // MARK: Gmail (OAuth client in Keychain via the backend; the backend never returns secrets)
     private func applyGmail(_ data: Data) {
@@ -732,7 +696,6 @@ private struct ActivityTab: View {
 private struct SettingsTab: View {
     @Bindable var admin: AdminModel
     @Bindable var ring: RingModel
-    @State private var removing: MailAccount?
     var body: some View {
         Form {
             Section("Etkileşim / Interaction") {
@@ -757,9 +720,9 @@ private struct SettingsTab: View {
                 TextField("Görev listesi / Task list", text: $admin.tasksList)
                     .onSubmit { Task { await admin.setTasksList(admin.tasksList) } }
                     .disabled(!admin.remindersEnabled || !admin.tasksEnabled)
+                if !admin.remindersMessage.isEmpty { Text(admin.remindersMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
             }
-            MailAccountsSection(admin: admin, removing: $removing)
-            GmailSection(admin: admin)
+            MailSection(admin: admin)
             Section("Dosyalar / Files") {
                 Toggle("Dosya arama / File search", isOn: Binding(get: { admin.files.enabled }, set: { on in Task { await admin.setFiles(on) } }))
                 TextEditor(text: $admin.fileRoots).font(.system(.body, design: .monospaced)).frame(minHeight: 60)
@@ -804,90 +767,15 @@ private struct SettingsTab: View {
                 Button("Yeniden başlat / Restart Ayhan") { admin.actions.restart() }
             }
         }.formStyle(.grouped)
-        .confirmationDialog("\(removing?.account ?? "") kaldırılsın mı? / Remove?",
-                            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
-            Button("Kaldır / Remove", role: .destructive) {
-                if let account = removing { Task { await admin.saveMailAccounts(admin.mailAccounts.filter { $0.id != account.id }) } }
-                removing = nil
-            }
-            Button("İptal / Cancel", role: .cancel) { removing = nil }
-        }
     }
 }
 
-/// Mail accounts the read-only Mail tools may use. Toggle and remove save immediately.
-private struct MailAccountsSection: View {
-    @Bindable var admin: AdminModel
-    @Binding var removing: MailAccount?
-    private static let manual = "\u{0}manual"
-    private static let buttonWidth: CGFloat = 110
-    @State private var choice = ""
-    @State private var manualName = ""
-    @State private var mailbox = ""
-    private var choices: [String] {
-        let added = Set(admin.mailAccounts.map(\.account))
-        return (admin.mailAvailable ?? []).filter { !added.contains($0) }
-    }
-    private var name: String {
-        (choice == Self.manual || admin.mailAvailable == nil ? manualName : choice).trimmingCharacters(in: .whitespaces)
-    }
-    private var box: String { mailbox.trimmingCharacters(in: .whitespaces).isEmpty ? "INBOX" : mailbox.trimmingCharacters(in: .whitespaces) }
-    private var canAdd: Bool {
-        !name.isEmpty && admin.mailAccounts.count < 10 && !admin.mailAccounts.contains { $0.account == name && $0.mailbox.lowercased() == box.lowercased() }
-    }
-
-    var body: some View {
-        Section("Mail hesapları / Mail accounts") {
-            ForEach(admin.mailAccounts) { account in
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(account.account).lineLimit(1).truncationMode(.middle)
-                        Text(account.mailbox).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    }
-                    Spacer(minLength: 8)
-                    Toggle("Aktif / Active", isOn: Binding(get: { account.enabled }, set: { on in
-                        let list = admin.mailAccounts.map { $0.id == account.id ? MailAccount(account: $0.account, mailbox: $0.mailbox, enabled: on) : $0 }
-                        admin.mailAccounts = list
-                        Task { await admin.saveMailAccounts(list) }
-                    })).labelsHidden().toggleStyle(.switch)
-                    Button(role: .destructive) { removing = account } label: {
-                        Text("Kaldır / Remove").frame(width: Self.buttonWidth)
-                    }
-                }
-            }
-            HStack(spacing: 8) {
-                if admin.mailAvailable != nil {
-                    Picker("Hesap / Account", selection: $choice) {
-                        Text("Hesap seç / Choose account").tag("")
-                        ForEach(choices, id: \.self) { Text($0).tag($0) }
-                        Text("Elle gir / Enter manually").tag(Self.manual)
-                    }.labelsHidden().frame(minWidth: 140, maxWidth: 220)
-                }
-                if admin.mailAvailable == nil || choice == Self.manual {
-                    TextField("Hesap adı / Account name", text: $manualName).frame(minWidth: 120, maxWidth: 200)
-                }
-                Spacer(minLength: 8)
-                TextField("Mailbox", text: $mailbox, prompt: Text("INBOX")).labelsHidden().frame(width: 100)
-                Button("Ekle / Add") {
-                    let list = admin.mailAccounts + [MailAccount(account: name, mailbox: box, enabled: true)]
-                    choice = ""; manualName = ""; mailbox = ""
-                    Task { await admin.saveMailAccounts(list) }
-                }.disabled(!canAdd)
-                Button { Task { await admin.loadMailAccounts() } } label: {
-                    Text("Yenile / Refresh").frame(width: Self.buttonWidth)
-                }
-            }
-            if !admin.mailAvailableError.isEmpty { Text(admin.mailAvailableError).font(.caption).foregroundStyle(.orange) }
-            if !admin.mailMessage.isEmpty { Text(admin.mailMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
-        }
-    }
-}
-
-/// Gmail connection and triage settings. No explanatory text: fields, buttons and one-line warnings only.
-private struct GmailSection: View {
+/// Mail = the connected Gmail accounts (read tools and organizing), the OAuth client and triage settings.
+/// No explanatory text: fields, buttons and one-line warnings only.
+private struct MailSection: View {
     @Bindable var admin: AdminModel
     var body: some View {
-        Section("Gmail") {
+        Section("Mail") {
             TextField("Client ID", text: $admin.gmailClientId, prompt: Text(admin.gmail.client_configured ? "Kayıtlı / Saved" : ""))
             HStack {
                 SecureField("Client secret", text: $admin.gmailClientSecret)

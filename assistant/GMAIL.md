@@ -1,7 +1,8 @@
 # Gmail triage
 
+`mail_list_messages`/`mail_read_message` read the inbox of every connected account (see README → Mail);
 `mail_organize` sorts new INBOX mail into 🔴 urgent / 🟠 important / ⚪ later / 🗑 junk through the Gmail REST API
-(`.pi/extensions/gmail`, `fetch`, no SDK). Not tied to macOS (Linux-ready); Apple Mail read tools are unchanged.
+(`.pi/extensions/gmail`, `fetch`, no SDK). Not tied to macOS (Linux-ready); there is no Mail.app reader any more.
 
 ## One-time setup
 1. Google Cloud Console → new project → **APIs & Services → Library → Gmail API → Enable**.
@@ -9,8 +10,9 @@
    (In "Testing" status Google expires refresh tokens after 7 days; publish the app — no verification needed for
    personal use with your own account — to avoid weekly reconnects.)
 3. **Credentials → Create credentials → OAuth client ID → Desktop app**. Copy Client ID and Client secret.
-4. In Gmail create two labels: `Sonra Oku` and `Gereksiz` (the app never creates labels; missing → that action is skipped).
-5. Admin → Ayarlar → **Gmail**: paste Client ID + secret → Kaydet (once); **Hesap ekle** → pick any Google account in the
+4. Labels `Sonra Oku` and `Gereksiz` are created automatically when an account connects (and on Admin refresh while missing;
+   `labels.create` under the same `gmail.modify` scope, only creation, never rename/delete). A warning shows only if creation failed.
+5. Admin → Ayarlar → **Mail**: paste Client ID + secret → Kaydet (once); **Hesap ekle** → pick any Google account in the
    browser (loopback redirect to `127.0.0.1:<random port>`, PKCE); repeat per account. Then turn on **Mail düzenleme**.
 6. Optional: urgent senders (`boss@work.com, @council.gov.uk`, `@*.gov.uk` = every subdomain, not gov.uk itself; `*` only as leading `*.` + 2 labels) and the importance text (`data/mail-importance.md`,
    starts from `mail-importance.example.md`).
@@ -27,7 +29,8 @@ Client ID/secret and one refresh token per account (`token-<email>`, list in `ac
   unauthenticated urgent → important.
 - Actions (code, not the model): urgent = STARRED + IMPORTANT, notification and `📧 Cevapla: …` reminder (never run as a
   task); important = STARRED; later/junk = label + remove INBOX/UNREAD.
-- `propose` changes nothing; `apply`/`purge_junk` need a token valid only in the user's next message (2 min).
+- `propose` changes nothing; an act sent as `action` (e.g. `trash`) is read as propose + act, and `apply` without a valid
+  token uses the plan pending for that turn (small local models); `apply`/`purge_junk` need a token valid only in the user's next message (2 min).
   `purge_junk` moves `Gereksiz` mail to Trash (never permanent delete). `undo` restores the last apply (also Admin → Durum).
 - Multiple accounts: no `account` → every connected account in one plan (per-account counts, one token); `account` =
   address or a unique part ("work"). One account failing is listed under `errors`, the others go on. Mail düzenleme,

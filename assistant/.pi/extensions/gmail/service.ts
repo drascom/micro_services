@@ -53,17 +53,28 @@ export class GmailService implements Mailboxes {
     return { content };
   }
 
-  /** Required labels one account has not created (cached for a minute); [] when unknown. */
+  /**
+   * Required labels one account still lacks: missing ones are created first (`labels.create`, needs gmail.modify; never
+   * renamed or deleted), so only the ones whose creation failed are returned. Cached for a minute; [] when unknown.
+   */
   async missingLabels(account: string): Promise<string[]> {
     const cached = this.labelsCache.get(account);
     if (cached && Date.now() - cached.at < 60_000) return cached.missing;
     try {
-      const labels = await this.provider(account).labels(AbortSignal.timeout(10_000));
-      const missing = [LATER_LABEL, JUNK_LABEL].filter(name => !findLabel(labels, name));
+      const provider = this.provider(account), labels = await provider.labels(AbortSignal.timeout(10_000));
+      const missing: string[] = [];
+      for (const name of [LATER_LABEL, JUNK_LABEL].filter(name => !findLabel(labels, name))) {
+        try {
+          if (!provider.createLabel) throw new Error('unsupported');
+          await provider.createLabel(name, AbortSignal.timeout(10_000));
+        } catch { missing.push(name); }
+      }
       this.labelsCache.set(account, { at: Date.now(), missing });
       return missing;
     } catch { return []; }
   }
+  /** Creates any missing required labels for a newly connected account (errors stay on that account). */
+  async ensureLabels(account: string) { this.labelsCache.delete(account); return this.missingLabels(account); }
   forgetLabels() { this.labelsCache.clear(); }
 }
 

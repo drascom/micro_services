@@ -44,17 +44,14 @@ const scalars = {
   system_prompt: 'Concise personal assistant. Reply in the language of the latest message (Turkish or English); keep technical terms. No emoji. ' +
     'Calendar is not connected. Email is read-only via the Mail tools; never claim to send, move, delete or mark email.'
 } as const;
-/** One Apple Mail account/mailbox the user enabled in Admin; the model never chooses these. */
-export type MailAccount = { readonly account: string; readonly mailbox: string; readonly enabled: boolean };
-export const MAX_MAIL_ACCOUNTS = 10;
 export const MAX_URGENT_SENDERS = 100;
 export const MAX_FILE_ROOTS = 10;
-export const defaults = { ...scalars, mail_accounts: Object.freeze([]) as readonly MailAccount[], gmail_urgent_senders: Object.freeze([]) as readonly string[],
+export const defaults = { ...scalars, gmail_urgent_senders: Object.freeze([]) as readonly string[],
   file_roots: Object.freeze(['~/Documents']) as readonly string[],
   file_skip_dirs: Object.freeze(['node_modules', 'venv', '.venv', '__pycache__', 'build', 'dist', '.build', 'target', 'DerivedData', 'Pods',
     'runtime', 'models', '.git', 'Library']) as readonly string[] };
 export type Config = { -readonly [K in keyof typeof scalars]: typeof scalars[K] extends number ? number :
-  typeof scalars[K] extends boolean ? boolean : string } & { mail_accounts: readonly MailAccount[]; gmail_urgent_senders: readonly string[]; file_roots: readonly string[];
+  typeof scalars[K] extends boolean ? boolean : string } & { gmail_urgent_senders: readonly string[]; file_roots: readonly string[];
   file_skip_dirs: readonly string[] };
 
 /** `~/x` → home directory; other paths must be absolute. */
@@ -105,59 +102,28 @@ export function validateUrgentSenders(value: unknown): string[] {
   return [...new Set(result)];
 }
 
-const mailName = (value: unknown): value is string =>
-  typeof value === 'string' && Boolean(value.trim()) && value.length <= 200 && !/[\u0000-\u001f\u007f]/.test(value);
-/** Validates a full mail account list (Admin save and config load): names, size, duplicates. */
-export function validateMailAccounts(value: unknown): MailAccount[] {
-  if (!Array.isArray(value) || value.length > MAX_MAIL_ACCOUNTS) throw Error(`mail_accounts must be a list of at most ${MAX_MAIL_ACCOUNTS}`);
-  const seen = new Set<string>();
-  return value.map(item => {
-    if (!item || typeof item !== 'object' || Array.isArray(item) || Object.keys(item).some(k => !['account', 'mailbox', 'enabled'].includes(k)))
-      throw Error('Invalid mail account entry');
-    const { account, mailbox = 'INBOX', enabled = true } = item as Record<string, unknown>;
-    if (!mailName(account) || !mailName(mailbox) || typeof enabled !== 'boolean') throw Error('Invalid mail account or mailbox');
-    const key = JSON.stringify([account, mailbox.toLowerCase()]);
-    if (seen.has(key)) throw Error('Duplicate mail account and mailbox');
-    seen.add(key);
-    return Object.freeze({ account, mailbox, enabled });
-  });
-}
-/** Pre-list config: mail_enabled/mail_account/mail_mailbox become one list entry. */
-const LEGACY_MAIL = { mail_enabled: 'boolean', mail_account: 'string', mail_mailbox: 'string' } as const;
-/** Pre-multi-account Gmail address: accounts now come from the secret store, so it is accepted and ignored. */
-const LEGACY_IGNORED = { gmail_account: 'string' } as const;
+/** Old settings accepted and ignored: the pre-multi-account Gmail address (accounts live in the secret store) and the
+ *  removed Apple Mail reader's accounts (mail is read through the connected Gmail accounts now). */
+const LEGACY_IGNORED = { gmail_account: 'string', mail_accounts: 'object', mail_enabled: 'boolean', mail_account: 'string', mail_mailbox: 'string' } as const;
 
 export async function loadConfig(configPath = path.join(root, 'config.json')): Promise<Config> {
   let settings: Record<string, unknown> = {};
   try { settings = JSON.parse(await readFile(configPath, 'utf8')); }
   catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
   if (!settings || Array.isArray(settings) || typeof settings !== 'object') throw Error('config.json must contain an object');
-  const legacy: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(settings)) {
-    if (key in LEGACY_MAIL) {
-      if (typeof value !== LEGACY_MAIL[key as keyof typeof LEGACY_MAIL]) throw Error(`Invalid setting: ${key}`);
-      legacy[key] = value; delete settings[key]; continue;
-    }
     if (key in LEGACY_IGNORED) {
       if (typeof value !== LEGACY_IGNORED[key as keyof typeof LEGACY_IGNORED]) throw Error(`Invalid setting: ${key}`);
       delete settings[key]; continue;
     }
-    if (key === 'mail_accounts' || key === 'gmail_urgent_senders' || key === 'file_roots' || key === 'file_skip_dirs') continue;
+    if (key === 'gmail_urgent_senders' || key === 'file_roots' || key === 'file_skip_dirs') continue;
     if (!(key in defaults) || typeof value !== typeof defaults[key as keyof typeof defaults]) throw Error(`Invalid setting: ${key}`);
     if (typeof value === 'number' && !Number.isFinite(value)) throw Error(`Invalid number: ${key}`);
-  }
-  let mailAccounts: readonly MailAccount[] = defaults.mail_accounts;
-  if ('mail_accounts' in settings) mailAccounts = validateMailAccounts(settings.mail_accounts);
-  else if (Object.keys(legacy).length) {
-    const account = legacy.mail_account as string | undefined ?? '';
-    if (legacy.mail_enabled === true && !account.trim()) throw Error('mail_enabled requires mail_account');
-    if (account.trim()) mailAccounts = validateMailAccounts([{ account, mailbox: legacy.mail_mailbox ?? 'INBOX', enabled: legacy.mail_enabled === true }]);
-    else if (legacy.mail_mailbox !== undefined && !mailName(legacy.mail_mailbox)) throw Error('Invalid mail account or mailbox');
   }
   const urgent = 'gmail_urgent_senders' in settings ? validateUrgentSenders(settings.gmail_urgent_senders) : defaults.gmail_urgent_senders;
   const fileRoots = 'file_roots' in settings ? validateFileRoots(settings.file_roots) : defaults.file_roots;
   const skipDirs = 'file_skip_dirs' in settings ? validateSkipDirs(settings.file_skip_dirs) : defaults.file_skip_dirs;
-  const config: Config = { ...defaults, ...settings, mail_accounts: mailAccounts, gmail_urgent_senders: urgent, file_roots: fileRoots,
+  const config: Config = { ...defaults, ...settings, gmail_urgent_senders: urgent, file_roots: fileRoots,
     file_skip_dirs: skipDirs } as Config;
   for (const key of ['whisper_bin', 'whisper_model', 'whisper_server_bin', 'llama_bin', 'llama_model', 'language_detector', 'embedding_bin', 'embedding_model', 'bitwarden_bin',
     'ema_python', 'ema_worker', 'ema_cache', 'kokoro_python', 'kokoro_worker', 'kokoro_model',

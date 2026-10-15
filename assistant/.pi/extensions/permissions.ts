@@ -27,7 +27,7 @@ const TASK_ALLOWED = /^(read|web_search|web_read|fetch_content|mail_[a-z_]+|remi
 export function permissionsExtension(options: { root: string; offline: boolean; automated?: boolean; local?: boolean }) {
   return (pi: ExtensionAPI) => {
     let calls = 0;
-    // Read-only Apple Mail: per-request budgets inside the overall 12-call limit. Only successful calls count (a rejected
+    // Read-only mail (Gmail): per-request budgets inside the overall 12-call limit. Only successful calls count (a rejected
     // date or filter returns no data); 3 listings leave room for one narrower retry while results stay small for local models.
     const mailBudgets: Record<string, number> = { mail_list_messages: 3, mail_read_message: 5 };
     const mailCalls: Record<string, number> = {};
@@ -105,6 +105,7 @@ export function permissionsExtension(options: { root: string; offline: boolean; 
       if (event.toolName.startsWith('mail_')) {
         if (!Object.hasOwn(mailBudgets, event.toolName))
           return { block: true, reason: 'This ability is not authorized. New abilities require user authorization through Pi.' };
+        if (options.offline) return { block: true, reason: 'Offline mode: Gmail is unavailable.' };
         try {
           const permissions = JSON.parse(await readFile(path.join(options.root, '.pi/permissions.json'), 'utf8'));
           if (permissions?.mail_read !== 'allow') return { block: true, reason: 'Mail reading is disabled in Pi permissions. No permission has been granted.' };
@@ -112,7 +113,7 @@ export function permissionsExtension(options: { root: string; offline: boolean; 
         if ((mailCalls[event.toolName] ?? 0) >= mailBudgets[event.toolName])
           return { block: true, reason: event.toolName === 'mail_list_messages' ? 'Mail listing budget (3 per request) is exhausted. Use the messages already listed.'
             : 'Mail body budget (5 per request) is exhausted. Summarize from the bodies and metadata already retrieved.' };
-        return; // Local, read-only: available in offline mode too.
+        return;
       }
       if (['file_search', 'file_read', 'file_organize'].includes(event.toolName)) {
         // Local files: on by default once the index is enabled in Admin; an explicit "deny" turns them off. Moves are

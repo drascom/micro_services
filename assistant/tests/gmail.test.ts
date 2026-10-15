@@ -24,18 +24,20 @@ import type { MessageMeta } from '../.pi/extensions/gmail/provider.ts';
 
 // Synthetic mail and a fake Gmail/OAuth transport only: no real network call, nothing is written to a real account.
 const GOOGLE_OK = (domain: string) => `mx.google.com; dkim=pass header.i=@${domain} header.s=s1 header.b=x; spf=pass (google.com: domain of a@${domain} designates 1.2.3.4 as permitted sender) smtp.mailfrom=a@${domain}; dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=${domain}`;
-type Msg = { id: string; labels: string[]; from: string; subject: string; snippet?: string; auth?: string[]; date?: number };
+type Msg = { id: string; labels: string[]; from: string; subject: string; snippet?: string; auth?: string[]; date?: number; payload?: object };
 const msg = (id: string, extra: Partial<Msg> = {}): Msg => ({ id, labels: ['INBOX', 'UNREAD', 'CATEGORY_PERSONAL'], from: `Sender ${id} <s${id}@example.org>`, subject: `Subject ${id}`, ...extra });
 
 /** One fake Google: `messages` is the main account's mailbox (`email`, default me@gmail.com); `others` adds more accounts. */
-function fakeGmail(messages: Msg[], options: { email?: string; labels?: { id: string; name: string }[]; others?: Record<string, Msg[]> } = {}) {
+function fakeGmail(messages: Msg[], options: { email?: string; labels?: { id: string; name: string }[]; others?: Record<string, Msg[]>; createFails?: string[] } = {}) {
   const calls: { method: string; url: string; body?: string; account?: string }[] = [];
   const main = options.email ?? 'me@gmail.com', boxes: Record<string, Msg[]> = { [main]: messages, ...options.others };
   const refresh: Record<string, string> = Object.fromEntries(Object.keys(boxes).map(e => [e, e === main ? 'rt-good' : 'rt-' + e]));
   const valid = new Map<string, string>(); // access token → account
   let access = 0;
   const issue = (email: string) => { const token = 'at' + ++access; valid.set(token, email); return token; };
-  const labels = options.labels ?? [{ id: 'Label_1', name: 'Sonra Oku' }, { id: 'Label_2', name: 'Gereksiz' }, { id: 'INBOX', name: 'INBOX' }];
+  const initial = options.labels ?? [{ id: 'Label_1', name: 'Sonra Oku' }, { id: 'Label_2', name: 'Gereksiz' }, { id: 'INBOX', name: 'INBOX' }];
+  // Labels per account (created ones too); `createFails`: accounts whose labels.create returns 500.
+  const labelsOf: Record<string, { id: string; name: string }[]> = Object.fromEntries(Object.keys(boxes).map(e => [e, initial.map(l => ({ ...l }))]));
   const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
   const http: Http = async (url, init) => {
     const bearer = init.headers?.Authorization?.replace('Bearer ', '') ?? '', account = valid.get(bearer);
@@ -56,7 +58,14 @@ function fakeGmail(messages: Msg[], options: { email?: string; labels?: { id: st
     if (!account) return json({ error: { code: 401 } }, 401);
     const messages = boxes[account];
     const u = new URL(url), route = u.pathname.replace('/gmail/v1/users/me', '');
-    if (init.method === 'GET' && route === '/labels') return json({ labels });
+    if (init.method === 'GET' && route === '/labels') return json({ labels: labelsOf[account] });
+    if (init.method === 'POST' && route === '/labels') {
+      if (options.createFails?.includes(account)) return json({ error: { code: 500 } }, 500);
+      const { name } = JSON.parse(init.body!) as { name: string };
+      if (labelsOf[account].some(l => l.name === name)) return json({ error: { code: 409 } }, 409);
+      const label = { id: `Label_new_${labelsOf[account].length}`, name }; labelsOf[account].push(label);
+      return json(label);
+    }
     if (init.method === 'GET' && route === '/messages') {
       const label = u.searchParams.get('labelIds'), q = u.searchParams.get('q');
       // Tiny Gmail search: in:inbox / label:<id> scope, from:<text>, other words match the subject; Trash is never searched.
@@ -67,7 +76,7 @@ function fakeGmail(messages: Msg[], options: { email?: string; labels?: { id: st
     }
     const one = /^\/messages\/([^/]+)(\/trash|\/untrash)?$/.exec(route), m = one && messages.find(x => x.id === one[1]);
     if (init.method === 'GET' && m) return json({ id: m.id, labelIds: m.labels, snippet: m.snippet ?? 'snippet', internalDate: String(m.date ?? 0),
-      payload: { headers: [{ name: 'From', value: m.from }, { name: 'Subject', value: m.subject }, ...(m.auth ?? []).map(value => ({ name: 'Authentication-Results', value }))] } });
+      payload: { ...(u.searchParams.get('format') === 'full' ? m.payload : {}), headers: [{ name: 'From', value: m.from }, { name: 'Subject', value: m.subject }, ...(m.auth ?? []).map(value => ({ name: 'Authentication-Results', value }))] } });
     if (init.method === 'POST' && one?.[2] === '/untrash' && m) { m.labels = ['INBOX', ...m.labels.filter(l => l !== 'TRASH')]; return json({ id: m.id }); }
     if (init.method === 'POST' && one?.[2] && m) { m.labels = ['TRASH', ...m.labels.filter(l => l !== 'INBOX')]; return json({ id: m.id }); }
     if (init.method === 'POST' && route === '/messages/batchModify') {
@@ -77,10 +86,10 @@ function fakeGmail(messages: Msg[], options: { email?: string; labels?: { id: st
     }
     return json({ error: 'not found' }, 404);
   };
-  return { http, calls, messages, boxes, revokeRefresh: (email = main) => { refresh[email] = 'revoked-' + email; } };
+  return { http, calls, messages, boxes, labelsOf, revokeRefresh: (email = main) => { refresh[email] = 'revoked-' + email; } };
 }
 
-async function setup(messages: Msg[], options: { email?: string; labels?: { id: string; name: string }[]; connected?: boolean; others?: Record<string, Msg[]> } = {}) {
+async function setup(messages: Msg[], options: { email?: string; labels?: { id: string; name: string }[]; connected?: boolean; others?: Record<string, Msg[]>; createFails?: string[] } = {}) {
   const dir = await mkdtemp(path.join(tmpdir(), 'ayhan-gmail-'));
   const gmail = fakeGmail(messages, options), store = new MemorySecretStore();
   store.values.set('client', JSON.stringify({ client_id: 'id-123456.apps.googleusercontent.com', client_secret: 'GOCSPX-secret' }));
@@ -461,7 +470,7 @@ test('harness: mail_organize exists only when enabled and connected; online; new
   // A mail request routed to the read-only skill can still ask for a change: mail_organize only when on and online.
   assert.deepEqual(harnessTools('mail-assistant', false, false, true), ['mail_list_messages', 'mail_read_message', 'mail_organize']);
   assert.deepEqual(harnessTools('mail-assistant', false, false, false), ['mail_list_messages', 'mail_read_message']);
-  assert.deepEqual(harnessTools('mail-assistant', true, false, true), ['mail_list_messages', 'mail_read_message']);
+  assert.deepEqual(harnessTools('mail-assistant', true, false, true), []); // Gmail needs the network: no mail tools offline.
   const dir = await mkdtemp(path.join(tmpdir(), 'ayhan-gmail-harness-'));
   await mkdir(path.join(dir, '.pi/skills'), { recursive: true }); await mkdir(path.join(dir, '.pi/extensions'), { recursive: true });
   await writeFile(path.join(dir, '.pi/permissions.json'), JSON.stringify({ mail_organize: 'allow' }));
@@ -591,4 +600,84 @@ test('admin Gmail: client secret only in the secret store, settings in config.js
     assert.equal((await call('/admin/gmail/disconnect', {})).status, 400);
     assert.equal((await call('/admin/gmail/disconnect', { account: 'me@gmail.com' })).body.connected, false);
   } finally { lifecycle.abort(); await new Promise<void>(resolve => server.close(() => resolve())); await f.close(); }
+});
+
+test('labels: missing Sonra Oku/Gereksiz are created per account (only created, never renamed or deleted); a failure stays on that account', async () => {
+  assert.equal(SCOPE, 'https://www.googleapis.com/auth/gmail.modify'); // labels.create is allowed by gmail.modify; no scope change.
+  const f = await setup([], { labels: [{ id: 'Label_1', name: 'sonra oku' }, { id: 'INBOX', name: 'INBOX' }],
+    others: { 'work@example.org': [], 'home@example.org': [] }, createFails: ['home@example.org'] });
+  try {
+    for (const account of await f.service.accounts()) await f.service.ensureLabels(account);
+    const created = f.gmail.calls.filter(c => c.method === 'POST' && c.url.endsWith('/labels'));
+    assert.deepEqual(created.map(c => [c.account, JSON.parse(c.body!).name]),
+      [['me@gmail.com', 'Gereksiz'], ['work@example.org', 'Gereksiz'], ['home@example.org', 'Gereksiz']]);
+    assert.ok(!f.gmail.calls.some(c => ['PUT', 'PATCH', 'DELETE'].includes(c.method)));
+    assert.deepEqual(f.gmail.labelsOf['me@gmail.com'].map(l => l.name), ['sonra oku', 'INBOX', 'Gereksiz']); // tolerant match kept
+    assert.deepEqual(await f.service.missingLabels('me@gmail.com'), []);
+    assert.deepEqual(await f.service.missingLabels('home@example.org'), ['Gereksiz']);
+    assert.deepEqual((await f.service.auth.status()).accounts.map(a => a.error), ['', '', '']); // a 500 does not expire the account
+    const before = f.gmail.calls.length;
+    await f.service.missingLabels('home@example.org'); // cached for a minute: no retry storm
+    assert.equal(f.gmail.calls.length, before);
+  } finally { await f.close(); }
+});
+
+test('body: plain text preferred, HTML converted, charsets decoded, attachments never read', async () => {
+  const b64 = (text: string) => Buffer.from(text, 'utf8').toString('base64url');
+  const turkish = Buffer.from([0x47, 0xfc, 0x6e, 0x61, 0x79, 0x64, 0xfd, 0x6e]).toString('base64url'); // "Günaydın" in ISO-8859-9
+  const part = (mimeType: string, data: string, extra: object = {}) => ({ mimeType, body: { data }, headers: [{ name: 'Content-Type', value: mimeType }], ...extra });
+  const messages = [
+    msg('p1', { payload: { mimeType: 'multipart/alternative', parts: [part('text/plain', b64('Merhaba dünya')), part('text/html', b64('<p>HTML</p>'))] } }),
+    msg('h1', { payload: { mimeType: 'multipart/mixed', parts: [part('text/html', b64('<html><style>x{}</style><p>Fatura &amp; ödeme</p><br>Son</html>')),
+      { mimeType: 'text/plain', filename: 'secret.txt', body: { attachmentId: 'att1' } }] } }),
+    msg('c1', { payload: { mimeType: 'multipart/mixed', parts: [part('text/plain', turkish, { headers: [{ name: 'Content-Type', value: 'text/plain; charset="iso-8859-9"' }] })] } }),
+    msg('a1', { payload: { mimeType: 'multipart/mixed', parts: [{ mimeType: 'application/pdf', filename: 'x.pdf', body: { attachmentId: 'att2' } }] } })];
+  const f = await setup(messages);
+  try {
+    const me = f.service.provider('me@gmail.com');
+    assert.equal((await me.body('p1', live())).text, 'Merhaba dünya');
+    assert.equal((await me.body('h1', live())).text, 'Fatura & ödeme\n\nSon');
+    assert.equal((await me.body('c1', live())).text, 'Günaydın');
+    const empty = await me.body('a1', live());
+    assert.deepEqual([empty.text, empty.subject], ['', 'Subject a1']);
+    assert.ok(!f.gmail.calls.some(c => c.url.includes('attachments')));
+    assert.ok(f.gmail.calls.some(c => c.url.endsWith('/messages/p1?format=full')));
+  } finally { await f.close(); }
+});
+
+test('local-model style delete: act in `action`, then apply without (or with a garbled) token in the next turn trashes the mail', async () => {
+  const { normalizeOrganize } = await import('../.pi/extensions/gmail/index.ts');
+  assert.deepEqual(normalizeOrganize({ action: 'trash', query: 'from:x' }), { action: 'propose', act: 'trash', query: 'from:x' });
+  assert.deepEqual(normalizeOrganize({ action: 'delete', query: 'from:x' }), { action: 'propose', act: 'trash', query: 'from:x' });
+  assert.deepEqual(normalizeOrganize({ action: 'propose', act: 'sil', query: 'from:x' }), { action: 'propose', act: 'trash', query: 'from:x' });
+  assert.deepEqual(normalizeOrganize({ action: 'label:Sonra Oku', query: 'from:x' }), { action: 'propose', act: 'label:Sonra Oku', query: 'from:x' });
+  assert.deepEqual(normalizeOrganize({ action: 'Evet' }), { action: 'apply' });
+  const messages = [msg('ad1', { from: 'Ads <promo@ads.example>' }), msg('ad2', { from: 'Ads <promo@ads.example>' }), msg('keep')];
+  const f = await setup(messages);
+  const dir = await mkdtemp(path.join(tmpdir(), 'ayhan-gmail-local-'));
+  await mkdir(path.join(dir, '.pi/skills'), { recursive: true }); await mkdir(path.join(dir, '.pi/extensions'), { recursive: true });
+  await writeFile(path.join(dir, '.pi/permissions.json'), JSON.stringify({ mail_organize: 'allow' }));
+  const fake = fauxProvider({ provider: 'gmail-local', models: [{ id: 'gemma' }], tokensPerSecond: 1000000 });
+  const runtime = await ModelRuntime.create({ modelsPath: null, refreshOnCreate: false }); runtime.registerNativeProvider(fake.provider);
+  const call = (args: Record<string, unknown>) => fauxAssistantMessage(fauxToolCall('mail_organize', args as Record<string, string>, { id: 't' + Math.random() }), { stopReason: 'toolUse' });
+  const turn = async (n: number, skill: 'mail-triage' | undefined, text: string) => {
+    const s = await createHarnessSession({ root: dir, config: { ...defaults, pi_agent_dir: path.join(dir, 'agent'), gmail_triage_enabled: true },
+      context: { systemPrompt: 'Gmail test', messages: [{ role: 'user', content: text, timestamp: 1 }] }, model: fake.getModel(), runtime, offline: false,
+      extensionPaths: [], skill, gmail: f.service, gmailMemory: f.memory, turn: n, notify: async () => {} });
+    try { await s.prompt(text); return s.messages.filter(m => m.role === 'toolResult'); } finally { await s.abort(); s.dispose(); }
+  };
+  try {
+    fake.setResponses([call({ action: 'trash', query: 'from:ads.example' }), fauxAssistantMessage('2 mail çöpe gidecek. Uygulayayım mı?')] as never);
+    const proposed = await turn(1, 'mail-triage', 'ads.example maillerini sil');
+    assert.equal(proposed[0].isError, false, JSON.stringify(proposed[0].content));
+    assert.ok(messages.every(m => !m.labels.includes('TRASH')));
+    fake.setResponses([call({ action: 'apply', confirm_token: 'c_garbled' }), fauxAssistantMessage('Silindi.')] as never);
+    const applied = await turn(2, undefined, 'evet');
+    assert.equal(applied[0].isError, false, JSON.stringify(applied[0].content));
+    assert.deepEqual(messages.filter(m => m.labels.includes('TRASH')).map(m => m.id), ['ad1', 'ad2']);
+    // Without a pending plan an apply never runs (same-turn or third turn).
+    fake.setResponses([call({ action: 'apply' }), fauxAssistantMessage('Yok.')] as never);
+    const none = await turn(3, undefined, 'evet');
+    assert.equal(none[0].isError, true);
+  } finally { await f.close(); await rm(dir, { recursive: true, force: true }); }
 });

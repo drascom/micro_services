@@ -216,3 +216,15 @@ test('steer: text added while a request runs reaches the same session before the
     assert.equal(steering.steer('late'), false);
   } finally { release(); await f.cleanup(); }
 });
+
+test('every app extension module loads (no broken imports, e.g. after a removed file)', async () => {
+  const { readdir } = await import('node:fs/promises');
+  const { pathToFileURL } = await import('node:url');
+  const directory = path.join(import.meta.dirname, '../.pi/extensions');
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const file = entry.isDirectory() ? path.join(directory, entry.name, 'index.ts') : /\.(ts|js)$/.test(entry.name) ? path.join(directory, entry.name) : '';
+    if (!file) continue;
+    const module = await import(pathToFileURL(file).href);
+    assert.equal(typeof module.default, 'function', entry.name);
+  }
+});

@@ -1,4 +1,5 @@
 import { GmailError } from './schemas.ts';
+import { messageText, type Part } from './text.ts';
 import type { GmailAuth, Http } from './oauth.ts';
 
 /** Header and label metadata of one message; never the body. */
@@ -13,6 +14,8 @@ export type MessageMeta = { id: string; labels: string[]; from: string; subject:
 export interface MailProvider {
   /** Label name → id. */
   labels(signal: AbortSignal): Promise<Map<string, string>>;
+  /** Creates one user label (never renames or deletes); returns its id. */
+  createLabel?(name: string, signal: AbortSignal): Promise<string>;
   /** Up to `max` inbox message ids, newest first, skipping ids for which `skip` is true. */
   inbox(max: number, skip: (id: string) => boolean, signal: AbortSignal): Promise<string[]>;
   /** Up to `max` ids matching a Gmail search query (`q`), newest first. */
@@ -20,6 +23,8 @@ export interface MailProvider {
   /** Up to `max` ids carrying a label. */
   labeled(labelId: string, max: number, signal: AbortSignal): Promise<string[]>;
   metadata(id: string, signal: AbortSignal): Promise<MessageMeta>;
+  /** Metadata plus the plain-text body ('' when the message has no readable text part); attachments are never read. */
+  body(id: string, signal: AbortSignal): Promise<MessageMeta & { text: string }>;
   /** Same change for all ids (one batch call per ≤1000 ids). */
   modify(ids: string[], add: string[], remove: string[], signal: AbortSignal): Promise<void>;
   /** Moves to Trash (recoverable for 30 days). Permanent deletion is deliberately not part of this interface. */
@@ -31,6 +36,16 @@ export interface MailProvider {
 const BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 const str = (value: unknown, max: number) => typeof value === 'string' ? value.slice(0, max) : '';
+
+/** Header and label metadata of one Gmail message resource (`format=metadata` or `full`). */
+function meta(id: string, value: any): MessageMeta {
+  if (value.id !== id || !Array.isArray(value.labelIds ?? [])) throw new GmailError('invalid_response');
+  const headers: { name: string; value: string }[] = Array.isArray(value.payload?.headers) ? value.payload.headers : [];
+  const header = (name: string) => headers.find(h => typeof h?.name === 'string' && h.name.toLowerCase() === name.toLowerCase())?.value;
+  return { id, labels: (value.labelIds ?? []).filter((l: unknown) => typeof l === 'string'), from: str(header('From'), 300),
+    subject: str(header('Subject'), 300), snippet: str(value.snippet, 300), ...(header('Authentication-Results') ? { auth: str(header('Authentication-Results'), 2000) } : {}),
+    date: Number(value.internalDate) || 0 };
+}
 
 /** One connected account's mailbox. */
 export class GmailProvider implements MailProvider {
@@ -68,6 +83,12 @@ export class GmailProvider implements MailProvider {
     return new Map<string, string>(value.labels.filter((l: any) => typeof l?.name === 'string' && typeof l?.id === 'string').map((l: any) => [l.name, l.id]));
   }
 
+  async createLabel(name: string, signal: AbortSignal) {
+    const value = await this.call('POST', '/labels', { name, labelListVisibility: 'labelShow', messageListVisibility: 'show' }, signal);
+    if (typeof value.id !== 'string') throw new GmailError('invalid_response');
+    return value.id as string;
+  }
+
   private async ids(query: string, max: number, skip: (id: string) => boolean, signal: AbortSignal) {
     const found: string[] = [];
     let page = '';
@@ -89,13 +110,13 @@ export class GmailProvider implements MailProvider {
 
   async metadata(id: string, signal: AbortSignal): Promise<MessageMeta> {
     if (!ID.test(id)) throw new GmailError('invalid_request');
-    const value = await this.call('GET', `/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Authentication-Results`, undefined, signal);
-    if (value.id !== id || !Array.isArray(value.labelIds ?? [])) throw new GmailError('invalid_response');
-    const headers: { name: string; value: string }[] = Array.isArray(value.payload?.headers) ? value.payload.headers : [];
-    const header = (name: string) => headers.find(h => typeof h?.name === 'string' && h.name.toLowerCase() === name.toLowerCase())?.value;
-    return { id, labels: (value.labelIds ?? []).filter((l: unknown) => typeof l === 'string'), from: str(header('From'), 300),
-      subject: str(header('Subject'), 300), snippet: str(value.snippet, 300), ...(header('Authentication-Results') ? { auth: str(header('Authentication-Results'), 2000) } : {}),
-      date: Number(value.internalDate) || 0 };
+    return meta(id, await this.call('GET', `/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Authentication-Results`, undefined, signal));
+  }
+
+  async body(id: string, signal: AbortSignal) {
+    if (!ID.test(id)) throw new GmailError('invalid_request');
+    const value = await this.call('GET', `/messages/${id}?format=full`, undefined, signal);
+    return { ...meta(id, value), text: messageText(value.payload as Part) };
   }
 
   async modify(ids: string[], add: string[], remove: string[], signal: AbortSignal) {

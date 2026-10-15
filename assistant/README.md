@@ -133,7 +133,7 @@ never executed as shell scripts.
 Jev makes **typed decisions**, not conversational responses. In remote mode it
 classifies each message as conversation, email, calendar, brief news, web search, or skill management and returns its
 confidence. This is returned as API metadata. Web/skill-management decisions select a skill through Pi’s own skill-command expansion, saving a model round. An email decision selects the
-`mail-assistant` skill (read-only Apple Mail, see below). Other decisions do not authorize actions. A Jev outage does not block chat.
+`mail-assistant` skill (read-only Gmail mail, see below). Other decisions do not authorize actions. A Jev outage does not block chat.
 Set `jev_enabled: false` to disable it. No calendar adapter is connected, and the
 assistant does not claim to send mail or change events.
 
@@ -334,7 +334,7 @@ macOS Documents/microphone permissions may need granting once after switching
 from the old ad-hoc signature. Subsequent updates preserve the signing identity
 and bundle identifier. Keep using `npm run sign-app` after replacing the native
 executable. Do not use ad-hoc signing for updates.
-Calendar remains an extension point; email is read-only through Apple Mail (see Harness abilities). Ring position, Local only, and Read aloud currently reset when the app restarts.
+Calendar remains an extension point; email is read through Gmail (see Harness abilities). Ring position, Local only, and Read aloud currently reset when the app restarts.
 The shortcut and menu-bar icon visibility are saved in native preferences.
 
 The old `dictate/` and `gemma/` projects are archived under
@@ -393,40 +393,22 @@ skills, only the routed skill's tools, compacted web tool schemas, bounded histo
 New skills/tools must follow this; `tests/context-budget.test.ts` enforces a limit.
 See `PI-HARNESS.md`.
 
-### Apple Mail (read-only)
+### Mail (Gmail, read-only tools)
 
-Ayhan can list, search, summarize and classify messages from the Apple Mail
-accounts enabled in Admin (each with one mailbox, default `INBOX`), using mail already on this Mac (also offline). It never sends,
-moves, deletes, flags or marks messages, and opens no links or attachments.
-Tools: `mail_list_messages` (metadata of all active accounts merged newest first, max 25; each row
-has an `account` label; optional `account` filter accepts only an active account) and `mail_read_message` (plain-text
-body, max 8,000 chars, 40,000 per request); at most 2 listings and 5 body reads per
-request. By default Mail's local store is read directly and read-only (`mail-db.ts`: `Envelope Index`
-SQLite, account names from `Accounts4.sqlite`, bodies from `.emlx` files), so Mail.app may be closed;
-this needs **Full Disk Access** for PersonalAssistant.app (or the terminal running it). Without access,
-or if the store layout is unknown, it falls back to a fixed JXA script (`mail-reader.js` under
-`/usr/bin/osascript`), which needs Mail open and Automation permission. Mail is never launched. No mail content is logged.
-
-Setup:
-1. Grant Full Disk Access (System Settings → Privacy & Security → Full Disk Access).
-   `node scripts/test-mail-smoke.ts "<Mail account name>"` — read-only check: inbox
-   count and up to 5 recent metadata rows in the terminal. On the JXA fallback, allow the
-   Automation prompt (System Settings → Privacy & Security → Automation).
-2. Admin → Ayarlar / Settings → Mail hesapları / Mail accounts: pick an account from
-   Mail.app (or enter its name), optional mailbox; toggle active/inactive, remove.
-   Saved to `config.json` as `mail_accounts: [{ account, mailbox, enabled }]` (max 10);
-   applies from the next Mail tool call. Older `mail_enabled`/`mail_account`/`mail_mailbox`
-   settings are read as a one-entry list and replaced on the first save.
-3. `.pi/permissions.json` has `"mail_read": "allow"`.
-
-To disable: set `mail_read` to `deny` or make every account inactive; remove the
-Automation permission in System Settings if wanted.
+Ayhan lists, searches, summarizes and classifies inbox mail of the Gmail accounts connected in Admin → Mail
+(Gmail API, online only; no Mail.app, no Full Disk Access). Tools: `mail_list_messages` (metadata of all connected
+accounts merged newest first, max 25, last 30 days; each row has an `account`; optional `account` = address or a
+unique part; a failing account is listed under `errors`) and `mail_read_message` (plain-text body, max 8,000 chars,
+40,000 per request; attachments never read). At most 3 listings and 5 body reads per request. Changes go only through
+`mail_organize` (below). No mail content is logged. Setup: [GMAIL.md](GMAIL.md); `.pi/permissions.json` has
+`"mail_read": "allow"` (`deny` turns reading off). Old `mail_accounts`/`mail_enabled` settings are ignored and dropped
+on the next Admin save.
 
 ### Gmail triage
 
 Optional `mail_organize` tool: classify new Gmail INBOX mail (urgent/important/later/junk), apply labels after
 next-turn confirmation, move `Gereksiz` to Trash, undo. OAuth Desktop client, tokens in Keychain. Off by default
-(Admin → Ayarlar → Gmail → Mail düzenleme). Setup: see [GMAIL.md](GMAIL.md).
+(Admin → Ayarlar → Mail → Mail düzenleme). Setup: see [GMAIL.md](GMAIL.md).
 
 ### Local files (EmbeddingGemma 2)
 
