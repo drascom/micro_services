@@ -3,8 +3,11 @@ import Observation
 
 @MainActor @Observable
 final class RingModel {
-    enum Phase: String { case starting, idle, preparing, listening, thinking, speaking, noSpeech, copied, error }
-    var phase: Phase = .starting
+    enum Phase: String { case starting, idle, preparing, listening, thinking, speaking, noSpeech, copied, error, quitting }
+    /// Once quitting, the ring stays `.quitting` until the process exits; later state updates cannot override it.
+    var phase: Phase { get { quitting ? .quitting : current } set { current = newValue } }
+    private var current: Phase = .starting
+    private(set) var quitting = false
     var status = "Starting…"
     var input = ""
     var response = ""
@@ -282,6 +285,8 @@ final class RingModel {
         cancel(); response = ""; transcript = ""; provider = ""
         Task { do { try await backend.reset(); status = "New conversation" } catch { fail(error) } }
     }
-    func fail(_ error: Error) { focusTarget = nil; dictating = false; phase = .error; status = error.localizedDescription; showInput() }
+    /// Quit/Restart started: cancel everything and keep the ring in the quitting state.
+    func beginQuit() { cancel(); quitting = true }
+    func fail(_ error: Error) { guard !quitting else { return }; focusTarget = nil; dictating = false; phase = .error; status = error.localizedDescription; showInput() }
     func close() { cancel(); Task { await backend.close() } }
 }

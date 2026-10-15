@@ -321,7 +321,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         terminating = true
         LaunchGuard.log(restartRequested ? "restarting" : "quitting")
-        hotkey?.stop(); model.cancel()
+        hotkey?.stop(); model.beginQuit() // Ring turns orange and stays so until exit.
         adminWindow?.close() // Closes with the old instance instead of lingering while the backend stops.
         Task {
             await model.backend.close()

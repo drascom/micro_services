@@ -233,6 +233,13 @@ struct RecordingChecks {
         let cancels = await backend.cancels
         precondition(cancels == 0)
         model.cancel()
-        print("Recording checks passed: permission-release race, typed override, dictation shortcut never asks (paste/clipboard), assistant shortcut never pastes, dictation mutes a running reply, steer while generating, barge-in stops speech.")
+        // Quit/Restart: the ring turns to the quitting state at once and no later update overrides it.
+        model.input = "late"; model.send()
+        model.beginQuit()
+        precondition(model.phase == .quitting && model.quitting)
+        model.phase = .idle; model.send(); model.beginListening(); model.fail(CancellationError())
+        try await Task.sleep(for: .milliseconds(50))
+        precondition(model.phase == .quitting)
+        print("Recording checks passed: permission-release race, typed override, dictation shortcut never asks (paste/clipboard), assistant shortcut never pastes, dictation mutes a running reply, steer while generating, barge-in stops speech, quitting state sticks.")
     }
 }

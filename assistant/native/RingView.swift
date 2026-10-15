@@ -8,7 +8,7 @@ struct RingView: View {
         case .listening: return .mint
         case .thinking: return .cyan
         case .speaking: return Color(red: 0.4, green: 0.65, blue: 1)
-        case .error, .noSpeech: return .orange
+        case .error, .noSpeech, .quitting: return .orange
         case .copied: return .yellow
         default: return Color(red: 0.25, green: 0.85, blue: 0.95)
         }
@@ -41,7 +41,7 @@ struct RingView: View {
                         }.foregroundStyle(tint).frame(width: 100, height: 100).contentShape(Circle())
                     }
                 }.frame(width: 220, height: 220).scaleEffect(pulse)
-                Text(model.phase == .idle ? (model.shortcutEnabled ? "\(model.shortcutLabel)  HOLD TO TALK" : "CLICK TO TYPE") : model.phase == .noSpeech ? "NO SPEECH" : model.dictating && model.phase != .error ? (model.phase == .thinking ? "TYPING" : "DICTATION") : model.phase.rawValue.uppercased())
+                Text(model.phase == .quitting ? "" : model.phase == .idle ? (model.shortcutEnabled ? "\(model.shortcutLabel)  HOLD TO TALK" : "CLICK TO TYPE") : model.phase == .noSpeech ? "NO SPEECH" : model.dictating && model.phase != .error ? (model.phase == .thinking ? "TYPING" : "DICTATION") : model.phase.rawValue.uppercased())
                     .font(.system(size: 9, weight: .medium, design: .monospaced)).tracking(1.5)
                     .foregroundStyle(tint.opacity(0.75)).shadow(color: .black.opacity(0.6), radius: 4)
             }
