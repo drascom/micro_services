@@ -1,4 +1,4 @@
-import type { Context, Message, AssistantMessage } from '@earendil-works/pi-ai';
+import { fauxAssistantMessage, type Context, type Message, type AssistantMessage } from '@earendil-works/pi-ai';
 import type { Config } from './config.ts';
 import type { Chat, Classifier, Intent, Steering } from './providers.ts';
 import type { Runtime } from './processes.ts';
@@ -8,7 +8,7 @@ import path from 'node:path';
 import { root } from './config.ts';
 import { activity } from './activity.ts';
 import { newTurn } from '../.pi/extensions/apple-reminders/confirmations.ts';
-import { EXCLUDED_INTENTS, excludedTool, memoryRequest, type MemoryService } from './memory.ts';
+import { EXCLUDED_INTENTS, excludedTool, memoryRequest, topicCommand, type MemoryService } from './memory.ts';
 
 export interface ContextSource { context(query: string, signal: AbortSignal): Promise<string>; }
 export interface Reply { text: string; provider: string; fallback_reason: string; intent?: Intent; intent_note?: string; }
@@ -34,9 +34,9 @@ export class Orchestrator {
     this.classifier = classifier; this.sources = sources;
   }
   /** New conversation: the buffered turns are extracted soon (end of a segment). */
-  reset(): void { this.history = []; this.memory?.extractor.schedule(true); }
-  /** `automated` (Reminders task): no memory block. A remote model gets only the assistant rules; personal facts and
-   *  recalled summaries go only to the local model. Memory has its own budget (`memory_chars`) on top of `history_chars`. */
+  reset(): void { this.history = []; if (this.memory) { this.memory.store.active = undefined; this.memory.extractor.schedule(true); } }
+  /** `automated` (Reminders task): no memory block. A remote model gets only the assistant rules; personal facts,
+   *  recalled summaries and the active topic go only to the local model. Memory has its own budget (`memory_chars`) on top of `history_chars`. */
   async context(prompt: string, local: boolean, signal: AbortSignal, history: readonly Message[] = this.history, automated = false): Promise<Context> {
     let system = this.config.system_prompt;
     // Read on every request so saved personal rules also apply to local fallback.
@@ -53,7 +53,8 @@ export class Orchestrator {
     let memoryChars = 0;
     if (this.memory?.enabled && !automated) {
       try {
-        const parts = [await this.memory.store.block(local), local ? await this.memory.store.retrieve(prompt, signal) : ''].filter(Boolean);
+        const parts = [await this.memory.store.block(local), local ? await this.memory.store.retrieve(prompt, signal) : '',
+          local ? await this.memory.store.topicBlock() : ''].filter(Boolean);
         const text = parts.join('\n').slice(0, this.config.memory_chars);
         if (text) { system += '\n' + text; memoryChars = text.length + 1; }
       } catch { signal.throwIfAborted(); } // Memory never blocks a reply.
@@ -80,6 +81,34 @@ export class Orchestrator {
     const automated = Boolean(task?.automated), history = automated ? [] : this.history;
     // "hatırla / unut …": the memory tools are preloaded for this request (user requests only).
     const memoryTools = !automated && Boolean(this.memory?.enabled) && memoryRequest(prompt);
+    // Topics: list/close/delete are answered here (no model, nothing leaves the Mac); create/continue set the active
+    // topic and the request goes on; otherwise the prompt may pick an open topic (embedding similarity).
+    let topic: number | undefined;
+    if (!automated && this.memory?.enabled) {
+      const store = this.memory.store, command = topicCommand(prompt);
+      try {
+        if (command?.type === 'list' || command?.type === 'close' || command?.type === 'delete') {
+          let text: string;
+          if (command.type === 'list') {
+            const topics = (await store.topics()).filter(t => t.status === 'active').sort((x, y) => Number(y.active) - Number(x.active));
+            text = topics.length ? 'Konular: ' + topics.map(t => t.title + (t.active ? ' (aktif)' : '')).join(', ') + '.' : 'Kayıtlı konu yok.';
+          } else if (command.type === 'close') {
+            const closed = await store.closeTopic();
+            text = closed ? `“${closed.title}” konusu kapatıldı.` : 'Aktif konu yok.';
+          } else {
+            const found = await store.findTopic(command.name, signal);
+            text = found && await store.removeTopic(found.id) ? `“${found.title}” konusu silindi.` : `“${command.name}” adında bir konu bulamadım.`;
+          }
+          this.history.push({ role: 'user', content: prompt, timestamp: Date.now() },
+            { ...fauxAssistantMessage(text), provider: 'memory', model: 'memory' });
+          return { text, provider: 'memory', fallback_reason: '' };
+        }
+        if (command?.type === 'create') topic = (await store.activate((await store.createTopic(command.title, signal))?.id))?.id;
+        else if (command?.type === 'continue') { const found = await store.findTopic(command.name, signal); if (found) topic = (await store.activate(found.id))?.id; }
+        topic ??= await store.detectTopic(prompt, signal);
+        store.touchTopic();
+      } catch { signal.throwIfAborted(); } // Topics never block a reply.
+    }
     const used = new Set<string>();
     // One user message: remote attempt and local fallback share it (reminder delete confirmation). A task is no user turn.
     const turn = automated ? 0 : newTurn();
@@ -120,7 +149,7 @@ export class Orchestrator {
     // Memory extraction input: never vault/mail/file turns, never the explicit hatırla/unut turn itself.
     if (!automated && this.memory && !memoryTools && !EXCLUDED_INTENTS.includes(intent?.choice ?? '') && ![...used].some(excludedTool))
       this.memory.extractor.record({ user: [prompt, ...steering?.accepted ?? []].join('\n\n'), assistant: text, offline,
-        localReply: answer.provider === 'local-gemma', at: Date.now() });
+        localReply: answer.provider === 'local-gemma', at: Date.now(), ...(topic !== undefined ? { topic } : {}) });
     while (!automated && this.history.length > 2 && this.history.reduce((n, m) => n + textOf(m).length, 0) > this.config.history_chars) this.history.splice(0, 2);
     return { text, provider: answer.provider, fallback_reason: reason, ...(intent ? { intent } : {}), ...(intentNote ? { intent_note: intentNote } : {}) };
   }

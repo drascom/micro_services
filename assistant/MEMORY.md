@@ -7,12 +7,13 @@ Short durable memories in `data/memory.sqlite` (gitignored, 0600). No raw conver
 | assistant | how to work with the user ("kısa cevap ver", "silmeden önce sor") | remote and local |
 | personal | facts about the user (people, devices, routines) | local model only |
 | episodes | one short summary per extracted conversation batch | local model only |
+| topics | ongoing project/subject: name, state, decisions, open items | local model only |
 
 ## Use
 - Save: "Bunu hatırla: cevaplar kısa olsun", "Şunu unutma: kızımın adı Elif", "Aklında tut: yazıcım Brother HL".
 - Delete: "Elif ile ilgili notu unut", "Hafızandan yazıcı bilgisini sil".
 - These words (not "hatırlat" = Reminders) add the `memory_save` / `memory_forget` tools to that request only.
-- Admin → Hafıza: on/off, automatic learning on/off, list/edit/pin/delete, "Tümünü sil" per kind.
+- Admin → Hafıza: on/off, automatic learning on/off, list/edit/pin/delete, "Tümünü sil" per kind, Konular.
 
 ## Read path (`Orchestrator.context`)
 - Always: assistant rules ≤ 500 chars (explicit/pinned first). Local model: + pinned personal facts ≤ 200 chars and
@@ -32,5 +33,21 @@ Short durable memories in `data/memory.sqlite` (gitignored, 0600). No raw conver
   card numbers (Luhn), mail headers/quotes, vault.
 - Caps: 40 assistant, 300 personal, 2000 summaries; unused extracted items expire (90 / 180 days).
 
-## Later (P3)
-`topics` table and `topic_fact` kind exist; nothing writes them yet (topic memory, "X'e devam").
+## Topics
+- Create + activate: "Yeni konu: tatil planı", "Ring projesi üzerinde çalışıyoruz". Activate: "Ring'e devam edelim",
+  "Ring projesi" (name without "projesi/konusu", one name inside the other, else cosine ≥ 0.6; a closed topic reopens).
+- Answered without a model (nothing leaves the Mac, not extracted): "Hangi konular var", "Konuyu kapat" (active →
+  done), "Tatil konusunu sil".
+- One active topic, held in the backend process; dropped after 30 min idle or a reset. With none active, a prompt
+  whose embedding matches an open topic (touched < 7 days) with cosine ≥ 0.7 activates it (skipped if the embedding server is down).
+- Local model only: active topic summary ≤ 600 chars inside `memory_chars` (oldest decisions dropped first). A remote
+  model and the remote extractor never get topic text — so in online mode the answering model does not see it.
+- Extraction: turns carry their active topic; the extractor returns `topic {title, state, decisions, open, done}`;
+  merged into that topic (state replaced, new entries appended, done items removed; caps state 300, entries 120,
+  8 decisions, 8 open items; privacy filter). Local extractor also gets the current topic text. A batch with mixed
+  topics updates none. No active topic: a proposed title joins an open topic with the same name (or cosine ≥ 0.85),
+  else it becomes a candidate and a topic only when a later batch proposes it again (never auto-activated).
+- Reminders tasks: no topic commands, detection, block or extraction.
+- Caps: 50 topics; closed topics expire after 180 days; candidates after 30 days.
+- No `memory_search` tool: per-request recall covers it (design: only if recall misses).
+- Admin → Hafıza → Konular: edit name/state/decisions/open items (one per line), star = active, delete, "Tümünü sil".

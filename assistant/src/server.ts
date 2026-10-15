@@ -5,7 +5,7 @@ import type { Orchestrator } from './orchestrator.ts';
 import { NoSpeechError } from './speech.ts';
 import { activity, observeRequest } from './activity.ts';
 import { root } from './config.ts';
-import { collectStatus, connectGmail, createExtension, createSkill, deleteMemory, deleteResource, memoryStatus, saveMemoryItem, saveMemorySettings, disconnectGmail, filesStatus, gmailActions, gmailStatus, listResources,
+import { collectStatus, connectGmail, createExtension, createSkill, deleteMemory, deleteResource, memoryStatus, saveMemoryItem, saveMemoryTopic, saveMemorySettings, disconnectGmail, filesStatus, gmailActions, gmailStatus, listResources,
   readResource, remoteModels, saveRemoteModel, testRemoteModel, saveFiles, saveGmail, saveReminders, saveVault, undoGmail, unlockVault, vaultStatus, writeResource } from './admin.ts';
 import { registerSecretSpeaker, registeredSecretSpeaker, VaultError, vaultService, type SecretSpeaker, type VaultService } from './vault.ts';
 import { fileService, type FileService } from './files.ts';
@@ -237,6 +237,7 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
           if (request.url === '/admin/memory') return reply(200, await memoryStatus(config, memory));
           if (request.url === '/admin/memory/settings') return reply(200, await saveMemorySettings(config, configPath, memory, data));
           if (request.url === '/admin/memory/save') return reply(200, await saveMemoryItem(config, memory, data));
+          if (request.url === '/admin/memory/topic') return reply(200, await saveMemoryTopic(config, memory, data));
           if (request.url === '/admin/memory/delete') return reply(200, await deleteMemory(config, memory, data));
           return reply(404, { error: 'Not found' });
         }

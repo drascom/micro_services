@@ -40,7 +40,8 @@ struct FilesStatus: Decodable { var enabled = false; var roots: [String] = []; v
 
 struct MemoryItem: Decodable, Identifiable { let id: Int; let kind: String; let text: String; let source: String; let pinned: Bool }
 struct MemoryEpisode: Decodable, Identifiable { let id: Int; let ended: Double; let summary: String }
-struct MemoryStatus: Decodable { var enabled = true; var extract = true; var items: [MemoryItem] = []; var episodes: [MemoryEpisode] = [] }
+struct MemoryTopic: Decodable, Identifiable { let id: Int; let title: String; let state: String; let decisions: [String]; let open: [String]; let status: String; let active: Bool }
+struct MemoryStatus: Decodable { var enabled = true; var extract = true; var items: [MemoryItem] = []; var episodes: [MemoryEpisode] = []; var topics: [MemoryTopic] = [] }
 
 struct RemoteModels: Decodable { var model = ""; var provider = ""; var models: [String] = []; var error = "" }
 struct RemoteModelTest: Decodable { let ok: Bool; let model: String?; let error: String? }
@@ -423,6 +424,11 @@ final class AdminModel {
     func deleteMemory(_ id: Int) async { await memoryCall("admin/memory/delete", ["id": id]) }
     func deleteEpisode(_ id: Int) async { await memoryCall("admin/memory/delete", ["episode": id]) }
     func clearMemory(_ kind: String) async { await memoryCall("admin/memory/delete", ["all": kind]) }
+    func saveTopic(_ id: Int, title: String, state: String, decisions: [String], open: [String]) async {
+        await memoryCall("admin/memory/topic", ["id": id, "title": title, "state": state, "decisions": decisions, "open": open])
+    }
+    func activateTopic(_ id: Int, _ active: Bool) async { await memoryCall("admin/memory/topic", ["id": id, "active": active]) }
+    func deleteTopic(_ id: Int) async { await memoryCall("admin/memory/delete", ["topic": id]) }
 
     func checkUpdates() async { await updatesCall("admin/updates/check") }
     func applyUpdate(_ id: String) async { await updatesCall("admin/updates/apply", ["id": id]) }
@@ -679,6 +685,12 @@ private struct MemoryTab: View {
             }
             section("Asistan", "assistant")
             section("Kişisel", "personal")
+            Section("Konular") {
+                ForEach(admin.memory.topics) { topic in TopicRow(admin: admin, topic: topic) }
+                if !admin.memory.topics.isEmpty {
+                    Button("Tümünü sil", role: .destructive) { clearing = "topics" }
+                }
+            }
             Section("Sohbet özetleri") {
                 ForEach(admin.memory.episodes) { episode in
                     HStack(alignment: .top) {
@@ -698,6 +710,48 @@ private struct MemoryTab: View {
             Button("Sil", role: .destructive) { if let kind = clearing { Task { await admin.clearMemory(kind) } }; clearing = nil }
             Button("İptal", role: .cancel) { clearing = nil }
         }
+    }
+}
+
+/** One topic: name, state, decisions and open items (one per line) editable; star = active topic. */
+private struct TopicRow: View {
+    let admin: AdminModel
+    let topic: MemoryTopic
+    @State private var title: String?
+    @State private var state: String?
+    @State private var decisions: String?
+    @State private var open: String?
+    private var changed: Bool { title != nil || state != nil || decisions != nil || open != nil }
+    private func lines(_ text: String) -> [String] {
+        text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                TextField("Ad", text: Binding(get: { title ?? topic.title }, set: { title = $0 })).font(.headline)
+                if topic.status == "done" { Text("kapalı").font(.caption).foregroundStyle(.secondary) }
+                Button { Task { await admin.activateTopic(topic.id, !topic.active) } } label: { Image(systemName: topic.active ? "star.fill" : "star") }
+                    .buttonStyle(.borderless).help("Aktif")
+                Button(role: .destructive) { Task { await admin.deleteTopic(topic.id) } } label: { Image(systemName: "trash") }
+                    .buttonStyle(.borderless).help("Sil")
+            }
+            TextField("Durum", text: Binding(get: { state ?? topic.state }, set: { state = $0 }), axis: .vertical).lineLimit(1...4)
+            LabeledContent("Kararlar") {
+                TextEditor(text: Binding(get: { decisions ?? topic.decisions.joined(separator: "\n") }, set: { decisions = $0 })).frame(minHeight: 40)
+            }
+            LabeledContent("Açık işler") {
+                TextEditor(text: Binding(get: { open ?? topic.open.joined(separator: "\n") }, set: { open = $0 })).frame(minHeight: 40)
+            }
+            if changed {
+                HStack {
+                    Button("Kaydet") {
+                        let value = (title ?? topic.title, state ?? topic.state, lines(decisions ?? topic.decisions.joined(separator: "\n")), lines(open ?? topic.open.joined(separator: "\n")))
+                        Task { await admin.saveTopic(topic.id, title: value.0, state: value.1, decisions: value.2, open: value.3); title = nil; state = nil; decisions = nil; open = nil }
+                    }
+                    Button("Vazgeç") { title = nil; state = nil; decisions = nil; open = nil }
+                }
+            }
+        }.padding(.vertical, 2)
     }
 }
 

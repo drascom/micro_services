@@ -259,7 +259,25 @@ export async function saveReminders(config: Config, configPath: string, value: u
 /** Memory tab: both switches and every stored item/summary (local Admin only; never logged). */
 export async function memoryStatus(config: Config, memory: MemoryService) {
   const { items, episodes } = await memory.store.list();
-  return { enabled: config.memory_enabled, extract: config.memory_extract, items, episodes };
+  return { enabled: config.memory_enabled, extract: config.memory_extract, items, episodes, topics: await memory.store.topics() };
+}
+/** Topic edit (`id` + any of title/state/decisions/open/status) or `active` (true = make it the active topic, false = none). */
+export async function saveMemoryTopic(config: Config, memory: MemoryService, value: unknown) {
+  const input = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
+  if (!Number.isInteger(input.id)) throw Error('Invalid topic');
+  const id = input.id as number;
+  const text = (key: string) => { const v = input[key]; if (v !== undefined && typeof v !== 'string') throw Error(`${key} must be text`); return v as string | undefined; };
+  const list = (key: string) => { const v = input[key]; if (v !== undefined && (!Array.isArray(v) || v.some(x => typeof x !== 'string'))) throw Error(`${key} must be a text list`); return v as string[] | undefined; };
+  const status = input.status === 'active' || input.status === 'done' ? input.status as 'active' | 'done' : undefined;
+  const change = { title: text('title'), state: text('state'), decisions: list('decisions'), open: list('open'), status };
+  if (Object.values(change).some(v => v !== undefined)) {
+    const result = await memory.store.editTopic(id, change, AbortSignal.timeout(30_000));
+    if (result.status === 'rejected') throw Error(result.reason === 'private' ? 'Şifre, kod, hesap numarası veya mail içeriği saklanmaz'
+      : result.reason === 'not_found' ? 'Kayıt yok' : 'Boş metin');
+  }
+  if (input.active === true && !await memory.store.activate(id)) throw Error('Kayıt yok');
+  if (input.active === false && memory.store.activeTopic() === id) await memory.store.activate(undefined);
+  return memoryStatus(config, memory);
 }
 /** Memory switches in config.json; only the fields present are changed. */
 export async function saveMemorySettings(config: Config, configPath: string, memory: MemoryService, value: unknown) {
@@ -288,12 +306,13 @@ export async function saveMemoryItem(config: Config, memory: MemoryService, valu
     : result.reason === 'not_found' ? 'Kayıt yok' : 'Boş metin');
   return memoryStatus(config, memory);
 }
-/** Delete one item (`id`), one summary (`episode`) or all of a kind (`all`: assistant | personal | episodes). */
+/** Delete one item (`id`), one summary (`episode`), one topic (`topic`) or all of a kind (`all`: assistant | personal | episodes | topics). */
 export async function deleteMemory(config: Config, memory: MemoryService, value: unknown) {
-  const input = (value && typeof value === 'object' ? value : {}) as { id?: unknown; episode?: unknown; all?: unknown };
+  const input = (value && typeof value === 'object' ? value : {}) as { id?: unknown; episode?: unknown; topic?: unknown; all?: unknown };
   if (Number.isInteger(input.id)) await memory.store.remove(input.id as number);
   else if (Number.isInteger(input.episode)) await memory.store.removeEpisode(input.episode as number);
-  else if (input.all === 'assistant' || input.all === 'personal' || input.all === 'episodes') await memory.store.clear(input.all);
+  else if (Number.isInteger(input.topic)) await memory.store.removeTopic(input.topic as number);
+  else if (input.all === 'assistant' || input.all === 'personal' || input.all === 'episodes' || input.all === 'topics') await memory.store.clear(input.all);
   else throw Error('Invalid memory delete');
   return memoryStatus(config, memory);
 }

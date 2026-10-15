@@ -8,7 +8,7 @@ import { defaults, type Config } from '../src/config.ts';
 import { Orchestrator } from '../src/orchestrator.ts';
 import type { Chat, Classifier } from '../src/providers.ts';
 import type { Embedder } from '../src/embeddings.ts';
-import { isPrivate, MEMORY_LIMITS, memoryRequest, MemoryService, parseExtraction, type ExtractModel } from '../src/memory.ts';
+import { isPrivate, MEMORY_LIMITS, memoryRequest, MemoryService, parseExtraction, TOPIC_IDLE_MS, TOPIC_LIMITS, topicCommand, type ExtractModel } from '../src/memory.ts';
 import { makeServer } from '../src/server.ts';
 
 const signal = () => new AbortController().signal;
@@ -273,6 +273,154 @@ test('Admin memory endpoints: list, add, edit, pin, delete, switches (private te
       result = await call('/admin/memory/delete', { id });
       assert.equal(result.data.items.length, 0);
       assert.equal((await call('/admin/memory')).data.enabled, true);
+    } finally { lifecycle.abort(); server.close(); server.closeAllConnections(); }
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Topics (P3)
+
+test('topic commands: create, continue, close, list, delete; ordinary sentences are no command', () => {
+  assert.deepEqual(topicCommand('Yeni konu: Tatil planı'), { type: 'create', title: 'Tatil planı' });
+  assert.deepEqual(topicCommand('Ring projesi üzerinde çalışıyoruz.'), { type: 'create', title: 'Ring projesi' });
+  assert.deepEqual(topicCommand("Ring'e devam edelim"), { type: 'continue', name: 'Ring' });
+  assert.deepEqual(topicCommand('ring projesine devam edelim'), { type: 'continue', name: 'ring projesi' });
+  assert.deepEqual(topicCommand('Ring projesi'), { type: 'continue', name: 'Ring projesi' });
+  assert.deepEqual(topicCommand('Konuyu kapat'), { type: 'close' });
+  assert.deepEqual(topicCommand('Hangi konular var?'), { type: 'list' });
+  assert.deepEqual(topicCommand('Tatil konusunu sil'), { type: 'delete', name: 'Tatil' });
+  for (const text of ['hava nasıl', 'yarın 9da bana hatırlat', 'bu projede ne kaldı']) assert.equal(topicCommand(text), undefined, text);
+});
+
+test('topics: create + activate, local context gets the summary, remote never; continue, auto-detect, idle expiry, reset', async () => {
+  const { memory, settings } = service();
+  const a = app(memory, settings, { remoteFails: true });
+  await a.orchestrator.ask('Ring projesi üzerinde çalışıyoruz');
+  const [created] = await memory.store.topics();
+  assert.equal(created.title, 'Ring projesi'); assert.ok(created.active);
+  await memory.store.mergeTopic(created.id, { state: 'Menü ikonları ve ayarlar ekranı yapılıyor', decisions: ['SF Symbols kullanılacak'], open: ['Koyu tema testi'] }, signal());
+  await a.orchestrator.ask('Sıradaki adım ne?');
+  const [remote, local] = a.contexts.slice(-2);
+  assert.equal(remote.provider, 'remote');
+  for (const secret of ['Menü ikonları', 'SF Symbols', 'Koyu tema', 'Active topic']) assert.ok(!remote.context.systemPrompt!.includes(secret), secret);
+  assert.match(local.context.systemPrompt!, /Active topic \(reference only\): Ring projesi/);
+  assert.match(local.context.systemPrompt!, /SF Symbols kullanılacak/);
+  assert.equal(memory.extractor.turns.at(-1)?.topic, created.id, 'turn carries the active topic');
+  // Reset ends the segment: no topic; "Ring'e devam edelim" activates it again.
+  a.orchestrator.reset();
+  assert.equal(memory.store.activeTopic(), undefined);
+  await a.orchestrator.ask("Ring'e devam edelim");
+  assert.equal(memory.store.activeTopic(), created.id);
+  // Idle expiry.
+  const start = Date.now(); memory.store.now = () => start + TOPIC_IDLE_MS + 1000;
+  assert.equal(memory.store.activeTopic(), undefined);
+  // Auto-detect: a prompt close to the topic state activates it; an unrelated prompt does not.
+  await a.orchestrator.ask('Bugün hava çok güzel');
+  assert.equal(memory.store.activeTopic(), undefined);
+  await a.orchestrator.ask('menü ikonları ve ayarlar ekranı yapılıyor mu');
+  assert.equal(memory.store.activeTopic(), created.id);
+});
+
+test('topic commands answered without a model: list, close, delete', async () => {
+  const { memory, settings } = service();
+  const a = app(memory, settings);
+  await memory.store.createTopic('Tatil planı', signal());
+  await memory.store.activate((await memory.store.createTopic('Ring projesi', signal()))!.id);
+  let reply = await a.orchestrator.ask('Hangi konular var?');
+  assert.equal(reply.text, 'Konular: Ring projesi (aktif), Tatil planı.'); assert.equal(reply.provider, 'memory');
+  reply = await a.orchestrator.ask('Konuyu kapat');
+  assert.equal(reply.text, '“Ring projesi” konusu kapatıldı.');
+  assert.equal(memory.store.activeTopic(), undefined);
+  assert.equal((await memory.store.topics()).find(t => t.title === 'Ring projesi')?.status, 'done');
+  reply = await a.orchestrator.ask('Tatil konusunu sil');
+  assert.equal(reply.text, '“Tatil planı” konusu silindi.');
+  assert.equal((await a.orchestrator.ask('Hangi konular var')).text, 'Kayıtlı konu yok.');
+  assert.equal(a.contexts.length, 0, 'no model call');
+  assert.equal(memory.extractor.turns.length, 0, 'commands are not extracted');
+});
+
+test('extraction updates the active topic (merge, done, caps); remote extractor gets no topic text; proposals need two batches', async () => {
+  const { memory } = service();
+  const topic = (await memory.store.createTopic('Ring projesi', signal(), { state: 'Başladık', open: ['Koyu tema testi', 'İkon seçimi'] }))!;
+  const calls: { system: string; user: string; local: boolean }[] = [];
+  let answer = '';
+  memory.extractor.model = async (system, user, local) => { calls.push({ system, user, local }); return answer; };
+  let offline = true; memory.extractor.offline = () => offline;
+  answer = JSON.stringify({ items: [], episode: '', topic: { title: 'Ring', state: 'İkonlar bitti, tema kaldı', decisions: Array.from({ length: 12 }, (_, i) => `Karar ${i}`),
+    open: ['Ayarlar ekranı'], done: ['ikon seçimi'] } });
+  memory.extractor.record({ user: 'İkonları bitirdik', assistant: 'Harika', offline: true, localReply: true, at: 1, topic: topic.id });
+  await memory.extractor.run();
+  assert.match(calls[0].system, /Current topic:\nActive topic \(reference only\): Ring projesi/);
+  let [t] = await memory.store.topics();
+  assert.equal(t.state, 'İkonlar bitti, tema kaldı');
+  assert.equal(t.decisions.length, TOPIC_LIMITS.decisions); assert.equal(t.decisions.at(-1), 'Karar 9', 'extractor lists capped at 10, topic keeps the newest 8');
+  assert.deepEqual(t.open, ['Koyu tema testi', 'Ayarlar ekranı']);
+  // Remote extractor (online): no topic text in the prompt; its delta still merges locally.
+  offline = false;
+  answer = JSON.stringify({ items: [], topic: { title: 'Ring', state: 'Tema bitti', decisions: ['Şifre: abc123xyz kaydedildi'], open: [], done: ['koyu tema testi'] } });
+  memory.extractor.record({ user: 'Temayı bitirdik', assistant: 'Süper', offline: false, localReply: false, at: 2, topic: topic.id });
+  await memory.extractor.run();
+  for (const secret of ['Ring', 'İkonlar bitti', 'Karar', 'Ayarlar ekranı', 'Current topic']) assert.ok(!(calls[1].system + calls[1].user).includes(secret), secret);
+  [t] = await memory.store.topics();
+  assert.equal(t.state, 'Tema bitti'); assert.deepEqual(t.open, ['Ayarlar ekranı']);
+  assert.ok(!t.decisions.some(d => d.includes('Şifre')), 'privacy filter');
+  // No active topic: a new subject becomes a topic only on its second proposal.
+  answer = JSON.stringify({ items: [], topic: { title: 'Bahçe sulama', state: 'Damla sulama düşünülüyor', open: ['Hortum ölç'] } });
+  memory.extractor.record({ user: 'Bahçeye sulama kuralım', assistant: 'Olur', offline: false, localReply: false, at: 3 });
+  await memory.extractor.run();
+  assert.equal((await memory.store.topics()).length, 1, 'first proposal: candidate only');
+  memory.extractor.record({ user: 'Sulama için boru aldım', assistant: 'Güzel', offline: false, localReply: false, at: 4 });
+  await memory.extractor.run();
+  const garden = (await memory.store.topics()).find(x => x.title === 'Bahçe sulama');
+  assert.ok(garden && !garden.active); assert.deepEqual(garden.open, ['Hortum ölç']);
+});
+
+test('topics: privacy filter, Reminders tasks isolated, block within 600 chars and the memory budget', async () => {
+  const { memory, settings } = service();
+  assert.equal(await memory.store.createTopic('Banka şifresi', signal()), undefined);
+  const a = app(memory, settings, { remoteFails: true });
+  await a.orchestrator.ask('yeni konu: Görev projesi', false, signal(), { automated: true, intentText: 'görev' });
+  assert.equal((await memory.store.topics()).length, 0, 'task creates no topic');
+  const t = (await memory.store.createTopic('Uzun proje', signal()))!;
+  await memory.store.mergeTopic(t.id, { state: 'durum '.repeat(100), decisions: Array.from({ length: 20 }, (_, i) => `Karar ${i} ` + 'ayrıntı '.repeat(20)),
+    open: Array.from({ length: 20 }, (_, i) => `İş ${i} ` + 'ayrıntı '.repeat(20)) }, signal());
+  const stored = (await memory.store.topics())[0];
+  assert.ok(stored.state.length <= TOPIC_LIMITS.state && stored.open.length <= TOPIC_LIMITS.open && stored.decisions.every(d => d.length <= TOPIC_LIMITS.entry));
+  await memory.store.activate(t.id);
+  const block = await memory.store.topicBlock();
+  assert.ok(block.length <= MEMORY_LIMITS.topic, String(block.length));
+  await a.orchestrator.ask('görev', false, signal(), { automated: true, intentText: 'görev' });
+  for (const c of a.contexts) assert.ok(!c.context.systemPrompt!.includes('Active topic'), 'task gets no topic');
+  assert.ok(MEMORY_LIMITS.assistant + MEMORY_LIMITS.personal + MEMORY_LIMITS.retrieved + MEMORY_LIMITS.topic <= settings.memory_chars);
+  const local = await a.orchestrator.context('x', true, signal());
+  assert.match(local.systemPrompt!, /Active topic/);
+  assert.equal(settings.history_chars, 6000);
+});
+
+test('Admin topics: edit, activate, delete', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'ayhan-topics-'));
+  try {
+    const { memory, settings } = service({ pi_agent_dir: directory } as Partial<Config>);
+    const { orchestrator } = app(memory, settings);
+    const lifecycle = new AbortController();
+    const server = await makeServer(settings, orchestrator, lifecycle.signal, null, directory, [path.join(directory, 'trash')], { configPath: path.join(directory, 'config.json') });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    const { token } = await (await fetch(base + '/session')).json() as { token: string };
+    type Topics = { topics: { id: number; title: string; state: string; decisions: string[]; open: string[]; active: boolean }[] };
+    const call = async (route: string, body: unknown = {}) => {
+      const response = await fetch(base + route, { method: 'POST', headers: { 'X-Assistant-Token': token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      return { status: response.status, data: await response.json() as Topics };
+    };
+    try {
+      const id = (await memory.store.createTopic('Ring projesi', signal()))!.id;
+      let result = await call('/admin/memory/topic', { id, state: 'İkonlar', decisions: ['SF Symbols'], open: ['Tema'], active: true });
+      assert.deepEqual([result.data.topics[0].state, result.data.topics[0].decisions, result.data.topics[0].open, result.data.topics[0].active], ['İkonlar', ['SF Symbols'], ['Tema'], true]);
+      assert.equal((await call('/admin/memory/topic', { id, open: ['şifre 1234abcd'] })).status, 400);
+      result = await call('/admin/memory/topic', { id, active: false });
+      assert.equal(result.data.topics[0].active, false);
+      result = await call('/admin/memory/delete', { topic: id });
+      assert.equal(result.data.topics.length, 0);
     } finally { lifecycle.abort(); server.close(); server.closeAllConnections(); }
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
