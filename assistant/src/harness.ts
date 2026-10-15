@@ -4,7 +4,7 @@ import type { Context, Model, AssistantMessage } from '@earendil-works/pi-ai';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { root, type Config } from './config.ts';
-import { PiChat, type HarnessSkill, type Steering } from './providers.ts';
+import { logRemoteError, PiChat, type HarnessSkill, type Steering } from './providers.ts';
 import { FileCredentials } from './credentials.ts';
 import { permissionsExtension } from '../.pi/extensions/permissions.ts';
 import { activity } from './activity.ts';
@@ -254,6 +254,7 @@ export class PiHarnessChat extends PiChat {
       if (event.type === 'turn_start') { turnStart = performance.now(); activity('model_started', { round: ++round }); }
       if (event.type === 'message_end' && event.message.role === 'assistant') {
         activity('model_finished', { round, duration_ms: Math.round(performance.now() - turnStart), stop_reason: event.message.stopReason });
+        if (!this.local && event.message.stopReason === 'error') logRemoteError(event.message.errorMessage);
       }
       if (event.type === 'tool_execution_start') { options?.used?.add(event.toolName); activity('tool_started', { tool: event.toolName }); }
       if (event.type === 'tool_execution_end') {

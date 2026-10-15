@@ -11,7 +11,8 @@ import type { Orchestrator } from './orchestrator.ts';
 import { FileCredentials } from './credentials.ts';
 import { liveRequests, recentActivity } from './activity.ts';
 import { runProcess, type OwnedProcess } from './processes.ts';
-import { PiChat } from './providers.ts';
+import { PiChat, remoteError, subscriptionProvider } from './providers.ts';
+import type { Models } from '@earendil-works/pi-ai';
 import type { FileService } from './files.ts';
 import { lastFilePlan } from './files-organize.ts';
 import { validateFileRoots, validateSkipDirs, validateVaultSettings } from './config.ts';
@@ -401,4 +402,40 @@ export async function saveFiles(config: Config, configPath: string, files: FileS
   Object.assign(config, change);
   if (!config.embedding_enabled) await files.embedder.close();
   return filesStatus(config, files);
+}
+
+/** Remote model picker: the signed-in subscription provider's models from the Pi registry. `model: ""` = follow global Pi. */
+export async function remoteModels(config: Config, models: Pick<Models, 'getModels'> | undefined) {
+  let provider = '', list: string[] = [], error = '';
+  try { provider = await subscriptionProvider(config); list = models ? models.getModels(provider).map(m => m.id) : []; }
+  catch (e) { error = (e as Error).message; }
+  return { model: config.codex_model, provider, models: list, error };
+}
+/** Saves `codex_model` (empty = global Pi choice); takes effect on the next request (resolveModel reads the live config). */
+export async function saveRemoteModel(config: Config, configPath: string, models: Pick<Models, 'getModels'> | undefined, value: unknown) {
+  const model = (value && typeof value === 'object' ? (value as { model?: unknown }).model : undefined);
+  if (typeof model !== 'string') throw Error('model must be text');
+  if (model) {
+    const available = await remoteModels(config, models);
+    if (!available.models.includes(model)) throw Error('Model not available for the signed-in provider');
+  }
+  await updateConfigFile(configPath, settings => { settings.codex_model = model; });
+  config.codex_model = model;
+  return remoteModels(config, models);
+}
+/** "Dene": one tiny request with the selected model (empty = global Pi choice). Returns ✓ or a short sanitized error; nothing cached. */
+export async function testRemoteModel(config: Config, models: Models | undefined, value: unknown) {
+  const model = (value && typeof value === 'object' ? (value as { model?: unknown }).model : undefined);
+  if (typeof model !== 'string') throw Error('model must be text');
+  if (!models) return { ok: false, error: 'Remote model unavailable' };
+  try {
+    const resolved = await new PiChat(models, { ...config, codex_model: model }).resolveModel();
+    const result = await models.completeSimple(resolved, { messages: [{ role: 'user', content: 'Reply with: ok', timestamp: Date.now() }] },
+      { signal: AbortSignal.timeout(30_000), transport: 'sse', reasoning: 'low' });
+    if (result.stopReason === 'error' || result.stopReason === 'aborted') {
+      const { status, message } = remoteError(result.errorMessage ?? result.stopReason);
+      return { ok: false, model: resolved.id, error: status ? `${status}: ${message}` : message };
+    }
+    return { ok: true, model: resolved.id };
+  } catch (e) { return { ok: false, error: remoteError((e as Error).message).message }; }
 }

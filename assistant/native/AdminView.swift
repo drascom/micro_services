@@ -42,6 +42,8 @@ struct MemoryItem: Decodable, Identifiable { let id: Int; let kind: String; let 
 struct MemoryEpisode: Decodable, Identifiable { let id: Int; let ended: Double; let summary: String }
 struct MemoryStatus: Decodable { var enabled = true; var extract = true; var items: [MemoryItem] = []; var episodes: [MemoryEpisode] = [] }
 
+struct RemoteModels: Decodable { var model = ""; var provider = ""; var models: [String] = []; var error = "" }
+struct RemoteModelTest: Decodable { let ok: Bool; let model: String?; let error: String? }
 struct VaultStatus: Decodable { var enabled = false; var server = ""; var email = ""; var installed = false; var state = "unknown"; var error = "" }
 struct UpdateItem: Decodable, Identifiable {
     let id: String; let name: String; let current: String; let latest: String; let status: String
@@ -111,6 +113,9 @@ final class AdminModel {
     var updatesMessage = ""
     var memory = MemoryStatus()
     var memoryMessage = ""
+    var remote = RemoteModels()
+    var remoteMessage = ""
+    var remoteTesting = false
     private var polling: Task<Void, Never>?
 
     init(backend: BackendClient, ring: RingModel) { self.backend = backend; self.ring = ring }
@@ -126,6 +131,7 @@ final class AdminModel {
         }
         Task { await loadResources() }
         Task { await loadReminders() }
+        Task { await loadRemoteModels() }
         Task { await loadGmail(); await loadImportance(); await loadGmailActions() }
         Task { await loadPronunciations() }
         Task { await loadFiles() }
@@ -223,6 +229,27 @@ final class AdminModel {
             applyReminders(try await backend.admin("admin/reminders/save", data: json)); remindersMessage = ""
         }
         catch { await loadReminders(); remindersMessage = error.localizedDescription }
+    }
+    // MARK: Remote model ("" = follow global Pi settings; applies from the next request)
+    func loadRemoteModels() async {
+        do { remote = try JSONDecoder().decode(RemoteModels.self, from: try await backend.admin("admin/remote-model")); remoteMessage = remote.error }
+        catch { remoteMessage = error.localizedDescription }
+    }
+    func setRemoteModel(_ model: String) async {
+        remote.model = model; remoteMessage = ""
+        do {
+            let json = try JSONSerialization.data(withJSONObject: ["model": model])
+            remote = try JSONDecoder().decode(RemoteModels.self, from: try await backend.admin("admin/remote-model/save", data: json))
+        } catch { remoteMessage = error.localizedDescription; await loadRemoteModels() }
+    }
+    func testRemoteModel() async {
+        remoteTesting = true; remoteMessage = ""
+        defer { remoteTesting = false }
+        do {
+            let json = try JSONSerialization.data(withJSONObject: ["model": remote.model])
+            let result = try JSONDecoder().decode(RemoteModelTest.self, from: try await backend.admin("admin/remote-model/test", data: json))
+            remoteMessage = result.ok ? "✓ \(result.model ?? "")" : (result.error ?? "✗")
+        } catch { remoteMessage = error.localizedDescription }
     }
     // MARK: Gmail (OAuth client in Keychain via the backend; the backend never returns secrets)
     private func applyGmail(_ data: Data) {
@@ -712,6 +739,19 @@ private struct SettingsTab: View {
             Section("Mod / Mode") {
                 Toggle("Yerel kullan / Local only", isOn: Binding(get: { ring.offline }, set: { ring.setOffline($0) }))
                     .disabled(ring.changingMode || ring.phase == .starting)
+                LabeledContent("Uzak model / Remote model") {
+                    HStack {
+                        Picker("", selection: Binding(get: { admin.remote.model }, set: { model in Task { await admin.setRemoteModel(model) } })) {
+                            Text("Pi varsayılanı").tag("")
+                            ForEach(admin.remote.models, id: \.self) { Text($0).tag($0) }
+                            if !admin.remote.model.isEmpty && !admin.remote.models.contains(admin.remote.model) { Text(admin.remote.model).tag(admin.remote.model) }
+                        }.labelsHidden().fixedSize()
+                        Button("Dene") { Task { await admin.testRemoteModel() } }.disabled(admin.remoteTesting)
+                    }
+                }
+                if !admin.remoteMessage.isEmpty {
+                    Text(admin.remoteMessage).font(.caption).foregroundStyle(admin.remoteMessage.hasPrefix("✓") ? .green : .red).textSelection(.enabled)
+                }
                 Toggle("Sesli yanıt / Read aloud", isOn: $ring.readAloud)
                 Toggle("Menü çubuğu simgesi / Menu bar icon", isOn: Binding(get: { admin.menuBarIcon }, set: { admin.actions.setMenuBarIcon($0) }))
                 Toggle("Reminders", isOn: Binding(get: { admin.remindersEnabled }, set: { on in Task { await admin.setReminders(on) } }))

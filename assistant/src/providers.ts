@@ -7,6 +7,7 @@ import { typesafeProvider } from '@earendil-works/pi-ai/providers/typesafe';
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy';
 import { FileCredentials } from './credentials.ts';
 import type { Config } from './config.ts';
+import { activity } from './activity.ts';
 
 export type HarnessSkill = 'online-search' | 'skill-manager' | 'mail-assistant' | 'reminders' | 'mail-triage' | 'file-assistant' | 'vault' | 'updates';
 export interface Chat { complete(context: Context, signal: AbortSignal, options?: { offline: boolean; skill?: HarnessSkill; briefNews?: boolean; turn?: number; automated?: boolean; steering?: Steering; memory?: boolean; used?: Set<string> }): Promise<AssistantMessage>; }
@@ -46,6 +47,34 @@ export function createCollection(config: Config): Models {
   return models;
 }
 
+/** Subscription provider of the signed-in Pi account (OAuth only: never a separately billed API key). */
+export async function subscriptionProvider(config: Config): Promise<'openai' | 'openai-codex'> {
+  const metadata = await new FileCredentials(path.join(config.pi_agent_dir, 'auth.json')).list();
+  if (metadata.some(m => m.providerId === 'openai' && m.type === 'oauth')) return 'openai';
+  if (metadata.some(m => m.providerId === 'openai-codex' && m.type === 'oauth')) return 'openai-codex';
+  throw Error('Subscription sign-in required: use global pi /login');
+}
+
+/** Short, log-safe form of a provider error: HTTP status plus the first ~120 characters of the provider's own message,
+ *  with anything token-like removed. Never includes the request content. */
+export function remoteError(raw: string | undefined): { status?: number; message: string } {
+  const text = String(raw ?? '');
+  const status = Number(text.match(/\((\d{3})\)/)?.[1] ?? text.match(/^(\d{3})\b/)?.[1] ?? text.match(/\b(?:status|code)\D{0,3}([45]\d\d)\b/i)?.[1]);
+  const inner = text.match(/"(?:detail|message)"\s*:\s*"((?:[^"\\]|\\.)*)"/)?.[1] ?? text.replace(/^[^:]{0,60}\(\d{3}\):\s*/, '');
+  const message = inner
+    .replace(/Bearer\s+\S+/gi, 'Bearer ***')
+    .replace(/\beyJ[\w-]+\.[\w-]+(?:\.[\w-]+)?/g, '***')
+    .replace(/\b(?:sk|rt|sess|org|proj)-[\w-]{8,}/g, '***')
+    .replace(/[A-Za-z0-9+/_=-]{32,}/g, '***')
+    .replace(/\s+/g, ' ').trim().slice(0, 120);
+  return { ...(Number.isInteger(status) ? { status } : {}), message: message || 'unknown error' };
+}
+/** Activity log line for a failed remote request (metadata only). */
+export function logRemoteError(raw: string | undefined): void {
+  const { status, message } = remoteError(raw);
+  activity('remote_error', { ...(status ? { status } : {}), message });
+}
+
 export class PiChat implements Chat {
   models: Models; config: Config; local: boolean;
   constructor(models: Models, config: Config, local = false) { this.models = models; this.config = config; this.local = local; }
@@ -54,11 +83,7 @@ export class PiChat implements Chat {
     let provider = this.local ? 'local-gemma' : 'openai-codex';
     let modelId = this.local ? c.local_model : c.codex_model;
     if (!this.local) {
-      const metadata = await new FileCredentials(path.join(c.pi_agent_dir, 'auth.json')).list();
-      // Require OAuth: never fall through to a separately billed ambient API key.
-      if (metadata.some(m => m.providerId === 'openai' && m.type === 'oauth')) provider = 'openai';
-      else if (!metadata.some(m => m.providerId === 'openai-codex' && m.type === 'oauth'))
-        throw Error('Subscription sign-in required: use global pi /login');
+      provider = await subscriptionProvider(c); // Require OAuth: never fall through to a separately billed ambient API key.
       if (!modelId) {
         let settings: { defaultModel?: string; defaultProvider?: string } = {};
         try { settings = JSON.parse(await readFile(path.join(c.pi_agent_dir, 'settings.json'), 'utf8')); } catch {}
@@ -77,8 +102,10 @@ export class PiChat implements Chat {
       signal, transport: 'sse',
       ...(this.local ? { maxTokens: c.max_tokens, temperature: 0.3 } : { reasoning: 'low' }),
     });
-    if (result.stopReason === 'error' || result.stopReason === 'aborted')
+    if (result.stopReason === 'error' || result.stopReason === 'aborted') {
+      if (!this.local && result.stopReason === 'error') logRemoteError(result.errorMessage);
       throw Error(this.local ? 'Local model request failed' : 'Codex request failed or timed out; check sign-in, model access, and usage limits');
+    }
     if (!result.content.some(b => b.type === 'text' && b.text.trim())) throw Error('Model returned no usable text reply');
     return result;
   }

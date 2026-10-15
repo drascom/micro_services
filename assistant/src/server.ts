@@ -6,7 +6,7 @@ import { NoSpeechError } from './speech.ts';
 import { activity, observeRequest } from './activity.ts';
 import { root } from './config.ts';
 import { collectStatus, connectGmail, createExtension, createSkill, deleteMemory, deleteResource, memoryStatus, saveMemoryItem, saveMemorySettings, disconnectGmail, filesStatus, gmailActions, gmailStatus, listResources,
-  readResource, saveFiles, saveGmail, saveReminders, saveVault, undoGmail, unlockVault, vaultStatus, writeResource } from './admin.ts';
+  readResource, remoteModels, saveRemoteModel, testRemoteModel, saveFiles, saveGmail, saveReminders, saveVault, undoGmail, unlockVault, vaultStatus, writeResource } from './admin.ts';
 import { registerSecretSpeaker, registeredSecretSpeaker, VaultError, vaultService, type SecretSpeaker, type VaultService } from './vault.ts';
 import { fileService, type FileService } from './files.ts';
 import { readPronunciations, savePronunciations } from './pronounce.ts';
@@ -198,6 +198,12 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         if (request.url === '/admin/create-extension') return reply(200, await createExtension(resourceRoot, value.name));
         if (request.url === '/admin/reminders') return reply(200, { enabled: config.reminders_enabled, tasks_enabled: config.tasks_enabled, tasks_list: config.tasks_list });
         if (request.url === '/admin/reminders/save') return reply(200, await saveReminders(config, configPath, data));
+        if (request.url?.startsWith('/admin/remote-model')) {
+          const models = app.remote instanceof PiChat ? app.remote.models : undefined;
+          if (request.url === '/admin/remote-model') return reply(200, await remoteModels(config, models));
+          if (request.url === '/admin/remote-model/save') return reply(200, await saveRemoteModel(config, configPath, models, data));
+          if (request.url === '/admin/remote-model/test') return reply(200, await testRemoteModel(config, models, data));
+        }
         if (request.url === '/admin/gmail') return reply(200, await gmailStatus(config, gmail));
         if (request.url === '/admin/gmail/save') return reply(200, await saveGmail(config, configPath, gmail, data));
         if (request.url === '/admin/gmail/connect') return reply(200, await connectGmail(gmail));

@@ -156,3 +156,67 @@ test('admin Reminders switch: token required, saved in config.json with other se
     assert.deepEqual((await f.call('/admin/reminders')).body, { enabled: true, tasks_enabled: true, tasks_list: 'İşler' });
   } finally { await f.close(); }
 });
+
+test('remote model picker lists the signed-in provider models, saves codex_model and applies it on the next request', async () => {
+  const { PiChat } = await import('../src/providers.ts');
+  const directory = await mkdtemp(path.join(tmpdir(), 'ayhan-remote-'));
+  await writeFile(path.join(directory, 'auth.json'), JSON.stringify({ openai: { type: 'oauth', access: 'SECRET-ACCESS', refresh: 'SECRET-REFRESH', expires: 1 } }));
+  await writeFile(path.join(directory, 'settings.json'), JSON.stringify({ defaultProvider: 'openai', defaultModel: 'gpt-5.6-sol' }));
+  const catalog = ['gpt-5.6-sol', 'gpt-6.1-sol'].map(id => ({ id, provider: 'openai' }));
+  const used: string[] = [];
+  let failure = '';
+  const models = {
+    getModels: (provider: string) => provider === 'openai' ? catalog : [],
+    getModel: (provider: string, id: string) => catalog.find(m => m.provider === provider && m.id === id),
+    completeSimple: async (model: { id: string }) => {
+      used.push(model.id);
+      return failure ? { ...fauxAssistantMessage(''), stopReason: 'error', errorMessage: failure } : fauxAssistantMessage('ok');
+    }
+  };
+  const config: Config = { ...defaults, pi_agent_dir: directory, codex_model: 'gpt-6.1-sol' };
+  const remote = new PiChat(models as any, config);
+  const speech = { transcribe: async () => '', speak: async () => {}, stop: () => {}, close: async () => {} };
+  const app = new Orchestrator(config, remote, remote, { ensure: async () => {}, close: async () => {} }, speech);
+  const configPath = path.join(directory, 'config.json');
+  await writeFile(configPath, JSON.stringify({ codex_model: 'gpt-6.1-sol' }));
+  const lifecycle = new AbortController(), server = await makeServer(config, app, lifecycle.signal, path.join(directory, 'activity.log'), directory, [path.join(directory, 'trash')], { configPath });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const address = server.address(); assert.ok(address && typeof address === 'object');
+  const base = `http://127.0.0.1:${address.port}`;
+  const { token } = await (await fetch(base + '/session')).json() as { token: string };
+  const call = async (route: string, body: object = {}) => {
+    const response = await fetch(base + route, { method: 'POST', headers: { 'X-Assistant-Token': token }, body: JSON.stringify(body) });
+    return { status: response.status, body: await response.json() as any };
+  };
+  const ask = () => remote.complete({ messages: [{ role: 'user', content: 'hi', timestamp: 0 }] }, AbortSignal.timeout(5000));
+  try {
+    const listed = await call('/admin/remote-model');
+    assert.deepEqual(listed.body, { model: 'gpt-6.1-sol', provider: 'openai', models: ['gpt-5.6-sol', 'gpt-6.1-sol'], error: '' });
+    assert.ok(!JSON.stringify(listed.body).includes('SECRET'));
+    assert.equal((await call('/admin/remote-model/save', { model: 'gpt-9' })).status, 400);
+    assert.equal((await call('/admin/remote-model/save', { model: 'gpt-5.6-sol' })).body.model, 'gpt-5.6-sol');
+    assert.equal(JSON.parse(await readFile(configPath, 'utf8')).codex_model, 'gpt-5.6-sol');
+    await ask(); assert.equal(used.at(-1), 'gpt-5.6-sol');
+    // "Pi varsayılanı": empty codex_model follows ~/.pi/agent/settings.json.
+    assert.equal((await call('/admin/remote-model/save', { model: '' })).body.model, '');
+    assert.equal(JSON.parse(await readFile(configPath, 'utf8')).codex_model, '');
+    assert.equal(config.codex_model, '');
+    const tested = await call('/admin/remote-model/test', { model: '' });
+    assert.deepEqual(tested.body, { ok: true, model: 'gpt-5.6-sol' });
+    // Remote failure: the activity log gets status + a short sanitized provider message, never tokens or user text.
+    failure = 'OpenAI API error (400): {"detail":"The \'gpt-5.5\' model is not supported when using Codex with a ChatGPT account. Bearer abc.def eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig sk-proj-ABCDEFGHIJKLMNOP"}';
+    await assert.rejects(observeRequest(path.join(directory, 'activity.log'), { kind: 'chat' }, ask));
+    const lines = (await readFile(path.join(directory, 'activity.log'), 'utf8')).trim().split('\n').map(l => JSON.parse(l));
+    const logged = lines.find(l => l.event === 'remote_error');
+    assert.equal(logged.status, 400);
+    assert.match(logged.message, /^The 'gpt-5\.5' model is not supported when using Codex/);
+    assert.ok(logged.message.length <= 120);
+    const text = JSON.stringify(lines);
+    for (const secret of ['abc.def', 'eyJhbGci', 'sk-proj', 'hi"']) assert.ok(!text.includes(secret), secret);
+    assert.ok(lines.some(l => l.event === 'request_finished' && l.error_type === 'Error'));
+    const failedTest = await call('/admin/remote-model/test', { model: 'gpt-6.1-sol' });
+    assert.equal(failedTest.body.ok, false); assert.match(failedTest.body.error, /^400: The 'gpt-5\.5' model/);
+  } finally {
+    lifecycle.abort(); await new Promise<void>(resolve => server.close(() => resolve())); await rm(directory, { recursive: true, force: true });
+  }
+});
