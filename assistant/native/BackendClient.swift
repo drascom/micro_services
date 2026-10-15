@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 enum TranscriptionError: Error { case noSpeech }
 
@@ -39,6 +40,8 @@ actor BackendClient: AssistantBackend {
         }
     }
     private var process: Process?
+    /// The owned backend's pid, readable synchronously for applicationWillTerminate (0 = none).
+    private nonisolated let childPID = OSAllocatedUnfairLock(initialState: pid_t(0))
     private var token = ""
     private var base = URL(string: "http://127.0.0.1:8765")!
     /// The in-flight (or finished) startup; requests made before it completes wait on it.
@@ -60,6 +63,20 @@ actor BackendClient: AssistantBackend {
         let settings = try JSONDecoder().decode(Settings.self, from: Data(contentsOf: settingsURL))
         base = URL(string: "http://127.0.0.1:\(settings.port)")!
         if let session = try? await session() { token = session.token; return }
+        // A previous backend may still be releasing the port while it shuts down: retry a few times, logging each try.
+        var lastError: Error = NSError(domain: "Assistant", code: 3, userInfo: [NSLocalizedDescriptionKey: "Assistant engine did not start"])
+        for attempt in 1...3 {
+            do { try await launch(settings); return } catch {
+                lastError = error
+                guard (error as NSError).code == 2 else { LaunchGuard.log("backend start failed: \(error.localizedDescription)"); throw error }
+            }
+            LaunchGuard.log("backend start attempt \(attempt) failed: \(lastError.localizedDescription)")
+            if let session = try? await session() { token = session.token; return }
+            try await Task.sleep(for: .seconds(2))
+        }
+        throw lastError
+    }
+    private func launch(_ settings: Settings) async throws {
         let child = Process()
         child.executableURL = URL(fileURLWithPath: settings.node)
         child.arguments = ["src/main.ts", "serve"]
@@ -70,7 +87,7 @@ actor BackendClient: AssistantBackend {
         let log = try FileHandle(forWritingTo: logURL)
         try log.seekToEnd()
         child.standardOutput = log; child.standardError = log; child.standardInput = FileHandle.nullDevice
-        try child.run(); process = child; try log.close()
+        try child.run(); process = child; childPID.withLock { $0 = child.processIdentifier }; try log.close()
         let deadline = ContinuousClock.now.advanced(by: .seconds(15))
         while ContinuousClock.now < deadline {
             if let session = try? await session() { token = session.token; return }
@@ -158,9 +175,17 @@ actor BackendClient: AssistantBackend {
     func close() async {
         if let process, process.isRunning {
             process.terminate()
-            // Let the backend finish cancelling work and unloading its owned model.
-            while process.isRunning { try? await Task.sleep(for: .milliseconds(50)) }
+            // Let the backend finish cancelling work and unloading its owned model (bounded: a hung backend
+            // must not keep this instance alive, which would block the next launch).
+            let deadline = ContinuousClock.now.advanced(by: .seconds(20))
+            while process.isRunning, ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(50)) }
+            if process.isRunning { LaunchGuard.log("backend pid \(process.processIdentifier) still stopping after 20s; quitting anyway") }
         }
-        process = nil
+        process = nil; childPID.withLock { $0 = 0 }
+    }
+    /// Synchronous SIGTERM for a forced termination; the backend shuts itself down gracefully on SIGTERM.
+    nonisolated func terminateNow() {
+        let pid = childPID.withLock { $0 }
+        if pid > 0, kill(pid, SIGTERM) == 0 { LaunchGuard.log("forced termination: sent SIGTERM to backend pid \(pid)") }
     }
 }

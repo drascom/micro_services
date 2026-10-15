@@ -5,7 +5,7 @@ enum ApplicationMenu {
     static func install() {
         let main = NSMenu()
         let application = NSMenu(title: "Ayhan")
-        application.addItem(withTitle: "Çıkış / Quit Ayhan", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        application.addItem(withTitle: "Çıkış / Quit Ayhan", action: Selector(("requestQuit:")), keyEquivalent: "q") // AppDelegate: ignored while already quitting
         let appItem = NSMenuItem()
         appItem.submenu = application
         main.addItem(appItem)

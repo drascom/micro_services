@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var restartRequested = false
     private var restartReopensAdmin = false
     private var relauncher: Process?
+    private var terminating = false
     override init() {
         client = BackendClient()
         model = RingModel(backend: client, audio: AudioRecorder())
@@ -266,11 +267,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
     @objc private func reset() { model.newConversation() }
     @objc private func restart() {
+        guard !terminating else { LaunchGuard.log("restart ignored: already quitting"); return }
         // Capture Admin state now, before any termination work can close or hide it.
         restartReopensAdmin = adminWindow.map { $0.isVisible || $0.isMiniaturized } ?? false
         restartRequested = true; NSApp.terminate(nil)
     }
-    @objc private func quit() { NSApp.terminate(nil) }
+    @objc private func quit() { requestQuit(nil) }
+    /// A second terminate: while the first waits for the backend makes AppKit exit at once, skipping the rest of
+    /// the shutdown; repeated Quit/Restart clicks are therefore ignored until the first one finishes.
+    @objc func requestQuit(_ sender: Any?) {
+        guard !terminating else { LaunchGuard.log("quit ignored: already quitting"); return }
+        NSApp.terminate(sender)
+    }
     /// Canonical install path written at build time; falls back to the running bundle.
     private static func relaunchPath() -> String {
         if let path = Bundle.main.object(forInfoDictionaryKey: "PAInstallPath") as? String, path.hasSuffix(".app"),
@@ -279,36 +287,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         return Bundle.main.bundleURL.path
     }
+    /// Detached helper: waits (bounded) for this pid to exit, then opens the app; failures go to the launcher log.
+    /// Started before the backend shutdown so even a forced immediate termination still relaunches.
+    private func startRelauncher(reopenAdmin: Bool) throws {
+        let helper = Process()
+        helper.executableURL = URL(fileURLWithPath: "/bin/sh")
+        let script = """
+        i=0; while /bin/kill -0 "$1" 2>/dev/null && [ $i -lt 600 ]; do /bin/sleep 0.1; i=$((i+1)); done
+        /usr/bin/open -n "$2" ${3:+--args "$3"} && exit 0
+        /bin/sleep 1; /usr/bin/open -n "$2" ${3:+--args "$3"} && exit 0
+        [ -n "$4" ] && echo "[restart] open failed twice: $2" >> "$4"; exit 1
+        """
+        let path = Self.relaunchPath()
+        // Paths are arguments, never script text.
+        helper.arguments = ["-c", script, "ayhan-restart", String(ProcessInfo.processInfo.processIdentifier), path,
+                            reopenAdmin ? Self.openAdminArgument : "", LaunchGuard.logURL?.path ?? ""]
+        helper.standardInput = FileHandle.nullDevice
+        helper.standardOutput = FileHandle.nullDevice; helper.standardError = FileHandle.nullDevice
+        try helper.run(); relauncher = helper
+        LaunchGuard.log("restart: relauncher started for \(path)")
+    }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        hotkey?.stop(); model.cancel()
         let reopenAdmin = restartRequested && restartReopensAdmin
-        if reopenAdmin { UserDefaults.standard.set(true, forKey: Self.reopenAdminKey); UserDefaults.standard.synchronize() }
+        if restartRequested {
+            if reopenAdmin { UserDefaults.standard.set(true, forKey: Self.reopenAdminKey); UserDefaults.standard.synchronize() }
+            do { try startRelauncher(reopenAdmin: reopenAdmin) } catch {
+                LaunchGuard.log("restart: relauncher failed: \(error.localizedDescription)")
+                restartRequested = false; restartReopensAdmin = false
+                UserDefaults.standard.removeObject(forKey: Self.reopenAdminKey); UserDefaults.standard.synchronize()
+                NSAlert(error: error).runModal()
+                return .terminateCancel
+            }
+        }
+        terminating = true
+        LaunchGuard.log(restartRequested ? "restarting" : "quitting")
+        hotkey?.stop(); model.cancel()
         adminWindow?.close() // Closes with the old instance instead of lingering while the backend stops.
         Task {
             await model.backend.close()
-            if restartRequested {
-                do {
-                    let helper = Process()
-                    helper.executableURL = URL(fileURLWithPath: "/bin/sh")
-                    // Pass paths as arguments; wait until this app exits before reopening.
-                    helper.arguments = ["-c", "while /bin/kill -0 \"$1\" 2>/dev/null; do /bin/sleep 0.1; done; exec /usr/bin/open -n \"$2\" ${3:+--args \"$3\"}",
-                                        "ayhan-restart", String(ProcessInfo.processInfo.processIdentifier), Self.relaunchPath(),
-                                        reopenAdmin ? Self.openAdminArgument : ""]
-                    helper.standardInput = FileHandle.nullDevice
-                    helper.standardOutput = FileHandle.nullDevice; helper.standardError = FileHandle.nullDevice
-                    try helper.run(); relauncher = helper
-                } catch {
-                    restartRequested = false; restartReopensAdmin = false
-                    UserDefaults.standard.removeObject(forKey: Self.reopenAdminKey); UserDefaults.standard.synchronize()
-                    NSApp.reply(toApplicationShouldTerminate: false)
-                    NSAlert(error: error).runModal()
-                    hotkey?.start(); model.connect()
-                    if reopenAdmin { openAdmin() }
-                    return
-                }
-            }
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
     }
+    /// Also reached on a forced termination (system quit, second terminate:), where the async close never ran.
+    func applicationWillTerminate(_ notification: Notification) { client.terminateNow() }
 }

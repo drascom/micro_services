@@ -1,21 +1,22 @@
 import { spawnSync } from 'node:child_process';
-import { writeFile, mkdir, readdir, access, rename } from 'node:fs/promises';
+import { writeFile, mkdir, readdir, access, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { root, loadConfig } from '../src/config.ts';
 import { signApp } from './signing.ts';
+import { cleanOldBundles, OLD_PREFIX } from './app-bundles.ts';
 
 const app = path.join(root, 'PersonalAssistant.app');
 const replace = process.argv.includes('--replace');
 let exists = true;
 try { await access(app); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; exists = false; }
-if (exists) {
-  if (!replace) throw Error('PersonalAssistant.app exists. Move it aside or pass --replace.');
-  const old = `/tmp/PersonalAssistant.app.old.${Date.now()}`;
-  await rename(app, old); console.log(`Moved previous app to ${old}`);
-}
-const macos = path.join(app, 'Contents/MacOS'), resources = path.join(app, 'Contents/Resources');
-await mkdir(macos, { recursive: true }); await mkdir(resources, { recursive: true });
+if (exists && !replace) throw Error('PersonalAssistant.app exists. Move it aside or pass --replace.');
+// Build into a staging bundle and swap only when it is complete and signed: the installed app is never missing
+// or half-built, so a restart during (or after a failed) rebuild still opens a working app.
 await mkdir(path.join(root, 'data'), { recursive: true, mode: 0o700 });
+const staging = path.join(root, 'data/app-build/PersonalAssistant.app');
+await rm(staging, { recursive: true, force: true });
+const macos = path.join(staging, 'Contents/MacOS'), resources = path.join(staging, 'Contents/Resources');
+await mkdir(macos, { recursive: true }); await mkdir(resources, { recursive: true });
 const config = await loadConfig();
 await mkdir(path.dirname(config.language_detector), { recursive: true });
 const detector = spawnSync('/usr/bin/xcrun', ['swiftc', '-O', '-o', config.language_detector,
@@ -35,8 +36,16 @@ const info = {
   NSMicrophoneUsageDescription: 'Ayhan records your voice while you hold Control and Option. Audio is transcribed locally on this Mac.',
   NSAppleEventsUsageDescription: 'Ayhan reads messages already available in Apple Mail only when you ask it to search, summarize, or classify email. It does not send or modify messages.'
 };
-const plist = path.join(app, 'Contents/Info.plist'); await writeFile(plist, JSON.stringify(info));
+const plist = path.join(staging, 'Contents/Info.plist'); await writeFile(plist, JSON.stringify(info));
 const packaging = spawnSync('/usr/bin/plutil', ['-convert', 'xml1', plist], { stdio: 'inherit' });
 if (packaging.error || packaging.status !== 0) throw Error('Native packaging failed');
-await signApp(app);
+await signApp(staging);
+if (exists) {
+  const old = path.join('/tmp', `${OLD_PREFIX}${Date.now()}`);
+  await rename(app, old); console.log(`Moved previous app to ${old}`);
+}
+await rename(staging, app);
+// Older moved-aside bundles are removed unless a running instance still uses one.
+const removed = await cleanOldBundles('/tmp');
+if (removed.length) console.log(`Removed ${removed.length} stale previous app bundle(s) from /tmp`);
 console.log(app);

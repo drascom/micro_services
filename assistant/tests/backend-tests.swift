@@ -43,6 +43,18 @@ struct BackendTests {
         expect(steered?.steered == true && steered?.text == "", "steered reply decodes")
         let normal = try? JSONDecoder().decode(BackendClient.Reply.self, from: Data(#"{"text":"hi","provider":"p","fallback_reason":""}"#.utf8))
         expect(normal?.steered == false && normal?.text == "hi", "normal reply decodes")
+        // Launch guard: waits for a quitting instance, reports the ones still alive after the timeout.
+        var polls = 0
+        expect(LaunchGuard.waitForExit([42], timeout: 5, isAlive: { _ in polls += 1; return polls < 3 }).isEmpty, "waits until the old instance exits")
+        expect(LaunchGuard.waitForExit([42, 43], timeout: 0.3, isAlive: { $0 == 43 }) == [43], "timeout returns the live pid")
+        expect(LaunchGuard.alive(getpid()) && !LaunchGuard.alive(0), "pid liveness")
+        let logFile = FileManager.default.temporaryDirectory.appendingPathComponent("launch-guard-\(getpid()).log")
+        LaunchGuard.log("early exit reason", to: logFile)
+        let logged = (try? String(contentsOf: logFile, encoding: .utf8)) ?? ""
+        expect(logged.contains("early exit reason") && logged.contains("pid \(getpid())"), "early exit is logged")
+        try? FileManager.default.removeItem(at: logFile)
+        // Forced termination with no owned backend is a no-op.
+        BackendClient(base: base, token: "x").terminateNow()
         print("backend tests passed")
     }
 }
