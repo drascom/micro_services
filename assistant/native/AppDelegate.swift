@@ -41,13 +41,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         model.contextMenu = { [weak self] in self?.showContextMenu() }
         // Minimal context menu; settings, status and activity live in the Admin window.
         let menu = NSMenu()
-        for (title, action) in [("Mesaj yaz / Type a request…", #selector(openInput)),
-                                ("İsteği iptal et / Cancel request", #selector(cancelRequest)),
-                                ("Yeni konuşma / New conversation", #selector(reset)),
-                                ("Yönetim / Admin…", #selector(openAdminMenu)),
-                                ("Yeniden başlat / Restart Ayhan", #selector(restart)),
-                                ("Çıkış / Quit Ayhan", #selector(quit))] {
-            let item = NSMenuItem(title: title, action: action, keyEquivalent: ""); item.target = self; menu.addItem(item)
+        // Turkish-only titles; typing a request stays on double-click of the ring.
+        for (title, symbol, action) in [("İsteği iptal et", "xmark.circle", #selector(cancelRequest)),
+                                        ("Yeni konuşma", "bubble.left.and.bubble.right", #selector(reset)),
+                                        ("Uzak model", "cloud", #selector(toggleRemote)),
+                                        ("Yönetim…", "gearshape", #selector(openAdminMenu)),
+                                        ("Yeniden başlat", "arrow.clockwise", #selector(restart)),
+                                        ("Çıkış", "power", #selector(quit))] {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: ""); item.target = self
+            item.image = Self.menuSymbol(symbol, title)
+            if action == #selector(openAdminMenu) || action == #selector(restart) { menu.addItem(.separator()) }
+            menu.addItem(item)
         }
         admin.actions = AdminModel.Actions(
             changeShortcut: { [weak self] in self?.changeShortcut() },
@@ -190,9 +194,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc private func cancelRequest() { model.cancel() }
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(cancelRequest) { return model.phase != .idle && model.phase != .starting }
+        if item.action == #selector(toggleRemote) {
+            // Reflects the current mode each time the menu opens (same setting as Admin "Yerel kullan").
+            let remote = !model.offline
+            item.state = remote ? .on : .off
+            item.image = Self.menuSymbol(remote ? "cloud" : "desktopcomputer", item.title)
+            return !model.changingMode
+        }
         return true
     }
-    @objc private func openInput() { showInput() }
+    /// on = remote provider (local fallback), off = local Gemma only.
+    @objc private func toggleRemote() { model.setOffline(!model.offline) }
+    private static func menuSymbol(_ name: String, _ label: String) -> NSImage? {
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: label)?
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .regular, scale: .small))
+        image?.isTemplate = true
+        return image
+    }
     private func editInstructions() {
         openTextFile("instructions.md", initial: "Do not use emoji in your responses.\n")
     }

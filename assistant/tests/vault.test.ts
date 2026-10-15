@@ -32,6 +32,12 @@ const ITEMS = [
   { id: '99999999-2222-3333-4444-555555555555', name: 'Bank card', type: 3, card: { number: '4111111111111111', code: '123' } }
 ];
 
+/** Drops clock- and run-dependent fields (timestamps, durations, faux api ids, request ids, token usage) so short
+ * numeric secrets such as '123' are not matched by chance inside them (that made leak checks flaky). */
+const stable = (text: string) => text
+  .replace(/"usage":\{[^{}]*\{[^{}]*\}\}/g, '')
+  .replace(/\\?"(timestamp|durationMs|api|time|request|elapsed_ms)\\?":(\\?"[^"\\]*\\?"|\d+)/g, '');
+
 /** Fake `bw`: records every call (argv and env) and answers like the CLI. */
 function fakeBw(options: { loggedIn?: boolean; wrongPassword?: boolean; twoFactor?: boolean } = {}) {
   const calls: { args: string[]; env: Record<string, string>; input?: string }[] = [];
@@ -202,7 +208,7 @@ test('end to end: tool results sent to the local model never contain a secret', 
     const results = s.session.messages.filter(m => m.role === 'toolResult');
     assert.equal(results.length, 2);
     assert.ok(results.every(m => !m.isError));
-    const text = JSON.stringify(s.session.messages);
+    const text = stable(JSON.stringify(s.session.messages));
     for (const secret of SECRETS) assert.ok(!text.includes(secret), secret);
     assert.match(text, /\\"copied\\":true/);
   } finally { await s.cleanup(); }
@@ -328,7 +334,7 @@ test('speak: the spelled value goes only to the speaker; never to tool results, 
     const spelled = spellSecret('hunter2-site-password', 'password');
     assert.deepEqual(heard, [spelled]);
     assert.equal(s.clipboard.value, 'before', 'not copied');
-    const text = JSON.stringify(s.session.messages) + await readFile(log, 'utf8');
+    const text = stable(JSON.stringify(s.session.messages) + await readFile(log, 'utf8'));
     for (const secret of [...SECRETS, spelled, 'küçük he']) assert.ok(!text.includes(secret), secret);
     assert.match(text, /\\"spoken\\":true,\\"field\\":\\"password\\",\\"item\\":\\"GitHub\\"/);
     assert.equal(s.session.messages.at(-1)?.role, 'assistant');

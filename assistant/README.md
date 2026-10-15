@@ -35,10 +35,10 @@ immediately above it. Drag the ring to reposition it; an open panel follows.
 Drag the panel by its native title bar or empty background. Close it with the
 red macOS close button or by clicking the ring again. The panel displays only
 the assistant reply, not your spoken transcript. The send arrow sits inside
-the input field. Right-click the ring for a minimal menu: **Mesaj yaz / Type a
-request…**, **İsteği iptal et / Cancel request**, **Yeni konuşma / New
-conversation**, **Yönetim / Admin…**, **Yeniden başlat / Restart Ayhan** and
-**Çıkış / Quit Ayhan** (the menu-bar
+the input field. Right-click the ring for a minimal Turkish menu with SF Symbol icons:
+**İsteği iptal et**, **Yeni konuşma**, **Uzak model** (checkmark on = remote
+provider, off = local Gemma only; same setting as Admin "Yerel kullan"),
+**Yönetim…**, **Yeniden başlat** and **Çıkış** (the menu-bar
 icon uses the same menu). Quitting stops the backend and local model processes
 owned by this app.
 
