@@ -7,7 +7,7 @@ import { activity, observeRequest } from './activity.ts';
 import { root } from './config.ts';
 import { collectStatus, connectGmail, createExtension, createSkill, deleteResource, disconnectGmail, filesStatus, gmailActions, gmailStatus, listMailAccounts, listResources,
   readResource, saveFiles, saveGmail, saveMailAccounts, saveReminders, saveVault, undoGmail, unlockVault, vaultStatus, writeResource } from './admin.ts';
-import { vaultService, type VaultService } from './vault.ts';
+import { registerSecretSpeaker, registeredSecretSpeaker, VaultError, vaultService, type SecretSpeaker, type VaultService } from './vault.ts';
 import { fileService, type FileService } from './files.ts';
 import { readPronunciations, savePronunciations } from './pronounce.ts';
 import { gmailService, type GmailService } from '../.pi/extensions/gmail/service.ts';
@@ -70,7 +70,7 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
   const configPath = mail.configPath ?? path.join(root, 'config.json');
   const observe = <T>(details: Record<string, string | number | boolean>, action: () => Promise<T>) => activityFile ? observeRequest(activityFile, details, action) : action();
   const token = randomBytes(32).toString('base64url');
-  let active: { controller: AbortController; done: Promise<void>; finish: () => void; text: string; steering: Steering; replaced: boolean } | undefined;
+  let active: { controller: AbortController; done: Promise<void>; finish: () => void; text: string; steering: Steering; replaced: boolean; readAloud: boolean } | undefined;
   let unloading = false;
   // An automated Reminders task holds this slot; it starts only when no user request runs; a user request cancels it.
   let task: ReturnType<typeof beginRequestSlot> | undefined;
@@ -80,6 +80,14 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
   const beginRequest = beginRequestSlot;
   // Background file indexing waits while the user's request or a task runs.
   files.busy = () => Boolean(active || task || unloading);
+  // vault_copy speak: the spelled value goes straight to TTS, only while the ring reads replies aloud.
+  const speakSecret: SecretSpeaker = async (spelled, signal) => {
+    if (active && !active.readAloud) throw new VaultError('speech_off');
+    if (!app.speech.speakSecret) throw new VaultError('speech_unavailable');
+    return app.speech.speakSecret(spelled, AbortSignal.any([signal, lifecycle]));
+  };
+  registerSecretSpeaker(speakSecret);
+  lifecycle.addEventListener('abort', () => { if (registeredSecretSpeaker() === speakSecret) registerSecretSpeaker(undefined); }, { once: true });
   const lane = {
     async acquire(signal: AbortSignal) {
       while (active || unloading || task) await sleep(250, undefined, { signal: AbortSignal.any([signal, lifecycle]) });
@@ -265,7 +273,9 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
       if (!['/chat', '/reset'].includes(request.url || '')) return reply(404, { error: 'Not found' });
       if ((request.url === '/reset' && active) || unloading) return reply(409, { error: 'Assistant is busy' });
       if (request.url === '/reset') { app.reset(); return reply(200, { ok: true }); }
-      if (typeof input.text !== 'string' || (input.offline !== undefined && typeof input.offline !== 'boolean')) throw Error('Invalid chat request');
+      const readAloud = (data as { read_aloud?: unknown }).read_aloud;
+      if (typeof input.text !== 'string' || (input.offline !== undefined && typeof input.offline !== 'boolean') ||
+          (readAloud !== undefined && typeof readAloud !== 'boolean')) throw Error('Invalid chat request');
       let text = input.text;
       if (active) {
         // Barge-in: a request that is still generating takes the new text as a steer (one reply, on its response).
@@ -277,7 +287,7 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
       }
       // The user comes first: a running automated task is cancelled; its reminder stays ⏳ and runs again on a later scan.
       task?.controller.abort();
-      const current = { ...beginRequest(), text, steering: new Steering(), replaced: false }; active = current; offlineMode = input.offline === true;
+      const current = { ...beginRequest(), text, steering: new Steering(), replaced: false, readAloud: readAloud !== false }; active = current; offlineMode = input.offline === true;
       const disconnected = () => { if (!response.writableEnded) current.controller.abort(); };
       response.once('close', disconnected);
       try {

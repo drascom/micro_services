@@ -23,7 +23,7 @@ async function within(directory: string, filename: string, allowMissing = false)
 /** Same list as TASK_TOOLS in src/harness.ts (kept here so Pi CLI sessions load without the app). */
 const TASK_ALLOWED = /^(read|web_search|web_read|fetch_content|mail_[a-z_]+|reminders|file_search|file_read)$/;
 
-/** `local`: the session runs on the local model (the only place the password vault may be used). */
+/** `local`: the session runs on the local model (the only place the password vault and local files may be used). */
 export function permissionsExtension(options: { root: string; offline: boolean; automated?: boolean; local?: boolean }) {
   return (pi: ExtensionAPI) => {
     let calls = 0;
@@ -111,6 +111,8 @@ export function permissionsExtension(options: { root: string; offline: boolean; 
       if (['file_search', 'file_read', 'file_organize'].includes(event.toolName)) {
         // Local files: on by default once the index is enabled in Admin; an explicit "deny" turns them off. Moves are
         // additionally gated by the extension's next-turn token; a task may not move files. Available offline.
+        // Defence in depth: the harness registers them only for the local model; file contents never reach a remote model.
+        if (!options.local) return { block: true, reason: 'Local files work only with the local model.' };
         try {
           const permissions = JSON.parse(await readFile(path.join(options.root, '.pi/permissions.json'), 'utf8'));
           if (permissions?.files === 'deny') return { block: true, reason: 'Local files are disabled in Pi permissions.' };

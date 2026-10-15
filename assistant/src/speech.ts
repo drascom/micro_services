@@ -59,7 +59,7 @@ export function wavDuration(bytes: Buffer): number {
   return dataLength / 32000;
 }
 
-export interface SpeechService { transcribe(bytes: Buffer, signal: AbortSignal): Promise<string>; speak(text: string, signal: AbortSignal): Promise<void>; stop(): void; pause?(): void; resume?(): void; close(): Promise<void>; processes?(): OwnedProcess[]; }
+export interface SpeechService { transcribe(bytes: Buffer, signal: AbortSignal): Promise<string>; speak(text: string, signal: AbortSignal): Promise<void>; speakSecret?(spelled: string, signal: AbortSignal): Promise<'spoken' | 'stopped'>; stop(): void; pause?(): void; resume?(): void; close(): Promise<void>; processes?(): OwnedProcess[]; }
 export class Speech implements SpeechService {
   config: Config; speaker?: AbortController; player?: ChildProcess; paused = false; lexiconLogged = false; ema: EmaWorker; kokoro: KokoroWorker; whisper: WhisperServer;
   constructor(config: Config) {
@@ -154,6 +154,38 @@ export class Speech implements SpeechService {
     }
     catch (error) { if (!controller.signal.aborted) throw error; }
     finally { if (this.speaker === controller) this.speaker = undefined; }
+  }
+  /**
+   * A vault value, already spelled in Turkish: straight to the current engine at a slower pace. No speech
+   * normalization, language detection, respelling or lexicon, no activity entry, no fallback chatter; the temporary
+   * WAV (private 0700 dir) is removed right after playback. Stop (`/stop-speech`, a new request) ends it: 'stopped'.
+   */
+  async speakSecret(spelled: string, signal: AbortSignal): Promise<'spoken' | 'stopped'> {
+    this.stop();
+    const controller = new AbortController(); this.speaker = controller;
+    const speechSignal = AbortSignal.any([signal, controller.signal, AbortSignal.timeout(180_000)]);
+    const wavFile = async (synthesize: (wav: string) => Promise<void>) => {
+      const directory = await mkdtemp(path.join(tmpdir(), 'assistant-secret-'));
+      try { const wav = path.join(directory, 'secret.wav'); await synthesize(wav); await this.play('/usr/bin/afplay', [wav], speechSignal); }
+      finally { await rm(directory, { recursive: true, force: true }); }
+    };
+    const piper = async () => {
+      const model = this.config.piper_model_tr;
+      await access(this.config.piper_bin); await access(model); await access(model + '.json');
+      await wavFile(wav => runProcess(this.config.piper_bin, ['-m', 'piper', '-m', model, '-f', wav,
+        '--length-scale', String(1 / (this.config.piper_speed_tr * 0.7))], speechSignal, spelled).then(() => undefined));
+    };
+    try {
+      if (this.config.tts_engine === 'ema') {
+        try { await wavFile(wav => this.ema.synthesize(spelled, wav, speechSignal, this.config.ema_speed * 0.8)); }
+        catch { speechSignal.throwIfAborted(); await piper(); }
+      } else if (this.config.tts_engine === 'piper') await piper();
+      else await this.play('/usr/bin/say', ['-f', '-', '-r', '140', ...(this.config.voice_tr ? ['-v', this.config.voice_tr] : [])], speechSignal, spelled);
+      return controller.signal.aborted && !signal.aborted ? 'stopped' : 'spoken';
+    } catch (error) {
+      if (controller.signal.aborted && !signal.aborted) return 'stopped';
+      throw error;
+    } finally { if (this.speaker === controller) this.speaker = undefined; }
   }
   /** Audio output process; held (SIGSTOP) while the user records, continued afterwards. */
   async play(bin: string, args: string[], signal: AbortSignal, input?: string): Promise<void> {

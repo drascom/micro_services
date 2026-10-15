@@ -27,7 +27,7 @@ import { FILE_TOOL_NAMES, localFiles } from '../.pi/extensions/files/index.ts';
 import { fileService, type FileService } from './files.ts';
 import { filesMemory as sharedFilesMemory, FilesMemory } from './files-organize.ts';
 import { bitwardenVault, VAULT_TOOL_NAMES, vaultConfirmations } from '../.pi/extensions/vault/index.ts';
-import { vaultService, type VaultService } from './vault.ts';
+import { registeredSecretSpeaker, vaultService, type SecretSpeaker, type VaultService } from './vault.ts';
 import { componentUpdates, UPDATE_TOOL_NAMES } from '../.pi/extensions/updates/index.ts';
 import { registeredUpdates, updateConfirmations, type UpdateService } from './updates.ts';
 
@@ -44,7 +44,7 @@ const SKILL_TOOLS: Record<HarnessSkill, readonly string[]> = {
 /** Context budget: only the tools a request can use are sent to the model (local and remote). */
 /** `organize`: Gmail connected and "Mail düzenleme" on; Gmail needs the network, so never offline. A mail request routed
  * to the read-only skill may still ask for a change ("delete these"), so mail-assistant gets mail_organize too. */
-/** `files`: the local file index is on (Admin); its tools are local, so offline too. */
+/** `files`: the local file index is on (Admin) and the request runs on the local model (see `filesReady`); offline too. */
 /** `vault`: Bitwarden on, unlocked and the request runs on the local model (see `vaultReady`); never remote. */
 /** `updates`: the backend's update service exists (a user request); unrouted requests get it only with a pending offer. */
 export function harnessTools(skill: HarnessSkill | undefined, offline: boolean, reminders = false, organize = false, files = false, vault = false, updates = false): string[] {
@@ -63,6 +63,11 @@ export function harnessTools(skill: HarnessSkill | undefined, offline: boolean, 
 /** Vault tools exist only for the local model, a user request (no task), the switch on and an unlocked vault. */
 export function vaultReady(config: Config, model: Model<any>, automated: boolean, vault: VaultService): boolean {
   return model.provider === 'local-gemma' && !automated && config.bitwarden_enabled && vault.unlocked;
+}
+/** File tools (personal file contents) exist only for the local model and the index switched on. Indexing itself runs
+ *  in the background (src/files.ts) whatever model a request uses. */
+export function filesReady(config: Config, model: Model<any>): boolean {
+  return model.provider === 'local-gemma' && config.embedding_enabled;
 }
 /** A vault route without vault tools: one short line (nothing about the vault's contents). */
 function vaultNote(config: Config, model: Model<any>, vault: VaultService): string {
@@ -96,7 +101,7 @@ export async function createHarnessSession(options: {
   offline: boolean; skill?: HarnessSkill; briefNews?: boolean; extensionPaths?: string[]; extensionFactories?: ExtensionFactory[];
   mailTransport?: MailTransport; turn?: number; remindersTransport?: RemindersTransport; remindersStore?: ConfirmationStore;
   automated?: boolean; gmail?: GmailService; gmailMemory?: TriageMemory; notify?: Notify; files?: FileService; filesMemory?: FilesMemory;
-  vault?: VaultService; vaultStore?: ConfirmationStore; updates?: UpdateService | null; updatesStore?: ConfirmationStore;
+  vault?: VaultService; vaultStore?: ConfirmationStore; speakSecret?: SecretSpeaker; updates?: UpdateService | null; updatesStore?: ConfirmationStore;
 }) {
   const settings = SettingsManager.inMemory({ transport: 'sse', retry: { enabled: false },
     compaction: { enabled: false }, cacheWarming: 'off' });
@@ -115,7 +120,9 @@ export async function createHarnessSession(options: {
   // A task never sees or redeems the user's pending mail plan.
   const memory = options.gmailMemory ?? (automated ? new TriageMemory() : triageMemory);
   const mailPending = organize && !automated ? memory.store.pending(turn) : undefined;
-  const filesOn = options.config.embedding_enabled;
+  const filesOn = filesReady(options.config, options.model);
+  // A files route on the remote model: no tools, no skill, one short line.
+  const filesBlocked = options.skill === 'file-assistant' && !filesOn;
   const files = filesOn ? options.files ?? fileService(options.config) : undefined;
   // A task never sees or redeems the user's pending file plan.
   const fileMemory = options.filesMemory ?? (automated ? new FilesMemory() : sharedFilesMemory);
@@ -125,7 +132,7 @@ export async function createHarnessSession(options: {
   const vaultOn = vaultReady(options.config, options.model, automated, vault);
   // A vault route the vault cannot serve: the skill is not preloaded (PiHarnessChat drops its /skill prefix too).
   const vaultBlocked = options.skill === 'vault' && !vaultOn;
-  const skill = vaultBlocked ? undefined : options.skill;
+  const skill = vaultBlocked || filesBlocked ? undefined : options.skill;
   const vaultStore = options.vaultStore ?? vaultConfirmations;
   const vaultPending = vaultOn ? vaultStore.pending(turn) : undefined;
   // A task never sees updates; the offer asked at an idle moment is answered in the next user turn.
@@ -142,7 +149,7 @@ export async function createHarnessSession(options: {
     cwd: options.root, agentDir: path.join(options.root, '.pi/agent'), settingsManager: settings,
     noExtensions: true, noSkills: true, noContextFiles: true, noPromptTemplates: true, noThemes: true,
     // Context budget: a preloaded skill needs no catalog of the other skills.
-    additionalExtensionPaths: paths, additionalSkillPaths: vaultBlocked ? [] : [path.join(options.root, '.pi/skills', skill ?? '')],
+    additionalExtensionPaths: paths, additionalSkillPaths: vaultBlocked || filesBlocked ? [] : [path.join(options.root, '.pi/skills', skill ?? '')],
     // Reminders turned off: its skill is not advertised either.
     skillsOverride: base => ({ ...base, skills: base.skills.filter(skill => (reminders || skill.name !== 'reminders') && (organize || skill.name !== 'mail-triage') &&
       (filesOn || skill.name !== 'file-assistant') && (vaultOn || skill.name !== 'vault') && (updates || skill.name !== 'updates')) }),
@@ -156,6 +163,7 @@ export async function createHarnessSession(options: {
       (tools.includes('reminders') ? ` Local time: ${localTime()}.` : '') +
       (tools.includes('mail_organize') ? ' Report only what mail_organize returned.' : '') +
       (vaultBlocked ? vaultNote(options.config, options.model, vault) : '') +
+      (filesBlocked ? (options.config.embedding_enabled ? ' Local files work only with the local model (Local mode); say so in one sentence.' : ' Local files are off in Admin.') : '') +
       (updatesPending ? ` Pending updates ${updatesPending.title}: if this message agrees, call updates ${updatesPending.title.split(' ')[0]} with confirm_token ${updatesPending.token}; otherwise do not.` : '') +
       (vaultPending ? ` Pending vault password replace ${JSON.stringify(vaultPending.title)}: if this message confirms, call vault_save with confirm_token ${vaultPending.token}; otherwise do not.` : '') +
       (filesPending ? ` Pending file plan: if this message confirms, call file_organize apply with confirm_token ${filesPending.token}; otherwise do not.` : '') +
@@ -169,7 +177,7 @@ export async function createHarnessSession(options: {
         notify: options.notify ?? osascriptNotify, reminders: options.remindersTransport ?? osascriptTransport() }),
       localFiles({ enabled: filesOn, service: files, turn, memory: fileMemory, proposeOnly: automated,
         model: classifyModel(options.runtime, options.model, options.model.provider === 'local-gemma', options.config.max_tokens) }),
-      bitwardenVault({ enabled: vaultOn, service: vault, turn, store: vaultStore }),
+      bitwardenVault({ enabled: vaultOn, service: vault, turn, store: vaultStore, speak: options.speakSecret ?? registeredSecretSpeaker() }),
       componentUpdates({ enabled: Boolean(updates) && tools.includes('updates'), service: updates, turn, store: updatesStore }),
       requestWorkflow({ skill, briefNews: options.briefNews }), permissionsExtension({ root: options.root, offline: options.offline, automated, local })]
   });
@@ -254,8 +262,9 @@ export class PiHarnessChat extends PiChat {
       signal.throwIfAborted();
       const prompt = context.messages.at(-1);
       if (!prompt || prompt.role !== 'user' || typeof prompt.content !== 'string') throw Error('A text user message is required');
-      // A vault route is preloaded only where the vault tools exist (local model, on, unlocked).
-      const skill = options?.skill === 'vault' && !vaultReady(this.config, model, options?.automated === true, vaultService(this.config)) ? undefined : options?.skill;
+      // Vault and files routes are preloaded only where their tools exist (local model; vault also on and unlocked).
+      const skill = (options?.skill === 'vault' && !vaultReady(this.config, model, options?.automated === true, vaultService(this.config))) ||
+        (options?.skill === 'file-assistant' && !filesReady(this.config, model)) ? undefined : options?.skill;
       const text = skill ? `/skill:${skill} ${prompt.content}` : prompt.content;
       if (options?.skill) activity('skill_selected', { skill: options.skill });
       await promptSteered(session, text, { expandPromptTemplates: Boolean(skill) }, signal, options?.steering);

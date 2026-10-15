@@ -13,7 +13,9 @@ import { chunkText, htmlText, kindOf, officeText } from '../src/files-extract.ts
 import { FileIndex, nameScore, normalizeName, priority, type Found } from '../src/files-index.ts';
 import { cluster, FileOrganizer, FilesMemory, folderName } from '../src/files-organize.ts';
 import { FileService } from '../src/files.ts';
-import { harnessTools } from '../src/harness.ts';
+import { filesReady, harnessTools } from '../src/harness.ts';
+import { permissionsExtension } from '../.pi/extensions/permissions.ts';
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { ConfirmationStore } from '../.pi/extensions/apple-reminders/confirmations.ts';
 
 /** Fake embedding server: hashed bag of words (text) or a hash of the bytes (media), 768-d, L2-normalized. */
@@ -345,6 +347,24 @@ test('file tools are absent when the index is off and offered (offline too) when
   assert.deepEqual(harnessTools('file-assistant', true, false, false, false), []);
   assert.deepEqual(harnessTools('file-assistant', true, false, false, true), ['file_search', 'file_read', 'file_organize']);
   assert.ok(harnessTools(undefined, true, false, false, true).includes('file_search'));
+});
+
+test('file tools: local model only (harness gate and permissions defence in depth)', async () => {
+  const on = { ...defaults, embedding_enabled: true };
+  assert.equal(filesReady(on, { provider: 'local-gemma' } as never), true);
+  assert.equal(filesReady(on, { provider: 'openai-codex' } as never), false);
+  assert.equal(filesReady(defaults, { provider: 'local-gemma' } as never), false);
+  const decide = async (local: boolean | undefined, toolName: string) => {
+    let handler: ((event: unknown) => unknown) | undefined;
+    permissionsExtension({ root: tmpdir(), offline: false, local })(
+      { on: (name: string, fn: (event: unknown) => unknown) => { if (name === 'tool_call') handler = fn; } } as unknown as ExtensionAPI);
+    return await handler!({ toolName, input: {} }) as { block?: boolean } | undefined;
+  };
+  for (const tool of ['file_search', 'file_read', 'file_organize']) {
+    assert.equal((await decide(false, tool))?.block, true, tool);
+    assert.equal((await decide(undefined, tool))?.block, true, tool);
+    assert.equal(await decide(true, tool), undefined, tool);
+  }
 });
 
 test('admin: file switch and folders are saved to config.json; off stops the server', async () => {

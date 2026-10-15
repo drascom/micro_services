@@ -42,5 +42,8 @@ matching document, photo, recording or video.
   folders. `apply {confirm_token}` only in the user's next turn within 2 minutes; moves only (no overwrite: ` (2)`
   suffix; no delete, no rename), skips files changed since propose, logs from → to in `data/file-actions.jsonl`.
   `undo` reverses the last apply. The full plan is shown in Admin → Durum → Son dosya planı.
+- Local model only: on a remote request the tools are not registered and the skill is not advertised (a files route
+  gets one line: "local model only"); the permissions extension blocks `file_*` outside a local session; plain Pi CLI
+  sessions register nothing. Indexing is independent of the model: it runs in the background while the app is open.
 - Off (`embedding_enabled: false`): no tools, no skill, no server, no indexing. `.pi/permissions.json`
-  `"files": "deny"` also blocks the tools. Automated tasks get `file_search`/`file_read` only.
+  `"files": "deny"` also blocks the tools. Automated tasks (local model) get `file_search`/`file_read` only.

@@ -17,6 +17,11 @@ Session key in backend memory only (passed to `bw` as `BW_SESSION`, never argv).
 - `vault_search {query}` → ≤5 items: name, username, URI host, id, has_totp. Never password, notes, cards, hidden fields, TOTP secret.
 - `vault_copy {id, field: password|username|totp}` → value to the clipboard (pbcopy; Linux wl-copy/xclip), cleared after
   30 s if unchanged; returns `{copied, field, item}` only.
+- `vault_copy {…, speak: true}` ("şifremi sesli oku") → the backend spells the value in Turkish ("büyük A, küçük be, tire,
+  yedi"; groups of 4, TOTP in groups of 3), slower, straight into the current TTS engine. Returns `{spoken, field, item}`
+  only; the reply/ring shows `<item> <field>: ***`. The value and its spelling skip speech normalization, language
+  detection, respelling and the activity log; the temp WAV (0700 dir) is deleted right after playback. Stop/new request
+  stops it (`speech_stopped`); ring "Read aloud" off → `speech_off`; TTS failure → `speech_unavailable` (no text fallback).
 - `vault_save {name, source: clipboard|prompt|generate, kind?, username?, uri?, length?, confirm_token?}` — no value parameter.
   `clipboard`: read in the backend, clipboard cleared after saving if unchanged. `prompt`: the app shows a secure input
   window (long-poll `/secret-prompt/wait`, answer `/secret-prompt/answer`, token-protected loopback); cancel saves nothing.

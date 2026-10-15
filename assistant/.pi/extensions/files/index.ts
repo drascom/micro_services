@@ -1,11 +1,9 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
-import { loadConfig } from '../../../src/config.ts';
-import { newTurn } from '../apple-reminders/confirmations.ts';
 import type { ClassifyModel } from '../gmail/classify.ts';
 import { FileToolError, type FileErrorCode } from '../../../src/files-index.ts';
 import { FileOrganizer, filesMemory, type FilesMemory } from '../../../src/files-organize.ts';
-import { fileService, type FileService } from '../../../src/files.ts';
+import type { FileService } from '../../../src/files.ts';
 
 /** Model-facing schemas, kept tiny (sent with every request that enables them). */
 // Ranges and lengths are enforced in code to keep the schemas small.
@@ -28,7 +26,8 @@ function failure(error: unknown, signal?: AbortSignal) {
 
 /**
  * Local files (EmbeddingGemma 2 index of the Admin folders): `file_search`, `file_read` (read-only, offline) and
- * `file_organize` (propose → next-turn token → apply, undo). Registered only when `embedding_enabled` is on.
+ * `file_organize` (propose → next-turn token → apply, undo). Registered only when `embedding_enabled` is on and the request
+ * runs on the local model (harness `filesReady`).
  */
 export function localFiles(options: { service?: FileService; enabled: boolean; turn: number; memory?: FilesMemory; model?: ClassifyModel; proposeOnly?: boolean }) {
   return (pi: ExtensionAPI) => {
@@ -84,8 +83,5 @@ export function localFiles(options: { service?: FileService; enabled: boolean; t
   };
 }
 
-// Standard Pi CLI sessions: same config; one turn, so apply cannot be confirmed there.
-export default async function (pi: ExtensionAPI) {
-  const config = await loadConfig();
-  localFiles({ enabled: config.embedding_enabled, service: config.embedding_enabled ? fileService(config) : undefined, turn: newTurn() })(pi);
-}
+// Standard Pi CLI sessions: file contents stay with the app's local model, so nothing is registered.
+export default function (_pi: ExtensionAPI) {}

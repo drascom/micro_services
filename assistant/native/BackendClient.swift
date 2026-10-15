@@ -5,7 +5,7 @@ enum TranscriptionError: Error { case noSpeech }
 
 protocol AssistantBackend: Sendable {
     func connect() async throws
-    func ask(_ text: String, offline: Bool) async throws -> BackendClient.Reply
+    func ask(_ text: String, offline: Bool, readAloud: Bool) async throws -> BackendClient.Reply
     func dictation(app: String, chars: Int) async
     func transcribe(_ audio: Data) async throws -> String
     func speak(_ text: String) async throws
@@ -144,8 +144,9 @@ actor BackendClient: AssistantBackend {
         }
         return data
     }
-    func ask(_ text: String, offline: Bool) async throws -> Reply {
-        let data = try await post("chat", body: JSONSerialization.data(withJSONObject: ["text": text, "offline": offline]))
+    /// `readAloud`: the ring speaks replies; a vault value may then be spoken by the backend (never shown).
+    func ask(_ text: String, offline: Bool, readAloud: Bool) async throws -> Reply {
+        let data = try await post("chat", body: JSONSerialization.data(withJSONObject: ["text": text, "offline": offline, "read_aloud": readAloud]))
         return try JSONDecoder().decode(Reply.self, from: data)
     }
     func transcribe(_ audio: Data) async throws -> String {

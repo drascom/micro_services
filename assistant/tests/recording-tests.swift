@@ -21,7 +21,7 @@ actor FakeBackend: AssistantBackend {
     var cancels = 0
     /// Like the server: a request while another still generates is steered into it.
     var steered: [String] = []
-    func ask(_ text: String, offline: Bool) async throws -> BackendClient.Reply {
+    func ask(_ text: String, offline: Bool, readAloud: Bool) async throws -> BackendClient.Reply {
         messages.append(text)
         if held != nil { steered.append(text); return BackendClient.Reply(text: "", provider: "", fallback_reason: "", steered: true) }
         if holdNext { holdNext = false; await withCheckedContinuation { held = $0 } }

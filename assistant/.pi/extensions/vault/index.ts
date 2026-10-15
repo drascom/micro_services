@@ -1,11 +1,11 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
-import { VaultError, type SaveSource, type VaultService } from '../../../src/vault.ts';
+import { VaultError, type SaveSource, type SecretSpeaker, type VaultService } from '../../../src/vault.ts';
 import { ConfirmationStore } from '../apple-reminders/confirmations.ts';
 
 /** Model-facing schemas, kept tiny. Read-only vault: no create, edit or delete. */
 const SearchParams = Type.Object({ query: Type.String() }, { additionalProperties: false });
-const CopyParams = Type.Object({ id: Type.String(), field: Type.Enum(['password', 'username', 'totp']) }, { additionalProperties: false });
+const CopyParams = Type.Object({ id: Type.String(), field: Type.Enum(['password', 'username', 'totp']), speak: Type.Optional(Type.Boolean()) }, { additionalProperties: false });
 // No value parameter on purpose: a secret can never pass through the model.
 const SaveParams = Type.Object({
   name: Type.String(), source: Type.Enum(['clipboard', 'prompt', 'generate']), kind: Type.Optional(Type.Enum(['login', 'token'])),
@@ -17,8 +17,11 @@ export const vaultConfirmations = new ConfirmationStore();
 const clean = (value: unknown, max: number) => typeof value === 'string' && !/[\u0000-\u001f\u007f]/.test(value) ? value.trim().slice(0, max) : '';
 
 type Details = { error_code?: string; result_count?: number };
+const SPEECH_NOTES: Record<string, string> = { speech_off: 'Read aloud is off; offer the clipboard.', speech_unavailable: 'Speech is unavailable; offer the clipboard.',
+  speech_stopped: 'The user stopped it; do not repeat unless asked.' };
 const failure = (error: unknown) => {
   const code = error instanceof VaultError ? error.code : 'vault_failed';
+  if (SPEECH_NOTES[code]) return { content: [{ type: 'text' as const, text: JSON.stringify({ error: code, message: SPEECH_NOTES[code] }) }], details: { error_code: code } as Details, isError: true };
   // Messages are this extension's own fixed texts; never a vault value.
   const message = error instanceof VaultError && error.message !== code ? error.message : undefined;
   return { content: [{ type: 'text' as const, text: JSON.stringify({ error: code, ...(message ? { message } : {}) }) }], details: { error_code: code } as Details, isError: true };
@@ -26,10 +29,11 @@ const failure = (error: unknown) => {
 
 /**
  * Bitwarden vault (local model only): `vault_search` returns names/usernames/hosts/ids, never a secret; `vault_copy`
- * puts a value on the clipboard in the backend and returns only `{copied, field, item}`. Registered only when the
+ * puts a value on the clipboard in the backend and returns only `{copied, field, item}`; with `speak` the backend spells it
+ * straight into TTS and returns only `{spoken, field, item}`. Registered only when the
  * harness allows it (local model, switch on, unlocked).
  */
-export function bitwardenVault(options: { enabled: boolean; service?: VaultService; turn?: number; store?: ConfirmationStore }) {
+export function bitwardenVault(options: { enabled: boolean; service?: VaultService; turn?: number; store?: ConfirmationStore; speak?: SecretSpeaker }) {
   return (pi: ExtensionAPI) => {
     if (!options.enabled || !options.service) return;
     const service = options.service;
@@ -48,11 +52,16 @@ export function bitwardenVault(options: { enabled: boolean; service?: VaultServi
     pi.registerTool({
       name: 'vault_copy', label: 'Copy from vault', executionMode: 'sequential',
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-      description: 'Copy an item field to the clipboard (cleared after 30 s). The value is never shown.',
+      description: 'Copy an item field to the clipboard (cleared after 30 s), or speak: true to read it aloud. The value is never shown.',
       parameters: CopyParams,
       async execute(_id, params, signal) {
         try {
-          const { item } = await service.copy(params.id, params.field as 'password' | 'username' | 'totp', signal ?? new AbortController().signal);
+          const field = params.field as 'password' | 'username' | 'totp', live = signal ?? new AbortController().signal;
+          if (params.speak === true) {
+            const { item } = await service.speak(params.id, field, options.speak, live);
+            return { content: [{ type: 'text', text: JSON.stringify({ spoken: true, field, item }) }], details: {} as Details };
+          }
+          const { item } = await service.copy(params.id, field, live);
           return { content: [{ type: 'text', text: JSON.stringify({ copied: true, field: params.field, item }) }], details: {} as Details };
         } catch (error) { return failure(error); }
       }

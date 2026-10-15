@@ -210,7 +210,7 @@ final class RingModel {
     }
     private func run(_ id: Int, _ text: String) async {
         do {
-            let result = try await backend.ask(text, offline: offline)
+            let result = try await backend.ask(text, offline: offline, readAloud: readAloud)
             guard !Task.isCancelled, jobs[id] != nil else { return }
             // Steered into the running request: that request's reply answers both.
             guard !result.steered, id > shownJob else { end(id); return }

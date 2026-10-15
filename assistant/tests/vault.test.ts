@@ -8,7 +8,14 @@ import { ModelRuntime, type ExtensionAPI } from '@earendil-works/pi-coding-agent
 import { fauxProvider, fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai';
 import { defaults, root, type Config } from '../src/config.ts';
 import { createHarnessSession, harnessTools } from '../src/harness.ts';
-import { VaultError, VaultService, type BwTransport, type Clipboard } from '../src/vault.ts';
+import { VaultError, VaultService, spellSecret, type BwTransport, type Clipboard, type SecretSpeaker } from '../src/vault.ts';
+import { observeRequest } from '../src/activity.ts';
+import { Speech, type SpeechService } from '../src/speech.ts';
+import { Orchestrator } from '../src/orchestrator.ts';
+import { makeServer } from '../src/server.ts';
+import { registeredSecretSpeaker } from '../src/vault.ts';
+import { chmod, readdir, readFile, writeFile } from 'node:fs/promises';
+import { once } from 'node:events';
 import { permissionsExtension } from '../.pi/extensions/permissions.ts';
 import { bitwardenVault } from '../.pi/extensions/vault/index.ts';
 import { ConfirmationStore } from '../.pi/extensions/apple-reminders/confirmations.ts';
@@ -145,7 +152,7 @@ test('idle auto-lock drops the session key; Lock does too', async t => {
   assert.ok(bw.calls.length > 0);
 });
 
-async function session(options: { provider?: string; enabled?: boolean; unlock?: boolean; skill?: 'vault'; automated?: boolean; responses?: Parameters<ReturnType<typeof fauxProvider>['setResponses']>[0] } = {}) {
+async function session(options: { provider?: string; enabled?: boolean; unlock?: boolean; skill?: 'vault'; automated?: boolean; speak?: SecretSpeaker; responses?: Parameters<ReturnType<typeof fauxProvider>['setResponses']>[0] } = {}) {
   const agent = await mkdtemp(path.join(tmpdir(), 'ayhan-vault-'));
   const fake = fauxProvider({ provider: options.provider ?? 'local-gemma', models: [{ id: 'test' }], tokensPerSecond: 1000000 });
   fake.setResponses(options.responses ?? [fauxAssistantMessage('ok')]);
@@ -155,7 +162,7 @@ async function session(options: { provider?: string; enabled?: boolean; unlock?:
   const vault = new VaultService(cfg, { transport: bw.transport, clipboard });
   if (options.unlock ?? true) { cfg.bitwarden_enabled = true; await vault.unlock(PASSWORD); cfg.bitwarden_enabled = options.enabled ?? true; }
   const s = await createHarnessSession({ root, config: cfg, vault, context: { systemPrompt: defaults.system_prompt, messages: [{ role: 'user', content: 'test', timestamp: 1 }] },
-    model: fake.getModel(), runtime, offline: true, skill: options.skill, automated: options.automated, extensionPaths: [] });
+    model: fake.getModel(), runtime, offline: true, skill: options.skill, automated: options.automated, extensionPaths: [], speakSecret: options.speak });
   return { session: s, clipboard, cleanup: async () => { s.dispose(); await rm(agent, { recursive: true, force: true }); } };
 }
 
@@ -302,4 +309,96 @@ test('end to end save: secret never in model-visible messages', async () => {
     assert.match(text, /\\"saved\\":true/);
     assert.ok(!text.includes(NEW_SECRET));
   } finally { await s.cleanup(); }
+});
+
+test('spelling: Turkish letter names with case, digits and named symbols; TOTP in digit groups', () => {
+  assert.equal(spellSecret('Ab-1_', 'password'), 'büyük a, küçük be, tire, bir. alt çizgi.');
+  assert.equal(spellSecret('xI.!', 'password'), 'küçük iks, büyük i, nokta, ünlem.');
+  assert.equal(spellSecret('654321', 'totp'), 'altı, beş, dört. üç, iki, bir.');
+});
+
+test('speak: the spelled value goes only to the speaker; never to tool results, history, ring reply, log or clipboard', async () => {
+  const call = (name: string, args: Record<string, string | boolean>) => fauxAssistantMessage(fauxToolCall(name, args, { id: name }), { stopReason: 'toolUse' });
+  const heard: string[] = [];
+  const s = await session({ skill: 'vault', speak: async text => { heard.push(text); return 'spoken'; },
+    responses: [call('vault_search', { query: 'github' }), call('vault_copy', { id: ID, field: 'password', speak: true }), fauxAssistantMessage('GitHub password: ***')] });
+  const dir = await mkdtemp(path.join(tmpdir(), 'ayhan-vault-log-')), log = path.join(dir, 'activity.log');
+  try {
+    await observeRequest(log, { kind: 'chat' }, () => s.session.prompt('github şifremi sesli oku'));
+    const spelled = spellSecret('hunter2-site-password', 'password');
+    assert.deepEqual(heard, [spelled]);
+    assert.equal(s.clipboard.value, 'before', 'not copied');
+    const text = JSON.stringify(s.session.messages) + await readFile(log, 'utf8');
+    for (const secret of [...SECRETS, spelled, 'küçük he']) assert.ok(!text.includes(secret), secret);
+    assert.match(text, /\\"spoken\\":true,\\"field\\":\\"password\\",\\"item\\":\\"GitHub\\"/);
+    assert.equal(s.session.messages.at(-1)?.role, 'assistant');
+  } finally { await s.cleanup(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test('speak: stopped, read-aloud off, TTS failing or missing: an error code only, no text fallback, no value', async () => {
+  const { vault, clipboard } = await unlocked();
+  const tools = new Map<string, { execute: (id: string, params: unknown, signal?: AbortSignal) => Promise<{ content: { text: string }[]; isError?: boolean }> }>();
+  const run = async (speak: SecretSpeaker | undefined) => {
+    tools.clear();
+    bitwardenVault({ enabled: true, service: vault, speak })({ registerTool: (tool: { name: string }) => tools.set(tool.name, tool as never) } as unknown as ExtensionAPI);
+    const result = await tools.get('vault_copy')!.execute('t', { id: ID, field: 'password', speak: true }, AbortSignal.timeout(2000));
+    assert.ok(result.isError); for (const secret of SECRETS) assert.ok(!result.content[0].text.includes(secret));
+    return JSON.parse(result.content[0].text).error as string;
+  };
+  assert.equal(await run(async () => 'stopped'), 'speech_stopped');
+  assert.equal(await run(async () => { throw new VaultError('speech_off'); }), 'speech_off');
+  assert.equal(await run(async () => { throw Error('piper failed on hunter2-site-password'); }), 'speech_unavailable');
+  assert.equal(await run(undefined), 'speech_unavailable');
+  assert.equal(clipboard.value, 'before');
+});
+
+test('Speech.speakSecret: current engine, slower, temp audio removed after playback, stop ends it', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'ayhan-secret-tts-')), temp = path.join(dir, 'tmp'), previous = process.env.TMPDIR;
+  try {
+    await (await import('node:fs/promises')).mkdir(temp);
+    const piper = path.join(dir, 'piper'), model = path.join(dir, 'tr.onnx');
+    // Fake piper: writes its stdin to the -f file and records its arguments.
+    await writeFile(piper, '#!/bin/sh\nout=""; prev=""; for a in "$@"; do [ "$prev" = "-f" ] && out="$a"; prev="$a"; done\necho "$@" > "' + dir + '/args"\ncat > "$out"\n');
+    await chmod(piper, 0o755); await writeFile(model, ''); await writeFile(model + '.json', '{}');
+    process.env.TMPDIR = temp;
+    const speech = new Speech({ ...defaults, tts_engine: 'piper', piper_bin: piper, piper_model_tr: model, piper_speed_tr: 1.25 });
+    const played: string[] = [];
+    let hold: Promise<void> | undefined;
+    speech.play = async (_bin, args, signal) => { played.push(await readFile(args[0], 'utf8')); await hold; signal.throwIfAborted(); };
+    assert.equal(await speech.speakSecret('küçük a, bir.', AbortSignal.timeout(5000)), 'spoken');
+    assert.deepEqual(played, ['küçük a, bir.']);
+    assert.match(await readFile(path.join(dir, 'args'), 'utf8'), /--length-scale 1\.14/);
+    assert.deepEqual(await readdir(temp), [], 'temp audio removed');
+    let release!: () => void; hold = new Promise(resolve => { release = resolve; });
+    const pending = speech.speakSecret('küçük be.', AbortSignal.timeout(5000));
+    while (played.length < 2) await new Promise(resolve => setTimeout(resolve, 10));
+    speech.stop(); release();
+    assert.equal(await pending, 'stopped');
+    assert.deepEqual(await readdir(temp), []);
+  } finally { if (previous === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = previous; await rm(dir, { recursive: true, force: true }); }
+});
+
+test('server: the registered speaker refuses while the ring does not read aloud; otherwise uses the app speech', async () => {
+  const spoken: string[] = [];
+  const speech: SpeechService = { transcribe: async () => '', speak: async () => {}, stop: () => {}, close: async () => {},
+    speakSecret: async text => { spoken.push(text); return 'spoken'; } };
+  const runtime = { ensure: async () => {}, close: async () => {} };
+  const local = { complete: async () => {
+    const result = await registeredSecretSpeaker()!('küçük a.', AbortSignal.timeout(2000)).then(r => r, (e: VaultError) => e.code);
+    return { ...fauxAssistantMessage('result ' + result), provider: 'local-gemma' };
+  } };
+  const app = new Orchestrator({ ...defaults }, local, local, runtime, speech);
+  app.loadInstructions = async () => '';
+  const lifecycle = new AbortController(), server = await makeServer({ ...defaults }, app, lifecycle.signal, null);
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  try {
+    const address = server.address() as { port: number }, base = `http://127.0.0.1:${address.port}`;
+    const { token } = await (await fetch(base + '/session')).json() as { token: string };
+    const chat = async (body: unknown) => (await (await fetch(base + '/chat', { method: 'POST', headers: { 'X-Assistant-Token': token }, body: JSON.stringify(body) })).json() as { text: string }).text;
+    assert.equal(await chat({ text: 'oku', offline: true, read_aloud: false }), 'result speech_off');
+    assert.deepEqual(spoken, []);
+    assert.equal(await chat({ text: 'oku', offline: true, read_aloud: true }), 'result spoken');
+    assert.deepEqual(spoken, ['küçük a.']);
+  } finally { lifecycle.abort(); await new Promise<void>(resolve => server.close(() => resolve())); }
+  assert.equal(registeredSecretSpeaker(), undefined, 'unregistered on shutdown');
 });

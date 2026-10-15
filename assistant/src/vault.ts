@@ -21,10 +21,47 @@ export interface Clipboard { read(): Promise<string>; write(value: string): Prom
 
 export type VaultState = 'unauthenticated' | 'locked' | 'unlocked';
 export type VaultErrorCode = 'clipboard_empty' | 'cancelled' | 'prompt_unavailable' | 'not_installed' | 'disabled' | 'locked' | 'invalid_password' | 'two_factor_required' | 'invalid_request' |
-  'not_found' | 'no_value' | 'clipboard_unavailable' | 'server_unreachable' | 'vault_failed';
+  'not_found' | 'no_value' | 'clipboard_unavailable' | 'server_unreachable' | 'vault_failed' | 'speech_off' | 'speech_unavailable' | 'speech_stopped';
 export class VaultError extends Error {
   code: VaultErrorCode;
   constructor(code: VaultErrorCode, message: string = code) { super(message); this.code = code; }
+}
+
+/**
+ * Speaks already-spelled text straight to the TTS engine (no display, history, log, cache or respelling). Resolves
+ * 'stopped' when the user stopped the speech; throws when read-aloud is off or TTS is unavailable.
+ */
+export type SecretSpeaker = (spelled: string, signal: AbortSignal) => Promise<'spoken' | 'stopped'>;
+let speaker: SecretSpeaker | undefined;
+/** The backend (server) registers the app's speaker; tests pass their own. */
+export function registerSecretSpeaker(value: SecretSpeaker | undefined): void { speaker = value; }
+export function registeredSecretSpeaker(): SecretSpeaker | undefined { return speaker; }
+
+const LETTER_NAMES: Record<string, string> = { a: 'a', b: 'be', c: 'ce', 'ç': 'çe', d: 'de', e: 'e', f: 'fe', g: 'ge', 'ğ': 'yumuşak ge', h: 'he',
+  'ı': 'ı', i: 'i', j: 'je', k: 'ke', l: 'le', m: 'me', n: 'ne', o: 'o', 'ö': 'ö', p: 'pe', q: 'kü', r: 're', s: 'se', 'ş': 'şe', t: 'te',
+  u: 'u', 'ü': 'ü', v: 've', w: 'çift ve', x: 'iks', y: 'ye', z: 'ze' };
+const DIGITS = ['sıfır', 'bir', 'iki', 'üç', 'dört', 'beş', 'altı', 'yedi', 'sekiz', 'dokuz'];
+const SYMBOLS: Record<string, string> = { '-': 'tire', _: 'alt çizgi', '.': 'nokta', '!': 'ünlem', '@': 'et', '#': 'diyez', $: 'dolar',
+  '%': 'yüzde', '^': 'şapka', '&': 've işareti', '*': 'yıldız', '(': 'parantez aç', ')': 'parantez kapa', '[': 'köşeli parantez aç',
+  ']': 'köşeli parantez kapa', '{': 'süslü parantez aç', '}': 'süslü parantez kapa', '+': 'artı', '=': 'eşittir', '/': 'bölü',
+  '\\': 'ters bölü', '|': 'dikey çizgi', ':': 'iki nokta', ';': 'noktalı virgül', ',': 'virgül', '?': 'soru işareti', '<': 'küçüktür',
+  '>': 'büyüktür', "'": 'tek tırnak', '"': 'çift tırnak', '`': 'ters tırnak', '~': 'tilda', ' ': 'boşluk' };
+/** One character in Turkish words: "büyük be", "küçük a", "yedi", "alt çizgi". ASCII I is the capital of i. */
+function spellChar(char: string): string {
+  if (/\d/.test(char)) return DIGITS[Number(char)];
+  if (SYMBOLS[char]) return SYMBOLS[char];
+  if (!/\p{L}/u.test(char)) return 'simge';
+  const lower = char === 'I' || char === 'İ' ? 'i' : char.toLocaleLowerCase('tr');
+  return `${char !== lower ? 'büyük' : 'küçük'} ${LETTER_NAMES[lower] ?? lower}`;
+}
+/**
+ * Spelled for slow, clear speech: characters separated by commas, groups (4 characters; TOTP: 3 digits) by full
+ * stops. Only ever handed to the speaker.
+ */
+export function spellSecret(value: string, field: VaultField): string {
+  const chars = [...value], size = field === 'totp' ? 3 : 4, groups: string[] = [];
+  for (let at = 0; at < chars.length; at += size) groups.push(chars.slice(at, at + size).map(spellChar).join(', '));
+  return groups.join('. ') + '.';
 }
 
 export type VaultItem = { id: string; name: string; username: string; host: string; has_totp: boolean };
@@ -203,6 +240,28 @@ export class VaultService {
 
   /** Copies one field to the clipboard; clears it after 30 s if it still holds that value. Returns only the item name. */
   async copy(id: string, field: VaultField, signal: AbortSignal): Promise<{ item: string }> {
+    const { item, value } = await this.field(id, field, signal);
+    await this.copyForAWhile(value);
+    return { item };
+  }
+  /**
+   * Speaks one field, spelled in Turkish, through `speak` only (never returned, logged or stored). Returns the item
+   * name; `speech_stopped` when the user stopped it, `speech_unavailable` when TTS failed (no text fallback).
+   */
+  async speak(id: string, field: VaultField, speak: SecretSpeaker | undefined, signal: AbortSignal): Promise<{ item: string }> {
+    if (!speak) throw new VaultError('speech_unavailable');
+    const { item, value } = await this.field(id, field, signal);
+    let said: 'spoken' | 'stopped';
+    try { said = await speak(spellSecret(value, field), signal); }
+    catch (error) {
+      signal.throwIfAborted();
+      // Never the speaker's message: it may echo the text.
+      throw error instanceof VaultError && error.code === 'speech_off' ? error : new VaultError('speech_unavailable');
+    }
+    if (said === 'stopped') throw new VaultError('speech_stopped');
+    return { item };
+  }
+  private async field(id: string, field: VaultField, signal: AbortSignal): Promise<{ item: string; value: string }> {
     if (!ID.test(id)) throw new VaultError('invalid_request', 'Unknown id; use vault_search first');
     if (!['password', 'username', 'totp'].includes(field)) throw new VaultError('invalid_request', 'field must be password, username or totp');
     const session = this.key();
@@ -217,8 +276,7 @@ export class VaultService {
       value = totp.stdout.trim();
     } else value = item.login?.[field];
     if (typeof value !== 'string' || !value) throw new VaultError('no_value');
-    await this.copyForAWhile(value);
-    return { item: String(item.name ?? '').slice(0, 100) };
+    return { item: String(item.name ?? '').slice(0, 100), value };
   }
   private async copyForAWhile(value: string): Promise<void> {
     await this.clipboard.write(value);

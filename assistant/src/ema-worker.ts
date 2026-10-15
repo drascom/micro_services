@@ -69,22 +69,22 @@ export class EmaWorker {
     finally { signal.removeEventListener('abort', abort); }
   }
 
-  async synthesize(text: string, output: string, signal: AbortSignal): Promise<void> {
+  async synthesize(text: string, output: string, signal: AbortSignal, speed = this.config.ema_speed): Promise<void> {
     const previous = this.active;
     if (previous) await previous.catch(() => undefined);
-    const current = this.perform(text, output, signal);
+    const current = this.perform(text, output, signal, speed);
     this.active = current;
     try { await current; }
     finally { if (this.active === current) this.active = undefined; }
   }
 
-  private async perform(text: string, output: string, signal: AbortSignal): Promise<void> {
+  private async perform(text: string, output: string, signal: AbortSignal, speed: number): Promise<void> {
     try {
       await this.start(signal);
       signal.throwIfAborted();
       const id = this.nextId++;
       const response = new Promise<void>((resolve, reject) => { this.pending = { id, resolve, reject }; });
-      this.child?.stdin?.write(JSON.stringify({ id, text, output, speed: this.config.ema_speed, seed: 0 }) + '\n');
+      this.child?.stdin?.write(JSON.stringify({ id, text, output, speed, seed: 0 }) + '\n');
       await this.waitFor(response, signal);
     } catch (error) {
       if (signal.aborted) await this.close();

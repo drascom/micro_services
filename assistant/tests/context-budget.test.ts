@@ -23,6 +23,7 @@ import { ConfirmationStore } from '../.pi/extensions/apple-reminders/confirmatio
 // 2026-10-11: Gmail triage (off by default) measured mail-triage route 1709; unrouted online adds 831 when on.
 // 2026-10-12: local files (off by default) measured file-assistant route 2119; unrouted offline adds 1165 when on.
 // 2026-10-14: Bitwarden vault (off by default, local model only) measured vault route 2594; unrouted local adds 1072 when unlocked.
+// 2026-10-15: vault_copy `speak` + one skill line measured vault route 2777, unrouted local adds 1132 (limits unchanged).
 // 2026-10-14: component updates (user requests only) measured updates route 1633; a pending offer adds 571 to an unrouted request.
 const LIMITS = { unrouted_offline: 4360, 'mail-assistant': 3600, unrouted_offline_reminders: 5900, reminders: 2250,
   'mail-triage': 1880, unrouted_gmail_added: 920, 'file-assistant': 2330, unrouted_files_added: 1290,
@@ -44,9 +45,9 @@ async function unlockedVault(config: Config) {
 }
 
 async function measure(skill: 'mail-assistant' | 'reminders' | 'mail-triage' | 'file-assistant' | 'vault' | undefined, offline: boolean, reminders = false, organize = false, files = false,
-  vault = false) {
+  vault = false, remote = false) {
   const agent = await mkdtemp(path.join(tmpdir(), 'ayhan-budget-'));
-  const fake = fauxProvider({ provider: vault ? 'local-gemma' : 'budget-test', models: [{ id: 'test' }], tokensPerSecond: 1000000 });
+  const fake = fauxProvider({ provider: (vault || files) && !remote ? 'local-gemma' : 'budget-test', models: [{ id: 'test' }], tokensPerSecond: 1000000 });
   fake.setResponses([fauxAssistantMessage('ok')]);
   const runtime = await ModelRuntime.create({ modelsPath: null, refreshOnCreate: false }); runtime.registerNativeProvider(fake.provider);
   const config = { ...defaults, pi_agent_dir: agent, reminders_enabled: reminders, gmail_triage_enabled: organize, embedding_enabled: files, bitwarden_enabled: vault };
@@ -115,6 +116,11 @@ test('local files add three compact tools only when enabled', async () => {
   assert.deepEqual(routed.names, ['file_search', 'file_read', 'file_organize']);
   assert.ok(routed.chars <= LIMITS['file-assistant'], `${routed.chars} chars`);
   assert.ok(!plain.prompt.includes('file-assistant'), 'the skill is not advertised while off');
+  // Remote model: no file tools and no skill, routed or not.
+  for (const remote of [await measure(undefined, false, false, false, true, false, true), await measure('file-assistant', false, false, false, true, false, true)]) {
+    assert.ok(!remote.names.some(name => name.startsWith('file_')), remote.names.join());
+    assert.ok(!remote.prompt.includes('file-assistant'));
+  }
 });
 
 test('vault adds three compact tools only for the local model when on and unlocked', async () => {
@@ -123,7 +129,7 @@ test('vault adds three compact tools only for the local model when on and unlock
   assert.ok(vault.chars - plain.chars <= LIMITS.unrouted_vault_added, `${vault.chars - plain.chars} chars added`);
   const routed = await measure('vault', true, false, false, false, true);
   assert.deepEqual(routed.names, ['vault_search', 'vault_copy', 'vault_save']);
-  assert.ok(routed.chars <= LIMITS.vault, `${routed.chars} chars`);
+assert.ok(routed.chars <= LIMITS.vault, `${routed.chars} chars`);
   assert.ok(!plain.prompt.includes('vault'), 'the skill is not advertised while off');
 });
 
