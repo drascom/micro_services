@@ -30,6 +30,8 @@ import { bitwardenVault, VAULT_TOOL_NAMES, vaultConfirmations } from '../.pi/ext
 import { registeredSecretSpeaker, vaultService, type SecretSpeaker, type VaultService } from './vault.ts';
 import { componentUpdates, UPDATE_TOOL_NAMES } from '../.pi/extensions/updates/index.ts';
 import { registeredUpdates, updateConfirmations, type UpdateService } from './updates.ts';
+import { assistantMemory, MEMORY_TOOL_NAMES } from '../.pi/extensions/memory/index.ts';
+import { registeredMemory, type MemoryService } from './memory.ts';
 
 const SKILL_TOOLS: Record<HarnessSkill, readonly string[]> = {
   'online-search': ['web_search', 'web_read', 'fetch_content', 'source_check', 'get_search_content', 'web_enable'],
@@ -102,12 +104,14 @@ export async function createHarnessSession(options: {
   mailTransport?: MailTransport; turn?: number; remindersTransport?: RemindersTransport; remindersStore?: ConfirmationStore;
   automated?: boolean; gmail?: GmailService; gmailMemory?: TriageMemory; notify?: Notify; files?: FileService; filesMemory?: FilesMemory;
   vault?: VaultService; vaultStore?: ConfirmationStore; speakSecret?: SecretSpeaker; updates?: UpdateService | null; updatesStore?: ConfirmationStore;
+  /** `memoryTools`: the request asked to remember/forget (orchestrator `memoryRequest`); a task never gets them. */
+  memory?: MemoryService | null; memoryTools?: boolean;
 }) {
   const settings = SettingsManager.inMemory({ transport: 'sse', retry: { enabled: false },
     compaction: { enabled: false }, cacheWarming: 'off' });
   const directory = path.join(options.root, '.pi/extensions');
   const paths = options.extensionPaths ?? (await readdir(directory, { withFileTypes: true }))
-    .filter(entry => !['permissions.ts', 'request-workflow.ts', 'macos-mail', 'apple-reminders', 'gmail', 'files', 'vault', 'updates'].includes(entry.name) && (entry.isDirectory() || /\.(ts|js)$/.test(entry.name)))
+    .filter(entry => !['permissions.ts', 'request-workflow.ts', 'macos-mail', 'apple-reminders', 'gmail', 'files', 'vault', 'updates', 'memory'].includes(entry.name) && (entry.isDirectory() || /\.(ts|js)$/.test(entry.name)))
     .map(entry => path.join(directory, entry.name));
   const reminders = options.config.reminders_enabled, turn = options.turn ?? newTurn();
   const automated = options.automated === true;
@@ -145,6 +149,9 @@ export async function createHarnessSession(options: {
   if (filesPending && !tools.includes('file_organize')) tools.push('file_organize');
   if (vaultPending && !tools.includes('vault_save')) tools.push('vault_save');
   if (updatesPending && !tools.includes('updates')) tools.push('updates');
+  const assistantStore = automated || options.memory === null ? undefined : options.memory ?? registeredMemory();
+  const memoryOn = Boolean(options.memoryTools && assistantStore?.enabled);
+  if (memoryOn) tools.push(...MEMORY_TOOL_NAMES);
   const loader = new DefaultResourceLoader({
     cwd: options.root, agentDir: path.join(options.root, '.pi/agent'), settingsManager: settings,
     noExtensions: true, noSkills: true, noContextFiles: true, noPromptTemplates: true, noThemes: true,
@@ -178,6 +185,7 @@ export async function createHarnessSession(options: {
       localFiles({ enabled: filesOn, service: files, turn, memory: fileMemory, proposeOnly: automated,
         model: classifyModel(options.runtime, options.model, options.model.provider === 'local-gemma', options.config.max_tokens) }),
       bitwardenVault({ enabled: vaultOn, service: vault, turn, store: vaultStore, speak: options.speakSecret ?? registeredSecretSpeaker() }),
+      assistantMemory({ enabled: memoryOn, service: assistantStore, local }),
       componentUpdates({ enabled: Boolean(updates) && tools.includes('updates'), service: updates, turn, store: updatesStore }),
       requestWorkflow({ skill, briefNews: options.briefNews }), permissionsExtension({ root: options.root, offline: options.offline, automated, local })]
   });
@@ -232,13 +240,14 @@ export class PiHarnessChat extends PiChat {
       return runtime;
     });
   }
-  override async complete(context: Context, signal: AbortSignal, options?: { offline: boolean; skill?: HarnessSkill; briefNews?: boolean; turn?: number; automated?: boolean; steering?: Steering }): Promise<AssistantMessage> {
+  override async complete(context: Context, signal: AbortSignal, options?: { offline: boolean; skill?: HarnessSkill; briefNews?: boolean; turn?: number; automated?: boolean; steering?: Steering; memory?: boolean; used?: Set<string> }): Promise<AssistantMessage> {
     signal.throwIfAborted();
     const model = await this.resolveModel(); // Preserves subscription-only auth and global Pi model choice.
     const runtime = await this.getRuntime();
     signal.throwIfAborted();
     const session = await createHarnessSession({ root, config: this.config, context, model, runtime,
-      offline: options?.offline ?? false, skill: options?.skill, briefNews: options?.briefNews, turn: options?.turn, automated: options?.automated });
+      offline: options?.offline ?? false, skill: options?.skill, briefNews: options?.briefNews, turn: options?.turn, automated: options?.automated,
+      memoryTools: options?.memory === true });
     activity('harness_ready', { provider: model.provider, model: model.id });
     let round = 0; let turnStart = 0;
     const unsubscribe = session.subscribe(event => {
@@ -246,7 +255,7 @@ export class PiHarnessChat extends PiChat {
       if (event.type === 'message_end' && event.message.role === 'assistant') {
         activity('model_finished', { round, duration_ms: Math.round(performance.now() - turnStart), stop_reason: event.message.stopReason });
       }
-      if (event.type === 'tool_execution_start') activity('tool_started', { tool: event.toolName });
+      if (event.type === 'tool_execution_start') { options?.used?.add(event.toolName); activity('tool_started', { tool: event.toolName }); }
       if (event.type === 'tool_execution_end') {
         const result = event.result as { details?: { provider?: string; error_code?: string; result_count?: number; truncated?: boolean } };
         activity('tool_finished', { tool: event.toolName, duration_ms: Math.round(event.durationMs ?? 0),

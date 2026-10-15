@@ -14,6 +14,7 @@ import { fileService } from './files.ts';
 import { vaultService } from './vault.ts';
 import { installedVersion, loadManifest } from './components.ts';
 import { detect, httpJson } from './updates.ts';
+import { MemoryService, registerMemory } from './memory.ts';
 
 export async function main(args = process.argv.slice(2)) {
   await loadEnv(); const config = await loadConfig();
@@ -89,6 +90,9 @@ export async function main(args = process.argv.slice(2)) {
       console.log(await speech.transcribe(await readFile(args[0]), lifecycle.signal));
     } else if (command === 'serve') {
       const files = fileService(config);
+      // Memory shares the files feature's EmbeddingGemma server (started on demand, idle-unloaded).
+      const memory = new MemoryService(config, files.embedder, path.join(root, 'data/memory.sqlite'));
+      app.memory = memory; registerMemory(memory);
       files.start(lifecycle.signal);
       const server = await makeServer(config, app, lifecycle.signal, undefined, undefined, undefined, { files },
         { stateFile: path.join(root, 'data/tasks-state.json') }, { stateFile: path.join(root, 'data/updates.json') });
@@ -100,7 +104,8 @@ export async function main(args = process.argv.slice(2)) {
       });
       // Parallel and bounded; durations go to the backend log (data/native-launcher.log), never content.
       await shutdown({ http: () => closeServer(server), vault: () => vaultService(config).close(),
-        speech: () => speech.close(), llama: () => runtime.close(), files: () => fileService(config).close() },
+        speech: () => speech.close(), llama: () => runtime.close(), files: () => fileService(config).close(),
+        memory: async () => { registerMemory(undefined); memory.close(); } },
         line => console.log(`${stamp()} ${line}`));
       process.exit(0); // Pending handles (keep-alive fetch sockets, SDK timers) must not keep the process alive.
     } else throw Error('Commands: serve, ask, classify, transcribe, doctor, updates-check, models, login');

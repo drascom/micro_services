@@ -31,7 +31,7 @@ export function permissionsExtension(options: { root: string; offline: boolean; 
     // date or filter returns no data); 3 listings leave room for one narrower retry while results stay small for local models.
     const mailBudgets: Record<string, number> = { mail_list_messages: 3, mail_read_message: 5 };
     const mailCalls: Record<string, number> = {};
-    let reminderCalls = 0, organizeCalls = 0, fileCalls = 0, fileOrganizeCalls = 0, vaultCalls = 0, updateCalls = 0;
+    let reminderCalls = 0, organizeCalls = 0, fileCalls = 0, fileOrganizeCalls = 0, vaultCalls = 0, updateCalls = 0, memoryCalls = 0;
     const check = async (event: ToolCallEvent): Promise<ToolCallEventResult | undefined> => {
       if (++calls > 12) return { block: true, reason: 'Tool budget exhausted. Finish with the evidence already retrieved.', terminate: true };
       // Automated Reminders task: no user can confirm, so only read-only/safe tools and never a deletion.
@@ -45,6 +45,12 @@ export function permissionsExtension(options: { root: string; offline: boolean; 
         if (!options.local || options.automated) return { block: true, reason: 'The password vault works only with the local model.' };
         if (!['vault_search', 'vault_copy', 'vault_save'].includes(event.toolName)) return { block: true, reason: 'Not available.' };
         if (++vaultCalls > 4) return { block: true, reason: 'Vault budget (4 per request) is exhausted.' };
+        return;
+      }
+      if (event.toolName === 'memory_save' || event.toolName === 'memory_forget') {
+        // Assistant memory: user requests only (a Reminders task never reads or writes memory).
+        if (options.automated) return { block: true, reason: 'Not available in automated tasks.' };
+        if (++memoryCalls > 4) return { block: true, reason: 'Memory budget (4 per request) is exhausted.' };
         return;
       }
       if (event.toolName === 'updates') {

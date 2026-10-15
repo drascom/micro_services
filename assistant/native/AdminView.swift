@@ -45,6 +45,10 @@ struct FilesPlanGroup: Decodable { let folder: String; let existing: Bool; let f
 struct FilesPlan: Decodable { let at: Double; let folder: String; let groups: [FilesPlanGroup]; let left: [String] }
 struct FilesStatus: Decodable { var enabled = false; var roots: [String] = []; var skip_dirs: [String]? = nil; var index: FilesIndex?; var last_plan: FilesPlan? }
 
+struct MemoryItem: Decodable, Identifiable { let id: Int; let kind: String; let text: String; let source: String; let pinned: Bool }
+struct MemoryEpisode: Decodable, Identifiable { let id: Int; let ended: Double; let summary: String }
+struct MemoryStatus: Decodable { var enabled = true; var extract = true; var items: [MemoryItem] = []; var episodes: [MemoryEpisode] = [] }
+
 struct VaultStatus: Decodable { var enabled = false; var server = ""; var email = ""; var installed = false; var state = "unknown"; var error = "" }
 struct UpdateItem: Decodable, Identifiable {
     let id: String; let name: String; let current: String; let latest: String; let status: String
@@ -115,6 +119,8 @@ final class AdminModel {
     var vaultBusy = false
     var updates = UpdatesStatus()
     var updatesMessage = ""
+    var memory = MemoryStatus()
+    var memoryMessage = ""
     private var polling: Task<Void, Never>?
 
     init(backend: BackendClient, ring: RingModel) { self.backend = backend; self.ring = ring }
@@ -136,6 +142,7 @@ final class AdminModel {
         Task { await loadFiles() }
         Task { await loadVault() }
         Task { await loadUpdates() }
+        Task { await loadMemory() }
     }
     func stopPolling() { polling?.cancel(); polling = nil }
 
@@ -405,6 +412,27 @@ final class AdminModel {
             updatesMessage = ""
         } catch { updatesMessage = error.localizedDescription }
     }
+    private func memoryCall(_ route: String, _ body: [String: Any] = [:]) async {
+        do {
+            let data = try await backend.admin(route, data: try JSONSerialization.data(withJSONObject: body))
+            if let value = try? JSONDecoder().decode(MemoryStatus.self, from: data) { memory = value }
+            memoryMessage = ""
+        } catch { memoryMessage = error.localizedDescription }
+    }
+    func loadMemory() async { await memoryCall("admin/memory") }
+    func setMemory(enabled: Bool? = nil, extract: Bool? = nil) async {
+        var body: [String: Any] = [:]
+        if let enabled { body["enabled"] = enabled }
+        if let extract { body["extract"] = extract }
+        await memoryCall("admin/memory/settings", body)
+    }
+    func addMemory(kind: String, text: String) async { await memoryCall("admin/memory/save", ["kind": kind, "text": text]) }
+    func editMemory(_ id: Int, text: String) async { await memoryCall("admin/memory/save", ["id": id, "text": text]) }
+    func pinMemory(_ id: Int, _ pinned: Bool) async { await memoryCall("admin/memory/save", ["id": id, "pinned": pinned]) }
+    func deleteMemory(_ id: Int) async { await memoryCall("admin/memory/delete", ["id": id]) }
+    func deleteEpisode(_ id: Int) async { await memoryCall("admin/memory/delete", ["episode": id]) }
+    func clearMemory(_ kind: String) async { await memoryCall("admin/memory/delete", ["all": kind]) }
+
     func checkUpdates() async { await updatesCall("admin/updates/check") }
     func applyUpdate(_ id: String) async { await updatesCall("admin/updates/apply", ["id": id]) }
     func skipUpdate(_ item: UpdateItem) async { await updatesCall("admin/updates/skip", ["id": item.id, "version": item.latest]) }
@@ -426,6 +454,7 @@ struct AdminView: View {
             StatusTab(admin: admin).tabItem { Text("Durum / Status") }
             ActivityTab(admin: admin).tabItem { Text("Etkinlik / Activity") }
             SettingsTab(admin: admin, ring: admin.ring).tabItem { Text("Ayarlar / Settings") }
+            MemoryTab(admin: admin).tabItem { Text("Hafıza / Memory") }
             UpdatesTab(admin: admin).tabItem { Text("Güncellemeler / Updates") }
             ResourcesTab(admin: admin).tabItem { Text("Skill & Extension") }
         }.padding(12).frame(minWidth: 720, minHeight: 480)
@@ -616,6 +645,67 @@ private struct UpdatesTab: View {
                 confirming = nil
             }
             Button("İptal / Cancel", role: .cancel) { confirming = nil }
+        }
+    }
+}
+
+private struct MemoryTab: View {
+    let admin: AdminModel
+    @State private var drafts: [Int: String] = [:]
+    @State private var adding: [String: String] = [:]
+    @State private var clearing: String?
+    private func rows(_ kind: String) -> [MemoryItem] { admin.memory.items.filter { $0.kind == kind } }
+    @ViewBuilder private func section(_ title: String, _ kind: String) -> some View {
+        Section(title) {
+            ForEach(rows(kind)) { item in
+                HStack {
+                    TextField("", text: Binding(get: { drafts[item.id] ?? item.text }, set: { drafts[item.id] = $0 }))
+                    if let draft = drafts[item.id], draft != item.text {
+                        Button("Kaydet / Save") { Task { await admin.editMemory(item.id, text: draft); drafts[item.id] = nil } }
+                    }
+                    if item.source == "extracted" { Text("oto").font(.caption).foregroundStyle(.secondary) }
+                    Button { Task { await admin.pinMemory(item.id, !item.pinned) } } label: { Image(systemName: item.pinned ? "pin.fill" : "pin") }
+                        .buttonStyle(.borderless).help("Sabitle / Pin")
+                    Button(role: .destructive) { Task { await admin.deleteMemory(item.id) } } label: { Image(systemName: "trash") }
+                        .buttonStyle(.borderless).help("Sil / Delete")
+                }
+            }
+            HStack {
+                TextField("Yeni / New", text: Binding(get: { adding[kind] ?? "" }, set: { adding[kind] = $0 }))
+                Button("Ekle / Add") { let text = adding[kind] ?? ""; Task { await admin.addMemory(kind: kind, text: text); adding[kind] = "" } }
+                    .disabled((adding[kind] ?? "").trimmingCharacters(in: .whitespaces).isEmpty)
+                Button("Tümünü sil / Delete all", role: .destructive) { clearing = kind }.disabled(rows(kind).isEmpty)
+            }
+        }
+    }
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Hafıza / Memory", isOn: Binding(get: { admin.memory.enabled }, set: { value in Task { await admin.setMemory(enabled: value) } }))
+                Toggle("Otomatik öğren / Learn automatically", isOn: Binding(get: { admin.memory.extract }, set: { value in Task { await admin.setMemory(extract: value) } }))
+                    .disabled(!admin.memory.enabled)
+                if !admin.memoryMessage.isEmpty { Text(admin.memoryMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+            }
+            section("Asistan / Assistant", "assistant")
+            section("Kişisel / Personal", "personal")
+            Section("Sohbet özetleri / Conversation summaries") {
+                ForEach(admin.memory.episodes) { episode in
+                    HStack(alignment: .top) {
+                        Text(Date(timeIntervalSince1970: episode.ended / 1000).formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+                        Text(episode.summary).textSelection(.enabled)
+                        Spacer()
+                        Button(role: .destructive) { Task { await admin.deleteEpisode(episode.id) } } label: { Image(systemName: "trash") }.buttonStyle(.borderless)
+                    }
+                }
+                if !admin.memory.episodes.isEmpty {
+                    Button("Tümünü sil / Delete all", role: .destructive) { clearing = "episodes" }
+                }
+            }
+        }.formStyle(.grouped)
+        .task { await admin.loadMemory() }
+        .confirmationDialog("Tümünü sil? / Delete all?", isPresented: Binding(get: { clearing != nil }, set: { if !$0 { clearing = nil } })) {
+            Button("Sil / Delete", role: .destructive) { if let kind = clearing { Task { await admin.clearMemory(kind) } }; clearing = nil }
+            Button("İptal / Cancel", role: .cancel) { clearing = nil }
         }
     }
 }

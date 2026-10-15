@@ -39,6 +39,7 @@ const scalars = {
   bitwarden_enabled: false, bitwarden_server: 'https://pass.drascom.uk', bitwarden_email: '', bitwarden_idle_lock_min: 15,
   bitwarden_bin: 'runtime/bitwarden/node_modules/@bitwarden/cli/build/bw.js',
   update_check_hour: 9,
+  memory_enabled: true, memory_extract: true, memory_chars: 1900, memory_extract_every: 6, memory_idle_ms: 120000,
   file_max_mb: 100, file_max_chunks: 20, file_index_interval_ms: 1800000, file_organize_threshold: 0.75,
   system_prompt: 'Concise personal assistant. Reply in the language of the latest message (Turkish or English); keep technical terms. No emoji. ' +
     'Calendar is not connected. Email is read-only via the Mail tools; never claim to send, move, delete or mark email.'
@@ -205,6 +206,8 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
     if (typeof value === 'number' && !key.startsWith('min_') && key !== 'local_reasoning_budget' && key !== 'update_check_hour' && value <= 0) throw Error(`${key} must be positive`);
   if (!Number.isInteger(config.update_check_hour) || config.update_check_hour < 0 || config.update_check_hour > 23)
     throw Error('update_check_hour must be an integer between 0 and 23');
+  if (!Number.isInteger(config.memory_extract_every) || config.memory_extract_every > 50) throw Error('memory_extract_every must be an integer between 1 and 50');
+  if (config.memory_chars > 4000) throw Error('memory_chars must be between 1 and 4000');
   if (!Number.isInteger(config.whisper_beam_size) || config.whisper_beam_size > 16)
     throw Error('whisper_beam_size must be an integer between 1 (greedy) and 16');
   if (!Number.isInteger(config.local_reasoning_budget) || config.local_reasoning_budget < -1 || config.local_reasoning_budget > 4096)

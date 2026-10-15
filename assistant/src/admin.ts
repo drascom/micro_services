@@ -4,6 +4,7 @@ import lockfile from 'proper-lockfile';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { loadConfig, validateMailAccounts, validateUrgentSenders, type Config, type MailAccount } from './config.ts';
+import type { MemoryService } from './memory.ts';
 import type { GmailService } from '../.pi/extensions/gmail/service.ts';
 import { lastPlan, MailTriage, triageMemory } from '../.pi/extensions/gmail/triage.ts';
 import { MailError, mailAppAccounts, type MailTransport } from '../.pi/extensions/macos-mail/client.ts';
@@ -271,6 +272,48 @@ export async function saveReminders(config: Config, configPath: string, value: u
   await updateConfigFile(configPath, settings => { Object.assign(settings, change); }); // The whole file is validated before replacing.
   Object.assign(config, change);
   return { enabled: config.reminders_enabled, tasks_enabled: config.tasks_enabled, tasks_list: config.tasks_list };
+}
+
+/** Memory tab: both switches and every stored item/summary (local Admin only; never logged). */
+export async function memoryStatus(config: Config, memory: MemoryService) {
+  const { items, episodes } = await memory.store.list();
+  return { enabled: config.memory_enabled, extract: config.memory_extract, items, episodes };
+}
+/** Memory switches in config.json; only the fields present are changed. */
+export async function saveMemorySettings(config: Config, configPath: string, memory: MemoryService, value: unknown) {
+  const input = (value && typeof value === 'object' ? value : {}) as { enabled?: unknown; extract?: unknown };
+  const change: Partial<Pick<Config, 'memory_enabled' | 'memory_extract'>> = {};
+  if (input.enabled !== undefined) { if (typeof input.enabled !== 'boolean') throw Error('enabled must be a boolean'); change.memory_enabled = input.enabled; }
+  if (input.extract !== undefined) { if (typeof input.extract !== 'boolean') throw Error('extract must be a boolean'); change.memory_extract = input.extract; }
+  if (!Object.keys(change).length) throw Error('Nothing to save');
+  await updateConfigFile(configPath, settings => { Object.assign(settings, change); });
+  Object.assign(config, change);
+  if (!config.memory_enabled || !config.memory_extract) memory.extractor.turns = [];
+  return memoryStatus(config, memory);
+}
+/** Add (no id), edit text and/or pin (id). The privacy filter applies to the user's own edits too. */
+export async function saveMemoryItem(config: Config, memory: MemoryService, value: unknown) {
+  const input = (value && typeof value === 'object' ? value : {}) as { id?: unknown; kind?: unknown; text?: unknown; pinned?: unknown };
+  if (input.text !== undefined && typeof input.text !== 'string') throw Error('text must be text');
+  if (input.pinned !== undefined && typeof input.pinned !== 'boolean') throw Error('pinned must be a boolean');
+  const signal = AbortSignal.timeout(30_000);
+  const result = input.id !== undefined
+    ? Number.isInteger(input.id) ? await memory.store.edit(input.id as number, { text: input.text as string | undefined, pinned: input.pinned as boolean | undefined }, signal) : undefined
+    : input.kind === 'assistant' || input.kind === 'personal'
+      ? await memory.store.save({ kind: input.kind, text: String(input.text ?? ''), source: 'explicit', pinned: input.pinned === true }, signal) : undefined;
+  if (!result) throw Error('Invalid memory item');
+  if (result.status === 'rejected') throw Error(result.reason === 'private' ? 'Şifre, kod, hesap numarası veya mail içeriği saklanmaz / Secrets are never stored'
+    : result.reason === 'not_found' ? 'Kayıt yok / Not found' : 'Boş metin / Empty text');
+  return memoryStatus(config, memory);
+}
+/** Delete one item (`id`), one summary (`episode`) or all of a kind (`all`: assistant | personal | episodes). */
+export async function deleteMemory(config: Config, memory: MemoryService, value: unknown) {
+  const input = (value && typeof value === 'object' ? value : {}) as { id?: unknown; episode?: unknown; all?: unknown };
+  if (Number.isInteger(input.id)) await memory.store.remove(input.id as number);
+  else if (Number.isInteger(input.episode)) await memory.store.removeEpisode(input.episode as number);
+  else if (input.all === 'assistant' || input.all === 'personal' || input.all === 'episodes') await memory.store.clear(input.all);
+  else throw Error('Invalid memory delete');
+  return memoryStatus(config, memory);
 }
 
 /** Gmail: connected accounts (each with its missing labels and error), shared triage settings; never secrets or tokens. */

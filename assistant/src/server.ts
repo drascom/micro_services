@@ -5,7 +5,7 @@ import type { Orchestrator } from './orchestrator.ts';
 import { NoSpeechError } from './speech.ts';
 import { activity, observeRequest } from './activity.ts';
 import { root } from './config.ts';
-import { collectStatus, connectGmail, createExtension, createSkill, deleteResource, disconnectGmail, filesStatus, gmailActions, gmailStatus, listMailAccounts, listResources,
+import { collectStatus, connectGmail, createExtension, createSkill, deleteMemory, deleteResource, memoryStatus, saveMemoryItem, saveMemorySettings, disconnectGmail, filesStatus, gmailActions, gmailStatus, listMailAccounts, listResources,
   readResource, saveFiles, saveGmail, saveMailAccounts, saveReminders, saveVault, undoGmail, unlockVault, vaultStatus, writeResource } from './admin.ts';
 import { registerSecretSpeaker, registeredSecretSpeaker, VaultError, vaultService, type SecretSpeaker, type VaultService } from './vault.ts';
 import { fileService, type FileService } from './files.ts';
@@ -118,6 +118,24 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
       } finally { if (started && !offlineMode) await app.runtime.close(); }
     } finally { slot.release(); }
   };
+  // Memory extraction (src/memory.ts): in the request lane, after a request, cancelled by the next one. Local mode: the
+  // local model (loaded if needed, idle only); remote mode: the remote model, so the local model is never loaded for it.
+  const memory = app.memory;
+  if (memory) {
+    memory.extractor.lane = lane;
+    memory.extractor.offline = () => offlineMode;
+    memory.extractor.model ??= async (system, user, local, signal) => {
+      const context = { systemPrompt: system, messages: [{ role: 'user' as const, content: user, timestamp: Date.now() }] };
+      const text = (message: { content: { type: string; text?: string }[] }) => message.content.filter(b => b.type === 'text').map(b => b.text ?? '').join('\n');
+      if (!local) return text(await plain(app.remote, false).complete(context, AbortSignal.any([signal, AbortSignal.timeout(config.remote_timeout_ms)])));
+      const started = !(await app.runtime.healthy?.(signal));
+      try {
+        await app.runtime.ensure(signal);
+        return text(await plain(app.local, true).complete(context, AbortSignal.any([signal, AbortSignal.timeout(config.local_timeout_ms)])));
+      } finally { if (started && !offlineMode) await app.runtime.close(); }
+    };
+    lifecycle.addEventListener('abort', () => memory.extractor.close(), { once: true });
+  }
   /** Restarts only what an update touched; runs inside the lane, so no request is using it. Lazy processes start again on use. */
   const restart = async (target: Restart): Promise<string | void> => {
     const speech = app.speech as Partial<Speech>;
@@ -210,6 +228,14 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
           if (request.url === '/admin/updates/apply') { updates.startApply(ids); return reply(200, await updates.list()); }
           if (request.url === '/admin/updates/rollback') { updates.startRollback(ids); return reply(200, await updates.list()); }
           if (request.url === '/admin/updates/skip') return reply(200, await updates.skip(value.id, value.version));
+          return reply(404, { error: 'Not found' });
+        }
+        if (request.url?.startsWith('/admin/memory')) {
+          if (!memory) return reply(404, { error: 'Memory is off' });
+          if (request.url === '/admin/memory') return reply(200, await memoryStatus(config, memory));
+          if (request.url === '/admin/memory/settings') return reply(200, await saveMemorySettings(config, configPath, memory, data));
+          if (request.url === '/admin/memory/save') return reply(200, await saveMemoryItem(config, memory, data));
+          if (request.url === '/admin/memory/delete') return reply(200, await deleteMemory(config, memory, data));
           return reply(404, { error: 'Not found' });
         }
         if (request.url === '/admin/files/reindex') return reply(200, { ...files.reindex(lifecycle), ...await filesStatus(config, files) });

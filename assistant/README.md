@@ -434,6 +434,11 @@ Optional `file_search` / `file_read` / `file_organize` tools over an index of `~
 images, audio, video by content) built with a local EmbeddingGemma 2 server. Off by default (Admin → Ayarlar →
 Dosyalar). Works offline. Details: see [FILES.md](FILES.md).
 
+### Memory
+
+"Bunu hatırla / unutma / unut" saves or deletes short memories (`data/memory.sqlite`); short conversation summaries and
+facts are also learned in the background. Remote gets only assistant rules. Admin → Hafıza. Details: see [MEMORY.md](MEMORY.md).
+
 ### Bitwarden vault (local model only)
 
 Optional `vault_search` / `vault_copy` / `vault_save` over the user's Vaultwarden (`https://pass.drascom.uk`) via the

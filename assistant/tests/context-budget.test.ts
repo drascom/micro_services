@@ -14,6 +14,7 @@ import { FileService } from '../src/files.ts';
 import { VaultService } from '../src/vault.ts';
 import type { UpdateService } from '../src/updates.ts';
 import { ConfirmationStore } from '../.pi/extensions/apple-reminders/confirmations.ts';
+import { MemoryService } from '../src/memory.ts';
 
 // Context budget rule (local and remote): system prompt + skill catalog/body + tool schemas stay small.
 // Limits are characters (about 4 per token), set about 10% above the measured values (offline 3907, mail-assistant 3359; 2026-10-09).
@@ -25,9 +26,10 @@ import { ConfirmationStore } from '../.pi/extensions/apple-reminders/confirmatio
 // 2026-10-14: Bitwarden vault (off by default, local model only) measured vault route 2594; unrouted local adds 1072 when unlocked.
 // 2026-10-15: vault_copy `speak` + one skill line measured vault route 2777, unrouted local adds 1132 (limits unchanged).
 // 2026-10-14: component updates (user requests only) measured updates route 1633; a pending offer adds 571 to an unrouted request.
+// 2026-10-15: memory_save/memory_forget (only for a hatırla/unut request) measured 688 added.
 const LIMITS = { unrouted_offline: 4360, 'mail-assistant': 3600, unrouted_offline_reminders: 5900, reminders: 2250,
   'mail-triage': 1880, unrouted_gmail_added: 920, 'file-assistant': 2330, unrouted_files_added: 1290,
-  vault: 2850, unrouted_vault_added: 1180, updates: 1800, updates_pending_added: 630 } as const;
+  vault: 2850, unrouted_vault_added: 1180, updates: 1800, updates_pending_added: 630, memory_tools_added: 760 } as const;
 
 /** A connected Gmail (fake secret store) for the mail_organize cases; no network call happens while measuring. */
 function connectedGmail() {
@@ -176,4 +178,28 @@ test('updates: one compact tool when routed or when the offer awaits an answer; 
   assert.match(pending.prompt, /Pending updates apply llama\.cpp b11617, Pi 1\.2\.0: if this message agrees, call updates apply with confirm_token c_/);
   assert.ok(pending.chars - plain.chars <= LIMITS.updates_pending_added, `${pending.chars - plain.chars} chars added`);
   assert.ok(!(await measureUpdates(undefined, true, true)).names.includes('updates'), 'automated task');
+});
+
+async function measureMemory(memoryTools: boolean, automated = false) {
+  const agent = await mkdtemp(path.join(tmpdir(), 'ayhan-budget-'));
+  const fake = fauxProvider({ provider: 'budget-test', models: [{ id: 'test' }], tokensPerSecond: 1000000 });
+  fake.setResponses([fauxAssistantMessage('ok')]);
+  const runtime = await ModelRuntime.create({ modelsPath: null, refreshOnCreate: false }); runtime.registerNativeProvider(fake.provider);
+  const config = { ...defaults, pi_agent_dir: agent };
+  const session = await createHarnessSession({ root, config, context: { systemPrompt: defaults.system_prompt, messages: [{ role: 'user', content: 'test', timestamp: 1 }] },
+    model: fake.getModel(), runtime, offline: false, extensionPaths: [], automated, updates: null, memory: new MemoryService(config, undefined, ':memory:'), memoryTools });
+  try {
+    const tools = session.getActiveToolNames().map(name => {
+      const tool = session.getToolDefinition(name)!;
+      return JSON.stringify({ name, description: tool.description, parameters: tool.parameters });
+    });
+    return { names: session.getActiveToolNames(), chars: session.systemPrompt.length + tools.join('').length };
+  } finally { session.dispose(); await rm(agent, { recursive: true, force: true }); }
+}
+
+test('memory: two compact tools only for a hatırla/unut user request; never for tasks', async () => {
+  const plain = await measureMemory(false), memory = await measureMemory(true);
+  assert.deepEqual(memory.names.filter(name => !plain.names.includes(name)), ['memory_save', 'memory_forget']);
+  assert.ok(memory.chars - plain.chars <= LIMITS.memory_tools_added, `${memory.chars - plain.chars} chars added`);
+  assert.ok(!(await measureMemory(true, true)).names.some(name => name.startsWith('memory_')), 'automated task');
 });

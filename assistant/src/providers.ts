@@ -9,7 +9,7 @@ import { FileCredentials } from './credentials.ts';
 import type { Config } from './config.ts';
 
 export type HarnessSkill = 'online-search' | 'skill-manager' | 'mail-assistant' | 'reminders' | 'mail-triage' | 'file-assistant' | 'vault' | 'updates';
-export interface Chat { complete(context: Context, signal: AbortSignal, options?: { offline: boolean; skill?: HarnessSkill; briefNews?: boolean; turn?: number; automated?: boolean; steering?: Steering }): Promise<AssistantMessage>; }
+export interface Chat { complete(context: Context, signal: AbortSignal, options?: { offline: boolean; skill?: HarnessSkill; briefNews?: boolean; turn?: number; automated?: boolean; steering?: Steering; memory?: boolean; used?: Set<string> }): Promise<AssistantMessage>; }
 
 /** Barge-in: extra user text for a request that is still generating. Accepted only while a live Pi session
  *  runs the request (it is injected before the next model call; one reply). Otherwise `steer` returns false. */
