@@ -48,6 +48,8 @@ async function setup(t: test.TestContext, overrides: Partial<Config> = {}) {
   const dir = await mkdtemp(path.join(tmpdir(), 'whisper-test-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const server = path.join(dir, 'whisper-server'), cli = path.join(dir, 'whisper-cli'), model = path.join(dir, 'model.bin');
+  // The fake scripts are CommonJS: pin that, so a TMPDIR inside an ESM package ("type": "module") never matters.
+  await writeFile(path.join(dir, 'package.json'), '{"type":"commonjs"}\n');
   await writeFile(server, fakeServer(dir)); await writeFile(cli, fakeCli(dir)); await writeFile(model, '');
   await chmod(server, 0o755); await chmod(cli, 0o755);
   const config: Config = { ...defaults, whisper_server_bin: server, whisper_bin: cli, whisper_model: model,

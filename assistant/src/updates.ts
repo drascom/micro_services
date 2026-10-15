@@ -301,9 +301,10 @@ export class UpdateManager implements UpdateService {
   /** Read-only `git status` (the app never commits); falls back to the flag set when the manifest was written. */
   private async manifestChanged(state: State): Promise<boolean> {
     try {
-      const result = await (this.exec ?? defaultExec)('git', ['status', '--porcelain', '--', path.basename(this.manifestFile)],
+      const result = await (this.exec ?? defaultExec)('git', ['status', '--porcelain', '--ignored', '--', path.basename(this.manifestFile)],
         { cwd: path.dirname(this.manifestFile), signal: AbortSignal.timeout(3000), timeoutMs: 3000 });
-      if (result.code === 0) return result.stdout.trim().length > 0;
+      // Only a tracked manifest answers from git; untracked (??) or ignored (!!) means git doesn't know it → the flag.
+      if (result.code === 0 && !/^(\?\?|!!) /m.test(result.stdout)) return result.stdout.trim().length > 0;
     } catch {}
     return state.manifest_changed === true;
   }

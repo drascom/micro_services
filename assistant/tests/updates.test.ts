@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile, access } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
-import { compareVersions, discard, firstFailure, smoke, stage, testEnv, type Component, type Exec, type Manifest } from '../src/components.ts';
+import { compareVersions, discard, firstFailure, smoke, stage, systemTmp, testEnv, type Component, type Exec, type Manifest } from '../src/components.ts';
 import { detect, parseSummary, UpdateManager, type Http } from '../src/updates.ts';
 import type { TaskLane } from '../src/tasks.ts';
 import { ConfirmationStore, currentTurn, newTurn } from '../.pi/extensions/apple-reminders/confirmations.ts';
@@ -92,6 +92,7 @@ test('npm smoke test: developer-like env without the app\'s keys; the first fail
     assert.equal(result.detail, 'npm test: harness.test.ts › web requests block local URLs: AssertionError [ERR_ASSERTION]: Missing expected rejection.');
     assert.deepEqual(seen.map(s => s.args), [['run', 'check'], ['test']]);
     assert.ok(seen.every(s => s.clean && s.env?.TMPDIR && !('TYPESAFE_API_KEY' in s.env)));
+    assert.ok(seen.every(s => s.env!.TMPDIR.startsWith(systemTmp() + '/ayhan-smoke-')), 'smoke TMPDIR is the system temp, not the inherited one');
     assert.match(await readFile(path.join(root, 'data/updates/smoke-cheerio.log'), 'utf8'), /Missing expected rejection/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

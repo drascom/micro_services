@@ -1,9 +1,9 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { access, cp, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { homedir, tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { stopProcess } from './processes.ts';
@@ -223,6 +223,18 @@ export function testEnv(tmp: string, source: NodeJS.ProcessEnv = process.env): R
   for (const name of ['HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'TZ']) if (source[name]) env[name] = source[name]!;
   return env;
 }
+/**
+ * The real system temp dir for smoke tests, never the inherited TMPDIR: the app sets TMPDIR inside the project
+ * (data/web-access/tmp), where the project's package.json ("type": "module") would turn extensionless CommonJS test
+ * scripts into ES modules. macOS: the per-user dir from `getconf DARWIN_USER_TEMP_DIR`; elsewhere /tmp.
+ */
+let systemTmpCache: string | undefined;
+export function systemTmp(): string {
+  if (systemTmpCache) return systemTmpCache;
+  let dir = '/tmp';
+  if (process.platform === 'darwin') try { dir = execFileSync('/usr/bin/getconf', ['DARWIN_USER_TEMP_DIR'], { encoding: 'utf8', timeout: 3000 }).trim() || dir; } catch {}
+  return systemTmpCache = dir.replace(/\/+$/, '') || '/tmp';
+}
 /** First failing test and its message from node:test spec output (short), e.g. `harness.test.ts › search parser: Missing expected rejection`. */
 export function firstFailure(output: string): string | undefined {
   const lines = output.split('\n');
@@ -242,7 +254,7 @@ export function firstFailure(output: string): string | undefined {
 export async function smoke(c: Component, staged: Staged, version: string, ctx: InstallContext): Promise<{ ok: boolean; detail: string }> {
   try {
     if (c.kind === 'npm-dep') {
-      const tmp = await mkdtemp(path.join(tmpdir(), 'ayhan-smoke-'));
+      const tmp = await mkdtemp(path.join(systemTmp(), 'ayhan-smoke-'));
       try {
         for (const script of [['run', 'check'], ['test']]) {
           ctx.log?.(`$ npm ${script.join(' ')}`);
