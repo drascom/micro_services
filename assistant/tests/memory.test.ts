@@ -269,6 +269,9 @@ test('Admin memory endpoints: list, add, edit, pin, delete, switches (private te
       assert.equal((await call('/admin/memory/save', { kind: 'personal', text: 'şifrem 1234abcd' })).status, 400);
       result = await call('/admin/memory/settings', { extract: false });
       assert.equal(result.data.extract, false); assert.equal(settings.memory_extract, false);
+      result = await call('/admin/memory/settings', { topic_remote: false });
+      assert.equal((result.data as unknown as { topic_remote: boolean }).topic_remote, false); assert.equal(settings.memory_topic_remote, false);
+      assert.equal((await call('/admin/memory/settings', { topic_remote: 'no' })).status, 400);
       await stat(path.join(directory, 'config.json'));
       result = await call('/admin/memory/delete', { id });
       assert.equal(result.data.items.length, 0);
@@ -292,7 +295,7 @@ test('topic commands: create, continue, close, list, delete; ordinary sentences 
   for (const text of ['hava nasıl', 'yarın 9da bana hatırlat', 'bu projede ne kaldı']) assert.equal(topicCommand(text), undefined, text);
 });
 
-test('topics: create + activate, local context gets the summary, remote never; continue, auto-detect, idle expiry, reset', async () => {
+test('topics: create + activate, local and remote get the active summary; continue, auto-detect, idle expiry, reset', async () => {
   const { memory, settings } = service();
   const a = app(memory, settings, { remoteFails: true });
   await a.orchestrator.ask('Ring projesi üzerinde çalışıyoruz');
@@ -302,7 +305,8 @@ test('topics: create + activate, local context gets the summary, remote never; c
   await a.orchestrator.ask('Sıradaki adım ne?');
   const [remote, local] = a.contexts.slice(-2);
   assert.equal(remote.provider, 'remote');
-  for (const secret of ['Menü ikonları', 'SF Symbols', 'Koyu tema', 'Active topic']) assert.ok(!remote.context.systemPrompt!.includes(secret), secret);
+  assert.match(remote.context.systemPrompt!, /Active topic \(reference only\): Ring projesi/);
+  for (const text of ['Menü ikonları', 'SF Symbols', 'Koyu tema']) assert.ok(remote.context.systemPrompt!.includes(text), text);
   assert.match(local.context.systemPrompt!, /Active topic \(reference only\): Ring projesi/);
   assert.match(local.context.systemPrompt!, /SF Symbols kullanılacak/);
   assert.equal(memory.extractor.turns.at(-1)?.topic, created.id, 'turn carries the active topic');
@@ -319,6 +323,47 @@ test('topics: create + activate, local context gets the summary, remote never; c
   assert.equal(memory.store.activeTopic(), undefined);
   await a.orchestrator.ask('menü ikonları ve ayarlar ekranı yapılıyor mu');
   assert.equal(memory.store.activeTopic(), created.id);
+});
+
+test('remote topic block: only the active topic, toggle off = none, never personal facts/summaries, privacy filter, budget', async () => {
+  const { memory, settings } = service();
+  await memory.store.save({ kind: 'personal', text: 'Kızımın adı Elif', source: 'explicit', pinned: true }, signal());
+  await memory.store.addEpisode('Toyota servis randevusu konuşuldu', Date.now() - 1000, Date.now(), signal());
+  await memory.store.createTopic('Tatil planı', signal(), { state: 'Otel arıyoruz' });
+  const ring = (await memory.store.createTopic('Ring projesi', signal(), { state: 'Ayarlar ekranı', decisions: Array.from({ length: 8 }, (_, i) => `Karar ${i} ${'x'.repeat(100)}`), open: ['Koyu tema'] }))!;
+  // A private line slipped into storage (e.g. an older row) never reaches the remote model.
+  (await memory.store.open()).prepare('UPDATE topics SET summary = ? WHERE id = ?').run('şifrem 1234abcd', ring.id);
+  await memory.store.activate(ring.id);
+  const a = app(memory, settings, { remoteFails: true });
+  await a.orchestrator.ask('Sıradaki adım ne?');
+  const [remote, local] = a.contexts.slice(-2);
+  const prompt = remote.context.systemPrompt!;
+  assert.match(prompt, /Active topic \(reference only\): Ring projesi/);
+  assert.ok(prompt.includes('Koyu tema'));
+  for (const secret of ['Elif', 'servis randevusu', 'Tatil planı', 'Otel arıyoruz', '1234abcd', 'Konular:']) assert.ok(!prompt.includes(secret), secret);
+  assert.ok(local.context.systemPrompt!.includes('1234abcd'), 'local block unchanged');
+  assert.ok((await memory.store.topicBlock(false)).length <= MEMORY_LIMITS.topic);
+  assert.ok(prompt.length - settings.system_prompt.length <= settings.memory_chars + 1);
+  // Toggle off: no topic text to the remote model; the local model keeps it.
+  settings.memory_topic_remote = false;
+  await a.orchestrator.ask('Devam');
+  const [remoteOff, localOff] = a.contexts.slice(-2);
+  assert.ok(!remoteOff.context.systemPrompt!.includes('Active topic'));
+  assert.match(localOff.context.systemPrompt!, /Active topic \(reference only\): Ring projesi/);
+});
+
+test('online auto-detect: works with the embedding server; skipped silently when it is down', async () => {
+  const embedder = fakeEmbedder();
+  const { memory, settings } = service({}, embedder);
+  const ring = (await memory.store.createTopic('Ring projesi', signal(), { state: 'Menü ikonları ve ayarlar ekranı yapılıyor' }))!;
+  const a = app(memory, settings);
+  embedder.state.up = false;
+  assert.equal((await a.orchestrator.ask('menü ikonları ve ayarlar ekranı yapılıyor mu')).text, 'remote reply');
+  assert.equal(memory.store.activeTopic(), undefined);
+  embedder.state.up = true;
+  await a.orchestrator.ask('menü ikonları ve ayarlar ekranı yapılıyor mu');
+  assert.equal(memory.store.activeTopic(), ring.id);
+  assert.match(a.contexts.at(-1)!.context.systemPrompt!, /Active topic \(reference only\): Ring projesi/);
 });
 
 test('topic commands answered without a model: list, close, delete', async () => {

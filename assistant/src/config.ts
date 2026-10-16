@@ -39,7 +39,7 @@ const scalars = {
   bitwarden_enabled: false, bitwarden_server: 'https://pass.drascom.uk', bitwarden_email: '', bitwarden_idle_lock_min: 15,
   bitwarden_bin: 'runtime/bitwarden/node_modules/@bitwarden/cli/build/bw.js',
   update_check_hour: 9,
-  memory_enabled: true, memory_extract: true, memory_chars: 1900, memory_extract_every: 6, memory_idle_ms: 120000,
+  memory_enabled: true, memory_extract: true, memory_topic_remote: true, memory_chars: 1900, memory_extract_every: 6, memory_idle_ms: 120000,
   file_max_mb: 100, file_max_chunks: 20, file_index_interval_ms: 1800000, file_organize_threshold: 0.75,
   system_prompt: 'Concise personal assistant. Reply in the language of the latest message (Turkish or English); keep technical terms. No emoji. ' +
     'Calendar is not connected. Email is read-only via the Mail tools; never claim to send, move, delete or mark email.'

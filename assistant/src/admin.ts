@@ -259,7 +259,7 @@ export async function saveReminders(config: Config, configPath: string, value: u
 /** Memory tab: both switches and every stored item/summary (local Admin only; never logged). */
 export async function memoryStatus(config: Config, memory: MemoryService) {
   const { items, episodes } = await memory.store.list();
-  return { enabled: config.memory_enabled, extract: config.memory_extract, items, episodes, topics: await memory.store.topics() };
+  return { enabled: config.memory_enabled, extract: config.memory_extract, topic_remote: config.memory_topic_remote, items, episodes, topics: await memory.store.topics() };
 }
 /** Topic edit (`id` + any of title/state/decisions/open/status) or `active` (true = make it the active topic, false = none). */
 export async function saveMemoryTopic(config: Config, memory: MemoryService, value: unknown) {
@@ -281,10 +281,11 @@ export async function saveMemoryTopic(config: Config, memory: MemoryService, val
 }
 /** Memory switches in config.json; only the fields present are changed. */
 export async function saveMemorySettings(config: Config, configPath: string, memory: MemoryService, value: unknown) {
-  const input = (value && typeof value === 'object' ? value : {}) as { enabled?: unknown; extract?: unknown };
-  const change: Partial<Pick<Config, 'memory_enabled' | 'memory_extract'>> = {};
+  const input = (value && typeof value === 'object' ? value : {}) as { enabled?: unknown; extract?: unknown; topic_remote?: unknown };
+  const change: Partial<Pick<Config, 'memory_enabled' | 'memory_extract' | 'memory_topic_remote'>> = {};
   if (input.enabled !== undefined) { if (typeof input.enabled !== 'boolean') throw Error('enabled must be a boolean'); change.memory_enabled = input.enabled; }
   if (input.extract !== undefined) { if (typeof input.extract !== 'boolean') throw Error('extract must be a boolean'); change.memory_extract = input.extract; }
+  if (input.topic_remote !== undefined) { if (typeof input.topic_remote !== 'boolean') throw Error('topic_remote must be a boolean'); change.memory_topic_remote = input.topic_remote; }
   if (!Object.keys(change).length) throw Error('Kaydedilecek bir şey yok');
   await updateConfigFile(configPath, settings => { Object.assign(settings, change); });
   Object.assign(config, change);

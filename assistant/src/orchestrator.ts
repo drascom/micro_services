@@ -35,8 +35,8 @@ export class Orchestrator {
   }
   /** New conversation: the buffered turns are extracted soon (end of a segment). */
   reset(): void { this.history = []; if (this.memory) { this.memory.store.active = undefined; this.memory.extractor.schedule(true); } }
-  /** `automated` (Reminders task): no memory block. A remote model gets only the assistant rules; personal facts,
-   *  recalled summaries and the active topic go only to the local model. Memory has its own budget (`memory_chars`) on top of `history_chars`. */
+  /** `automated` (Reminders task): no memory block. A remote model gets the assistant rules and, with `memory_topic_remote`,
+   *  the active topic block; personal facts and recalled summaries go only to the local model. Memory has its own budget (`memory_chars`) on top of `history_chars`. */
   async context(prompt: string, local: boolean, signal: AbortSignal, history: readonly Message[] = this.history, automated = false): Promise<Context> {
     let system = this.config.system_prompt;
     // Read on every request so saved personal rules also apply to local fallback.
@@ -54,7 +54,7 @@ export class Orchestrator {
     if (this.memory?.enabled && !automated) {
       try {
         const parts = [await this.memory.store.block(local), local ? await this.memory.store.retrieve(prompt, signal) : '',
-          local ? await this.memory.store.topicBlock() : ''].filter(Boolean);
+          await this.memory.store.topicBlock(local)].filter(Boolean);
         const text = parts.join('\n').slice(0, this.config.memory_chars);
         if (text) { system += '\n' + text; memoryChars = text.length + 1; }
       } catch { signal.throwIfAborted(); } // Memory never blocks a reply.
