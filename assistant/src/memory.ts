@@ -23,7 +23,7 @@ export type Topic = { id: number; title: string; state: string; decisions: strin
 /** What an extraction pass found about the subject being worked on (merged into a topic, never raw text). */
 export type TopicDelta = { title: string; state: string; decisions: string[]; open: string[]; done: string[] };
 export type SaveResult = { status: 'saved' | 'updated' | 'kept' | 'rejected'; id?: number; reason?: string };
-export type MemorySettings = Pick<Config, 'memory_enabled' | 'memory_extract' | 'memory_topic_remote' | 'memory_chars' | 'memory_extract_every' | 'memory_idle_ms' |
+export type MemorySettings = Pick<Config, 'memory_enabled' | 'memory_extract' | 'memory_chars' | 'memory_extract_every' | 'memory_idle_ms' |
   'embedding_model' | 'embedding_dims'>;
 
 /** Character budgets of the system-prompt memory blocks (about 4 chars per token). */
@@ -505,11 +505,11 @@ export class MemoryStore {
     db.prepare('DELETE FROM topic_candidates WHERE id = ?').run(candidate.id);
     return await this.createTopic(name, signal, delta) ? 'created' : 'rejected';
   }
-  /** Active-topic block, ≤ 600 chars (oldest decisions dropped first). `local = false` (remote model): only when
-   *  `memory_topic_remote` is on, and lines failing the privacy filter are dropped. Never the topic list or other topics. */
+  /** Active-topic block, ≤ 600 chars (oldest decisions dropped first). `local = false` (remote model):
+   *  lines failing the privacy filter are dropped. Never the topic list or other topics. */
   async topicBlock(local = true): Promise<string> {
     const id = this.activeTopic();
-    if (!this.settings.memory_enabled || id === undefined || (!local && !this.settings.memory_topic_remote)) return '';
+    if (!this.settings.memory_enabled || id === undefined) return '';
     await this.open();
     const row = this.topicRow(id); if (!row) return '';
     const text = topicSummary(topic(row, id), MEMORY_LIMITS.topic);

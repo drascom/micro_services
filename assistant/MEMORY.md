@@ -7,13 +7,13 @@ Short durable memories in `data/memory.sqlite` (gitignored, 0600). No raw conver
 | assistant | how to work with the user ("kısa cevap ver", "silmeden önce sor") | remote and local |
 | personal | facts about the user (people, devices, routines) | local model only |
 | episodes | one short summary per extracted conversation batch | local model only |
-| topics | ongoing project/subject: name, state, decisions, open items | local; active one also remote (`memory_topic_remote`) |
+| topics | ongoing project/subject: name, state, decisions, open items | local; active one also remote (always) |
 
 ## Use
 - Save: "Bunu hatırla: cevaplar kısa olsun", "Şunu unutma: kızımın adı Elif", "Aklında tut: yazıcım Brother HL".
 - Delete: "Elif ile ilgili notu unut", "Hafızandan yazıcı bilgisini sil".
 - These words (not "hatırlat" = Reminders) add the `memory_save` / `memory_forget` tools to that request only.
-- Admin → Hafıza: on/off, automatic learning on/off, "Konu uzak modele gitsin", list/edit/pin/delete, "Tümünü sil" per kind, Konular.
+- Admin → Hafıza: on/off, automatic learning on/off, list/edit/pin/delete, "Tümünü sil" per kind, Konular.
 
 ## Read path (`Orchestrator.context`)
 - Always: assistant rules ≤ 500 chars (explicit/pinned first). Local model: + pinned personal facts ≤ 200 chars and
@@ -41,7 +41,7 @@ Short durable memories in `data/memory.sqlite` (gitignored, 0600). No raw conver
 - One active topic, held in the backend process; dropped after 30 min idle or a reset. With none active, a prompt
   whose embedding matches an open topic (touched < 7 days) with cosine ≥ 0.7 activates it (skipped if the embedding server is down).
 - Active topic summary ≤ 600 chars inside `memory_chars` (oldest decisions dropped first) goes to the local model and,
-  with `memory_topic_remote` (default true), to the remote model too (lines failing the privacy filter dropped). Only the
+  always to the remote model too (lines failing the privacy filter dropped). Only the
   active topic — never the list or other topics; personal facts/summaries stay local. The remote extractor gets no topic text.
 - Extraction: turns carry their active topic; the extractor returns `topic {title, state, decisions, open, done}`;
   merged into that topic (state replaced, new entries appended, done items removed; caps state 300, entries 120,

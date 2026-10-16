@@ -35,7 +35,7 @@ export class Orchestrator {
   }
   /** New conversation: the buffered turns are extracted soon (end of a segment). */
   reset(): void { this.history = []; if (this.memory) { this.memory.store.active = undefined; this.memory.extractor.schedule(true); } }
-  /** `automated` (Reminders task): no memory block. A remote model gets the assistant rules and, with `memory_topic_remote`,
+  /** `automated` (Reminders task): no memory block. A remote model gets the assistant rules and
    *  the active topic block; personal facts and recalled summaries go only to the local model. Memory has its own budget (`memory_chars`) on top of `history_chars`. */
   async context(prompt: string, local: boolean, signal: AbortSignal, history: readonly Message[] = this.history, automated = false): Promise<Context> {
     let system = this.config.system_prompt;

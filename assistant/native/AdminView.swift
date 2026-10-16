@@ -41,7 +41,7 @@ struct FilesStatus: Decodable { var enabled = false; var roots: [String] = []; v
 struct MemoryItem: Decodable, Identifiable { let id: Int; let kind: String; let text: String; let source: String; let pinned: Bool }
 struct MemoryEpisode: Decodable, Identifiable { let id: Int; let ended: Double; let summary: String }
 struct MemoryTopic: Decodable, Identifiable { let id: Int; let title: String; let state: String; let decisions: [String]; let open: [String]; let status: String; let active: Bool }
-struct MemoryStatus: Decodable { var enabled = true; var extract = true; var topic_remote = true; var items: [MemoryItem] = []; var episodes: [MemoryEpisode] = []; var topics: [MemoryTopic] = [] }
+struct MemoryStatus: Decodable { var enabled = true; var extract = true; var items: [MemoryItem] = []; var episodes: [MemoryEpisode] = []; var topics: [MemoryTopic] = [] }
 
 struct RemoteModels: Decodable { var model = ""; var provider = ""; var models: [String] = []; var error = "" }
 struct RemoteModelTest: Decodable { let ok: Bool; let model: String?; let error: String? }
@@ -412,11 +412,10 @@ final class AdminModel {
         } catch { memoryMessage = error.localizedDescription }
     }
     func loadMemory() async { await memoryCall("admin/memory") }
-    func setMemory(enabled: Bool? = nil, extract: Bool? = nil, topicRemote: Bool? = nil) async {
+    func setMemory(enabled: Bool? = nil, extract: Bool? = nil) async {
         var body: [String: Any] = [:]
         if let enabled { body["enabled"] = enabled }
         if let extract { body["extract"] = extract }
-        if let topicRemote { body["topic_remote"] = topicRemote }
         await memoryCall("admin/memory/settings", body)
     }
     func addMemory(kind: String, text: String) async { await memoryCall("admin/memory/save", ["kind": kind, "text": text]) }
@@ -681,8 +680,6 @@ private struct MemoryTab: View {
             Section {
                 Toggle("Hafıza", isOn: Binding(get: { admin.memory.enabled }, set: { value in Task { await admin.setMemory(enabled: value) } }))
                 Toggle("Otomatik öğren", isOn: Binding(get: { admin.memory.extract }, set: { value in Task { await admin.setMemory(extract: value) } }))
-                    .disabled(!admin.memory.enabled)
-                Toggle("Konu uzak modele gitsin", isOn: Binding(get: { admin.memory.topic_remote }, set: { value in Task { await admin.setMemory(topicRemote: value) } }))
                     .disabled(!admin.memory.enabled)
                 if !admin.memoryMessage.isEmpty { Text(admin.memoryMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
             }

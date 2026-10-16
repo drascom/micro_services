@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fauxAssistantMessage, type AssistantMessage, type Context } from '@earendil-works/pi-ai';
-import { defaults, type Config } from '../src/config.ts';
+import { defaults, loadConfig, type Config } from '../src/config.ts';
 import { Orchestrator } from '../src/orchestrator.ts';
 import type { Chat, Classifier } from '../src/providers.ts';
 import type { Embedder } from '../src/embeddings.ts';
@@ -269,9 +269,11 @@ test('Admin memory endpoints: list, add, edit, pin, delete, switches (private te
       assert.equal((await call('/admin/memory/save', { kind: 'personal', text: 'şifrem 1234abcd' })).status, 400);
       result = await call('/admin/memory/settings', { extract: false });
       assert.equal(result.data.extract, false); assert.equal(settings.memory_extract, false);
-      result = await call('/admin/memory/settings', { topic_remote: false });
-      assert.equal((result.data as unknown as { topic_remote: boolean }).topic_remote, false); assert.equal(settings.memory_topic_remote, false);
-      assert.equal((await call('/admin/memory/settings', { topic_remote: 'no' })).status, 400);
+      // The removed topic-to-remote switch: no longer a setting; an old config.json key is ignored.
+      assert.equal((await call('/admin/memory/settings', { topic_remote: false })).status, 400);
+      assert.ok(!('topic_remote' in (await call('/admin/memory')).data));
+      await writeFile(path.join(directory, 'legacy.json'), JSON.stringify({ memory_topic_remote: false }));
+      assert.ok(!('memory_topic_remote' in await loadConfig(path.join(directory, 'legacy.json'))));
       await stat(path.join(directory, 'config.json'));
       result = await call('/admin/memory/delete', { id });
       assert.equal(result.data.items.length, 0);
@@ -325,7 +327,7 @@ test('topics: create + activate, local and remote get the active summary; contin
   assert.equal(memory.store.activeTopic(), created.id);
 });
 
-test('remote topic block: only the active topic, toggle off = none, never personal facts/summaries, privacy filter, budget', async () => {
+test('remote topic block: always on, only the active topic, never personal facts/summaries, privacy filter, budget', async () => {
   const { memory, settings } = service();
   await memory.store.save({ kind: 'personal', text: 'Kızımın adı Elif', source: 'explicit', pinned: true }, signal());
   await memory.store.addEpisode('Toyota servis randevusu konuşuldu', Date.now() - 1000, Date.now(), signal());
@@ -344,12 +346,6 @@ test('remote topic block: only the active topic, toggle off = none, never person
   assert.ok(local.context.systemPrompt!.includes('1234abcd'), 'local block unchanged');
   assert.ok((await memory.store.topicBlock(false)).length <= MEMORY_LIMITS.topic);
   assert.ok(prompt.length - settings.system_prompt.length <= settings.memory_chars + 1);
-  // Toggle off: no topic text to the remote model; the local model keeps it.
-  settings.memory_topic_remote = false;
-  await a.orchestrator.ask('Devam');
-  const [remoteOff, localOff] = a.contexts.slice(-2);
-  assert.ok(!remoteOff.context.systemPrompt!.includes('Active topic'));
-  assert.match(localOff.context.systemPrompt!, /Active topic \(reference only\): Ring projesi/);
 });
 
 test('online auto-detect: works with the embedding server; skipped silently when it is down', async () => {
