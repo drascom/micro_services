@@ -24,6 +24,12 @@ final class RingModel {
     /// Shows the reply panel without taking focus from the user's app (proactive messages).
     var revealInput: () -> Void = {}
     var contextMenu: () -> Void = {}
+    /// Proactive messages waiting for the user's yes (ring click or a short "evet"); their content is not said before.
+    var waiting = 0
+    /// Soft chime for waiting messages (never speech).
+    var playChime: () -> Void = {}
+    /// Ring clicked while messages wait: the backend hands them over (nil = nothing left).
+    var acceptAnnouncements: () async -> String? = { nil }
     /// Focused editable text field of another app at recording start (opaque; nil = none).
     var dictationLabel = Shortcut.loadDictation().label
     /// Focused editable text field of another app at dictation start (opaque; nil = none).
@@ -258,6 +264,20 @@ final class RingModel {
             self.end(id)
         }
         return true
+    }
+    /// Messages wait (backend prompt): a chime when idle and the user is not speaking; the ring shows the waiting state.
+    func chime(sound: Bool) {
+        guard ready, !quitting, waiting > 0 else { return }
+        if sound, !capturing, phase == .idle, jobs.isEmpty { playChime() }
+    }
+    /// Click on the ring while messages wait: they are said now (the click is the user's yes).
+    func ringClicked() {
+        guard waiting > 0, ready, phase == .idle, jobs.isEmpty, !capturing, !changingMode else { return }
+        waiting = 0
+        Task { [weak self] in
+            guard let self, let text = await self.acceptAnnouncements() else { return }
+            _ = self.announce(text)
+        }
     }
     func setOffline(_ value: Bool) {
         guard ready, !changingMode else { return }

@@ -233,6 +233,27 @@ struct RecordingChecks {
         let cancels = await backend.cancels
         precondition(cancels == 0)
         model.cancel()
+        // Waiting proactive messages: a chime only (no speech) when idle; nothing while listening; a click says them.
+        var chimes = 0, accepts = 0
+        model.playChime = { chimes += 1 }
+        model.acceptAnnouncements = { accepts += 1; return "Kur: 34,10." }
+        let spokenBefore = await backend.spoken.count
+        model.ringClicked(); try await Task.sleep(for: .milliseconds(20))
+        precondition(accepts == 0, "no click accept without waiting messages")
+        model.waiting = 2; model.chime(sound: true)
+        precondition(chimes == 1)
+        model.chime(sound: false); precondition(chimes == 1, "chime off: ring state only")
+        spoken = await backend.spoken
+        precondition(spoken.count == spokenBefore, "nothing said before the user's yes")
+        audio.instant = true; model.modifiers(true)
+        try await wait { model.phase == .listening }
+        model.chime(sound: true); precondition(chimes == 1, "no chime while the user speaks")
+        model.cancel()
+        model.ringClicked()
+        try await wait { model.waiting == 0 && model.response == "Kur: 34,10." && model.phase == .idle }
+        spoken = await backend.spoken
+        precondition(accepts == 1 && spoken.last == "Kur: 34,10.")
+        model.modifiers(false)
         // Quit/Restart: the ring turns to the quitting state at once and no later update overrides it.
         model.input = "late"; model.send()
         model.beginQuit()
@@ -240,6 +261,6 @@ struct RecordingChecks {
         model.phase = .idle; model.send(); model.beginListening(); model.fail(CancellationError())
         try await Task.sleep(for: .milliseconds(50))
         precondition(model.phase == .quitting)
-        print("Recording checks passed: permission-release race, typed override, dictation shortcut never asks (paste/clipboard), assistant shortcut never pastes, dictation mutes a running reply, steer while generating, barge-in stops speech, quitting state sticks.")
+        print("Recording checks passed: permission-release race, typed override, dictation shortcut never asks (paste/clipboard), assistant shortcut never pastes, dictation mutes a running reply, steer while generating, barge-in stops speech, quitting state sticks, waiting messages chime once and are said on a click.")
     }
 }

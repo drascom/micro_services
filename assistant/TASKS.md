@@ -33,6 +33,12 @@ No time on a recurring rule = 09:00 (akşam 20:00, gece 22:00). Unreadable → e
 ## Delivery
 - macOS notification + idle announcement queue (`/announce/wait`, shared with updates): task errors → update results
   → task results → update offer. Same result of a task not repeated within 24 h; results older than 12 h are not spoken.
+- Asked first (bystanders), `ProactiveGate` in `src/announce.ts`: idle → soft chime + warm pulsing ring (count badge
+  if >1), no speech; in a conversation (user spoke in the last 2 min) → spoken "Sana söylemem gereken N şey var,
+  anlatayım mı?" after the current reply. Ring click or a short yes (evet, söyle, anlat, tamam, dinliyorum…) says all
+  waiting messages; a short no (sonra, şimdi değil, hayır…) snoozes. At most one more prompt after the snooze interval;
+  a new message may prompt again. Admin Görevler → Bildirim: chime on/off, snooze minutes (`announce_chime`,
+  `announce_snooze_minutes`). Update restarts bypass it (no speech).
 - Admin Görevler: list, next run, last result, pause/resume, run now, delete.
 
 ## Migration

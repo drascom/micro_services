@@ -141,7 +141,7 @@ test('admin Reminders switch: token required, saved in config.json with other se
   try {
     await writeFile(f.configPath, JSON.stringify({ language: 'tr' }));
     assert.equal((await f.call('/admin/reminders/save', { enabled: true }, 'bad')).status, 403);
-    const off = { enabled: false, tasks_enabled: false, tasks_list: 'Asistan' };
+    const off = { enabled: false, tasks_enabled: false, tasks_list: 'Asistan', announce_chime: true, announce_snooze_minutes: 30 };
     assert.deepEqual((await f.call('/admin/reminders')).body, off);
     assert.equal((await f.call('/admin/reminders/save', { enabled: 'yes' })).status, 400);
     assert.deepEqual((await f.call('/admin/reminders/save', { enabled: true })).body, { ...off, enabled: true });
@@ -150,10 +150,15 @@ test('admin Reminders switch: token required, saved in config.json with other se
     // Assistant tasks: switch + list name; an invalid name is rejected and nothing changes.
     assert.equal((await f.call('/admin/reminders/save', { tasks_list: '  ' })).status, 400);
     assert.deepEqual((await f.call('/admin/reminders/save', { tasks_enabled: true, tasks_list: ' İşler ' })).body,
-      { enabled: true, tasks_enabled: true, tasks_list: 'İşler' });
+      { ...off, enabled: true, tasks_enabled: true, tasks_list: 'İşler' });
     assert.deepEqual(JSON.parse(await readFile(f.configPath, 'utf8')), { language: 'tr', reminders_enabled: true, tasks_enabled: true, tasks_list: 'İşler' });
     assert.equal(f.config.tasks_list, 'İşler');
-    assert.deepEqual((await f.call('/admin/reminders')).body, { enabled: true, tasks_enabled: true, tasks_list: 'İşler' });
+    assert.deepEqual((await f.call('/admin/reminders')).body, { ...off, enabled: true, tasks_enabled: true, tasks_list: 'İşler' });
+    // Proactive messages: chime switch and snooze minutes (1-1440).
+    assert.equal((await f.call('/admin/reminders/save', { announce_snooze_minutes: 0 })).status, 400);
+    assert.deepEqual((await f.call('/admin/reminders/save', { announce_chime: false, announce_snooze_minutes: 45 })).body,
+      { enabled: true, tasks_enabled: true, tasks_list: 'İşler', announce_chime: false, announce_snooze_minutes: 45 });
+    assert.equal(f.config.announce_snooze_minutes, 45);
   } finally { await f.close(); }
 });
 

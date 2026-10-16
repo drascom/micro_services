@@ -5,14 +5,16 @@ import SwiftUI
 struct RingInteraction: NSViewRepresentable {
     let onDoubleClick: () -> Void
     let onRightClick: () -> Void
-    func makeNSView(context: Context) -> RingMouseView { let view = RingMouseView(); view.onDoubleClick = onDoubleClick; view.onRightClick = onRightClick; return view }
-    func updateNSView(_ view: RingMouseView, context: Context) { view.onDoubleClick = onDoubleClick; view.onRightClick = onRightClick }
+    var onClick: () -> Void = {}
+    func makeNSView(context: Context) -> RingMouseView { let view = RingMouseView(); updateNSView(view, context: context); return view }
+    func updateNSView(_ view: RingMouseView, context: Context) { view.onDoubleClick = onDoubleClick; view.onRightClick = onRightClick; view.onClick = onClick }
 }
 
 @MainActor
 final class RingMouseView: NSView {
     var onDoubleClick: () -> Void = {}
     var onRightClick: () -> Void = {}
+    var onClick: () -> Void = {}
     override func rightMouseDown(with event: NSEvent) { onRightClick() }
     private var downPoint = NSPoint.zero
     private var downOrigin = NSPoint.zero
@@ -28,7 +30,10 @@ final class RingMouseView: NSView {
         if hypot(dx, dy) > 4 { dragged = true }
         if dragged { window?.setFrameOrigin(NSPoint(x: downOrigin.x + dx, y: downOrigin.y + dy)) }
     }
-    override func mouseUp(with event: NSEvent) { if !dragged && event.clickCount == 2 { onDoubleClick() } }
+    override func mouseUp(with event: NSEvent) {
+        guard !dragged else { return }
+        if event.clickCount == 2 { onDoubleClick() } else if event.clickCount == 1 { onClick() }
+    }
 }
 
 @MainActor

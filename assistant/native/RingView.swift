@@ -3,7 +3,10 @@ import SwiftUI
 struct RingView: View {
     let model: RingModel
     @State private var memory = SystemMemory.read()
+    /// Messages wait for the user's yes: a soft warm tint and a slow, deeper pulse on the idle ring.
+    private var waiting: Bool { model.waiting > 0 && model.phase == .idle }
     private var tint: Color {
+        if waiting { return Color(red: 1, green: 0.78, blue: 0.5) }
         switch model.phase {
         case .listening: return .mint
         case .thinking: return .cyan
@@ -16,7 +19,7 @@ struct RingView: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
-            let pulse = 1 + sin(time * (model.phase == .idle ? 1.5 : 4)) * 0.025 + model.level * 0.04
+            let pulse = 1 + sin(time * (waiting ? 1.1 : model.phase == .idle ? 1.5 : 4)) * (waiting ? 0.04 : 0.025) + model.level * 0.04
             VStack(spacing: 6) {
                 ZStack {
                     Circle().stroke(tint.opacity(0.15), lineWidth: 18).blur(radius: 12).frame(width: 142, height: 142)
@@ -40,6 +43,11 @@ struct RingView: View {
                                 .help("Sistem RAM kullanımı / System memory used")
                         }.foregroundStyle(tint).frame(width: 100, height: 100).contentShape(Circle())
                     }
+                    if waiting && model.waiting > 1 {
+                        Text("\(model.waiting)").font(.system(size: 10, weight: .semibold, design: .rounded)).monospacedDigit()
+                            .foregroundStyle(.black.opacity(0.75)).frame(width: 18, height: 18).background(Circle().fill(tint))
+                            .offset(x: 52, y: -52)
+                    }
                 }.frame(width: 220, height: 220).scaleEffect(pulse)
                 Text(model.phase == .quitting ? "" : model.phase == .idle ? (model.shortcutEnabled ? "\(model.shortcutLabel)  HOLD TO TALK" : "CLICK TO TYPE") : model.phase == .noSpeech ? "NO SPEECH" : model.dictating && model.phase != .error ? (model.phase == .thinking ? "TYPING" : "DICTATION") : model.phase.rawValue.uppercased())
                     .font(.system(size: 9, weight: .medium, design: .monospaced)).tracking(1.5)
@@ -52,6 +60,6 @@ struct RingView: View {
                     do { try await Task.sleep(for: .seconds(2)) } catch { return }
                 }
             }
-            .overlay(RingInteraction(onDoubleClick: model.toggleInput, onRightClick: model.contextMenu))
+            .overlay(RingInteraction(onDoubleClick: model.toggleInput, onRightClick: model.contextMenu, onClick: model.ringClicked))
     }
 }

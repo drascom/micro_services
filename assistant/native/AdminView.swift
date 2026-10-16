@@ -94,6 +94,8 @@ final class AdminModel {
     var remindersEnabled = false
     var tasksEnabled = false
     var tasksList = "Asistan"
+    var announceChime = true
+    var announceSnooze = 30
     var gmail = GmailStatus()
     var gmailClientId = ""
     var gmailClientSecret = ""
@@ -227,6 +229,8 @@ final class AdminModel {
         if let on = value["enabled"] as? Bool { remindersEnabled = on }
         if let on = value["tasks_enabled"] as? Bool { tasksEnabled = on }
         if let list = value["tasks_list"] as? String { tasksList = list }
+        if let on = value["announce_chime"] as? Bool { announceChime = on }
+        if let minutes = value["announce_snooze_minutes"] as? Int { announceSnooze = minutes }
     }
     func loadReminders() async {
         if let data = try? await backend.admin("admin/reminders") { applyReminders(data) }
@@ -235,6 +239,11 @@ final class AdminModel {
     func setReminders(_ enabled: Bool) async { remindersEnabled = enabled; await saveReminders(["enabled": enabled]) }
     func setTasks(_ enabled: Bool) async { tasksEnabled = enabled; await saveReminders(["tasks_enabled": enabled]) }
     func setTasksList(_ name: String) async { await saveReminders(["tasks_list": name]) }
+    func setAnnounce(chime: Bool? = nil, snooze: Int? = nil) async {
+        if let chime { announceChime = chime }
+        if let snooze { announceSnooze = snooze }
+        await saveReminders(["announce_chime": announceChime, "announce_snooze_minutes": announceSnooze])
+    }
     private func saveReminders(_ body: [String: Any]) async {
         do {
             let json = try JSONSerialization.data(withJSONObject: body)
@@ -693,6 +702,10 @@ private struct TasksTab: View {
                     Button("Yenile") { Task { await admin.loadTasks() } }
                 }
             }
+            Section("Bildirim") {
+                Toggle("Zil sesi", isOn: Binding(get: { admin.announceChime }, set: { on in Task { await admin.setAnnounce(chime: on) } }))
+                Stepper("Erteleme: \(admin.announceSnooze) dk", value: Binding(get: { admin.announceSnooze }, set: { minutes in Task { await admin.setAnnounce(snooze: minutes) } }), in: 5...240, step: 5)
+            }
             Section("Görevler") {
                 ForEach(admin.tasks.tasks) { item in
                     VStack(alignment: .leading, spacing: 4) {
@@ -719,7 +732,7 @@ private struct TasksTab: View {
                 }
             }
         }.formStyle(.grouped)
-        .task { await admin.loadTasks() }
+        .task { await admin.loadTasks(); await admin.loadReminders() }
         .confirmationDialog(deleting?.name ?? "", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("Sil", role: .destructive) {
                 if let item = deleting { Task { await admin.taskAction(item.id, "delete") } }

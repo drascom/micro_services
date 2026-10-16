@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         model.captureFocus = { Paster.focusedTextTarget() }
         model.pasteInto = { target, text in (target as? Paster.Target).flatMap { Paster.paste(text, into: $0) } }
         model.copyText = { Paster.copy($0) }
+        model.playChime = { _ = AppDelegate.chimeSound?.play() }
         admin = AdminModel(backend: client, ring: model)
         super.init()
     }
@@ -39,6 +40,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         model.revealInput = { [weak self] in self?.revealInput() }
         hotkey = HotkeyMonitor(model: model); hotkey?.start()
         model.contextMenu = { [weak self] in self?.showContextMenu() }
+        model.acceptAnnouncements = { [weak self] in
+            guard let data = try? await self?.client.admin("announce/accept") else { return nil }
+            return (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["text"] as? String
+        }
         // Minimal context menu; settings, status and activity live in the Admin window.
         let menu = NSMenu()
         // Turkish-only titles; typing a request stays on double-click of the ring.
@@ -107,17 +112,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         field.stringValue = ""
         return saved && !value.isEmpty ? value : nil
     }
-    /// Proactive messages (update offer, update results): the backend answers only while nothing runs; the ring shows
-    /// one when it is idle (waits up to a minute), then reports it shown so an offer is asked at most once a day.
+    /// Proactive messages (task results, update offer/results): never said before the user's yes. The backend answers with
+    /// the waiting count and a prompt: `chime` (idle: soft sound + waiting ring) or `ask` (in a conversation: a spoken
+    /// question without the content). A ring click or a short "evet" says them; an update restart waits for an idle ring.
     private func announcements() {
         Task { [weak self] in
             while !Task.isCancelled {
-                guard let client = self?.client else { return }
+                guard let client = self?.client, let known = self?.model.waiting else { return }
                 do {
-                    let data = try await client.admin("announce/wait")
-                    guard let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                          let id = value["id"] as? String, let text = value["text"] as? String else { continue }
-                    if value["restart"] as? Bool == true {
+                    let data = try await client.admin("announce/wait", data: Data(#"{"pending":\#(known)}"#.utf8))
+                    guard let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+                    if value["restart"] as? Bool == true, let id = value["id"] as? String {
                         // Update restart (the user's yes to the update covers it): wait for an idle ring, then the
                         // backend confirms nothing runs and the usual restart path (orange ring) takes over.
                         while self?.model.idleForRestart == false { try await Task.sleep(for: .seconds(1)) }
@@ -128,16 +133,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                         }
                         try await Task.sleep(for: .seconds(2)); continue
                     }
-                    var shown = false
-                    for _ in 0..<60 {
-                        if self?.model.announce(text) == true { shown = true; break }
-                        try await Task.sleep(for: .seconds(1)) // Wait for an idle ring.
+                    if let pending = value["pending"] as? Int { self?.model.waiting = pending }
+                    if value["action"] as? String == "chime" { self?.model.chime(sound: value["sound"] as? Bool ?? true) }
+                    if value["action"] as? String == "ask", let text = value["text"] as? String {
+                        for _ in 0..<60 { // Said at the end of the current reply (idle ring).
+                            if self?.model.announce(text) == true { break }
+                            try await Task.sleep(for: .seconds(1))
+                        }
                     }
-                    if shown { _ = try? await client.admin("announce/shown", ["id": id]) }
                 } catch { try? await Task.sleep(for: .seconds(5)) } // Backend not up yet or restarting.
             }
         }
     }
+    /// Soft, quiet system chime for waiting messages.
+    private static let chimeSound: NSSound? = { let sound = NSSound(named: "Glass")?.copy() as? NSSound; sound?.volume = 0.25; return sound }()
     private func revealInput() {
         if input?.isVisible == true { return }
         showInput(activate: false)

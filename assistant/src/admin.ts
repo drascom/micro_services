@@ -245,16 +245,25 @@ async function updateConfigFile(configPath: string, change: (settings: Record<st
  * assistant tasks (on/off + list name). Only the fields present are changed.
  */
 export async function saveReminders(config: Config, configPath: string, value: unknown) {
-  const input = (value && typeof value === 'object' ? value : {}) as { enabled?: unknown; tasks_enabled?: unknown; tasks_list?: unknown };
-  const change: Partial<Pick<Config, 'reminders_enabled' | 'tasks_enabled' | 'tasks_list'>> = {};
+  const input = (value && typeof value === 'object' ? value : {}) as { enabled?: unknown; tasks_enabled?: unknown; tasks_list?: unknown;
+    announce_chime?: unknown; announce_snooze_minutes?: unknown };
+  const change: Partial<Pick<Config, 'reminders_enabled' | 'tasks_enabled' | 'tasks_list' | 'announce_chime' | 'announce_snooze_minutes'>> = {};
   if (input.enabled !== undefined) { if (typeof input.enabled !== 'boolean') throw Error('enabled must be a boolean'); change.reminders_enabled = input.enabled; }
   if (input.tasks_enabled !== undefined) { if (typeof input.tasks_enabled !== 'boolean') throw Error('tasks_enabled must be a boolean'); change.tasks_enabled = input.tasks_enabled; }
   if (input.tasks_list !== undefined) { if (typeof input.tasks_list !== 'string') throw Error('tasks_list must be text'); change.tasks_list = input.tasks_list.trim(); }
+  if (input.announce_chime !== undefined) { if (typeof input.announce_chime !== 'boolean') throw Error('announce_chime must be a boolean'); change.announce_chime = input.announce_chime; }
+  if (input.announce_snooze_minutes !== undefined) {
+    const minutes = input.announce_snooze_minutes;
+    if (typeof minutes !== 'number' || !Number.isInteger(minutes) || minutes < 1 || minutes > 1440) throw Error('announce_snooze_minutes must be 1-1440');
+    change.announce_snooze_minutes = minutes;
+  }
   if (!Object.keys(change).length) throw Error('Kaydedilecek bir şey yok');
   await updateConfigFile(configPath, settings => { Object.assign(settings, change); }); // The whole file is validated before replacing.
   Object.assign(config, change);
-  return { enabled: config.reminders_enabled, tasks_enabled: config.tasks_enabled, tasks_list: config.tasks_list };
+  return remindersStatus(config);
 }
+export const remindersStatus = (config: Config) => ({ enabled: config.reminders_enabled, tasks_enabled: config.tasks_enabled, tasks_list: config.tasks_list,
+  announce_chime: config.announce_chime, announce_snooze_minutes: config.announce_snooze_minutes });
 
 /** Memory tab: both switches and every stored item/summary (local Admin only; never logged). */
 export async function memoryStatus(config: Config, memory: MemoryService) {

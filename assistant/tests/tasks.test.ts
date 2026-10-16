@@ -300,7 +300,7 @@ test('migration: open Reminders tasks are copied once (read-only); dated future 
   assert.equal(off.requests.length, 0);
 });
 
-test('server: lane, cancel by a user request, idle announcement, Admin Görevler', async () => {
+test('server: lane, cancel by a user request, announcement asked first, Admin Görevler', async () => {
   const lifecycle = new AbortController();
   let releaseTask!: () => void, taskStarted!: () => void, taskAborted = false, attempts = 0;
   const taskGate = new Promise<void>(r => { releaseTask = r; }), started = new Promise<void>(r => { taskStarted = r; });
@@ -335,9 +335,10 @@ test('server: lane, cancel by a user request, idle announcement, Admin Görevler
     for (let i = 0; i < 100 && store.runs(task.id)[0]?.status !== 'ok'; i++) await new Promise(r => setTimeout(r, 20));
     assert.deepEqual(store.runs(task.id).map(r => [r.status, r.attempt]), [['ok', 2]]);
     assert.deepEqual(notes, ['Asistan: Özet']); assert.ok(registeredTasks());
-    const said = await post('/announce/wait') as { id: string; text: string };
-    assert.equal(said.text, 'Özet: Görev sonucu.');
-    assert.deepEqual(await post('/announce/shown', { id: said.id }), { ok: true });
+    // The user just talked: a spoken question first, never the content; "evet" says it.
+    assert.deepEqual(await post('/announce/wait'), { pending: 1, action: 'ask', text: 'Sana söylemem gereken bir şey var, anlatayım mı?' });
+    assert.equal((await post('/chat', { text: 'Evet.' })).text, 'Özet: Görev sonucu.');
+    assert.deepEqual(await post('/announce/wait', { pending: 1 }), { pending: 0 });
     const admin = await post('/admin/tasks') as { enabled: boolean; tasks: { id: number; name: string; status: string; last: string }[] };
     assert.deepEqual(admin.tasks.map(t => [t.name, t.status, t.last]), [['Özet', 'done', 'Görev sonucu.']]);
     const removed = await post('/admin/tasks/action', { id: task.id, action: 'delete' }) as { tasks: unknown[] };

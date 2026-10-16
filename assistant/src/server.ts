@@ -6,7 +6,7 @@ import { NoSpeechError } from './speech.ts';
 import { activity, observeRequest } from './activity.ts';
 import { root } from './config.ts';
 import { collectStatus, connectGmail, createExtension, createSkill, deleteMemory, deleteResource, memoryStatus, saveMemoryItem, saveMemoryTopic, saveMemorySettings, disconnectGmail, filesStatus, gmailActions, gmailStatus, listResources,
-  readResource, remoteModels, saveRemoteModel, testRemoteModel, saveFiles, saveGmail, saveReminders, saveVault, undoGmail, unlockVault, vaultStatus, writeResource } from './admin.ts';
+  readResource, remindersStatus, remoteModels, saveRemoteModel, testRemoteModel, saveFiles, saveGmail, saveReminders, saveVault, undoGmail, unlockVault, vaultStatus, writeResource } from './admin.ts';
 import { registerSecretSpeaker, registeredSecretSpeaker, VaultError, vaultService, type SecretSpeaker, type VaultService } from './vault.ts';
 import { fileService, type FileService } from './files.ts';
 import { readPronunciations, savePronunciations } from './pronounce.ts';
@@ -17,7 +17,8 @@ import { homedir } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { TaskScheduler, TaskService, migrateReminders, osascriptNotify, registerTasks, registeredTasks, type Notify } from './tasks.ts';
 import { TaskStore } from './task-store.ts';
-import { AnnouncementQueue, updatesSource, type AnnouncementSource } from './announce.ts';
+import { AnnouncementQueue, ProactiveGate, classifyAnswer, updatesSource, type AnnouncementSource } from './announce.ts';
+import { fauxAssistantMessage } from '@earendil-works/pi-ai';
 import { registerUpdates, UpdateManager, type Summarize } from './updates.ts';
 import { exec, type Restart } from './components.ts';
 import type { Speech } from './speech.ts';
@@ -173,6 +174,10 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
   if (taskService?.scheduler) announceSources.push(taskService.scheduler);
   if (updates) announceSources.push(updatesSource(updates));
   const announcements = new AnnouncementQueue(announceSources);
+  const gate = new ProactiveGate(announcements, { now: tasks?.now, chime: () => config.announce_chime, snoozeMs: () => config.announce_snooze_minutes * 60_000 });
+  /** Accepted messages join the conversation, so a follow-up ("evet" to an update offer) continues it. */
+  const remember = (user: string, text: string) => app.history.push({ role: 'user', content: user, timestamp: Date.now() },
+    { ...fauxAssistantMessage(text), provider: 'announce', model: 'announce' });
   if (updates && updateOptions) {
     registerUpdates(updates);
     lifecycle.addEventListener('abort', () => registerUpdates(undefined), { once: true });
@@ -220,7 +225,7 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         if (request.url === '/admin/create-skill') return reply(200, await createSkill(resourceRoot, value.name, value.description));
         if (request.url === '/admin/delete') return reply(200, await deleteResource(resourceRoot, value.kind, value.name, trashDirs));
         if (request.url === '/admin/create-extension') return reply(200, await createExtension(resourceRoot, value.name));
-        if (request.url === '/admin/reminders') return reply(200, { enabled: config.reminders_enabled, tasks_enabled: config.tasks_enabled, tasks_list: config.tasks_list });
+        if (request.url === '/admin/reminders') return reply(200, remindersStatus(config));
         if (request.url === '/admin/reminders/save') return reply(200, await saveReminders(config, configPath, data));
         if (request.url?.startsWith('/admin/remote-model')) {
           const models = app.remote instanceof PiChat ? app.remote.models : undefined;
@@ -294,16 +299,28 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         const value = data as { id?: unknown; value?: unknown; cancel?: unknown };
         return reply(200, { ok: vault.prompts.answer(value.id, value.cancel === true ? undefined : value.value) });
       }
-      // Proactive messages (task results/errors, update offer and results): the ring long-polls; only offered while nothing runs.
+      // Proactive messages (task results/errors, update offer and results): the ring long-polls with the count it shows;
+      // the answer is a prompt (chime / question, never the content), a changed count, or an update restart (idle only).
       if (request.url === '/announce/wait') {
         const closed = new AbortController(); response.once('close', () => closed.abort());
         const wait = AbortSignal.any([lifecycle, closed.signal, AbortSignal.timeout(25_000)]);
+        const known = (data as { pending?: unknown }).pending;
+        let state = { pending: typeof known === 'number' ? known : 0 } as Awaited<ReturnType<ProactiveGate['poll']>>;
         while (announceSources.length && !wait.aborted) {
-          const next = !active && !task && !unloading ? await announcements.next() : undefined;
-          if (next) return reply(200, next);
+          const busy = Boolean(active || task || unloading);
+          const restart = busy ? undefined : await gate.restart();
+          if (restart) return reply(200, restart);
+          state = await gate.poll(busy);
+          if (state.action || state.pending !== known) return reply(200, state);
           await sleep(1000, undefined, { signal: wait }).catch(() => {});
         }
-        return reply(200, {});
+        return reply(200, { pending: state.pending });
+      }
+      // Ring clicked while messages wait: their text, said now.
+      if (request.url === '/announce/accept') {
+        const text = await gate.accept();
+        if (text) remember('Söyle.', text);
+        return reply(200, text ? { text, pending: 0 } : { pending: 0 });
       }
       if (request.url === '/announce/shown') return reply(200, { ok: await announcements.shown((data as { id?: unknown }).id) });
       if (request.url === '/cancel') { active?.controller.abort(); for (const t of transcriptions) t.abort(); return reply(200, { ok: true }); }
@@ -346,6 +363,19 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
       if (typeof input.text !== 'string' || (input.offline !== undefined && typeof input.offline !== 'boolean') ||
           (readAloud !== undefined && typeof readAloud !== 'boolean')) throw Error('Invalid chat request');
       let text = input.text;
+      if (!active && !unloading) {
+        gate.userActivity();
+        // Answer to a chime/question: "evet" says the waiting messages, "sonra" snoozes them; anything else is a normal request.
+        const answer = gate.awaiting ? classifyAnswer(text) : undefined;
+        gate.awaiting = false;
+        const said = answer === 'yes' ? await gate.accept() : undefined;
+        if (answer === 'no') gate.decline();
+        if (answer === 'no' || said) {
+          const reply_ = said ?? 'Tamam, sonra.';
+          remember(text, reply_);
+          return reply(200, { text: reply_, provider: 'Ayhan', fallback_reason: '' });
+        }
+      }
       if (active) {
         // Barge-in: a request that is still generating takes the new text as a steer (one reply, on its response).
         if (active.steering.steer(text)) return reply(200, { steered: true });
