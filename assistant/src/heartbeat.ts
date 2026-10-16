@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Config } from './config.ts';
 import { activity } from './activity.ts';
 import { clip, hashText, PREVIOUS_CHARS, type TaskStore } from './task-store.ts';
-import { SILENT, isSilent, type TaskLane, type TaskRun } from './tasks.ts';
+import { SILENT, isSilent, osascriptNotify, type Notify, type TaskLane, type TaskRun } from './tasks.ts';
 import { when } from './schedule.ts';
 import type { Announcement, AnnouncementSource } from './announce.ts';
 import type { Mailboxes } from '../.pi/extensions/gmail/service.ts';
@@ -128,14 +128,15 @@ export function heartbeatAddRequest(text: string): string | undefined {
 
 export class Heartbeat implements AnnouncementSource {
   private readonly config: Config; private readonly store: TaskStore; private readonly lane: TaskLane; private readonly run: TaskRun;
-  private readonly checks: PreCheck[]; private readonly conversation: () => boolean; readonly now: () => number;
+  private readonly checks: PreCheck[]; private readonly conversation: () => boolean; private readonly notify: Notify; readonly now: () => number;
   readonly file: string; readonly example: string;
   private timer: NodeJS.Timeout | undefined;
   private passing: Promise<HeartbeatOutcome> | undefined;
   constructor(options: { config: Config; store: TaskStore; lane: TaskLane; run: TaskRun; checks: PreCheck[]; conversation: () => boolean;
-    file: string; example: string; now?: () => number }) {
+    file: string; example: string; now?: () => number; notify?: Notify }) {
     this.config = options.config; this.store = options.store; this.lane = options.lane; this.run = options.run; this.checks = options.checks;
     this.conversation = options.conversation; this.file = options.file; this.example = options.example; this.now = options.now ?? (() => Date.now());
+    this.notify = options.notify ?? osascriptNotify;
   }
 
   state(): State {
@@ -185,7 +186,7 @@ export class Heartbeat implements AnnouncementSource {
     this.save(state);
     const slot = await this.lane.acquire(signal).catch(() => undefined);
     if (!slot) return 'cancelled';
-    let outcome: HeartbeatOutcome;
+    let outcome: HeartbeatOutcome, notice = '';
     try {
       const findingsText = describeFindings(fresh);
       const text = (await this.run(heartbeatPrompt(checklist, findingsText, state.last_note), 'heartbeat: ' + findingsText, slot.signal)).text.trim();
@@ -197,7 +198,7 @@ export class Heartbeat implements AnnouncementSource {
       else {
         after.said.push(hash); after.last_note = note;
         after.pending.push({ id: 'heartbeat-' + after.next_id++, text: note, at: this.now() });
-        outcome = 'said';
+        outcome = 'said'; notice = note;
       }
       this.save(after);
     } catch {
@@ -205,6 +206,8 @@ export class Heartbeat implements AnnouncementSource {
       if (slot.signal.aborted) { const back = this.state(); back.last_run = previous; this.save(back); outcome = 'cancelled'; }
       else outcome = 'failed';
     } finally { slot.release(); }
+    // Silent notification like a task result (once per new note; the spoken note still waits for the user's yes).
+    if (notice) await this.notify('Asistan: Heartbeat', clip(notice, 140)).catch(() => {});
     activity('heartbeat', { outcome, findings: fresh.length });
     return outcome;
   }

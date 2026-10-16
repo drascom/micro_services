@@ -117,7 +117,7 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
     lifecycle.addEventListener('abort', () => { if (registeredTasks() === taskService) registerTasks(undefined); }, { once: true });
     scheduler.start(lifecycle, tasks.firstMs, tasks.everyMs);
     // Heartbeat (off by default): own switch, same lane, provider rule and read-only unattended run as tasks.
-    heartbeat = new Heartbeat({ config, store: taskStore, lane, now, file: tasks.heartbeatFile ?? path.join(root, 'data/heartbeat.md'),
+    heartbeat = new Heartbeat({ config, store: taskStore, lane, now, notify: tasks.notify, file: tasks.heartbeatFile ?? path.join(root, 'data/heartbeat.md'),
       example: path.join(root, 'heartbeat.example.md'),
       checks: tasks.heartbeatChecks ?? [mailCheck(gmail, () => config.gmail_urgent_senders), tasksCheck(taskStore)],
       conversation: () => Boolean(active) || now() - (gate?.lastUser ?? Number.NEGATIVE_INFINITY) < CONVERSATION_MS,

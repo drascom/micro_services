@@ -27,13 +27,13 @@ async function fixture(options: { run?: TaskRun; config?: Partial<Config>; check
   const file = path.join(dir, 'heartbeat.md');
   await writeFile(file, options.checklist ?? '- Acil mail varsa söyle.\n');
   let now = T0, conversation = false, findings: Finding[] = [];
-  const prompts: string[] = [];
+  const prompts: string[] = [], notices: [string, string][] = [];
   const config: Config = { ...defaults, heartbeat_enabled: true, ...options.config };
   const store = new TaskStore(':memory:');
   const heartbeat = new Heartbeat({ config, store, lane: freeLane, now: () => now, file, example: path.join(dir, 'missing.md'), conversation: () => conversation,
-    checks: options.checks ?? [async () => findings],
+    notify: async (title, body) => { notices.push([title, body]); }, checks: options.checks ?? [async () => findings],
     run: options.run ?? (async prompt => { prompts.push(prompt); return { text: prompts.length === 1 ? 'Patrondan acil bir mail var.' : `Not ${prompts.length}.` }; }) });
-  return { dir, file, config, store, heartbeat, prompts, set: (t: number) => { now = t; }, talk: (on: boolean) => { conversation = on; },
+  return { dir, file, config, store, heartbeat, prompts, notices, set: (t: number) => { now = t; }, talk: (on: boolean) => { conversation = on; },
     found: (f: Finding[]) => { findings = f; }, tick: () => heartbeat.tick(new AbortController().signal),
     done: () => rm(dir, { recursive: true, force: true }) };
 }
@@ -89,16 +89,20 @@ test('heartbeat: [SILENT] says nothing; a note is announced once, never repeated
   const f = await fixture({ run: async () => ({ text: reply }) });
   try {
     f.found([mail('a')]); assert.equal(await f.tick(), 'silent'); assert.deepEqual(await f.heartbeat.announcements(), []);
+    assert.deepEqual(f.notices, []); // silent: no notification
     reply = 'Patrondan acil mail var. İkinci cümle. Üçüncü cümle olmamalı.';
     f.found([mail('a'), mail('b')]); f.set(T0 + 30 * MIN); assert.equal(await f.tick(), 'said');
     const queue = new AnnouncementQueue([f.heartbeat]);
     const [note] = await queue.all();
     assert.deepEqual(note, { id: 'heartbeat-1', text: 'Patrondan acil mail var. İkinci cümle.', priority: 2 });
+    // A new note also shows one silent macOS notification (like a task result); the spoken note still waits for yes.
+    assert.deepEqual(f.notices, [['Asistan: Heartbeat', 'Patrondan acil mail var. İkinci cümle.']]);
     f.found([mail('a'), mail('b'), mail('c')]); f.set(T0 + 60 * MIN); assert.equal(await f.tick(), 'duplicate'); // same finding text again
     assert.equal((await queue.all()).length, 1);
     assert.ok(await queue.shown('heartbeat-1')); assert.deepEqual(await queue.all(), []);
     f.found([mail('a'), mail('b'), mail('c'), mail('d')]); f.set(T0 + 90 * MIN); assert.equal(await f.tick(), 'duplicate'); // said before: never again
     assert.deepEqual(await queue.all(), []);
+    assert.equal(f.notices.length, 1); // duplicates: no second notification
     assert.equal(shortNote('Bir. İki! Üç?'), 'Bir. İki!');
   } finally { await f.done(); }
 });

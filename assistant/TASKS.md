@@ -63,5 +63,6 @@ hours, checklist editor; `heartbeat_enabled`, `heartbeat_interval_minutes` 30, `
   key; nothing new → no model call.
 - Something new → one unattended run like a task (same provider rule, lane, read-only tools, no history/memory): prompt
   = checklist + new findings + previous note (≤3200 chars; whole request ≤4k tokens). `[SILENT]` or ≤2 sentences.
-- Note → announcement queue (asked first, priority of task results). The same note is never said twice; seen findings
+- Note → announcement queue (asked first, priority of task results) + one silent macOS notification like a task
+  result (`Asistan: Heartbeat`; chime/yes flow unchanged). The same note is never said twice; seen findings
   never trigger again; a run cancelled by the user re-checks the same changes later. State in `tasks.sqlite` `meta`.
