@@ -242,6 +242,8 @@ async function harness(responses: Response[], options: { permission?: string; of
   fake.setResponses(responses as never);
   const runtime = await ModelRuntime.create({ modelsPath: null, refreshOnCreate: false }); runtime.registerNativeProvider(fake.provider);
   const b = options.mail ?? fakeMail();
+  // The harness MailClient uses the real clock: shift the fixture (dated around NOW) to the present so the default 7-day window holds it.
+  const shift = Date.now() - NOW; for (const list of Object.values(b.boxes)) for (const m of list) m.date += shift;
   let searches = 0;
   const session = await createHarnessSession({ root: dir, config: { ...settings, pi_agent_dir: path.join(dir, 'agent'), ...options.config },
     context: { systemPrompt: 'Mail test rules', messages: [{ role: 'user', content: 'test', timestamp: 1 }] },
