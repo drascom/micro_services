@@ -95,7 +95,7 @@ export async function main(args = process.argv.slice(2)) {
       app.memory = memory; registerMemory(memory);
       files.start(lifecycle.signal);
       const server = await makeServer(config, app, lifecycle.signal, undefined, undefined, undefined, { files },
-        { stateFile: path.join(root, 'data/tasks-state.json') }, { stateFile: path.join(root, 'data/updates.json') });
+        { dbFile: path.join(root, 'data/tasks.sqlite') }, { stateFile: path.join(root, 'data/updates.json') });
       await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(config.port, '127.0.0.1', resolve); });
       const url = `http://127.0.0.1:${config.port}`;
       console.log(`Assistant: ${url}`);

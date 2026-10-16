@@ -15,15 +15,17 @@ import { GmailError } from '../.pi/extensions/gmail/schemas.ts';
 import path from 'node:path';
 import { homedir } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { TaskScheduler, osascriptNotify, type Notify } from './tasks.ts';
+import { TaskScheduler, TaskService, migrateReminders, osascriptNotify, registerTasks, registeredTasks, type Notify } from './tasks.ts';
+import { TaskStore } from './task-store.ts';
+import { AnnouncementQueue, updatesSource, type AnnouncementSource } from './announce.ts';
 import { registerUpdates, UpdateManager, type Summarize } from './updates.ts';
 import { exec, type Restart } from './components.ts';
 import type { Speech } from './speech.ts';
 import { PiChat, Steering, type Chat } from './providers.ts';
 import { osascriptTransport, type RemindersTransport } from '../.pi/extensions/apple-reminders/client.ts';
 
-/** Assistant tasks (Reminders list) wiring; omitted = no scheduler (tests). */
-export type TaskOptions = { transport?: RemindersTransport; notify?: Notify; stateFile: string | null; firstMs?: number; everyMs?: number };
+/** Assistant tasks wiring (`data/tasks.sqlite`); omitted = no scheduler (tests). `transport`: Reminders, only for the one-time migration. */
+export type TaskOptions = { store?: TaskStore; dbFile?: string; transport?: RemindersTransport; notify?: Notify; firstMs?: number; everyMs?: number; now?: () => number };
 /** Component updates wiring; omitted = no updater (tests). */
 export type UpdateOptions = { manager?: UpdateManager; stateFile: string | null; notify?: Notify; firstMs?: number; everyMs?: number };
 
@@ -94,10 +96,19 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         release: () => { if (task === slot) task = undefined; slot.finish(); } };
     }
   };
-  if (tasks) new TaskScheduler({ config, transport: tasks.transport ?? osascriptTransport(), lane, notify: tasks.notify,
-    stateFile: tasks.stateFile, activityFile,
-    run: (prompt, intentText, signal) => app.ask(prompt, offlineMode, signal, { automated: true, intentText }) })
-    .start(lifecycle, tasks.firstMs, tasks.everyMs);
+  const taskStore = tasks ? tasks.store ?? new TaskStore(tasks.dbFile ?? path.join(root, 'data/tasks.sqlite')) : undefined;
+  let taskService: TaskService | undefined;
+  if (tasks && taskStore) {
+    const transport = tasks.transport ?? osascriptTransport();
+    const now = tasks.now ?? (() => Date.now());
+    const scheduler = new TaskScheduler({ config, store: taskStore, lane, notify: tasks.notify, activityFile, now,
+      run: (prompt, intentText, signal) => app.ask(prompt, offlineMode, signal, { automated: true, intentText }),
+      migrate: signal => migrateReminders({ store: taskStore, transport, config, signal, now: now() }) });
+    taskService = new TaskService(taskStore, scheduler, now);
+    registerTasks(taskService);
+    lifecycle.addEventListener('abort', () => { if (registeredTasks() === taskService) registerTasks(undefined); }, { once: true });
+    scheduler.start(lifecycle, tasks.firstMs, tasks.everyMs);
+  }
   // Release-note summaries: the local model in the request lane (never during a request); remote only if local is unavailable.
   const plain = (chat: Chat, local: boolean): Chat => chat instanceof PiChat ? new PiChat(chat.models, config, local) : chat;
   const summarize: Summarize = async (system, user, signal) => {
@@ -158,6 +169,10 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
   const updates = updateOptions ? updateOptions.manager ?? new UpdateManager({ root, stateFile: updateOptions.stateFile, lane, restart, summarize, probe,
     busy: () => Boolean(active || task || unloading),
     notify: updateOptions.notify ?? osascriptNotify, activityFile, checkHour: () => config.update_check_hour, llamaModel: config.llama_model }) : undefined;
+  const announceSources: AnnouncementSource[] = [];
+  if (taskService?.scheduler) announceSources.push(taskService.scheduler);
+  if (updates) announceSources.push(updatesSource(updates));
+  const announcements = new AnnouncementQueue(announceSources);
   if (updates && updateOptions) {
     registerUpdates(updates);
     lifecycle.addEventListener('abort', () => registerUpdates(undefined), { once: true });
@@ -241,6 +256,22 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
           if (request.url === '/admin/updates/skip') return reply(200, await updates.skip(value.id, value.version));
           return reply(404, { error: 'Not found' });
         }
+        if (request.url?.startsWith('/admin/tasks')) {
+          if (!taskService) return reply(404, { error: 'Tasks are off' });
+          if (request.url === '/admin/tasks') return reply(200, { enabled: config.tasks_enabled, tasks: taskService.list() });
+          if (request.url === '/admin/tasks/action') {
+            const value = data as { id?: unknown; action?: unknown };
+            const found = Number.isInteger(value.id) ? taskStore!.get(value.id as number) : undefined;
+            if (!found) throw Error('Görev bulunamadı');
+            if (value.action === 'pause') taskService.pause(found);
+            else if (value.action === 'resume') taskService.resume(found);
+            else if (value.action === 'run') taskService.runNow(found);
+            else if (value.action === 'delete') taskService.remove(found);
+            else throw Error('Invalid action');
+            return reply(200, { enabled: config.tasks_enabled, tasks: taskService.list() });
+          }
+          return reply(404, { error: 'Not found' });
+        }
         if (request.url?.startsWith('/admin/memory')) {
           if (!memory) return reply(404, { error: 'Memory is off' });
           if (request.url === '/admin/memory') return reply(200, await memoryStatus(config, memory));
@@ -263,18 +294,18 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         const value = data as { id?: unknown; value?: unknown; cancel?: unknown };
         return reply(200, { ok: vault.prompts.answer(value.id, value.cancel === true ? undefined : value.value) });
       }
-      // Proactive messages (update offer, update results): the ring long-polls; only offered while nothing runs.
+      // Proactive messages (task results/errors, update offer and results): the ring long-polls; only offered while nothing runs.
       if (request.url === '/announce/wait') {
         const closed = new AbortController(); response.once('close', () => closed.abort());
         const wait = AbortSignal.any([lifecycle, closed.signal, AbortSignal.timeout(25_000)]);
-        while (updates && !wait.aborted) {
-          const next = !active && !task && !unloading ? await updates.announcement() : undefined;
+        while (announceSources.length && !wait.aborted) {
+          const next = !active && !task && !unloading ? await announcements.next() : undefined;
           if (next) return reply(200, next);
           await sleep(1000, undefined, { signal: wait }).catch(() => {});
         }
         return reply(200, {});
       }
-      if (request.url === '/announce/shown') return reply(200, { ok: updates ? await updates.shown((data as { id?: unknown }).id) : false });
+      if (request.url === '/announce/shown') return reply(200, { ok: await announcements.shown((data as { id?: unknown }).id) });
       if (request.url === '/cancel') { active?.controller.abort(); for (const t of transcriptions) t.abort(); return reply(200, { ok: true }); }
       if (request.url === '/mode') {
         if (typeof input.offline !== 'boolean') throw Error('Invalid mode');
@@ -285,7 +316,7 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         unloading = true;
         try {
           const current = active, running = task;
-          current?.controller.abort(); running?.controller.abort(); // A cancelled task is retried on a later scan.
+          current?.controller.abort(); running?.controller.abort(); // A cancelled task is retried on a later tick.
           if (current) await current.done;
           if (running) await running.done;
           await app.unloadLocal();
@@ -323,7 +354,7 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
         text = previous.text + '\n\n' + text;
         if (active || unloading) return reply(409, { error: 'Assistant is busy' });
       }
-      // The user comes first: a running automated task is cancelled; its reminder stays ⏳ and runs again on a later scan.
+      // The user comes first: a running automated task is cancelled; its slot is re-armed and runs again after this request.
       task?.controller.abort();
       const current = { ...beginRequest(), text, steering: new Steering(), replaced: false, readAloud: readAloud !== false }; active = current; offlineMode = input.offline === true;
       const disconnected = () => { if (!response.writableEnded) current.controller.abort(); };

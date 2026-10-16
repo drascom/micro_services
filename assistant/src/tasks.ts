@@ -1,27 +1,30 @@
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 import type { Config } from './config.ts';
 import { activity, observeRequest } from './activity.ts';
 import { stopProcess } from './processes.ts';
 import { RemindersError, bridgeReminder, clean, parse, type RemindersTransport } from '../.pi/extensions/apple-reminders/client.ts';
 import type { BridgeReminder } from '../.pi/extensions/apple-reminders/schemas.ts';
+import { ConfirmationStore } from '../.pi/extensions/apple-reminders/confirmations.ts';
+import { ScheduleError, describe, firstRun, parseSchedule, when, type Schedule } from './schedule.ts';
+import { NAME_CHARS, PROMPT_CHARS, clip, type Claim, type Task, type TaskStore } from './task-store.ts';
+import type { Announcement, AnnouncementSource } from './announce.ts';
 
 /**
- * Assistant tasks: open reminders in one Reminders list (Admin: "Assistant tasks" + list name) are run as automated
- * requests. Undated items run when seen, dated ones once due; items missed while the app was closed run on the next scan.
- * The status is a title prefix and the task stays in the list (the user completes it): ⏳ running, ✅ done (result
- * appended to the notes), ⚠️ failed (error line appended, flagged, retried at most once). A ⏳ task found on a scan is
- * not running (the app closed mid-run) and runs again; a task whose prefix the user removed is a new job.
- * State holds hashes only (no reminder text).
+ * Assistant tasks (TASKS.md): own store (`data/tasks.sqlite`), deterministic schedules, a 60 s tick in the backend's
+ * request lane (never during a user request; a user request cancels a running task, which runs again later).
+ * Each run is a fresh automated request: no history, no memory, read-only tools, no task tools. "[SILENT]" = nothing
+ * delivered; results and every error go to the idle announcement queue and a notification.
  */
-export const SCAN_MS = 60_000, RETRY_MS = 5 * 60_000, RESULT_CHARS = 1500, NOTES_CHARS = 4000;
-const MARK = '— Asistan ';
-const KEEP_DAYS = 45;
+export const TICK_MS = 60_000;
+/** Results older than this are not spoken any more (kept in Admin). */
+export const ANNOUNCE_MAX_AGE_MS = 12 * 3_600_000;
+/** The same result of the same task is not repeated within this window. */
+export const DEDUPE_MS = 24 * 3_600_000;
+export const FAILURE_NUDGE = 3;
+export const SILENT = '[SILENT]';
 
-/** A request to give, list or remove an assistant task ("sana bir görev vermek istiyorum", "her sabah 9'da … yap", "görev ekle/listele/sil").
- *  The classifier may file it under skill management or updates; the orchestrator routes it to Reminders (tasks list). */
+/** A request to give, list, change or remove an assistant task ("sana bir görev vermek istiyorum", "her sabah 9'da … yap",
+ *  "görev ekle/listele/sil"). Whatever the classifier picked, the orchestrator routes it to the tasks tool. */
 export function taskRequest(text: string): boolean {
   return /(?<!\p{L})(görev|task)/iu.test(text) ||
     /(?<!\p{L})her\s+(sabah|akşam|gece|gün|hafta|ay|saat|pazartesi|salı|çarşamba|perşembe|cuma|cumartesi|pazar)(?!\p{L}).*(?<!\p{L})(yap|çalıştır|gönder|kontrol\s+et|özetle|bak|hazırla|oku)/iu.test(text);
@@ -31,44 +34,10 @@ export function taskRequest(text: string): boolean {
 export interface TaskLane { acquire(signal: AbortSignal): Promise<{ signal: AbortSignal; release(): void }>; }
 export type TaskRun = (prompt: string, intentText: string, signal: AbortSignal) => Promise<{ text: string }>;
 export type Notify = (title: string, body: string) => Promise<void>;
-type Entry = { attempts: number; at: number; done?: true; flag?: true };
-export const RUNNING = '⏳', DONE = '✅', FAILED = '⚠️', REPLY = '📧';
-const PREFIX = /^(?:\s*(?:⏳|✅|⚠\uFE0F?)\s*)+/u;
 
-/** Title without status prefixes (any number of them). */
-export const baseTitle = (title: string) => title.replace(PREFIX, '');
-/** The first status prefix of a title, or '' for a new task. */
-export function status(title: string): string { const m = /^\s*(⏳|✅|⚠)/u.exec(title); return !m ? '' : m[1] === '⚠' ? FAILED : m[1]; }
-export const withStatus = (title: string, mark: string) => mark + ' ' + baseTitle(title);
-
-const hash = (value: string, length: number) => createHash('sha256').update(value).digest('hex').slice(0, length);
-const pad = (n: number) => String(n).padStart(2, '0');
-const stamp = (time: number) => { const d = new Date(time); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
-
-/** The user's own note text: everything before the first appended result block. */
-export function userNotes(notes: string): string { const at = notes.indexOf(MARK); return (at < 0 ? notes : notes.slice(0, at)).trim(); }
-
-/** Appends one dated block; the oldest result blocks are dropped so the note stays within NOTES_CHARS. */
-export function appendResult(notes: string, time: number, text: string): string {
-  const own = userNotes(notes), at = notes.indexOf(MARK);
-  const blocks = at < 0 ? [] : notes.slice(at).split(new RegExp(`(?=${MARK})`)).map(b => b.trim()).filter(Boolean);
-  const body = text.trim().length > RESULT_CHARS ? text.trim().slice(0, RESULT_CHARS - 1).trimEnd() + '…' : text.trim();
-  blocks.push(`${MARK}${stamp(time)} —\n${body}`);
-  const join = () => [own, ...blocks].filter(Boolean).join('\n\n');
-  // The user's own text is never shortened; only older result blocks are dropped.
-  while (blocks.length > 1 && join().length > NOTES_CHARS) blocks.shift();
-  return join();
-}
-
-export function taskPrompt(item: BridgeReminder): { prompt: string; intentText: string } {
-  const title = clean(baseTitle(item.title), 300), notes = userNotes(item.notes).slice(0, 1000);
-  const intentText = title + (notes ? '\n' + notes : '');
-  return { intentText, prompt: 'Automated task from the user\'s Reminders list; the user is not present, so do not ask questions or wait for a reply. ' +
-    'Do it with the available tools, then reply with a short result (a few sentences).\nTask: ' + title + (notes ? '\nNotes: ' + notes : '') };
-}
-
-/** macOS notification via osascript; title and body are argv data, never script text. */
+/** macOS notification via osascript; title and body are argv data, never script text. Elsewhere: nothing (Linux: later). */
 export const osascriptNotify: Notify = async (title, body) => {
+  if (process.platform !== 'darwin') return;
   const child = spawn('/usr/bin/osascript', ['-e', 'on run argv', '-e', 'display notification (item 2 of argv) with title (item 1 of argv)', '-e', 'end run',
     title, body], { stdio: 'ignore', shell: false, env: { PATH: '/usr/bin:/bin' } });
   const timer = setTimeout(() => { void stopProcess(child); }, 5000);
@@ -76,26 +45,36 @@ export const osascriptNotify: Notify = async (title, body) => {
   clearTimeout(timer);
 };
 
-export class TaskScheduler {
-  private readonly config: Config; private readonly transport: RemindersTransport; private readonly lane: TaskLane;
-  private readonly run: TaskRun; private readonly notify: Notify; private readonly stateFile: string | null;
-  private readonly activityFile: string | null; private readonly now: () => number;
-  private state: Record<string, Entry> | undefined;
-  private scanning: Promise<number> | undefined;
+/** The unattended prompt: self-contained, the user is absent, nothing to say = [SILENT]. */
+export function runPrompt(task: Pick<Task, 'prompt'>): string {
+  return 'Scheduled task; the user is not present: do not ask questions or wait for a reply. Read-only tools only; never send, change or delete anything. ' +
+    `Do the task, then reply with a short result (a few sentences). If there is nothing new or worth telling, reply exactly ${SILENT}; do not invent work.\nTask: ` + task.prompt;
+}
+export const isSilent = (text: string) => text.includes(SILENT);
+
+export class TaskScheduler implements AnnouncementSource {
+  readonly store: TaskStore;
+  private readonly config: Config; private readonly lane: TaskLane; private readonly run: TaskRun; private readonly notify: Notify;
+  private readonly activityFile: string | null; readonly now: () => number;
+  private readonly migrate?: (signal: AbortSignal) => Promise<unknown>;
+  private passing: Promise<number> | undefined;
+  private manual: number[] = [];
   private timer: NodeJS.Timeout | undefined;
-  private lastError = '';
-  constructor(options: { config: Config; transport: RemindersTransport; lane: TaskLane; run: TaskRun; notify?: Notify;
-    stateFile: string | null; activityFile: string | null; now?: () => number }) {
-    this.config = options.config; this.transport = options.transport; this.lane = options.lane; this.run = options.run;
-    this.notify = options.notify ?? osascriptNotify; this.stateFile = options.stateFile; this.activityFile = options.activityFile;
-    this.now = options.now ?? (() => Date.now());
+  private recovered = false;
+  private lifecycle?: AbortSignal;
+  constructor(options: { config: Config; store: TaskStore; lane: TaskLane; run: TaskRun; notify?: Notify; activityFile: string | null; now?: () => number;
+    migrate?: (signal: AbortSignal) => Promise<unknown> }) {
+    this.config = options.config; this.store = options.store; this.lane = options.lane; this.run = options.run;
+    this.notify = options.notify ?? osascriptNotify; this.activityFile = options.activityFile; this.now = options.now ?? (() => Date.now());
+    this.migrate = options.migrate;
   }
 
-  /** First scan shortly after startup (missed items), then every SCAN_MS; stops with `signal`. */
-  start(signal: AbortSignal, firstMs = 5000, everyMs = SCAN_MS): void {
+  /** First tick shortly after startup (catch-up), then every `everyMs`; a late timer (sleep/wake) ticks at once. */
+  start(signal: AbortSignal, firstMs = 5000, everyMs = TICK_MS): void {
+    this.lifecycle = signal;
     const tick = (delay: number) => {
       this.timer = setTimeout(async () => {
-        await this.scan(signal).catch(() => 0);
+        await this.tick(signal).catch(() => 0);
         if (!signal.aborted) tick(everyMs);
       }, delay);
       this.timer.unref();
@@ -104,9 +83,17 @@ export class TaskScheduler {
     if (!signal.aborted) tick(firstMs);
   }
 
-  /** One pass over the list; returns how many tasks ran. Off (tasks or Reminders disabled): nothing is read. */
-  scan(signal: AbortSignal): Promise<number> {
-    return this.scanning ??= this.pass(signal).finally(() => { this.scanning = undefined; });
+  /** Runs every due task (and queued run-nows) once; returns how many ran. Off (`tasks_enabled` false): nothing runs. */
+  tick(signal: AbortSignal): Promise<number> {
+    return this.passing ??= this.pass(signal).finally(() => { this.passing = undefined; });
+  }
+
+  /** Run now (Admin/tool): queued, runs in the lane after the current request; the schedule is unchanged. */
+  runNow(id: number): boolean {
+    if (!this.store.get(id)) return false;
+    if (!this.manual.includes(id)) this.manual.push(id);
+    if (this.lifecycle && !this.lifecycle.aborted) void this.tick(this.lifecycle).catch(() => 0);
+    return true;
   }
 
   private observe<T>(details: Record<string, string | number | boolean>, action: () => Promise<T>): Promise<T> {
@@ -114,105 +101,184 @@ export class TaskScheduler {
   }
 
   private async pass(signal: AbortSignal): Promise<number> {
-    if (!this.config.reminders_enabled || !this.config.tasks_enabled) return 0;
-    let items: BridgeReminder[];
-    try {
-      const value = parse(await this.transport.request({ op: 'list', list: this.config.tasks_list, status: 'open',
-        due_before: new Date(this.now()).toISOString(), undated: true, max: 20, notes_max: 8000,
-        // ✅ stay in the list: filtered out before the limit so they never hide new tasks; ⚠️ (mostly spent retries) go last.
-        // 📧 reply reminders from Gmail triage are for the user, never run as tasks.
-        skip_prefixes: [DONE, REPLY], last_prefixes: ['⚠'] }, signal));
-      if (!Array.isArray(value.reminders)) throw new RemindersError('invalid_response');
-      items = value.reminders.map(bridgeReminder);
-      this.lastError = '';
-    } catch (error) {
-      if (signal.aborted) return 0;
-      const code = error instanceof RemindersError ? error.code : 'reminders_unavailable';
-      // Logged once per new error (e.g. missing list), not every minute.
-      if (code !== this.lastError) { this.lastError = code; await this.observe({ kind: 'task_scan' }, async () => activity('task_scan_failed', { error_code: code })); }
-      return 0;
-    }
-    const state = await this.load();
+    if (!this.config.tasks_enabled) return 0;
+    if (!this.recovered) { this.recovered = true; this.store.recover(this.now()); }
+    if (this.migrate) await this.migrate(signal).catch(() => undefined);
     let ran = 0;
-    for (const item of items) {
-      if (signal.aborted || !this.config.tasks_enabled || !this.config.reminders_enabled) break;
-      const key = hash(item.id + '|' + (item.due ?? ''), 16), entry = state[key], mark = status(item.title);
-      if (mark === DONE || item.title.trimStart().startsWith(REPLY)) continue;
-      // No prefix: a new job (also after the user removed ours). ⏳: interrupted run. ⚠️: only the one retry.
-      if (mark === FAILED && !entry) continue;
-      const attempts = mark === '' ? 0 : entry?.attempts ?? 0;
-      if (mark && (entry?.done || attempts >= 2 || (entry && this.now() - entry.at < RETRY_MS))) continue;
-      if (await this.execute(item, key, attempts, signal)) ran++;
+    while (!signal.aborted && this.config.tasks_enabled) {
+      const manual = this.manual.shift();
+      const task = manual !== undefined ? this.store.get(manual) : this.store.due(this.now());
+      if (manual !== undefined && !task) continue;
+      if (!task) break;
+      const claim = this.store.claim(task, this.now(), manual !== undefined);
+      if (!claim) continue; // that slot already ran (ledger)
+      if (await this.execute(claim, signal)) ran++;
     }
     return ran;
   }
 
-  private async execute(item: BridgeReminder, key: string, attempts: number, outer: AbortSignal): Promise<boolean> {
+  private async execute(claim: Claim, outer: AbortSignal): Promise<boolean> {
     const slot = await this.lane.acquire(outer).catch(() => undefined);
-    if (!slot) return false;
-    const ref = hash(item.id, 6), title = clean(baseTitle(item.title), 60) || 'Görev';
+    if (!slot) { this.store.cancel(claim, this.now()); return false; }
+    const task = claim.task;
     try {
-      // ⏳ first (and our own flag off); if the reminder cannot be marked it is not run (stale or renamed meanwhile).
-      let current = item.title;
-      const ours = (await this.load())[key]?.flag === true, running = withStatus(item.title, RUNNING);
-      if (current !== running || ours) {
-        try { await this.call({ op: 'update', id: item.id, expected_title: current, title: running, ...(ours ? { flagged: false } : {}) }, slot.signal); }
-        catch { return false; }
-        current = running;
-      }
-      // A new job forgets an earlier run of the same occurrence, so an interrupted run is recovered, not skipped.
-      if (attempts === 0) { const state = await this.load(); if (state[key]) { delete state[key]; await this.save(); } }
       return await this.observe({ kind: 'task' }, async () => {
         const started = this.now();
-        activity('task_started', { task: ref, attempt: attempts + 1 });
-        const { prompt, intentText } = taskPrompt(item);
+        activity('task_started', { task: task.id, attempt: 1 });
         let text = '', failure = '';
-        try { text = (await this.run(prompt, intentText, slot.signal)).text.trim(); if (!text) failure = 'No usable reply'; }
+        try { text = (await this.run(runPrompt(task), task.prompt, slot.signal)).text.trim(); if (!text) failure = 'No usable reply'; }
         catch (error) {
-          if (slot.signal.aborted) { activity('task_finished', { task: ref, success: false, cancelled: true, duration_ms: this.now() - started }); return false; }
+          if (slot.signal.aborted) {
+            this.store.cancel(claim, this.now());
+            activity('task_finished', { task: task.id, success: false, cancelled: true, duration_ms: this.now() - started });
+            return false;
+          }
           failure = clean(error instanceof Error ? error.message : 'Failed', 200) || 'Failed';
         }
-        const state = await this.load(), finalTry = attempts + 1 >= 2;
-        // Flag only on failure and only if the user had not flagged it; remembered so we only ever unflag our own.
-        const flag = !!failure && (!item.flagged || ours);
-        state[key] = { attempts: attempts + 1, at: this.now(), ...(failure ? {} : { done: true as const }), ...(flag ? { flag: true as const } : {}) };
-        await this.save();
-        const notes = appendResult(item.notes, this.now(), failure ? `Hata / Error: ${failure}${finalTry ? ' (tekrar denenmeyecek / not retried)' : ''}` : text);
-        // Notes read back truncated (bridge limit) are not written back: that would cut the user's text.
-        let written = false;
-        try {
-          await this.call({ op: 'update', id: item.id, expected_title: current, title: withStatus(item.title, failure ? FAILED : DONE),
-            ...(item.notes.length < 8000 ? { notes } : {}), ...(flag ? { flagged: true } : {}) }, slot.signal);
-          written = item.notes.length < 8000;
-        } catch {}
-        activity('task_finished', { task: ref, success: !failure, duration_ms: this.now() - started, note_written: written });
-        await this.notify('Asistan: ' + title, clean(failure ? 'Hata / Error: ' + failure : text, 140)).catch(() => {});
+        const status = failure ? 'failed' : isSilent(text) ? 'silent' : 'ok';
+        // A failure is stored as its spoken text (with the pause suggestion from the third failure in a row).
+        const result = failure ? failureText(task.name, failure, (this.store.get(task.id)?.failure_streak ?? 0) + 1) : text;
+        this.store.finish(claim, status, result, this.now());
+        activity('task_finished', { task: task.id, success: !failure, silent: status === 'silent', duration_ms: this.now() - started });
+        if (status !== 'silent') await this.notify('Asistan: ' + clip(task.name, 60), clean(result, 140)).catch(() => {});
         return true;
       });
     } finally { slot.release(); }
   }
 
-  private async call(request: Parameters<RemindersTransport['request']>[0], signal: AbortSignal) { return parse(await this.transport.request(request, signal)); }
-
-  private async load(): Promise<Record<string, Entry>> {
-    if (this.state) return this.state;
-    let value: unknown = {};
-    if (this.stateFile) try { value = JSON.parse(await readFile(this.stateFile, 'utf8')); } catch {}
-    const state: Record<string, Entry> = {};
-    if (value && typeof value === 'object' && !Array.isArray(value))
-      for (const [key, entry] of Object.entries(value as Record<string, Entry>))
-        if (/^[0-9a-f]{16}$/.test(key) && entry && Number.isInteger(entry.attempts) && Number.isFinite(entry.at))
-          state[key] = { attempts: entry.attempts, at: entry.at, ...(entry.done ? { done: true as const } : {}), ...(entry.flag ? { flag: true as const } : {}) };
-    return this.state = state;
+  /** Idle announcements: errors first (priority 0), results after update results (priority 2). Old ones are dropped from speech. */
+  async announcements(): Promise<Announcement[]> {
+    const now = this.now();
+    return this.store.pending(now - ANNOUNCE_MAX_AGE_MS, now, DEDUPE_MS).map(run => ({ id: 'task-' + run.id, priority: run.status === 'failed' ? 0 : 2,
+      text: run.status === 'failed' ? run.result : `${clip(run.name, 60)}: ${clip(run.result, 400)}` }));
   }
-
-  private async save(): Promise<void> {
-    const state = await this.load(), cutoff = this.now() - KEEP_DAYS * 86_400_000;
-    for (const [key, entry] of Object.entries(state)) if (entry.at < cutoff) delete state[key];
-    if (!this.stateFile) return;
-    await mkdir(path.dirname(this.stateFile), { recursive: true, mode: 0o700 });
-    const temporary = this.stateFile + '.tmp';
-    await writeFile(temporary, JSON.stringify(state) + '\n', { mode: 0o600 });
-    await rename(temporary, this.stateFile);
+  async shown(id: string): Promise<boolean> {
+    const m = /^task-(\d+)$/.exec(id);
+    return m ? this.store.delivered(Number(m[1]), this.now()) : false;
   }
 }
+
+/** Errors are always delivered; from the third failure in a row a pause is suggested. */
+export function failureText(name: string, error: string, streak: number): string {
+  return `“${clip(name, 60)}” görevi başarısız: ${clip(error, 160)}` +
+    (streak >= FAILURE_NUDGE ? ` ${streak} kez üst üste başarısız oldu; duraklatayım mı? (“${clip(name, 60)} görevini durdur”)` : '');
+}
+
+/** Pending task creations: the parsed schedule is said back and saved only after the user's next reply agrees. */
+export const taskConfirmations = new ConfirmationStore();
+
+export type TaskView = { id: number; name: string; schedule: string; next: string; status: string; last?: string; last_status?: string; last_run?: string; failures?: number };
+export type TaskInput = { name?: string; prompt?: string; schedule?: string };
+export type Preview = { name: string; prompt: string; schedule_text: string; schedule: Schedule; next_run_at: number | null; text: string };
+
+/** What the `tasks` tool and Admin use. Model-facing texts stay short. */
+export class TaskService {
+  readonly store: TaskStore; readonly scheduler?: TaskScheduler; readonly now: () => number;
+  constructor(store: TaskStore, scheduler?: TaskScheduler, now: () => number = () => Date.now()) { this.store = store; this.scheduler = scheduler; this.now = now; }
+
+  view(task: Task): TaskView {
+    const now = this.now();
+    return { id: task.id, name: task.name, schedule: task.schedule.kind === 'once' ? 'Bir kez' : describe(task.schedule),
+      next: task.status === 'active' ? when(task.next_run_at, now) : task.status === 'paused' ? 'duraklatıldı' : 'bitti', status: task.status,
+      ...(task.last_status ? { last_status: task.last_status, last: clip(task.last_result, 160), last_run: when(task.last_run_at, now) } : {}),
+      ...(task.failure_streak ? { failures: task.failure_streak } : {}) };
+  }
+  list(): TaskView[] { return this.store.list().map(task => this.view(task)); }
+
+  /** Parses and checks a new task; throws ScheduleError / Error with a short reason for the model. */
+  preview(input: TaskInput): Preview {
+    const prompt = String(input.prompt ?? '').trim(), schedule_text = String(input.schedule ?? '').trim();
+    if (!prompt) throw Error('prompt is required: what to do, self-contained.');
+    if (prompt.length > PROMPT_CHARS) throw Error(`prompt is longer than ${PROMPT_CHARS} characters.`);
+    const now = this.now(), schedule = parseSchedule(schedule_text, now), next_run_at = firstRun(schedule, now);
+    const name = clip(String(input.name ?? '').trim() || prompt, NAME_CHARS);
+    if (this.store.list().some(t => t.status !== 'done' && t.name.toLocaleLowerCase('tr') === name.toLocaleLowerCase('tr'))) throw Error('name_taken: pick another name.');
+    const text = schedule.kind === 'once' ? `Bir kez, ${when(next_run_at, now)}` : `${describe(schedule)}, sonraki ${when(next_run_at, now)}`;
+    return { name, prompt, schedule_text, schedule, next_run_at, text };
+  }
+  create(preview: Preview, source = 'chat'): Task {
+    return this.store.add({ ...preview, status: 'active', source }, this.now());
+  }
+
+  /** Name (exact, then unique part) or numeric id. */
+  find(ref: unknown): Task | { error: 'not_found' | 'ambiguous'; candidates?: string[] } {
+    const text = String(ref ?? '').trim();
+    if (!text) return { error: 'not_found' };
+    const tasks = this.store.list(), key = text.toLocaleLowerCase('tr');
+    if (/^#?\d+$/.test(text)) { const t = this.store.get(Number(text.replace('#', ''))); if (t) return t; }
+    const exact = tasks.filter(t => t.name.toLocaleLowerCase('tr') === key);
+    if (exact.length === 1) return exact[0];
+    const part = tasks.filter(t => t.name.toLocaleLowerCase('tr').includes(key) || key.includes(t.name.toLocaleLowerCase('tr')));
+    if (part.length === 1) return part[0];
+    return part.length ? { error: 'ambiguous', candidates: part.slice(0, 5).map(t => t.name) } : { error: 'not_found' };
+  }
+
+  update(task: Task, input: TaskInput): Task {
+    const now = this.now(), change: Parameters<TaskStore['update']>[1] = {};
+    if (input.name?.trim()) change.name = input.name;
+    if (input.prompt?.trim()) change.prompt = input.prompt;
+    if (input.schedule?.trim()) {
+      const schedule = parseSchedule(input.schedule, now);
+      Object.assign(change, { schedule, schedule_text: input.schedule.trim(), next_run_at: firstRun(schedule, now), ...(task.status === 'done' ? { status: 'active' } : {}) });
+    }
+    return this.store.update(task.id, change, now)!;
+  }
+  pause(task: Task): Task { return this.store.update(task.id, { status: 'paused' }, this.now())!; }
+  /** Resume re-arms from now (no stale fire); a one-time task whose time passed runs now. */
+  resume(task: Task): Task {
+    const now = this.now();
+    const next = task.schedule.kind === 'once' ? Math.max(task.schedule.at, now) : firstRun(task.schedule, now);
+    return this.store.update(task.id, { status: 'active', next_run_at: next, failure_streak: 0 }, now)!;
+  }
+  remove(task: Task): boolean { return this.store.remove(task.id); }
+  runNow(task: Task): boolean { return this.scheduler?.runNow(task.id) ?? false; }
+}
+
+let registered: TaskService | undefined;
+/** The running backend's task service (the `tasks` tool reads it); undefined in tests and CLI. */
+export function registerTasks(service: TaskService | undefined): void { registered = service; }
+export function registeredTasks(): TaskService | undefined { return registered; }
+
+// ——— One-time migration of the old Reminders-based tasks (P4) ———
+const PREFIX = /^(?:\s*(?:⏳|✅|⚠️?)\s*)+/u;
+const MARK = '— Asistan ';
+export const baseTitle = (title: string) => title.replace(PREFIX, '');
+const userNotes = (notes: string) => { const at = notes.indexOf(MARK); return (at < 0 ? notes : notes.slice(0, at)).trim(); };
+export const MIGRATED_KEY = 'reminders_migrated';
+
+/**
+ * Copies the open items of the Reminders tasks list into the store once (read-only: the reminders are never changed).
+ * A future dated item becomes an active one-time task; undated, overdue, running or failed items are added paused
+ * (the user resumes them). ✅ and 📧 items are skipped. Marked done in `meta` even when nothing was copied; a
+ * Reminders error leaves it for the next start.
+ */
+export async function migrateReminders(options: { store: TaskStore; transport: RemindersTransport; config: Config; signal: AbortSignal; now: number }): Promise<number | undefined> {
+  const { store, config } = options;
+  if (store.meta(MIGRATED_KEY) || !config.reminders_enabled) return undefined;
+  let items: BridgeReminder[];
+  try {
+    const value = parse(await options.transport.request({ op: 'list', list: config.tasks_list, status: 'open', undated: true, max: 50, notes_max: 2000,
+      skip_prefixes: ['✅', '📧'] }, options.signal));
+    if (!Array.isArray(value.reminders)) throw new RemindersError('invalid_response');
+    items = value.reminders.map(bridgeReminder);
+  } catch (error) {
+    // Missing list = nothing to migrate; anything else is retried on the next start.
+    if (error instanceof RemindersError && error.code === 'list_not_found') { store.setMeta(MIGRATED_KEY, JSON.stringify({ at: options.now, count: 0 })); return 0; }
+    return undefined;
+  }
+  let count = 0;
+  for (const item of items) {
+    if (item.completed || /^\s*(✅|📧)/u.test(item.title)) continue;
+    const title = clean(baseTitle(item.title), 300), notes = userNotes(item.notes).slice(0, 700);
+    if (!title) continue;
+    const due = item.due ? Date.parse(item.due) : NaN, future = Number.isFinite(due) && due > options.now && !/^\s*[⏳⚠]/u.test(item.title);
+    const at = Number.isFinite(due) ? due : options.now;
+    store.add({ name: title, prompt: title + (notes ? '\n' + notes : ''), schedule_text: 'Anımsatıcılardan', schedule: { kind: 'once', at },
+      next_run_at: future ? due : at, status: future ? 'active' : 'paused', source: 'reminders' }, options.now);
+    count++;
+  }
+  store.setMeta(MIGRATED_KEY, JSON.stringify({ at: options.now, count }));
+  activity('tasks_migrated', { count });
+  return count;
+}
+export { ScheduleError };

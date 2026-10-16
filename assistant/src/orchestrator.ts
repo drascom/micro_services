@@ -8,7 +8,7 @@ import path from 'node:path';
 import { root } from './config.ts';
 import { activity } from './activity.ts';
 import { newTurn } from '../.pi/extensions/apple-reminders/confirmations.ts';
-import { taskRequest } from './tasks.ts';
+import { registeredTasks, taskRequest } from './tasks.ts';
 import { EXCLUDED_INTENTS, excludedTool, memoryRequest, topicCommand, type MemoryService } from './memory.ts';
 
 export interface ContextSource { context(query: string, signal: AbortSignal): Promise<string>; }
@@ -36,7 +36,7 @@ export class Orchestrator {
   }
   /** New conversation: the buffered turns are extracted soon (end of a segment). */
   reset(): void { this.history = []; if (this.memory) { this.memory.store.active = undefined; this.memory.extractor.schedule(true); } }
-  /** `automated` (Reminders task): no memory block. A remote model gets the assistant rules and
+  /** `automated` (scheduled task): no memory block. A remote model gets the assistant rules and
    *  the active topic block; personal facts and recalled summaries go only to the local model. Memory has its own budget (`memory_chars`) on top of `history_chars`. */
   async context(prompt: string, local: boolean, signal: AbortSignal, history: readonly Message[] = this.history, automated = false): Promise<Context> {
     let system = this.config.system_prompt;
@@ -67,7 +67,7 @@ export class Orchestrator {
     while (recent.length && prompt.length + system.length + recent.reduce((n, m) => n + textOf(m).length, 0) > budget) recent = recent.slice(2);
     return { systemPrompt: system, messages: [...recent, { role: 'user', content: prompt, timestamp: Date.now() }] };
   }
-  /** `automated`: a Reminders task — no conversation history in or out, restricted tools; `intentText` is what Jev classifies. */
+  /** `automated`: a scheduled task — no conversation history in or out, restricted tools; `intentText` is what Jev classifies. */
   async ask(prompt: string, offline = false, signal: AbortSignal = new AbortController().signal,
     task?: { automated: true; intentText: string }, steering?: Steering): Promise<Reply> {
     // A user request stops a running background extraction (its turns stay buffered); a task never touches memory.
@@ -123,10 +123,9 @@ export class Orchestrator {
       activity('classification_finished', { duration_ms: Math.round(performance.now() - started), success: Boolean(intent) });
     }
     let answer: AssistantMessage | undefined;
-    // Assistant tasks live in the Reminders tasks list; Jev may file "görev ver" under skill management or updates.
-    if (!automated && this.config.reminders_enabled && this.config.tasks_enabled && taskRequest(prompt) && intent?.choice !== 'reminders')
-      intent = { choice: 'reminders', confidence: intent?.confidence ?? 1, provider: intent?.provider ?? 'tasks' };
-    const skill = ['web_search', 'news'].includes(intent?.choice || '') ? 'online-search' as const : intent?.choice === 'skill_management' ? 'skill-manager' as const :
+    // Assistant tasks (own store, `tasks` tool); Jev may file "görev ver" under reminders, skill management or updates. Never inside a task.
+    const tasksRoute = !automated && this.config.tasks_enabled && Boolean(registeredTasks()) && taskRequest(prompt);
+    const skill = tasksRoute ? 'tasks' as const : ['web_search', 'news'].includes(intent?.choice || '') ? 'online-search' as const : intent?.choice === 'skill_management' ? 'skill-manager' as const :
       intent?.choice === 'email' ? 'mail-assistant' as const : intent?.choice === 'mail_triage' && this.config.gmail_triage_enabled ? 'mail-triage' as const : intent?.choice === 'reminders' && this.config.reminders_enabled ? 'reminders' as const :
       intent?.choice === 'files' && this.config.embedding_enabled ? 'file-assistant' as const :
       intent?.choice === 'vault' && this.config.bitwarden_enabled ? 'vault' as const : intent?.choice === 'updates' && !automated ? 'updates' as const : undefined;

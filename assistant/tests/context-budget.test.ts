@@ -15,6 +15,8 @@ import { VaultService } from '../src/vault.ts';
 import type { UpdateService } from '../src/updates.ts';
 import { ConfirmationStore } from '../.pi/extensions/apple-reminders/confirmations.ts';
 import { MemoryService } from '../src/memory.ts';
+import { TaskService } from '../src/tasks.ts';
+import { TaskStore } from '../src/task-store.ts';
 
 // Context budget rule (local and remote): system prompt + skill catalog/body + tool schemas stay small.
 // Limits are characters (about 4 per token), set about 10% above the measured values (offline 3907, mail-assistant 3359; 2026-10-09).
@@ -29,9 +31,10 @@ import { MemoryService } from '../src/memory.ts';
 // 2026-10-15: memory_save/memory_forget (only for a hatırla/unut request) measured 688 added.
 // 2026-10-15: `account` hint "email or part; omit=all" (+40 per schema) on mail_list_messages/mail_organize measured
 //   mail-assistant 3607 (limit +40 = 3640); mail-triage 1878, unrouted Gmail added 910 (limits unchanged).
+// 2026-10-16: assistant tasks (own store, user requests only) measured tasks route 1763; a pending creation adds 1008 to an unrouted request.
 const LIMITS = { unrouted_offline: 4360, 'mail-assistant': 3640, unrouted_offline_reminders: 5900, reminders: 2250,
   'mail-triage': 1880, unrouted_gmail_added: 920, 'file-assistant': 2330, unrouted_files_added: 1290,
-  vault: 2850, unrouted_vault_added: 1180, updates: 1800, updates_pending_added: 630, memory_tools_added: 760 } as const;
+  vault: 2850, unrouted_vault_added: 1180, updates: 1800, updates_pending_added: 630, memory_tools_added: 760, tasks: 1940, tasks_pending_added: 1110 } as const;
 
 /** A connected Gmail (fake secret store) for the mail_organize cases; no network call happens while measuring. */
 function connectedGmail() {
@@ -207,6 +210,39 @@ test('memory: two compact tools only for a hatırla/unut user request; never for
   assert.ok(!(await measureMemory(true, true)).names.some(name => name.startsWith('memory_')), 'automated task');
 });
 
+async function measureTasks(skill: 'tasks' | undefined, pending: boolean, automated = false) {
+  const agent = await mkdtemp(path.join(tmpdir(), 'ayhan-budget-'));
+  const fake = fauxProvider({ provider: 'budget-test', models: [{ id: 'test' }], tokensPerSecond: 1000000 });
+  fake.setResponses([fauxAssistantMessage('ok')]);
+  const runtime = await ModelRuntime.create({ modelsPath: null, refreshOnCreate: false }); runtime.registerNativeProvider(fake.provider);
+  const store = new ConfirmationStore();
+  if (pending) store.issue(1, { id: 'tasks', title: 'Mail özeti: Her gün 09:00, sonraki yarın 09:00', ref: '{}' });
+  const session = await createHarnessSession({ root, config: { ...defaults, pi_agent_dir: agent, tasks_enabled: true },
+    context: { systemPrompt: defaults.system_prompt, messages: [{ role: 'user', content: 'test', timestamp: 1 }] },
+    model: fake.getModel(), runtime, offline: false, skill, extensionPaths: [], turn: 2, automated, updates: null,
+    tasks: new TaskService(new TaskStore(':memory:')), tasksStore: store });
+  try {
+    const tools = session.getActiveToolNames().map(name => {
+      const tool = session.getToolDefinition(name)!;
+      return JSON.stringify({ name, description: tool.description, parameters: tool.parameters });
+    });
+    const body = skill ? await (await import('node:fs/promises')).readFile(path.join(root, '.pi/skills', skill, 'SKILL.md'), 'utf8') : '';
+    return { names: session.getActiveToolNames(), prompt: session.systemPrompt, chars: session.systemPrompt.length + tools.join('').length + body.length };
+  } finally { session.dispose(); await rm(agent, { recursive: true, force: true }); }
+}
+
+test('tasks: one compact tool on the tasks route or with a pending creation; never unrouted or in a task run', async () => {
+  const routed = await measureTasks('tasks', false);
+  assert.deepEqual(routed.names, ['tasks']);
+  assert.ok(routed.chars <= LIMITS.tasks, `${routed.chars} chars`);
+  const plain = await measureTasks(undefined, false), pending = await measureTasks(undefined, true);
+  assert.ok(!plain.names.includes('tasks') && !plain.prompt.includes('<name>tasks</name>'), 'unrouted: not sent without a pending creation');
+  assert.deepEqual(pending.names.filter(name => !plain.names.includes(name)), ['tasks']);
+  assert.match(pending.prompt, /Pending task "Mail özeti: Her gün 09:00, sonraki yarın 09:00": if this message agrees, call tasks create with confirm_token c_/);
+  assert.ok(pending.chars - plain.chars <= LIMITS.tasks_pending_added, `${pending.chars - plain.chars} chars added`);
+  assert.ok(!(await measureTasks('tasks', true, true)).names.includes('tasks'), 'automated task');
+});
+
 test('pending updates are added beside the tasks route, never instead of it', async () => {
   const agent = await mkdtemp(path.join(tmpdir(), 'ayhan-budget-'));
   const fake = fauxProvider({ provider: 'budget-test', models: [{ id: 'test' }], tokensPerSecond: 1000000 });
@@ -215,9 +251,10 @@ test('pending updates are added beside the tasks route, never instead of it', as
   const store = new ConfirmationStore(); store.issue(1, { id: 'updates', title: 'apply Pi 1.3.0', ref: '{}' });
   const session = await createHarnessSession({ root, config: { ...defaults, pi_agent_dir: agent, reminders_enabled: true, tasks_enabled: true, tasks_list: 'Asistan' },
     context: { systemPrompt: defaults.system_prompt, messages: [{ role: 'user', content: 'test', timestamp: 1 }] },
-    model: fake.getModel(), runtime, offline: false, skill: 'reminders', extensionPaths: [], turn: 2, updates: fakeUpdates, updatesStore: store });
+    model: fake.getModel(), runtime, offline: false, skill: 'tasks', extensionPaths: [], turn: 2, updates: fakeUpdates, updatesStore: store,
+    tasks: new TaskService(new TaskStore(':memory:')) });
   try {
-    assert.deepEqual(session.getActiveToolNames(), ['reminders', 'updates']);
-    assert.match(session.systemPrompt, /Assistant tasks \(görev\) are reminders in list "Asistan"/);
+    assert.deepEqual(session.getActiveToolNames(), ['tasks', 'updates']);
+    assert.ok(!session.systemPrompt.includes('reminders in list'));
   } finally { session.dispose(); await rm(agent, { recursive: true, force: true }); }
 });

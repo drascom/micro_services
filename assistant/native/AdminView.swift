@@ -43,6 +43,12 @@ struct MemoryEpisode: Decodable, Identifiable { let id: Int; let ended: Double; 
 struct MemoryTopic: Decodable, Identifiable { let id: Int; let title: String; let state: String; let decisions: [String]; let open: [String]; let status: String; let active: Bool }
 struct MemoryStatus: Decodable { var enabled = true; var extract = true; var items: [MemoryItem] = []; var episodes: [MemoryEpisode] = []; var topics: [MemoryTopic] = [] }
 
+struct TaskRow: Decodable, Identifiable {
+    let id: Int; let name: String; let schedule: String; let next: String; let status: String
+    let last: String?; let last_status: String?; let last_run: String?; let failures: Int?
+}
+struct TasksStatus: Decodable { var enabled = false; var tasks: [TaskRow] = [] }
+
 struct RemoteModels: Decodable { var model = ""; var provider = ""; var models: [String] = []; var error = "" }
 struct RemoteModelTest: Decodable { let ok: Bool; let model: String?; let error: String? }
 struct VaultStatus: Decodable { var enabled = false; var server = ""; var email = ""; var installed = false; var state = "unknown"; var error = "" }
@@ -116,6 +122,8 @@ final class AdminModel {
     var updatesMessage = ""
     var memory = MemoryStatus()
     var memoryMessage = ""
+    var tasks = TasksStatus()
+    var tasksMessage = ""
     var remote = RemoteModels()
     var remoteMessage = ""
     var remoteTesting = false
@@ -141,6 +149,7 @@ final class AdminModel {
         Task { await loadVault() }
         Task { await loadUpdates() }
         Task { await loadMemory() }
+        Task { await loadTasks() }
     }
     func stopPolling() { polling?.cancel(); polling = nil }
 
@@ -222,7 +231,7 @@ final class AdminModel {
     func loadReminders() async {
         if let data = try? await backend.admin("admin/reminders") { applyReminders(data) }
     }
-    /// Off: the reminders tool is not offered to the model from the next request (assistant tasks stop too).
+    /// Off: the reminders tool is not offered to the model from the next request (assistant tasks keep running; own store).
     func setReminders(_ enabled: Bool) async { remindersEnabled = enabled; await saveReminders(["enabled": enabled]) }
     func setTasks(_ enabled: Bool) async { tasksEnabled = enabled; await saveReminders(["tasks_enabled": enabled]) }
     func setTasksList(_ name: String) async { await saveReminders(["tasks_list": name]) }
@@ -432,6 +441,16 @@ final class AdminModel {
     func activateTopic(_ id: Int, _ active: Bool) async { await memoryCall("admin/memory/topic", ["id": id, "active": active]) }
     func deleteTopic(_ id: Int) async { await memoryCall("admin/memory/delete", ["topic": id]) }
 
+    // MARK: Assistant tasks
+    private func tasksCall(_ route: String, _ body: [String: Any] = [:]) async {
+        do {
+            let data = try await backend.admin(route, data: try JSONSerialization.data(withJSONObject: body))
+            tasks = try JSONDecoder().decode(TasksStatus.self, from: data); tasksMessage = ""
+        } catch { tasksMessage = error.localizedDescription }
+    }
+    func loadTasks() async { await tasksCall("admin/tasks") }
+    func taskAction(_ id: Int, _ action: String) async { await tasksCall("admin/tasks/action", ["id": id, "action": action]) }
+
     func checkUpdates() async { await updatesCall("admin/updates/check") }
     func applyUpdate(_ id: String) async { await updatesCall("admin/updates/apply", ["id": id]) }
     func skipUpdate(_ item: UpdateItem) async { await updatesCall("admin/updates/skip", ["id": item.id, "version": item.latest]) }
@@ -453,6 +472,7 @@ struct AdminView: View {
             StatusTab(admin: admin).tabItem { Text("Durum") }
             SettingsTab(admin: admin, ring: admin.ring).tabItem { Text("Ayarlar") }
             MemoryTab(admin: admin).tabItem { Text("Hafıza") }
+            TasksTab(admin: admin).tabItem { Text("Görevler") }
             UpdatesTab(admin: admin).tabItem { Text("Güncellemeler") }
             ResourcesTab(admin: admin).tabItem { Text("Skill & Extension") }
         }.padding(12).frame(minWidth: 720, minHeight: 480)
@@ -660,6 +680,56 @@ private struct UpdatesTab: View {
     }
 }
 
+private struct TasksTab: View {
+    let admin: AdminModel
+    @State private var deleting: TaskRow?
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Asistan görevleri", isOn: Binding(get: { admin.tasksEnabled }, set: { on in Task { await admin.setTasks(on); await admin.loadTasks() } }))
+                HStack {
+                    if !admin.tasksMessage.isEmpty { Text(admin.tasksMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+                    Spacer()
+                    Button("Yenile") { Task { await admin.loadTasks() } }
+                }
+            }
+            Section("Görevler") {
+                ForEach(admin.tasks.tasks) { item in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(item.name).bold()
+                            Text(item.schedule).foregroundStyle(.secondary)
+                            Spacer()
+                            Text(item.next).monospaced().foregroundStyle(item.status == "active" ? Color.primary : Color.secondary)
+                        }
+                        if let last = item.last, !last.isEmpty {
+                            HStack(alignment: .top) {
+                                Text(item.last_run ?? "").font(.caption).monospaced().foregroundStyle(.secondary)
+                                Text(last).font(.caption).foregroundStyle(item.last_status == "failed" ? Color.orange : Color.secondary).lineLimit(2).textSelection(.enabled)
+                            }
+                        }
+                        HStack {
+                            if item.status == "active" { Button("Duraklat") { Task { await admin.taskAction(item.id, "pause") } } }
+                            else { Button("Sürdür") { Task { await admin.taskAction(item.id, "resume") } } }
+                            Button("Şimdi çalıştır") { Task { await admin.taskAction(item.id, "run") } }.disabled(!admin.tasksEnabled)
+                            Spacer()
+                            Button("Sil", role: .destructive) { deleting = item }
+                        }
+                    }
+                }
+            }
+        }.formStyle(.grouped)
+        .task { await admin.loadTasks() }
+        .confirmationDialog(deleting?.name ?? "", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("Sil", role: .destructive) {
+                if let item = deleting { Task { await admin.taskAction(item.id, "delete") } }
+                deleting = nil
+            }
+            Button("İptal", role: .cancel) { deleting = nil }
+        }
+    }
+}
+
 private struct MemoryTab: View {
     let admin: AdminModel
     @State private var drafts: [Int: String] = [:]
@@ -824,11 +894,9 @@ private struct SettingsTab: View {
                 Toggle("Sesli yanıt", isOn: $ring.readAloud)
                 Toggle("Menü çubuğu simgesi", isOn: Binding(get: { admin.menuBarIcon }, set: { admin.actions.setMenuBarIcon($0) }))
                 Toggle("Anımsatıcılar", isOn: Binding(get: { admin.remindersEnabled }, set: { on in Task { await admin.setReminders(on) } }))
-                Toggle("Asistan görevleri", isOn: Binding(get: { admin.tasksEnabled }, set: { on in Task { await admin.setTasks(on) } }))
-                    .disabled(!admin.remindersEnabled)
-                TextField("Görev listesi", text: $admin.tasksList)
+                TextField("Asistan listesi", text: $admin.tasksList)
                     .onSubmit { Task { await admin.setTasksList(admin.tasksList) } }
-                    .disabled(!admin.remindersEnabled || !admin.tasksEnabled)
+                    .disabled(!admin.remindersEnabled)
                 if !admin.remindersMessage.isEmpty { Text(admin.remindersMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
             }
             MailSection(admin: admin)

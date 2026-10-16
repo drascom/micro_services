@@ -444,25 +444,12 @@ launched hidden (`open -g -j`), never activated. Works offline.
   within 2 minutes; the backend enforces this, the model only judges the yes/no.
 - First call asks for macOS Automation permission (Ayhan → Reminders); denied → `automation_denied`.
 
-### Assistant tasks (Reminders list)
+### Assistant tasks
 
-Admin → Settings → **Asistan görevleri / Assistant tasks** (`tasks_enabled`, default off; needs Reminders on)
-and the list name (`tasks_list`, default `Asistan`). Write a task as a reminder in that list
-("bugünkü maillerimi özetle"); the backend (`src/tasks.ts`) scans it every 60 s:
-
-- Undated items run when seen; dated ones once due; items missed while the app was closed run on the next start.
-- Status is a title prefix and the task stays in the list until you tick it: `⏳` running, `✅` done, `⚠️` failed
-  (also flagged → Flagged list; only our own flag is removed later). `✅`/final `⚠️` never run again; delete the
-  prefix to run it again. A `⏳` left by a closed app runs again on start. Completed items are never scanned.
-  Repeating reminders: the next occurrence likely keeps the `✅` title (unverified) — remove the prefix to rerun.
-- Each task is a normal request (same local/remote mode as the ring) that waits for the user's request; a user
-  request cancels a running task (left `⏳`, it runs again on the next scan); no conversation history in or out.
-- Success: a dated result (≤1500 chars) is appended below the reminder's notes (own text kept), title `✅`,
-  a short macOS notification is shown, and `task_started`/`task_finished` appear in Activity.
-  Failure: an error line, `⚠️` + flag, retried once after 5 min (`⏳`, unflagged), then left alone
-  (`data/tasks-state.json`, hashes only).
-- Tools are limited to `read`, web search/read/fetch, Mail reading and `reminders` list/add/update/complete;
-  `reminders delete` and all writes are blocked.
+Admin → **Görevler** (`tasks_enabled`, default off). Say "görev ekle: her gün 09:00 maillerimi özetle"; Ayhan
+reads the schedule back and saves it after you agree. Tasks run unattended with read-only tools; results come as a
+notification and are spoken at an idle moment (`[SILENT]` = nothing to say). Store `data/tasks.sqlite`.
+Old tasks in the Reminders list are copied once. Details: [TASKS.md](TASKS.md).
 
 ## Activity logging
 
