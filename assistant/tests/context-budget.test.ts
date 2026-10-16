@@ -206,3 +206,18 @@ test('memory: two compact tools only for a hatırla/unut user request; never for
   assert.ok(memory.chars - plain.chars <= LIMITS.memory_tools_added, `${memory.chars - plain.chars} chars added`);
   assert.ok(!(await measureMemory(true, true)).names.some(name => name.startsWith('memory_')), 'automated task');
 });
+
+test('pending updates are added beside the tasks route, never instead of it', async () => {
+  const agent = await mkdtemp(path.join(tmpdir(), 'ayhan-budget-'));
+  const fake = fauxProvider({ provider: 'budget-test', models: [{ id: 'test' }], tokensPerSecond: 1000000 });
+  fake.setResponses([fauxAssistantMessage('ok')]);
+  const runtime = await ModelRuntime.create({ modelsPath: null, refreshOnCreate: false }); runtime.registerNativeProvider(fake.provider);
+  const store = new ConfirmationStore(); store.issue(1, { id: 'updates', title: 'apply Pi 1.3.0', ref: '{}' });
+  const session = await createHarnessSession({ root, config: { ...defaults, pi_agent_dir: agent, reminders_enabled: true, tasks_enabled: true, tasks_list: 'Asistan' },
+    context: { systemPrompt: defaults.system_prompt, messages: [{ role: 'user', content: 'test', timestamp: 1 }] },
+    model: fake.getModel(), runtime, offline: false, skill: 'reminders', extensionPaths: [], turn: 2, updates: fakeUpdates, updatesStore: store });
+  try {
+    assert.deepEqual(session.getActiveToolNames(), ['reminders', 'updates']);
+    assert.match(session.systemPrompt, /Assistant tasks \(görev\) are reminders in list "Asistan"/);
+  } finally { session.dispose(); await rm(agent, { recursive: true, force: true }); }
+});

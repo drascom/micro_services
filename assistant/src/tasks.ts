@@ -20,6 +20,13 @@ export const SCAN_MS = 60_000, RETRY_MS = 5 * 60_000, RESULT_CHARS = 1500, NOTES
 const MARK = '— Asistan ';
 const KEEP_DAYS = 45;
 
+/** A request to give, list or remove an assistant task ("sana bir görev vermek istiyorum", "her sabah 9'da … yap", "görev ekle/listele/sil").
+ *  The classifier may file it under skill management or updates; the orchestrator routes it to Reminders (tasks list). */
+export function taskRequest(text: string): boolean {
+  return /(?<!\p{L})(görev|task)/iu.test(text) ||
+    /(?<!\p{L})her\s+(sabah|akşam|gece|gün|hafta|ay|saat|pazartesi|salı|çarşamba|perşembe|cuma|cumartesi|pazar)(?!\p{L}).*(?<!\p{L})(yap|çalıştır|gönder|kontrol\s+et|özetle|bak|hazırla|oku)/iu.test(text);
+}
+
 /** One slot of the backend's request lane: tasks never interrupt a user request and wait for their turn. */
 export interface TaskLane { acquire(signal: AbortSignal): Promise<{ signal: AbortSignal; release(): void }>; }
 export type TaskRun = (prompt: string, intentText: string, signal: AbortSignal) => Promise<{ text: string }>;

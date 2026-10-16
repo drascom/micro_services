@@ -168,6 +168,7 @@ export async function createHarnessSession(options: {
       (tools.includes('web_search') ? 'Cite retrieved source URLs. ' : '') +
       `Date: ${new Date().toISOString().slice(0, 10)}.` + (options.offline ? ' Offline: no web or mail (Gmail) access.' : '') +
       (tools.includes('reminders') ? ` Local time: ${localTime()}.` : '') +
+      (tools.includes('reminders') && !automated && options.config.tasks_enabled ? ` Assistant tasks (görev) are reminders in list ${JSON.stringify(options.config.tasks_list)}: add/list/delete there; the app runs each once when due (no repeat: add the next one).` : '') +
       (tools.includes('mail_organize') ? ' Report only what mail_organize returned.' : '') +
       (vaultBlocked ? vaultNote(options.config, options.model, vault) : '') +
       (filesBlocked ? (options.config.embedding_enabled ? ' Local files work only with the local model (Local mode); say so in one sentence.' : ' Local files are off in Admin.') : '') +

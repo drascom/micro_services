@@ -8,6 +8,7 @@ import path from 'node:path';
 import { root } from './config.ts';
 import { activity } from './activity.ts';
 import { newTurn } from '../.pi/extensions/apple-reminders/confirmations.ts';
+import { taskRequest } from './tasks.ts';
 import { EXCLUDED_INTENTS, excludedTool, memoryRequest, topicCommand, type MemoryService } from './memory.ts';
 
 export interface ContextSource { context(query: string, signal: AbortSignal): Promise<string>; }
@@ -122,6 +123,9 @@ export class Orchestrator {
       activity('classification_finished', { duration_ms: Math.round(performance.now() - started), success: Boolean(intent) });
     }
     let answer: AssistantMessage | undefined;
+    // Assistant tasks live in the Reminders tasks list; Jev may file "görev ver" under skill management or updates.
+    if (!automated && this.config.reminders_enabled && this.config.tasks_enabled && taskRequest(prompt) && intent?.choice !== 'reminders')
+      intent = { choice: 'reminders', confidence: intent?.confidence ?? 1, provider: intent?.provider ?? 'tasks' };
     const skill = ['web_search', 'news'].includes(intent?.choice || '') ? 'online-search' as const : intent?.choice === 'skill_management' ? 'skill-manager' as const :
       intent?.choice === 'email' ? 'mail-assistant' as const : intent?.choice === 'mail_triage' && this.config.gmail_triage_enabled ? 'mail-triage' as const : intent?.choice === 'reminders' && this.config.reminders_enabled ? 'reminders' as const :
       intent?.choice === 'files' && this.config.embedding_enabled ? 'file-assistant' as const :

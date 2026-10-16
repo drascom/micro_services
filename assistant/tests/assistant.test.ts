@@ -378,3 +378,23 @@ test('steering is refused when no live session is attached', () => {
   steering.attach(() => true); assert.equal(steering.steer('  y '), true); assert.equal(steering.steer('   '), false);
   steering.detach(); assert.equal(steering.steer('z'), false); assert.deepEqual(steering.accepted, ['y']);
 });
+test('assistant task requests reach the Reminders tasks route, whatever Jev picked', async () => {
+  for (const [choice, prompt] of [['skill_management', 'sana bir görev vermek istiyorum'], ['updates', "her sabah 9'da maillerimi özetle ve bana gönder"],
+    ['conversation', 'görev ekle: faturaları kontrol et'], ['skill_management', 'görevlerimi listele'], ['updates', 'şu görevi sil']] as const) {
+    const f = fixture(); f.app.config = { ...config, reminders_enabled: true, tasks_enabled: true };
+    f.classifier.classify = async () => ({ choice, confidence: 0.8, provider: 'jev' });
+    let skill: string | undefined; f.remote.complete = async (_c, _s, options) => { skill = options?.skill; return { ...fauxAssistantMessage('ok'), provider: 'openai' }; };
+    await f.app.ask(prompt);
+    assert.equal(skill, 'reminders', prompt);
+  }
+  // Unrelated requests keep Jev's route (updates stays updates); tasks off = no override.
+  const f = fixture(); f.app.config = { ...config, reminders_enabled: true, tasks_enabled: true };
+  let skill: string | undefined; f.remote.complete = async (_c, _s, options) => { skill = options?.skill; return { ...fauxAssistantMessage('ok'), provider: 'openai' }; };
+  f.classifier.classify = async () => ({ choice: 'updates', confidence: 1, provider: 'jev' }); await f.app.ask('güncellemeleri kur');
+  assert.equal(skill, 'updates');
+  f.classifier.classify = async () => ({ choice: 'conversation', confidence: 1, provider: 'jev' }); await f.app.ask('bugün hava nasıl');
+  assert.equal(skill, undefined);
+  f.app.config = { ...config, reminders_enabled: true, tasks_enabled: false };
+  f.classifier.classify = async () => ({ choice: 'skill_management', confidence: 1, provider: 'jev' }); await f.app.ask('sana bir görev vermek istiyorum');
+  assert.equal(skill, 'skill-manager');
+});

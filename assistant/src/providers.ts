@@ -123,13 +123,13 @@ export class Jev implements Classifier {
         email: 'Read, search, summarize, draft, or send email (no changes to existing mail)',
         mail_triage: 'Change existing Gmail mail: delete/trash, archive, label, mark read, star, sort by importance, clean up or undo, also for specific senders or subjects (mail sil, düzenle, temizle)',
         calendar: 'Read or modify calendar events, availability, meetings, or appointments',
-        reminders: 'Add, list, update, complete or delete reminders or to-dos (hatırlatıcı, yapılacaklar)',
+        reminders: 'Add, list, update, complete or delete reminders or to-dos, or give the assistant a task to run later (hatırlatıcı, yapılacaklar, görev ver/ekle/listele/sil, her sabah 9\'da ... yap)',
         files: "Find, read, answer from or organize the user's own files, documents, photos, recordings or folders on this computer (dosya, belge, klasör, fotoğraf bul/düzenle)",
         vault: 'Get a saved password, login/username or 2FA code from the password manager (şifre, parola, giriş bilgisi, 2FA kodu)',
         news: 'Brief latest/recent news, headlines or a short news roundup about a place/topic, including Turkish haber/haberler requests; use web_search for requested detailed investigation',
         web_search: 'General online research, current facts, or detailed investigation needing public web verification; use news for brief headlines',
         updates: "Updates of the assistant's own software components or models (güncelleme, llama.cpp, Pi, bw sürümü, güncelle, geri al)",
-        skill_management: 'Create, edit, inspect, test or improve the assistant harness skills or extensions'
+        skill_management: 'Create, edit, inspect, test or improve the assistant harness skills or extensions (not tasks for the assistant to do)'
       } }
     } }, { signal });
     const answer = result.answers.intent;
