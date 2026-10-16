@@ -258,3 +258,27 @@ test('pending updates are added beside the tasks route, never instead of it', as
     assert.ok(!session.systemPrompt.includes('reminders in list'));
   } finally { session.dispose(); await rm(agent, { recursive: true, force: true }); }
 });
+
+// 2026-10-16: heartbeat (off by default) = an automated unrouted run plus its capped prompt; whole request ≤ 4k tokens (~16000 chars).
+// Measured session (system + read-only tools) online 4363, offline 3022.
+const HEARTBEAT_SESSION_LIMIT = 4800;
+test('heartbeat: an automated run with its capped prompt stays within 4k tokens; read-only tools only', async () => {
+  const { HEARTBEAT_PROMPT_CHARS } = await import('../src/heartbeat.ts');
+  const { TASK_TOOLS } = await import('../src/harness.ts');
+  for (const offline of [false, true]) {
+    const agent = await mkdtemp(path.join(tmpdir(), 'ayhan-budget-'));
+    const fake = fauxProvider({ provider: offline ? 'local-gemma' : 'budget-test', models: [{ id: 'test' }], tokensPerSecond: 1000000 });
+    fake.setResponses([fauxAssistantMessage('ok')]);
+    const runtime = await ModelRuntime.create({ modelsPath: null, refreshOnCreate: false }); runtime.registerNativeProvider(fake.provider);
+    const session = await createHarnessSession({ root, config: { ...defaults, pi_agent_dir: agent, tasks_enabled: true, heartbeat_enabled: true },
+      context: { systemPrompt: defaults.system_prompt, messages: [{ role: 'user', content: 'test', timestamp: 1 }] },
+      model: fake.getModel(), runtime, offline, extensionPaths: [], turn: 0, automated: true, updates: null, tasks: new TaskService(new TaskStore(':memory:')) });
+    try {
+      const names = session.getActiveToolNames();
+      assert.ok(names.every(name => TASK_TOOLS.includes(name)), names.join());
+      const chars = session.systemPrompt.length + names.map(name => { const t = session.getToolDefinition(name)!; return JSON.stringify({ name, description: t.description, parameters: t.parameters }); }).join('').length;
+      assert.ok(chars <= HEARTBEAT_SESSION_LIMIT, `${chars} chars`);
+      assert.ok(chars + HEARTBEAT_PROMPT_CHARS <= 16000, `${chars + HEARTBEAT_PROMPT_CHARS} chars`);
+    } finally { session.dispose(); await rm(agent, { recursive: true, force: true }); }
+  }
+});

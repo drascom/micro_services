@@ -1,0 +1,3 @@
+- Acil göndericiden yeni e-posta geldiyse kimden geldiğini söyle.
+- Bir saat içinde çalışacak görev varsa hatırlat.
+- Başarısız görev varsa kısaca söyle.

@@ -6,7 +6,7 @@ import { RemindersError, bridgeReminder, clean, parse, type RemindersTransport }
 import type { BridgeReminder } from '../.pi/extensions/apple-reminders/schemas.ts';
 import { ConfirmationStore } from '../.pi/extensions/apple-reminders/confirmations.ts';
 import { ScheduleError, describe, firstRun, parseSchedule, when, type Schedule } from './schedule.ts';
-import { NAME_CHARS, PROMPT_CHARS, clip, type Claim, type Task, type TaskStore } from './task-store.ts';
+import { NAME_CHARS, PREVIOUS_CHARS, PROMPT_CHARS, clip, type Claim, type Task, type TaskStore } from './task-store.ts';
 import type { Announcement, AnnouncementSource } from './announce.ts';
 
 /**
@@ -21,6 +21,10 @@ export const ANNOUNCE_MAX_AGE_MS = 12 * 3_600_000;
 /** The same result of the same task is not repeated within this window. */
 export const DEDUPE_MS = 24 * 3_600_000;
 export const FAILURE_NUDGE = 3;
+/** Transient failures (network after wake, timeouts, 5xx) are retried after 5, 15 and 30 min before they count as failed. */
+export const RETRY_MS = [5, 15, 30].map(m => m * 60_000);
+const TRANSIENT = /fetch failed|network|ECONN(RESET|REFUSED|ABORTED)|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH|EPIPE|socket hang up|timed? ?out|timeout|\b(502|503|504|429)\b|overloaded|rate.?limit/i;
+export const transientError = (message: string) => TRANSIENT.test(message);
 export const SILENT = '[SILENT]';
 
 /** A request to give, list, change or remove an assistant task ("sana bir görev vermek istiyorum", "her sabah 9'da … yap",
@@ -45,10 +49,11 @@ export const osascriptNotify: Notify = async (title, body) => {
   clearTimeout(timer);
 };
 
-/** The unattended prompt: self-contained, the user is absent, nothing to say = [SILENT]. */
-export function runPrompt(task: Pick<Task, 'prompt'>): string {
+/** The unattended prompt: self-contained, the user is absent, nothing to say = [SILENT]. `previous`: the last result (≤300 chars), so only changes are told. */
+export function runPrompt(task: Pick<Task, 'prompt'>, previous = ''): string {
   return 'Scheduled task; the user is not present: do not ask questions or wait for a reply. Read-only tools only; never send, change or delete anything. ' +
-    `Do the task, then reply with a short result (a few sentences). If there is nothing new or worth telling, reply exactly ${SILENT}; do not invent work.\nTask: ` + task.prompt;
+    `Do the task, then reply with a short result (a few sentences). If there is nothing new or worth telling, reply exactly ${SILENT}; do not invent work.\nTask: ` + task.prompt +
+    (previous ? `\nPrevious result (tell only what changed since; unchanged = ${SILENT}): ` + clip(previous, PREVIOUS_CHARS) : '');
 }
 export const isSilent = (text: string) => text.includes(SILENT);
 
@@ -124,9 +129,9 @@ export class TaskScheduler implements AnnouncementSource {
     try {
       return await this.observe({ kind: 'task' }, async () => {
         const started = this.now();
-        activity('task_started', { task: task.id, attempt: 1 });
+        activity('task_started', { task: task.id, attempt: claim.retry ? task.retry_count + 1 : 1 });
         let text = '', failure = '';
-        try { text = (await this.run(runPrompt(task), task.prompt, slot.signal)).text.trim(); if (!text) failure = 'No usable reply'; }
+        try { text = (await this.run(runPrompt(task, this.store.previous(task.id)), task.prompt, slot.signal)).text.trim(); if (!text) failure = 'No usable reply'; }
         catch (error) {
           if (slot.signal.aborted) {
             this.store.cancel(claim, this.now());
@@ -134,6 +139,13 @@ export class TaskScheduler implements AnnouncementSource {
             return false;
           }
           failure = clean(error instanceof Error ? error.message : 'Failed', 200) || 'Failed';
+        }
+        // Transient (network after wake, timeout): retried after 5/15/30 min; only the last attempt counts as failed.
+        const retries = this.store.get(task.id)?.retry_count ?? 0;
+        if (failure && transientError(failure) && retries < RETRY_MS.length) {
+          this.store.retryLater(claim, failure, this.now() + RETRY_MS[retries], this.now());
+          activity('task_finished', { task: task.id, success: false, retry: retries + 1, duration_ms: this.now() - started });
+          return true;
         }
         const status = failure ? 'failed' : isSilent(text) ? 'silent' : 'ok';
         // A failure is stored as its spoken text (with the pause suggestion from the third failure in a row).

@@ -6,7 +6,7 @@ import { NoSpeechError } from './speech.ts';
 import { activity, observeRequest } from './activity.ts';
 import { root } from './config.ts';
 import { collectStatus, connectGmail, createExtension, createSkill, deleteMemory, deleteResource, memoryStatus, saveMemoryItem, saveMemoryTopic, saveMemorySettings, disconnectGmail, filesStatus, gmailActions, gmailStatus, listResources,
-  readResource, remindersStatus, remoteModels, saveRemoteModel, testRemoteModel, saveFiles, saveGmail, saveReminders, saveVault, undoGmail, unlockVault, vaultStatus, writeResource } from './admin.ts';
+  readResource, heartbeatStatus, saveHeartbeat, remindersStatus, remoteModels, saveRemoteModel, testRemoteModel, saveFiles, saveGmail, saveReminders, saveVault, undoGmail, unlockVault, vaultStatus, writeResource } from './admin.ts';
 import { registerSecretSpeaker, registeredSecretSpeaker, VaultError, vaultService, type SecretSpeaker, type VaultService } from './vault.ts';
 import { fileService, type FileService } from './files.ts';
 import { readPronunciations, savePronunciations } from './pronounce.ts';
@@ -17,6 +17,7 @@ import { homedir } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { TaskScheduler, TaskService, migrateReminders, osascriptNotify, registerTasks, registeredTasks, type Notify } from './tasks.ts';
 import { TaskStore } from './task-store.ts';
+import { CONVERSATION_MS, Heartbeat, appendChecklist, heartbeatAddRequest, mailCheck, readChecklist, saveChecklist, tasksCheck, type PreCheck } from './heartbeat.ts';
 import { AnnouncementQueue, ProactiveGate, classifyAnswer, updatesSource, type AnnouncementSource } from './announce.ts';
 import { fauxAssistantMessage } from '@earendil-works/pi-ai';
 import { registerUpdates, UpdateManager, type Summarize } from './updates.ts';
@@ -26,7 +27,9 @@ import { PiChat, Steering, type Chat } from './providers.ts';
 import { osascriptTransport, type RemindersTransport } from '../.pi/extensions/apple-reminders/client.ts';
 
 /** Assistant tasks wiring (`data/tasks.sqlite`); omitted = no scheduler (tests). `transport`: Reminders, only for the one-time migration. */
-export type TaskOptions = { store?: TaskStore; dbFile?: string; transport?: RemindersTransport; notify?: Notify; firstMs?: number; everyMs?: number; now?: () => number };
+export type TaskOptions = { store?: TaskStore; dbFile?: string; transport?: RemindersTransport; notify?: Notify; firstMs?: number; everyMs?: number; now?: () => number;
+  /** Heartbeat checklist (default `data/heartbeat.md`), its pre-checks (default Gmail + tasks) and tick timing. */
+  heartbeatFile?: string; heartbeatChecks?: PreCheck[]; heartbeatFirstMs?: number; heartbeatEveryMs?: number };
 /** Component updates wiring; omitted = no updater (tests). */
 export type UpdateOptions = { manager?: UpdateManager; stateFile: string | null; notify?: Notify; firstMs?: number; everyMs?: number };
 
@@ -77,6 +80,8 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
   let task: ReturnType<typeof beginRequestSlot> | undefined;
   // Local/remote choice for tasks follows the ring's mode (last chat or /mode).
   let offlineMode = false;
+  // A heartbeat checklist item waiting for the user's yes (next turn).
+  let heartbeatAdd: string | undefined;
   const transcriptions = new Set<AbortController>();
   const beginRequest = beginRequestSlot;
   // Background file indexing waits while the user's request or a task runs.
@@ -98,7 +103,9 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
     }
   };
   const taskStore = tasks ? tasks.store ?? new TaskStore(tasks.dbFile ?? path.join(root, 'data/tasks.sqlite')) : undefined;
-  let taskService: TaskService | undefined;
+  let taskService: TaskService | undefined, heartbeat: Heartbeat | undefined;
+  // Set below; the heartbeat asks it whether the user is in a conversation.
+  let gate: ProactiveGate | undefined;
   if (tasks && taskStore) {
     const transport = tasks.transport ?? osascriptTransport();
     const now = tasks.now ?? (() => Date.now());
@@ -109,6 +116,13 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
     registerTasks(taskService);
     lifecycle.addEventListener('abort', () => { if (registeredTasks() === taskService) registerTasks(undefined); }, { once: true });
     scheduler.start(lifecycle, tasks.firstMs, tasks.everyMs);
+    // Heartbeat (off by default): own switch, same lane, provider rule and read-only unattended run as tasks.
+    heartbeat = new Heartbeat({ config, store: taskStore, lane, now, file: tasks.heartbeatFile ?? path.join(root, 'data/heartbeat.md'),
+      example: path.join(root, 'heartbeat.example.md'),
+      checks: tasks.heartbeatChecks ?? [mailCheck(gmail, () => config.gmail_urgent_senders), tasksCheck(taskStore)],
+      conversation: () => Boolean(active) || now() - (gate?.lastUser ?? Number.NEGATIVE_INFINITY) < CONVERSATION_MS,
+      run: (prompt, intentText, signal) => app.ask(prompt, offlineMode, signal, { automated: true, intentText }) });
+    heartbeat.start(lifecycle, tasks.heartbeatFirstMs, tasks.heartbeatEveryMs);
   }
   // Release-note summaries: the local model in the request lane (never during a request); remote only if local is unavailable.
   const plain = (chat: Chat, local: boolean): Chat => chat instanceof PiChat ? new PiChat(chat.models, config, local) : chat;
@@ -172,9 +186,10 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
     notify: updateOptions.notify ?? osascriptNotify, activityFile, checkHour: () => config.update_check_hour, llamaModel: config.llama_model }) : undefined;
   const announceSources: AnnouncementSource[] = [];
   if (taskService?.scheduler) announceSources.push(taskService.scheduler);
+  if (heartbeat) announceSources.push(heartbeat);
   if (updates) announceSources.push(updatesSource(updates));
   const announcements = new AnnouncementQueue(announceSources);
-  const gate = new ProactiveGate(announcements, { now: tasks?.now, chime: () => config.announce_chime, snoozeMs: () => config.announce_snooze_minutes * 60_000 });
+  gate = new ProactiveGate(announcements, { now: tasks?.now, chime: () => config.announce_chime, snoozeMs: () => config.announce_snooze_minutes * 60_000 });
   /** Accepted messages join the conversation, so a follow-up ("evet" to an update offer) continues it. */
   const remember = (user: string, text: string) => app.history.push({ role: 'user', content: user, timestamp: Date.now() },
     { ...fauxAssistantMessage(text), provider: 'announce', model: 'announce' });
@@ -277,6 +292,16 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
           }
           return reply(404, { error: 'Not found' });
         }
+        if (request.url?.startsWith('/admin/heartbeat')) {
+          if (!heartbeat) return reply(404, { error: 'Heartbeat is off' });
+          if (request.url === '/admin/heartbeat/save') {
+            const value = data as { content?: unknown };
+            if (value.content !== undefined) await saveChecklist(heartbeat.file, value.content);
+            const settings = Object.fromEntries(Object.entries(data).filter(([key]) => key !== 'content'));
+            if (Object.keys(settings).length) await saveHeartbeat(config, configPath, settings);
+          } else if (request.url !== '/admin/heartbeat') return reply(404, { error: 'Not found' });
+          return reply(200, { ...heartbeatStatus(config), content: await readChecklist(heartbeat.file, heartbeat.example), last_run: heartbeat.state().last_run || null });
+        }
         if (request.url?.startsWith('/admin/memory')) {
           if (!memory) return reply(404, { error: 'Memory is off' });
           if (request.url === '/admin/memory') return reply(200, await memoryStatus(config, memory));
@@ -365,6 +390,16 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
       let text = input.text;
       if (!active && !unloading) {
         gate.userActivity();
+        // "heartbeat'e ekle: …": said back, appended only after the next reply agrees (deterministic, no model).
+        if (heartbeat) {
+          const waiting = heartbeatAdd; heartbeatAdd = undefined;
+          const item = heartbeatAddRequest(text), answer = waiting && !item ? classifyAnswer(text) : undefined;
+          let said: string | undefined;
+          if (item) { heartbeatAdd = item; said = `Heartbeat listesine “${item}” ekleyeyim mi?` + (config.heartbeat_enabled ? '' : ' (Heartbeat şu an kapalı.)'); }
+          else if (waiting && answer === 'yes') { await appendChecklist(heartbeat.file, heartbeat.example, waiting); said = 'Heartbeat listesine eklendi.'; }
+          else if (waiting && answer === 'no') said = 'Tamam, eklemedim.';
+          if (said) { remember(text, said); return reply(200, { text: said, provider: 'Ayhan', fallback_reason: '' }); }
+        }
         // Answer to a chime/question: "evet" says the waiting messages, "sonra" snoozes them; anything else is a normal request.
         const answer = gate.awaiting ? classifyAnswer(text) : undefined;
         gate.awaiting = false;

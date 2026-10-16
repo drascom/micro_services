@@ -40,6 +40,7 @@ const scalars = {
   bitwarden_bin: 'runtime/bitwarden/node_modules/@bitwarden/cli/build/bw.js',
   update_check_hour: 9,
   announce_chime: true, announce_snooze_minutes: 30,
+  heartbeat_enabled: false, heartbeat_interval_minutes: 30, heartbeat_start_hour: 8, heartbeat_end_hour: 23,
   memory_enabled: true, memory_extract: true, memory_chars: 1900, memory_extract_every: 6, memory_idle_ms: 120000,
   file_max_mb: 100, file_max_chunks: 20, file_index_interval_ms: 1800000, file_organize_threshold: 0.75,
   system_prompt: 'Concise personal assistant. Reply in the language of the latest message (Turkish or English); keep technical terms. No emoji. ' +
@@ -171,9 +172,14 @@ export async function loadConfig(configPath = path.join(root, 'config.json')): P
   validateVaultSettings(config);
   if (config.file_organize_threshold >= 1) throw Error('file_organize_threshold must be between 0 and 1');
   for (const [key, value] of Object.entries(config))
-    if (typeof value === 'number' && !key.startsWith('min_') && key !== 'local_reasoning_budget' && key !== 'update_check_hour' && value <= 0) throw Error(`${key} must be positive`);
+    if (typeof value === 'number' && !key.startsWith('min_') && key !== 'local_reasoning_budget' && key !== 'update_check_hour' && key !== 'heartbeat_start_hour' && value <= 0) throw Error(`${key} must be positive`);
   if (!Number.isInteger(config.update_check_hour) || config.update_check_hour < 0 || config.update_check_hour > 23)
     throw Error('update_check_hour must be an integer between 0 and 23');
+  if (!Number.isInteger(config.heartbeat_interval_minutes) || config.heartbeat_interval_minutes < 15 || config.heartbeat_interval_minutes > 1440)
+    throw Error('heartbeat_interval_minutes must be an integer between 15 and 1440');
+  if (!Number.isInteger(config.heartbeat_start_hour) || config.heartbeat_start_hour < 0 || config.heartbeat_start_hour > 23 ||
+      !Number.isInteger(config.heartbeat_end_hour) || config.heartbeat_end_hour < 1 || config.heartbeat_end_hour > 24 || config.heartbeat_start_hour === config.heartbeat_end_hour)
+    throw Error('heartbeat hours: start 0-23, end 1-24, not equal');
   if (!Number.isInteger(config.announce_snooze_minutes) || config.announce_snooze_minutes > 1440) throw Error('announce_snooze_minutes must be an integer between 1 and 1440');
   if (!Number.isInteger(config.memory_extract_every) || config.memory_extract_every > 50) throw Error('memory_extract_every must be an integer between 1 and 50');
   if (config.memory_chars > 4000) throw Error('memory_chars must be between 1 and 4000');

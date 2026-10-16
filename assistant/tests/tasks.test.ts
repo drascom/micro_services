@@ -13,7 +13,7 @@ import { makeServer } from '../src/server.ts';
 import { createHarnessSession } from '../src/harness.ts';
 import { describe, firstRun, nextCron, nextRun, parseSchedule, when, type Schedule } from '../src/schedule.ts';
 import { TaskStore } from '../src/task-store.ts';
-import { FAILURE_NUDGE, MIGRATED_KEY, TaskScheduler, TaskService, migrateReminders, registeredTasks, runPrompt, taskRequest, type TaskLane, type TaskRun } from '../src/tasks.ts';
+import { FAILURE_NUDGE, MIGRATED_KEY, RETRY_MS, transientError, TaskScheduler, TaskService, migrateReminders, registeredTasks, runPrompt, taskRequest, type TaskLane, type TaskRun } from '../src/tasks.ts';
 import { AnnouncementQueue, updatesSource, type Announcement } from '../src/announce.ts';
 import { assistantTasks } from '../.pi/extensions/tasks/index.ts';
 import { ConfirmationStore } from '../.pi/extensions/apple-reminders/confirmations.ts';
@@ -133,6 +133,64 @@ test('[SILENT]: nothing delivered; errors always delivered; third failure in a r
   assert.ok(!said[0].text.includes('duraklatayım') && said[2].text.includes('3 kez üst üste başarısız oldu; duraklatayım mı?'));
   fail = false; reply = 'Yeni önemli mail yok ama bir fatura geldi.';
   f.set(T0 + 10 * HOUR); await f.tick(); assert.equal(f.store.get(task.id)!.failure_streak, 0);
+});
+
+test('retries: transient failures run again after 5/15/30 min (not delivered), then fail; other errors fail at once', async () => {
+  let fail: string | undefined = 'fetch failed';
+  const f = fixture(async () => { if (fail) throw Error(fail); return { text: 'Kur 34,10.' }; });
+  const task = f.add('her gün 09:00', 'Kura bak', 'Kur');
+  let t = at(17, 9); f.set(t); assert.equal(await f.tick(), 1);
+  for (const [i, wait] of RETRY_MS.entries()) {
+    assert.equal(f.store.get(task.id)!.retry_at, t + wait, `retry ${i + 1}`);
+    assert.deepEqual(f.notes, []); assert.deepEqual(await f.scheduler.announcements(), []);
+    f.set(t + wait - 1); assert.equal(await f.tick(), 0);
+    t += wait; f.set(t); assert.equal(await f.tick(), 1);
+  }
+  // Fourth failure (after three retries): failed, delivered, one ledger row (attempt 4), schedule unchanged.
+  assert.deepEqual(f.store.runs(task.id).map(r => [r.status, r.attempt]), [['failed', 4]]);
+  assert.equal(f.store.get(task.id)!.failure_streak, 1); assert.equal(f.store.get(task.id)!.retry_at, null);
+  assert.equal(f.store.get(task.id)!.next_run_at, at(18, 9)); assert.equal(f.notes.length, 1);
+  // Network back on the first retry: the result is delivered normally.
+  f.set(at(18, 9)); assert.equal(await f.tick(), 1); fail = undefined;
+  f.set(at(18, 9, 5)); assert.equal(await f.tick(), 1);
+  assert.deepEqual(f.store.runs(task.id, 1).map(r => [r.status, r.attempt]), [['ok', 2]]); assert.equal(f.store.get(task.id)!.failure_streak, 0);
+  // Not transient: failed at once.
+  fail = 'No usable reply'; f.set(at(19, 9)); await f.tick(); assert.equal(f.store.runs(task.id, 1)[0].status, 'failed');
+  for (const m of ['fetch failed', 'connect ETIMEDOUT 1.2.3.4:443', 'getaddrinfo ENOTFOUND api.x', 'The operation was aborted due to timeout', '503 Service Unavailable'])
+    assert.ok(transientError(m), m);
+  for (const m of ['Remote unavailable', 'No usable reply', 'Invalid API key']) assert.ok(!transientError(m), m);
+});
+
+test('retries: a user request during a retry keeps it waiting; a paused task does not retry', async () => {
+  let controller = new AbortController(), calls = 0;
+  const store = new TaskStore(':memory:');
+  let now = T0;
+  const lane: TaskLane = { acquire: async () => { controller = new AbortController(); return { signal: controller.signal, release: () => {} }; } };
+  const scheduler = new TaskScheduler({ config: { ...defaults, tasks_enabled: true }, store, lane, activityFile: null, now: () => now, notify: async () => {},
+    run: async () => { calls++; if (calls === 1) throw Error('fetch failed'); if (calls === 2) { controller.abort(); throw Error('aborted'); } return { text: 'ok' }; } });
+  const service = new TaskService(store, scheduler, () => now);
+  const task = service.create(service.preview({ prompt: 'x', schedule: 'in 30m' }));
+  now = T0 + 30 * MIN; assert.equal(await scheduler.tick(new AbortController().signal), 1);
+  now += RETRY_MS[0];
+  // Retry cancelled (call 2) → waits again and runs right after (call 3).
+  assert.equal(await scheduler.tick(new AbortController().signal), 1);
+  assert.deepEqual(store.runs(task.id).map(r => r.status), ['ok']); assert.equal(calls, 3);
+  const other = service.create(service.preview({ prompt: 'y', schedule: 'every 2h' }));
+  calls = 0; now += 2 * HOUR; await scheduler.tick(new AbortController().signal);
+  assert.ok(store.get(other.id)!.retry_at); service.pause(store.get(other.id)!);
+  now += HOUR; assert.equal(await scheduler.tick(new AbortController().signal), 0);
+});
+
+test('previous result: a run sees the last result (≤300 chars) to tell only what changed', async () => {
+  const prompts: string[] = [];
+  const f = fixture(async prompt => { prompts.push(prompt); return { text: prompts.length === 2 ? '[SILENT]' : 'Kur ' + 'x'.repeat(400) }; });
+  f.add('every 2h', 'Kura bak', 'Kur');
+  f.set(T0 + 2 * HOUR); await f.tick(); f.set(T0 + 4 * HOUR); await f.tick(); f.set(T0 + 6 * HOUR); await f.tick();
+  assert.ok(!prompts[0].includes('Previous result'));
+  const previous = /Previous result \(tell only what changed since; unchanged = \[SILENT\]\): (.*)$/.exec(prompts[1])?.[1] ?? '';
+  assert.ok(previous.startsWith('Kur xxx') && previous.length <= 300, String(previous.length));
+  assert.match(prompts[2], /Previous result .*: Kur xxx/); // a silent run keeps the last real result
+  assert.equal(runPrompt({ prompt: 'a' }, 'b'), runPrompt({ prompt: 'a' }) + '\nPrevious result (tell only what changed since; unchanged = [SILENT]): b');
 });
 
 test('announcements: delivered once, same result deduped for 24 h, priority over the update offer, old ones dropped', async () => {

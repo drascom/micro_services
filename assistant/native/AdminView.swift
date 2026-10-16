@@ -126,6 +126,13 @@ final class AdminModel {
     var memoryMessage = ""
     var tasks = TasksStatus()
     var tasksMessage = ""
+    var heartbeatEnabled = false
+    var heartbeatInterval = 30
+    var heartbeatStart = 8
+    var heartbeatEnd = 23
+    var heartbeatContent = ""
+    var heartbeatOriginal = ""
+    var heartbeatMessage = ""
     var remote = RemoteModels()
     var remoteMessage = ""
     var remoteTesting = false
@@ -458,6 +465,23 @@ final class AdminModel {
         } catch { tasksMessage = error.localizedDescription }
     }
     func loadTasks() async { await tasksCall("admin/tasks") }
+
+    // MARK: Heartbeat (background checklist, off by default)
+    private func heartbeatCall(_ route: String, _ body: [String: Any] = [:]) async {
+        do {
+            let data = try await backend.admin(route, data: try JSONSerialization.data(withJSONObject: body))
+            guard let value = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            if let on = value["enabled"] as? Bool { heartbeatEnabled = on }
+            if let minutes = value["interval_minutes"] as? Int { heartbeatInterval = minutes }
+            if let hour = value["start_hour"] as? Int { heartbeatStart = hour }
+            if let hour = value["end_hour"] as? Int { heartbeatEnd = hour }
+            if let text = value["content"] as? String { heartbeatContent = text; heartbeatOriginal = text }
+            heartbeatMessage = ""
+        } catch { heartbeatMessage = error.localizedDescription }
+    }
+    func loadHeartbeat() async { await heartbeatCall("admin/heartbeat") }
+    func saveHeartbeat(_ body: [String: Any]) async { await heartbeatCall("admin/heartbeat/save", body) }
+    func saveHeartbeatChecklist() async { await heartbeatCall("admin/heartbeat/save", ["content": heartbeatContent]) }
     func taskAction(_ id: Int, _ action: String) async { await tasksCall("admin/tasks/action", ["id": id, "action": action]) }
 
     func checkUpdates() async { await updatesCall("admin/updates/check") }
@@ -706,6 +730,21 @@ private struct TasksTab: View {
                 Toggle("Zil sesi", isOn: Binding(get: { admin.announceChime }, set: { on in Task { await admin.setAnnounce(chime: on) } }))
                 Stepper("Erteleme: \(admin.announceSnooze) dk", value: Binding(get: { admin.announceSnooze }, set: { minutes in Task { await admin.setAnnounce(snooze: minutes) } }), in: 5...240, step: 5)
             }
+            Section("Heartbeat") {
+                Toggle("Arka plan kontrol listesi", isOn: Binding(get: { admin.heartbeatEnabled }, set: { on in Task { await admin.saveHeartbeat(["enabled": on]) } }))
+                Stepper("Aralık: \(admin.heartbeatInterval) dk", value: Binding(get: { admin.heartbeatInterval }, set: { minutes in Task { await admin.saveHeartbeat(["interval_minutes": minutes]) } }), in: 15...240, step: 15)
+                Stepper("Başlangıç: \(admin.heartbeatStart):00", value: Binding(get: { admin.heartbeatStart }, set: { hour in Task { await admin.saveHeartbeat(["start_hour": hour]) } }), in: 0...23)
+                Stepper("Bitiş: \(admin.heartbeatEnd):00", value: Binding(get: { admin.heartbeatEnd }, set: { hour in Task { await admin.saveHeartbeat(["end_hour": hour]) } }), in: 1...24)
+                VStack(alignment: .leading) {
+                    Text("Kontrol listesi").font(.caption).foregroundStyle(.secondary)
+                    TextEditor(text: Binding(get: { admin.heartbeatContent }, set: { admin.heartbeatContent = $0 })).font(.system(.body, design: .monospaced)).frame(minHeight: 80)
+                    HStack {
+                        if !admin.heartbeatMessage.isEmpty { Text(admin.heartbeatMessage).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+                        Spacer()
+                        Button("Kaydet") { Task { await admin.saveHeartbeatChecklist() } }.disabled(admin.heartbeatContent == admin.heartbeatOriginal)
+                    }
+                }
+            }
             Section("Görevler") {
                 ForEach(admin.tasks.tasks) { item in
                     VStack(alignment: .leading, spacing: 4) {
@@ -732,7 +771,7 @@ private struct TasksTab: View {
                 }
             }
         }.formStyle(.grouped)
-        .task { await admin.loadTasks(); await admin.loadReminders() }
+        .task { await admin.loadTasks(); await admin.loadReminders(); await admin.loadHeartbeat() }
         .confirmationDialog(deleting?.name ?? "", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("Sil", role: .destructive) {
                 if let item = deleting { Task { await admin.taskAction(item.id, "delete") } }

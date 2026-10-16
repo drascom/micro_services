@@ -265,6 +265,28 @@ export async function saveReminders(config: Config, configPath: string, value: u
 export const remindersStatus = (config: Config) => ({ enabled: config.reminders_enabled, tasks_enabled: config.tasks_enabled, tasks_list: config.tasks_list,
   announce_chime: config.announce_chime, announce_snooze_minutes: config.announce_snooze_minutes });
 
+/** Heartbeat (Admin Görevler): on/off, interval (15-1440 min) and active hours (start 0-23, end 1-24). Only the fields present are changed. */
+export async function saveHeartbeat(config: Config, configPath: string, value: unknown) {
+  const input = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
+  const change: Partial<Pick<Config, 'heartbeat_enabled' | 'heartbeat_interval_minutes' | 'heartbeat_start_hour' | 'heartbeat_end_hour'>> = {};
+  const int = (key: string, min: number, max: number) => {
+    const n = input[key];
+    if (typeof n !== 'number' || !Number.isInteger(n) || n < min || n > max) throw Error(`${key} must be ${min}-${max}`);
+    return n;
+  };
+  if (input.enabled !== undefined) { if (typeof input.enabled !== 'boolean') throw Error('enabled must be a boolean'); change.heartbeat_enabled = input.enabled; }
+  if (input.interval_minutes !== undefined) change.heartbeat_interval_minutes = int('interval_minutes', 15, 1440);
+  if (input.start_hour !== undefined) change.heartbeat_start_hour = int('start_hour', 0, 23);
+  if (input.end_hour !== undefined) change.heartbeat_end_hour = int('end_hour', 1, 24);
+  if (!Object.keys(change).length) throw Error('Kaydedilecek bir şey yok');
+  if ((change.heartbeat_start_hour ?? config.heartbeat_start_hour) === (change.heartbeat_end_hour ?? config.heartbeat_end_hour)) throw Error('Başlangıç ve bitiş saati aynı olamaz');
+  await updateConfigFile(configPath, settings => { Object.assign(settings, change); });
+  Object.assign(config, change);
+  return heartbeatStatus(config);
+}
+export const heartbeatStatus = (config: Config) => ({ enabled: config.heartbeat_enabled, interval_minutes: config.heartbeat_interval_minutes,
+  start_hour: config.heartbeat_start_hour, end_hour: config.heartbeat_end_hour });
+
 /** Memory tab: both switches and every stored item/summary (local Admin only; never logged). */
 export async function memoryStatus(config: Config, memory: MemoryService) {
   const { items, episodes } = await memory.store.list();
