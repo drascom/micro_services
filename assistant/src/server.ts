@@ -142,12 +142,21 @@ export async function makeServer(config: Config, app: Orchestrator, lifecycle: A
     else if (target === 'ema') await speech.ema?.close();
     else if (target === 'kokoro') await speech.kokoro?.close();
     else if (target === 'app') {
-      if (process.platform !== 'darwin') return 'Ayhan\'ı yeniden başlatın';
+      // Rebuild only; the restart itself is asked of the native app at an idle moment (announce/wait `restart`).
+      if (process.platform !== 'darwin') return;
       const result = await exec(path.join(path.dirname(process.execPath), 'npm'), ['run', 'rebuild-app'], { cwd: root, signal: lifecycle, timeoutMs: 10 * 60_000 });
-      return result.code === 0 ? 'uygulama yeniden derlendi, Ayhan\'ı yeniden başlatın' : 'uygulama derlenemedi (npm run rebuild-app)';
+      if (result.code !== 0) throw Error('npm run rebuild-app failed');
     }
   };
-  const updates = updateOptions ? updateOptions.manager ?? new UpdateManager({ root, stateFile: updateOptions.stateFile, lane, restart, summarize,
+  /** Post-update health of lazily started workers: whisper server health, EMA/Kokoro worker ready handshake; stopped again after. */
+  const probe = async (target: Restart, signal: AbortSignal): Promise<void> => {
+    const speech = app.speech as Partial<Speech>;
+    if (target === 'whisper' && speech.whisper) { await speech.whisper.ensure(signal); await speech.whisper.close(); }
+    else if (target === 'ema' && speech.ema) { await speech.ema.ping(signal); await speech.ema.close(); }
+    else if (target === 'kokoro' && speech.kokoro) { await speech.kokoro.ping(signal); await speech.kokoro.close(); }
+  };
+  const updates = updateOptions ? updateOptions.manager ?? new UpdateManager({ root, stateFile: updateOptions.stateFile, lane, restart, summarize, probe,
+    busy: () => Boolean(active || task || unloading),
     notify: updateOptions.notify ?? osascriptNotify, activityFile, checkHour: () => config.update_check_hour, llamaModel: config.llama_model }) : undefined;
   if (updates && updateOptions) {
     registerUpdates(updates);

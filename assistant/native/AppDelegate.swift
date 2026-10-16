@@ -117,6 +117,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     let data = try await client.admin("announce/wait")
                     guard let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                           let id = value["id"] as? String, let text = value["text"] as? String else { continue }
+                    if value["restart"] as? Bool == true {
+                        // Update restart (the user's yes to the update covers it): wait for an idle ring, then the
+                        // backend confirms nothing runs and the usual restart path (orange ring) takes over.
+                        while self?.model.idleForRestart == false { try await Task.sleep(for: .seconds(1)) }
+                        let reply = try await client.admin("announce/shown", ["id": id])
+                        if (try? JSONSerialization.jsonObject(with: reply) as? [String: Any])?["ok"] as? Bool == true {
+                            LaunchGuard.log("restart: requested by an update")
+                            self?.restart(); return
+                        }
+                        try await Task.sleep(for: .seconds(2)); continue
+                    }
                     var shown = false
                     for _ in 0..<60 {
                         if self?.model.announce(text) == true { shown = true; break }

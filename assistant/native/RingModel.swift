@@ -242,6 +242,8 @@ final class RingModel {
         guard !capturing, phase != .noSpeech, phase != .copied else { return }
         phase = value ?? .idle; status = text
     }
+    /// An update restart may start: nothing runs, records or speaks.
+    var idleForRestart: Bool { ready && phase == .idle && jobs.isEmpty && !capturing && !changingMode }
     /// Proactive message (update offer/result): only at an idle moment, never over a request, recording or speech.
     /// Shown in the panel without focus and read aloud when enabled; false = not now (the backend offers it again later).
     func announce(_ text: String) -> Bool {

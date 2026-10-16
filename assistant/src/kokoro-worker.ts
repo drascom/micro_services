@@ -19,6 +19,8 @@ export class KokoroWorker {
   stderr = '';
 
   constructor(config: Config) { this.config = config; }
+  /** Starts the worker (if needed) and waits for its ready handshake; used to verify an update. */
+  async ping(signal: AbortSignal): Promise<void> { await this.start(signal); }
 
   private async start(signal: AbortSignal): Promise<void> {
     if (this.child && this.ready) return this.waitFor(this.ready, signal);

@@ -51,9 +51,11 @@ struct UpdateItem: Decodable, Identifiable {
     let summary: String?; let breaking: Bool?; let security: Bool?; let affects_our_flags: Bool?; let size_mb: Int?
 }
 struct UpdateRollback: Decodable, Identifiable { let id: String; let name: String; let version: String }
+struct UpdateRunItem: Decodable, Identifiable { let id: String; let name: String; let from: String; let to: String; let status: String; let steps: [String]; let reason: String? }
+struct UpdateRun: Decodable { let id: String; let phase: String; let components: [UpdateRunItem] }
 struct UpdatesStatus: Decodable {
     var last_check: Double? = nil; var last_error = ""; var checking = false; var applying: String? = nil; var queued: [String] = []
-    var manifest_changed = false; var updates: [UpdateItem] = []; var rollback: [UpdateRollback] = []
+    var manifest_changed = false; var updates: [UpdateItem] = []; var rollback: [UpdateRollback] = []; var last_run: UpdateRun? = nil
 }
 struct ActivityRow: Identifiable { let id: Int; let time: String; let request: String; let event: String; let details: String }
 
@@ -619,6 +621,18 @@ private struct UpdatesTab: View {
                             Button("Atla") { Task { await admin.skipUpdate(item) } }.disabled(item.status == "skipped")
                         }
                         if let summary = item.summary { Text(summary).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
+                    }
+                }
+            }
+            if let run = admin.updates.last_run, !run.components.isEmpty {
+                Section("Son çalışma") {
+                    ForEach(run.components) { item in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack { Text(item.name); Text("\(item.from) → \(item.to)").monospaced(); Spacer()
+                                Text(item.status).font(.caption).foregroundStyle(item.status == "verified" ? Color.secondary : Color.orange) }
+                            Text(item.steps.joined(separator: " › ")).font(.caption).monospaced().foregroundStyle(.secondary).textSelection(.enabled)
+                            if let reason = item.reason { Text(reason).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
+                        }
                     }
                 }
             }

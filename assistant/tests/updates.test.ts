@@ -320,14 +320,14 @@ test('apply waits for a running request and is retried when a request interrupts
     // A user request arriving mid-apply cancels it (nothing swapped), and it is queued again.
     const g = await fixture({ lane: { async acquire(outer) {
       const controller = new AbortController(); slots.push(controller);
-      if (slots.length === 2) controller.abort(); // first attempt: interrupted
+      if (slots.length === 3) controller.abort(); // first attempt: interrupted (slots 1-2: f's apply + finish)
       return { signal: AbortSignal.any([outer, controller.signal]), release: () => {} };
     } } });
     try {
       await g.manager.check(signal);
       g.manager.startApply(['tool']); await g.manager.idle();
       assert.equal(await g.version(), '1.1.0', 'retried after the request');
-      assert.equal(slots.length, 3);
+      assert.equal(slots.length, 5, 'f: apply + finish; g: interrupted, retried, finish');
     } finally { await g.cleanup(); }
   } finally { await f.cleanup(); }
 });

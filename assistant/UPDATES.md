@@ -38,12 +38,28 @@ interrupts it, nothing is swapped, it is retried after the request up to 3 times
 2. smoke test (llama.cpp: also tok/s of old vs new on a temp port; more than 10% slower fails),
 3. atomic swap; previous kept as `<path>.prev` (venv paths relocated; requirements file re-frozen),
 4. `components.json` pinned version updated (no git command; Admin shows "components.json değişti, commit edilmedi"),
-5. only the affected process restarts (llama/embedding, whisper, EMA, Kokoro: lazily on next use). npm deps:
-   `npm run check` + `npm test` (failure restores package files + `npm ci`), then `npm run rebuild-app`; restart Ayhan.
+5. after the batch: each affected process restarts once (llama/embedding, whisper, EMA, Kokoro: lazily on next use)
+   and is verified. npm deps (`npm run check` + `npm test` in the smoke step): one `npm run rebuild-app` for the batch,
+   then the backend asks the app to restart (announce `restart`) once nothing runs, records or speaks; the user's
+   yes to the update covers it (orange ring, existing restart path).
+6. verification (after the restart): llama health + short completion tok/s, whisper health, EMA/Kokoro worker
+   ping, bw `--version`, npm deps import self-check; fail → automatic rollback from `.prev` (+ at most one more
+   restart per run), then said at the next idle moment ("typebox 1.4.0 kuruldu, yeniden başladım, sorun yok." /
+   "X geri alındı: <sebep>").
+
+## Journal and recovery
+`data/updates/journal.json` (tmp + fsync + rename): one run per batch, per component
+`staging → staged → smoke_ok → swapping → swapped → manifest_written → (npm: rebuilt) → restart_pending → verifying →
+verified | rolled_back | failed(reason)`, written before and after each step. On backend start (before any offer):
+interrupted before the swap → staging removed (npm: package files restored), failed(interrupted); mid-swap → old copy
+put back; swapped but manifest not written → finished, or rolled back when the live copy doesn't match; after that →
+verified as above. Two crashes during verification count as a failure. Recovery is idempotent; a corrupt journal is
+moved to `journal.corrupt.json` and staging leftovers are swept.
 
 Failure: staging removed, live version untouched, result announced. Rollback (Admin or tool, with token) swaps
 live and `.prev`, so it can be undone too. Models are never offered unless their channel is changed; Admin asks
 with the download size first. Activity log: `update_*` events with component ids and versions only.
 
 ## Admin → Güncellemeler
-Last check, "Şimdi kontrol et", per update: current → new, summary, flags, Güncelle / Atla; Geri al list.
+Last check, "Şimdi kontrol et", per update: current → new, summary, flags, Güncelle / Atla; Geri al list;
+"Son çalışma": the last run's steps per component.
