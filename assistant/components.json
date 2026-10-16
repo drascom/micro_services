@@ -86,7 +86,7 @@
       "id": "bitwarden-cli",
       "name": "Bitwarden CLI (bw)",
       "kind": "npm-runtime",
-      "version": "2026.9.1",
+      "version": "2026.10.0",
       "source": {
         "type": "npm",
         "package": "@bitwarden/cli",
