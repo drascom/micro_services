@@ -3,7 +3,7 @@
 ### One friendly dashboard for your whole smart home.
 
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-2f6f57)](https://nodejs.org/)
-[![Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-2f6f57)](LICENSE)
+[![Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-2f6f57)](../LICENSE)
 
 Villa Bridge brings Zigbee devices, Matter systems and Home Assistant into one
 clear, mobile-first control panel. It hides protocol names, MQTT topics and
@@ -19,11 +19,11 @@ expert.
 The same dashboard adapts from a full desktop control centre to a compact,
 touch-friendly mobile view.
 
-![Villa Bridge desktop dashboard](docs/images/villa-bridge-desktop.jpg)
+![Villa Bridge desktop dashboard](images/villa-bridge-desktop.jpg)
 
 <p align="center">
   <img
-    src="docs/images/villa-bridge-mobile-tr.jpg"
+    src="images/villa-bridge-mobile-tr.jpg"
     alt="Villa Bridge Turkish mobile dashboard"
     width="390"
   >
@@ -32,12 +32,12 @@ touch-friendly mobile view.
 > **Android alpha available:** the native tablet APK has been validated on a
 > Nokia T10 as a standalone host for the dashboard, embedded local MQTT, direct
 > TCP Zigbee core, and Matterbridge/Matter. It does not require a Raspberry Pi.
-> See the [Android alpha guide](apps/android/README.md) for its tested scope,
+> See the [Android alpha guide](../apps/android/README.md) for its tested scope,
 > installation steps, and current limitations.
 >
 > **Linux/Pi alpha:** Debian 12 and 64-bit Raspberry Pi hosts use the same
 > core and standalone runtime under `systemd`. See the
-> [Linux and Raspberry Pi guide](apps/linux/README.md).
+> [Linux and Raspberry Pi guide](../apps/linux/README.md).
 
 ## What makes it useful
 
@@ -126,9 +126,9 @@ own configuration, including a Zigbee network key that is unique to your
 installation, and Villa Bridge connects to no coordinator until you enter the
 coordinator address in the wizard. Full details, including how to join an
 **existing** Zigbee network instead of forming a new one, are in the
-[Linux and Raspberry Pi guide](apps/linux/README.md). On an Android tablet the
+[Linux and Raspberry Pi guide](../apps/linux/README.md). On an Android tablet the
 same setup happens entirely in the app; see the
-[Android alpha guide](apps/android/README.md).
+[Android alpha guide](../apps/android/README.md).
 
 Home Assistant users can open **Connections**, copy the displayed MQTT details
 and enable discovery when ready. Discovery is off by default.
@@ -185,13 +185,13 @@ sleep restrictions may pause background work. On Android the coordinator must
 also be reached over the network (SLZB or another Zigbee-over-IP adapter) — USB
 coordinator sticks are supported only on the Linux/Pi installation. If you want
 a wall tablet locked to the dashboard, read the kiosk notes in the
-[Android alpha guide](apps/android/README.md) before setting the tablet up:
+[Android alpha guide](../apps/android/README.md) before setting the tablet up:
 true kiosk mode has to be arranged on a factory-fresh device.
 
 ## Contributing
 
 Ideas, device reports and pull requests are welcome. Read
-[AGENTS.md](AGENTS.md), run `npm test`, and include screenshots for visible UI
+[AGENTS.md](../AGENTS.md), run `npm test`, and include screenshots for visible UI
 changes. Please never commit network keys, MQTT credentials or access tokens.
 
-Licensed under the [Apache License 2.0](LICENSE).
+Licensed under the [Apache License 2.0](../LICENSE).

@@ -1,25 +1,81 @@
-# AGENTS.md
+> Branch `villa-bridge` of `drascom/micro_services` holds only this project, at the branch root; other projects live on their own branches and nothing is merged into `main`.
+> Local checkout: `~/Documents/work/micro_services/villa-bridge/` (git worktree). Keep the root README in English with the headings Brief Introduction and Purpose, Quick Install, Developing Mode, Source Citations.
 
-Repository-wide guidance for coding agents working in `drascom/micro_services`.
+# Repository Guidelines
 
-## Repository model
+## Project Structure & Module Organization
 
-- `main` is the repository index and shared-management branch; it does not host project implementation work.
-- Each project has one dedicated branch named for that project (for example, `scan`, `diziflix`, `assistant`, `inet-viewer`, `villa-bridge`, or `cloudstream-mac`). Keep that project's implementation and project-specific documentation on its branch.
-- Do not combine project branches or move project implementation into `main` unless the user explicitly asks.
-- Before editing, verify the current branch and working tree. Preserve unrelated changes and do not overwrite work in progress.
+Application code lives in `src/`. `index.ts` defines the HTTP API,
+`direct-zigbee-source.ts` owns direct coordinator access, and `device-store.ts`
+normalizes Zigbee data into UID-based device views. Home Assistant discovery,
+favorites, connection settings, and Matterbridge integration each have focused
+modules. The dependency-free dashboard has no build step and
+is edited directly: markup in `public/index.html`, styles in
+`public/css/panel.css`, logic in `public/js/*.js` (classic `<script src>`, one
+shared scope, load order = the `<script src>` order in `index.html`, with
+`99-bind.js` always last). A new panel file must be added to `index.html` and
+`panelAssetRoutes` in `src/index.ts` together; `scripts/panel-graph.mjs` guards
+that. The panel's look runs on two view systems selected by the `data-sky`
+attribute on the root element: `fixed` (Light · Dark · System — flat ground, no
+sky animation) and `live` (the "by the sun" mode — phased sky gradient, sun and
+moon on a rotating arm, card ink derived from the time of day). `data-theme`
+stays on its own axis, and every surface is written through one glass token
+family (`--glass-*`), so never hard-code colors into individual rules.
+Deployment units live with their host adapter (`apps/linux/systemd/`); safe
+defaults are in `config/default.yaml`.
 
-## README requirements
+The brain is shared: `src/`, `public/` and `apps/runtime/`. `apps/android/` and
+`apps/linux/` carry host-specific launching, packaging and lifecycle code only.
+No capability a user can reach may live in a host adapter — if it does, the two
+hosts fork and the feature silently exists on one of them. Anything a host
+"prepares" (configuration, generated keys, seeded files) belongs in
+`apps/runtime/first-run.cjs`, which both hosts run; the host passes `--data-dir`
+and asks `/api/android/diagnostics` for the result. `scripts/check-host-adapters.mjs`
+(part of `npm run check`) enforces the mechanically checkable part of this:
+unknown runtime flags, shared config/state file names, device-model and home
+protocol identifiers, and Android JS-bridge methods with no consumer in shared
+code. It deliberately does not scan for domain words in general — user-visible
+strings like "Connecting to the Zigbee coordinator" are legitimate in a host
+splash screen, and such a rule would only produce noise.
 
-- The root `README.md` on `main` is only the repository homepage: maintain a concise project inventory table with each project's name, a short description, and a direct link to that project's README on its branch.
-- The root `README.md` on a project branch must describe only that branch's project, and must be written in English.
-- Project README sections must appear in this order, using these headings: `Brief Introduction and Purpose`, `Quick Install`, `Developing Mode`, and `Source Citations`. Keep instructions specific to that project and cite verifiable sources; do not invent commands, dependencies, or citations.
-- When adding or renaming a project, update the `main` inventory and its branch README. Keep shared root management files consistent across project branches when those files are intentionally changed.
+## Build, Check, and Development Commands
 
-## Project changes
+- `npm install` installs Node.js dependencies.
+- `npm run dev` starts the TypeScript server in watch mode.
+- `npm run build` compiles `src/` into `dist/`.
+- `npm run check` runs the structural gate (`scripts/check-graph.mjs`).
+- `npm test` runs build then check.
+- `npm start` runs the compiled production server.
 
-- Check the target branch before making changes; never change another project's branch as a side effect of work on the current project.
-- Keep project dependencies, configuration, and deployment instructions isolated to that project's branch and directory.
-- Store secrets only in ignored local environment files; document required variables in `.env.example` and never commit credentials.
-- Use each project's existing environment and test commands. Prefer `uv` over `pip` for Python projects when available.
-- Update the project's root README when install, development, or source details change, then verify commands and links against the branch contents.
+Use Node.js 22 or newer. Run `npm test` before publishing changes.
+
+## Coding Style & Naming Conventions
+
+Use TypeScript with two-space indentation, semicolons, and ESM imports ending
+in `.js`. Prefer small modules with explicit interfaces. Functions and
+variables use `camelCase`; classes and interfaces use `PascalCase`. All
+low-level device operations must use the immutable IEEE UID, never a friendly
+name.
+
+## Verification Guidelines
+
+There is no unit-test suite; the `src/*.test.ts` and `apps/runtime/*.test.cjs`
+files were deliberately removed. Verification is `npm test` (a clean `tsc`
+build plus `npm run check`, the panel and runtime module-graph consistency
+gate). Do not add test files back unless asked. The one requested exception is
+`test/failover.test.mjs` (`npm run failover:test`): pure failover policy, replication and a
+virtual-clock two-node simulation of the ownership handshake. Nothing run for verification
+may toggle physical devices or require a live coordinator.
+
+## Commit & Pull Request Guidelines
+
+Use short imperative commit subjects, such as `Add Home Assistant discovery`.
+Pull requests should explain behavior changes, affected protocols, validation
+performed, and any restart or migration requirement. Include screenshots for
+material dashboard changes.
+
+## Security & Configuration
+
+Never commit MQTT passwords, Home Assistant tokens, Zigbee network keys,
+runtime favorites, or backup files. Keep `config/default.yaml` generic and use
+environment overrides or deployment-local configuration for secrets.
