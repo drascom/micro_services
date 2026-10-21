@@ -23,3 +23,23 @@
 deepseek-harness/
 dsh-app/
 .assistant-archive/
+
+# --- project ---
+config.json
+.env
+env.txt
+node_modules/
+models/
+runtime/
+data/
+.DS_Store
+PersonalAssistant.app/
+
+.pi/agent/
+.venv/
+experiments/
+config.json.lock
+instructions.md
+
+# Google OAuth client secret (local only)
+client_secret_*.json

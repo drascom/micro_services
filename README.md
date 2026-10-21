@@ -2,14 +2,13 @@
 
 ## Brief Introduction and Purpose
 
-A local macOS personal assistant with a SwiftUI desktop interface, a TypeScript/Pi backend, speech input and output, and local-model fallback. This branch contains the assistant project; its detailed operating guide is in [`assistant/README.md`](assistant/README.md).
+A local macOS personal assistant with a SwiftUI desktop interface, a TypeScript/Pi backend, speech input and output, and local-model fallback. This branch contains the assistant project; its detailed operating guide is in [`docs/GUIDE.md`](docs/GUIDE.md).
 
 ## Quick Install
 
 From the repository root on the `assistant` branch:
 
 ```bash
-cd assistant
 scripts/setup.sh
 ```
 
@@ -20,7 +19,6 @@ The setup script installs the project's declared prerequisites and components. R
 From the repository root:
 
 ```bash
-cd assistant
 npm run check
 npm test
 ./run.sh serve
@@ -30,6 +28,6 @@ See the detailed project guide for configuration, native-app workflows, and addi
 
 ## Source Citations
 
-- [Detailed project guide](assistant/README.md)
-- [Package manifest](assistant/package.json)
-- [Declared component sources and versions](assistant/components.json)
+- [Detailed project guide](docs/GUIDE.md)
+- [Package manifest](package.json)
+- [Declared component sources and versions](components.json)

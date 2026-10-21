@@ -340,7 +340,7 @@ The shortcut and menu-bar icon visibility are saved in native preferences.
 The old `dictate/` and `gemma/` projects are archived under
 `../.assistant-archive/2026-10-01/`. They are not dependencies of this app.
 
-Technical inspection and decisions are in [ARCHITECTURE.md](ARCHITECTURE.md).
+Technical inspection and decisions are in [ARCHITECTURE.md](../ARCHITECTURE.md).
 Official references: [Pi AI](https://github.com/earendil-works/pi/tree/main/packages/ai),
 [ChatGPT plan usage](https://developers.openai.com/siwc/token-sharing-open-source),
 [Jev](https://docs.typesafe.ai/introduction),
@@ -400,7 +400,7 @@ Ayhan lists, searches, summarizes and classifies inbox mail of the Gmail account
 accounts merged newest first, max 25, last 30 days; each row has an `account`; optional `account` = address or a
 unique part; a failing account is listed under `errors`) and `mail_read_message` (plain-text body, max 8,000 chars,
 40,000 per request; attachments never read). At most 3 listings and 5 body reads per request. Changes go only through
-`mail_organize` (below). No mail content is logged. Setup: [GMAIL.md](GMAIL.md); `.pi/permissions.json` has
+`mail_organize` (below). No mail content is logged. Setup: [GMAIL.md](../GMAIL.md); `.pi/permissions.json` has
 `"mail_read": "allow"` (`deny` turns reading off). Old `mail_accounts`/`mail_enabled` settings are ignored and dropped
 on the next Admin save.
 
@@ -408,24 +408,24 @@ on the next Admin save.
 
 Optional `mail_organize` tool: classify new Gmail INBOX mail (urgent/important/later/junk), apply labels after
 next-turn confirmation, move `Gereksiz` to Trash, undo. OAuth Desktop client, tokens in Keychain. Off by default
-(Admin → Ayarlar → Mail → Mail düzenleme). Setup: see [GMAIL.md](GMAIL.md).
+(Admin → Ayarlar → Mail → Mail düzenleme). Setup: see [GMAIL.md](../GMAIL.md).
 
 ### Local files (EmbeddingGemma 2)
 
 Optional `file_search` / `file_read` / `file_organize` tools over an index of `~/Documents` (text, PDF, Office,
 images, audio, video by content) built with a local EmbeddingGemma 2 server. Off by default (Admin → Ayarlar →
-Dosyalar). Works offline. Details: see [FILES.md](FILES.md).
+Dosyalar). Works offline. Details: see [FILES.md](../FILES.md).
 
 ### Memory
 
 "Bunu hatırla / unutma / unut" saves or deletes short memories (`data/memory.sqlite`); short conversation summaries and
-facts are also learned in the background. Remote gets only assistant rules. Admin → Hafıza. Details: see [MEMORY.md](MEMORY.md).
+facts are also learned in the background. Remote gets only assistant rules. Admin → Hafıza. Details: see [MEMORY.md](../MEMORY.md).
 
 ### Bitwarden vault (local model only)
 
 Optional `vault_search` / `vault_copy` / `vault_save` over the user's Vaultwarden (`https://pass.drascom.uk`) via the
 pinned `bw` CLI (`scripts/install-bitwarden.sh`). Off by default; unlock in Admin → Ayarlar → Bitwarden. Tools exist
-only for the local model; secret values never reach the model, logs or history. Details: see [VAULT.md](VAULT.md).
+only for the local model; secret values never reach the model, logs or history. Details: see [VAULT.md](../VAULT.md).
 
 ### Apple Reminders
 
@@ -449,7 +449,7 @@ launched hidden (`open -g -j`), never activated. Works offline.
 Admin → **Görevler** (`tasks_enabled`, default off). Say "görev ekle: her gün 09:00 maillerimi özetle"; Ayhan
 reads the schedule back and saves it after you agree. Tasks run unattended with read-only tools; results come as a
 notification and are spoken at an idle moment (`[SILENT]` = nothing to say). Store `data/tasks.sqlite`.
-Old tasks in the Reminders list are copied once. Details: [TASKS.md](TASKS.md).
+Old tasks in the Reminders list are copied once. Details: [TASKS.md](../TASKS.md).
 
 ## Activity logging
 
@@ -502,4 +502,4 @@ normal search workflow.
 
 ## Full Pi web-access package
 
-Ayhan loads the complete app-local pi-web-access extension. See [WEB-ACCESS.md](WEB-ACCESS.md) for provider settings, tools, test results and features requiring additional credentials or a UI bridge. Global Pi extensions are unchanged.
+Ayhan loads the complete app-local pi-web-access extension. See [WEB-ACCESS.md](../WEB-ACCESS.md) for provider settings, tools, test results and features requiring additional credentials or a UI bridge. Global Pi extensions are unchanged.
