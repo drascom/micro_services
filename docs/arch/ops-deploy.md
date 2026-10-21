@@ -1,6 +1,6 @@
 # Deploy, geri alma, yedek budama, config karar tablosu, sunucu DB sıfırlama
 
-> Bu bölüm CLAUDE.md'den taşındı (2026-10-02). Metin birebir taşınmıştır; kısa harita ve kurallar `diziflix/CLAUDE.md`'dedir.
+> Bu bölüm CLAUDE.md'den taşındı (2026-10-02). Metin birebir taşınmıştır; kısa harita ve kurallar `CLAUDE.md`'dedir.
 
 ## Deploy ve config kararı
 

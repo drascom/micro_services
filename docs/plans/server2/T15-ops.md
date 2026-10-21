@@ -2,7 +2,7 @@
 
 **Bağımlı:** T05, T10 (içerik olarak T06 ve T11 hazırsa onların ayarları da görünür). **Açar:** yok. **Oku:** README §6;
 `inventory/03 §9` (eski `deploy.sh` dersleri: restart öncesi iş kontrolü yok, silme yok, sabit doğrulama listesi);
-`server/install.sh`, `diziflix/deploy.sh` (yalnız okumak için; DEĞİŞTİRİLMEZ), `docs/arch/ops-deploy.md`.
+`server/install.sh`, `deploy.sh` (yalnız okumak için; DEĞİŞTİRİLMEZ), `docs/arch/ops-deploy.md`.
 
 ## Amaç
 Sistemi işletilebilir kılmak: tek bir Ayarlar ekranı, `server2`'ye özel küçük ve güvenli bir deploy betiği, kısa belgeler.
@@ -36,7 +36,7 @@ Bu görev deploy YAPMAZ; yalnız betiği yazar ve `--dry-run` ile sınar.
      migrasyon / yeni admin ekranı nasıl eklenir" (her biri 2-3 satır), tuzaklar.
    - `server2/docs/ARCHITECTURE.md` (<= 200 satır): modül haritası, veri akışı, durum makineleri (iş, aşama, sorun), tablo listesi.
    - `server2/README.md`: kurulum, çalıştırma, `.env` anahtarları.
-   Üst düzey `diziflix/CLAUDE.md` DEĞİŞTİRİLMEZ (orkestratör kesimde günceller).
+   Üst düzey `CLAUDE.md` DEĞİŞTİRİLMEZ (orkestratör kesimde günceller).
 5. `tools/smoke_site.py`: elle deneme için komut satırı aracı: `python -m tools.smoke_site <adres>` -> site oluşturur, aşamaları sırayla
    bekler, her aşamanın durumunu ve özetini terminale basar, `needs_human` olursa kanıtı gösterip çıkar. Gerçek ağ ve gerçek LLM kullanır;
    testlerde ÇALIŞTIRILMAZ, yalnız kullanıcı/orkestratör elle koşar.

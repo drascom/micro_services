@@ -1,6 +1,6 @@
 # Site ekleme (onboarding): resolver, player_page, provider kütüphanesi, sandbox, pi skill, admin Site ekle/Siteler
 
-> Bu bölüm CLAUDE.md'den taşındı (2026-10-02). Metin birebir taşınmıştır; kısa harita ve kurallar `diziflix/CLAUDE.md`'dedir.
+> Bu bölüm CLAUDE.md'den taşındı (2026-10-02). Metin birebir taşınmıştır; kısa harita ve kurallar `CLAUDE.md`'dedir.
 
 ## Genel ilke ve yaml anahtarları
 

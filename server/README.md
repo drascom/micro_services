@@ -17,7 +17,7 @@ or real scraped films) is normalised on the server, never in the client.
 ## Install / run
 
 ```bash
-cd diziflix/server
+cd server
 ./install.sh                       # venv + requirements + fixture + (Linux) systemd
 ```
 

@@ -1,6 +1,6 @@
 # server2: görev seti, ortak sözleşmeler, ilişkiler ağı
 
-Tarih: 2026-10-03. Bu klasör, diziflix'in sıfırdan yazılacak yeni sunucusunun (`diziflix/server2/`) görev tanımlarıdır.
+Tarih: 2026-10-03. Bu klasör, diziflix'in sıfırdan yazılacak yeni sunucusunun (`server2/`) görev tanımlarıdır.
 Kodu yazan: Opus 5.5. Denetleyen: orkestratör (bu belgeyi yazan). Her görev tek dosyadır (`T00`..`T15`); bu README hepsinin ortak
 sözleşmesidir ve **her görevden önce okunur**. Görev dosyası ile README çelişirse README geçerlidir; ikisi de kodla çelişirse dur ve raporla.
 
@@ -12,7 +12,7 @@ Girdi belgeleri (okuma sırası): bu README -> ilgili `Txx` -> görevin "Oku" li
 
 | # | Karar |
 |---|---|
-| K1 | Yeni sistem `diziflix/server2/` klasöründe, sıfırdan; kendi veritabanı, port **8091**. Eski `server/` (8090) yerinde durur, DOKUNULMAZ |
+| K1 | Yeni sistem `server2/` klasöründe, sıfırdan; kendi veritabanı, port **8091**. Eski `server/` (8090) yerinde durur, DOKUNULMAZ |
 | K2 | Mevcut siteler taşınmaz. Sistem boş katalogla başlar; siteleri kullanıcı kendisi ekleyip dener |
 | K3 | **Siteye özel kod yok.** `server2/app` altında hiçbir site adı geçmez. Genel motorun yapamadığı şey "motor boşluğu"dur, genel yetenekle kapanır |
 | K4 | Modüler ayrım: **provider kütüphanesi** = bir video host'unun akışını çözmek (kalite/çözünürlük varyantları, altyazı, ses izi, başlık/Referer gereksinimi, hız ölçümü); ayrı kütüphanedir, hiçbir siteyi bilmez. **Sitenin o provider'ı nasıl çağırdığı** (oynatıcı sayfada nerede, hangi öznitelik/istek/el sıkışmayla provider adresine varılır) siteye özeldir ve site haritasında (`pages.player.resolvers`) yaşar |
@@ -28,7 +28,7 @@ Girdi belgeleri (okuma sırası): bu README -> ilgili `Txx` -> görevin "Oku" li
 
 ## 2. Herkes için kurallar
 
-1. **Yazma alanı:** yalnız `diziflix/server2/**` ve `diziflix/docs/plans/server2/reports/Txx.md`. `server/`, `tizen-client/`, `deploy.sh`,
+1. **Yazma alanı:** yalnız `server2/**` ve `docs/plans/server2/reports/Txx.md`. `server/`, `tizen-client/`, `deploy.sh`,
    `API.md`, `docs/arch*` değiştirilmez. Eski kod **kopyalanır**, import edilmez (`server2` içinde `server/` yolu ya da `sys.path` hilesi yok).
 2. **Kopya kaydı:** eski koddan alınan her dosya/fonksiyon `server2/COPIED.md`'ye yazılır: kaynak `dosya:satır` -> hedef, yapılan değişiklik (tek satır).
 3. **Katman kuralı (ilişkiler ağı §4):** `core` -> hiçbir şey; `control` -> `core`; `api`/`admin` -> `core` + `control`. `core`, `control`'ü

@@ -1,6 +1,6 @@
 # Akışlar: çözümleme önbelleği, akış/HLS vekili, tanı, ses/altyazı izleri
 
-> Bu bölüm CLAUDE.md'den taşındı (2026-10-02). Metin birebir taşınmıştır; kısa harita ve kurallar `diziflix/CLAUDE.md`'dedir.
+> Bu bölüm CLAUDE.md'den taşındı (2026-10-02). Metin birebir taşınmıştır; kısa harita ve kurallar `CLAUDE.md`'dedir.
 
 ## Çözülmüş yük önbelleği
 

@@ -103,7 +103,7 @@ raflarda da ayni konum korunur ve gerekirse ekranin altinda bosluk birakilir.
 `exit()` yerine konsol logu.
 
 ```bash
-cd diziflix/tizen-client
+cd tizen-client
 python3 -m http.server 8091
 # tarayici: http://127.0.0.1:8091/index.html
 ```
@@ -339,7 +339,7 @@ Yeniden uretmek: `Q=1 server/venv/bin/python docs/brand/make_brand.py` (repo kok
 ## Paketleme (.wgt)
 
 ```bash
-cd diziflix/tizen-client
+cd tizen-client
 ./build-wgt.sh          # ../dist/diziflix.wgt uretir (config.xml paket kokunde)
 ```
 

@@ -24,8 +24,8 @@ Ortak dosya çakışmasını önlemek için **`CLAUDE.md`'yi hiçbir worker düz
 ## Ortak kurallar (her worker için geçerli)
 
 1. **Rol:** Sen bir worker'sın. İşi kendin yaparsın, başka ajana devretmezsin.
-2. **Kod tabanı:** `/Users/drascom/Documents/work/micro_services/diziflix` (git kökü bir üst dizindir). Önce
-   `diziflix/CLAUDE.md`'yi oku. Sunucu kodu `server/app/`, testler `server/tests/`.
+2. **Kod tabanı:** `/Users/drascom/Documents/work/micro_services/diziflix` (git kökü). Önce
+   `CLAUDE.md`'yi oku. Sunucu kodu `server/app/`, testler `server/tests/`.
 3. **Scraper config'leri sunucunundur:** `server/app/scraper/configs/yabancidizi.yaml`, `sinemalar.yaml` ve
    bunların `.baseline.json` dosyaları ELLE DEĞİŞTİRİLMEZ. Yeni yaml alanları için gereken örnekler test dosyalarında
    veya test fixture'larında yazılır. Mevcut iki sitenin davranışı **birebir aynı kalmalı** (geriye uyumluluk zorunlu).
