@@ -1,0 +1,173 @@
+#!/bin/bash
+# Villa Bridge server updater (installed as /usr/local/sbin/villa-bridge-update,
+# run by apps/linux/systemd/villa-bridge-update.{service,timer}).
+#
+# Builds origin/main in a protected cache checkout, tests it and swaps it into
+# /opt/villa-bridge. Two failover guards on top of the original updater:
+#  - It only (re)starts villa-bridge.service when the service was running before
+#    the update. A stopped or disabled server stays stopped: starting a server
+#    claims the Zigbee coordinator, and that decision belongs to the operator.
+#  - It never deploys or rolls back to a revision without the failover protocol
+#    (older than FAILOVER_FLOOR). Such a node would connect to the coordinator
+#    while the tablet owns it: two writers corrupt the Zigbee network.
+set -Eeuo pipefail
+
+readonly REPOSITORY_URL="https://github.com/drascom/Villa-Bridge.git"
+readonly BRANCH="main"
+readonly FAILOVER_FLOOR="43e4b43c0a1720a10ad26e53c46295ff1cf3089c"
+readonly CACHE_ROOT="/var/cache/villa-bridge-updater"
+readonly SOURCE_DIR="${CACHE_ROOT}/repo"
+readonly LIVE_DIR="/opt/villa-bridge"
+readonly PREVIOUS_DIR="/opt/villa-bridge.previous"
+readonly FAILED_DIR="/opt/villa-bridge.failed"
+readonly SERVICE="villa-bridge.service"
+
+exec 9>/run/lock/villa-bridge-update.lock
+if ! flock -n 9; then
+  echo "Another Villa Bridge update is already running."
+  exit 0
+fi
+
+next_dir=""
+rollback_needed=0
+was_active=0
+
+log() {
+  printf '[villa-bridge-update] %s\n' "$*"
+}
+
+wait_for_service() {
+  local attempt
+  for attempt in $(seq 1 45); do
+    if systemctl is-active --quiet "$SERVICE" && curl -fsS --max-time 3 http://127.0.0.1:8091/ >/dev/null; then
+      sleep 8
+      systemctl is-active --quiet "$SERVICE" && curl -fsS --max-time 3 http://127.0.0.1:8091/ >/dev/null
+      return
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+# True when the commit contains the failover protocol.
+has_failover() {
+  local commit="$1"
+  [ -n "$commit" ] && git -C "$SOURCE_DIR" merge-base --is-ancestor "$FAILOVER_FLOOR" "$commit" 2>/dev/null
+}
+
+rollback() {
+  set +e
+  log "New version did not become healthy."
+  systemctl stop "$SERVICE"
+  if [ -d "$LIVE_DIR" ]; then
+    rm -rf -- "$FAILED_DIR"
+    mv -- "$LIVE_DIR" "$FAILED_DIR"
+  fi
+  if [ -d "$PREVIOUS_DIR" ]; then
+    local previous_commit
+    previous_commit="$(tr -d '[:space:]' < "$PREVIOUS_DIR/DEPLOYED_COMMIT" 2>/dev/null)"
+    mv -- "$PREVIOUS_DIR" "$LIVE_DIR"
+    if has_failover "$previous_commit"; then
+      log "Restoring the previous version ${previous_commit:0:12}."
+      systemctl start "$SERVICE"
+      wait_for_service
+    else
+      log "Previous version ${previous_commit:0:12} has no failover protocol; leaving the service STOPPED."
+    fi
+  else
+    log "No previous version; leaving the service stopped."
+  fi
+  set -e
+}
+
+on_exit() {
+  local status=$?
+  if [ "$status" -ne 0 ] && [ "$rollback_needed" -eq 1 ]; then
+    rollback
+  fi
+  if [ -n "$next_dir" ] && [ -d "$next_dir" ]; then
+    rm -rf -- "$next_dir"
+  fi
+  exit "$status"
+}
+trap on_exit EXIT INT TERM
+
+if [ "$LIVE_DIR" != "/opt/villa-bridge" ] || [ "$PREVIOUS_DIR" != "/opt/villa-bridge.previous" ]; then
+  log "Refusing to run with unexpected deployment paths."
+  exit 1
+fi
+
+install -d -o root -g root -m 0755 "$CACHE_ROOT"
+if [ ! -d "$SOURCE_DIR/.git" ]; then
+  log "Creating the protected source checkout."
+  rm -rf -- "$SOURCE_DIR"
+  git clone --filter=blob:none --single-branch --branch "$BRANCH" "$REPOSITORY_URL" "$SOURCE_DIR"
+fi
+
+git -C "$SOURCE_DIR" fetch --quiet --prune origin "$BRANCH"
+target_commit="$(git -C "$SOURCE_DIR" rev-parse "origin/${BRANCH}")"
+current_commit="$(tr -d '[:space:]' < "$LIVE_DIR/DEPLOYED_COMMIT" 2>/dev/null || true)"
+
+if [ "$target_commit" = "$current_commit" ]; then
+  log "Already current at ${target_commit:0:12}."
+  exit 0
+fi
+
+if ! has_failover "$target_commit"; then
+  log "Refusing ${target_commit:0:12}: it does not contain the failover protocol (${FAILOVER_FLOOR:0:7})."
+  exit 1
+fi
+
+if systemctl is-active --quiet "$SERVICE"; then
+  was_active=1
+fi
+
+log "Preparing ${target_commit:0:12}; currently ${current_commit:0:12} (service $([ "$was_active" -eq 1 ] && echo running || echo stopped))."
+git -C "$SOURCE_DIR" reset --hard --quiet "origin/${BRANCH}"
+git -C "$SOURCE_DIR" clean -fdx --quiet
+
+(
+  cd "$SOURCE_DIR"
+  npm ci
+  npm test
+  npm --prefix apps/runtime ci --omit=dev
+)
+
+next_dir="$(mktemp -d /opt/.villa-bridge-next.XXXXXX)"
+cp -a "$SOURCE_DIR/." "$next_dir/"
+rm -rf -- "$next_dir/.git"
+if [ -d "$LIVE_DIR/deploy" ] && [ ! -d "$next_dir/deploy" ]; then
+  cp -a "$LIVE_DIR/deploy" "$next_dir/deploy"
+fi
+printf '%s\n' "$target_commit" > "$next_dir/DEPLOYED_COMMIT"
+chown -R villa-bridge:villa-bridge "$next_dir"
+
+if [ "$was_active" -eq 0 ]; then
+  # Stopped or disabled server: update the files only, never start it.
+  rm -rf -- "$PREVIOUS_DIR"
+  if [ -d "$LIVE_DIR" ]; then
+    mv -- "$LIVE_DIR" "$PREVIOUS_DIR"
+  fi
+  mv -- "$next_dir" "$LIVE_DIR"
+  next_dir=""
+  log "Files updated to ${target_commit:0:12}; ${SERVICE} was not running and was NOT started."
+  exit 0
+fi
+
+log "Tests passed; switching the live directory."
+systemctl stop "$SERVICE"
+rm -rf -- "$PREVIOUS_DIR"
+mv -- "$LIVE_DIR" "$PREVIOUS_DIR"
+rollback_needed=1
+mv -- "$next_dir" "$LIVE_DIR"
+next_dir=""
+systemctl start "$SERVICE"
+
+if ! wait_for_service; then
+  log "Health check failed for ${target_commit:0:12}."
+  exit 1
+fi
+
+rollback_needed=0
+rm -rf -- "$FAILED_DIR"
+log "Deployment complete at ${target_commit:0:12}; previous version retained in ${PREVIOUS_DIR}."

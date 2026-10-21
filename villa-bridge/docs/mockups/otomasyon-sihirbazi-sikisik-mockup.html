@@ -1,0 +1,600 @@
+<title>Sihirbaz Sıkışma Ölçümü</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{
+  --paper:#edf0f2;--surface:#fbfcfc;--surface-soft:#f3f5f6;--ink:#17211d;--ink-soft:#46534d;--muted:#66716c;--line:#dde2e4;
+  --forest:#184d3b;--forest-soft:#e6f0eb;--on-forest:#fff;--sun:#e9a23b;--danger:#b83a35;--danger-soft:#f8e9e7;
+  --card-shadow:0 2px 8px rgba(35,45,41,.055);--shadow:0 14px 34px rgba(35,45,41,.10);
+  --page:#e2e7e9;--page-ink:#1d2724;--page-muted:#5d6a65;--page-line:#cfd7d9;--rule:#b9c4c1;
+  --sun-soft:#fbf0dd;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#101514;--surface:#1b2320;--surface-soft:#232d29;--ink:#edf5f0;--ink-soft:#c6d4cd;--muted:#a6b6ad;--line:#33433b;
+    --forest:#71c6a2;--forest-soft:#203d32;--on-forest:#0b1c15;--sun:#f0b65c;--danger:#f07a72;--danger-soft:#40211f;
+    --card-shadow:0 2px 10px rgba(0,0,0,.18);--shadow:0 18px 54px rgba(0,0,0,.34);
+    --page:#0a0e0d;--page-ink:#e6efea;--page-muted:#93a49b;--page-line:#22302b;--rule:#3c4b45;
+    --sun-soft:#33291a;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#101514;--surface:#1b2320;--surface-soft:#232d29;--ink:#edf5f0;--ink-soft:#c6d4cd;--muted:#a6b6ad;--line:#33433b;
+  --forest:#71c6a2;--forest-soft:#203d32;--on-forest:#0b1c15;--sun:#f0b65c;--danger:#f07a72;--danger-soft:#40211f;
+  --card-shadow:0 2px 10px rgba(0,0,0,.18);--shadow:0 18px 54px rgba(0,0,0,.34);
+  --page:#0a0e0d;--page-ink:#e6efea;--page-muted:#93a49b;--page-line:#22302b;--rule:#3c4b45;
+  --sun-soft:#33291a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--page-ink);
+  font:400 15px/1.55 ui-sans-serif,system-ui,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:34px 24px 90px;display:flex;flex-direction:column;gap:30px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+
+/* ——— sayfa başlığı + notlar ——— */
+.intro{display:flex;flex-direction:column;gap:12px;max-width:74ch}
+.intro h1{margin:0;font:700 27px/1.2 ui-sans-serif,system-ui,sans-serif;letter-spacing:-.015em;text-wrap:balance}
+.intro p{margin:0;color:var(--page-muted);font-size:15px}
+.intro b{color:var(--page-ink);font-weight:650}
+.eyebrow{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--page-muted)}
+
+/* ——— sahne çerçevesi: gerçek 1024×640 ——— */
+.stage-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 16px;margin-bottom:10px}
+.stage-head h2{margin:0;font:650 19px/1.25 ui-sans-serif,system-ui,sans-serif;letter-spacing:-.01em}
+.stage-head .note{color:var(--page-muted);font-size:13.5px}
+.frame{overflow-x:auto;padding-bottom:6px}
+.stage{position:relative;width:1024px;height:640px;flex:none;background:var(--paper);color:var(--ink);
+  border:1px solid var(--page-line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow);
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+.stage-tag{position:absolute;right:0;bottom:0;z-index:6;padding:4px 9px;border-radius:9px 0 13px 0;
+  background:var(--page-line);color:var(--page-muted);font-family:ui-monospace,Menlo,monospace;font-size:10.5px;letter-spacing:.06em}
+
+/* ——— ölçüm sütunu ——— */
+.ruler{position:absolute;left:0;top:0;width:330px;height:100%;padding:26px 24px;display:flex;flex-direction:column;gap:14px;
+  border-right:1px solid var(--line)}
+.ruler h3{margin:0;font:700 15px/1.3 system-ui,sans-serif;color:var(--ink)}
+.ruler p{margin:0;color:var(--muted);font-size:12.5px;line-height:1.5}
+.metric{display:flex;flex-direction:column;gap:3px;padding:11px 13px;border:1px solid var(--line);border-radius:12px;
+  background:var(--surface);box-shadow:var(--card-shadow)}
+.metric .k{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.metric .v{font:700 23px/1.05 ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;color:var(--ink)}
+.metric.bad .v{color:var(--danger)}
+.metric.good .v{color:var(--forest)}
+.metric .s{color:var(--muted);font-size:12px}
+.legend{margin-top:auto;display:flex;flex-direction:column;gap:6px;color:var(--muted);font-size:12px}
+.swatch{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:7px;vertical-align:middle}
+
+/* ——— BUGÜN: modalın kendisi ——— */
+.today-slot{position:absolute;left:330px;top:0;width:694px;height:100%;display:grid;place-items:center}
+.modal{width:660px;height:588px;display:flex;flex-direction:column;padding:22px;border-radius:22px;
+  border:1px solid var(--line);background:var(--surface);box-shadow:var(--shadow)}
+.modal-head h4{margin:0;font:750 21px/1.2 system-ui,sans-serif}
+.modal-head p{margin:5px 0 0;color:var(--muted);font-size:13px}
+.today-body{flex:1 1 auto;min-height:0;margin-top:14px;overflow-y:auto;overscroll-behavior:contain;
+  border-top:1px dashed var(--rule);border-bottom:1px dashed var(--rule);position:relative}
+.sec{margin:6px 0 10px;padding-top:15px;border-top:1px solid var(--line);font-size:12px;font-weight:800;
+  letter-spacing:.14em;text-transform:uppercase}
+.today-body>.sec:first-child{margin-top:0;padding-top:2px;border-top:0}
+.row-line{height:48px;display:flex;align-items:center;gap:11px;font-size:16px;color:var(--muted)}
+.row-line strong{color:var(--forest);font-weight:700}
+.blk{position:relative;padding-right:74px}
+.blk::after{content:attr(data-px);position:absolute;right:0;top:50%;transform:translateY(-50%);
+  font:600 11px/1 ui-monospace,Menlo,monospace;color:var(--muted);background:var(--surface-soft);
+  border:1px solid var(--line);border-radius:6px;padding:3px 5px}
+.blk.hot::after{color:var(--danger);border-color:var(--danger);background:var(--danger-soft)}
+.lbl{height:23px;color:var(--forest);font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+.parts{height:89px;display:flex;flex-direction:column;justify-content:center;gap:9px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.parts .nm{color:var(--muted);font-size:13px;font-weight:800}
+.chips{display:flex;flex-wrap:wrap;gap:9px}
+.chip{min-height:42px;display:inline-flex;align-items:center;padding:9px 18px;border:1px solid var(--line);
+  border-radius:999px;background:transparent;color:var(--ink);font:800 14.5px system-ui,sans-serif}
+.chip.on{border-color:var(--forest);background:var(--forest-soft);color:var(--forest)}
+.dial{height:200px;display:flex;align-items:center;justify-content:center;gap:16px;background:var(--danger-soft);
+  border-radius:14px;margin-top:18px}
+.dial .col{display:grid;gap:9px;justify-items:center}
+.dial .st{width:88px;height:60px;display:grid;place-items:center;border:1px solid var(--line);border-radius:16px;
+  background:var(--surface);font:800 27px system-ui,sans-serif;color:var(--ink)}
+.dial .val{width:120px;height:44px;display:grid;place-items:center;border-radius:12px;background:var(--surface-soft);
+  font:800 34px/1 ui-monospace,Menlo,monospace}
+.dial .un{color:var(--muted);font-size:14px;font-weight:700}
+.hintline{height:48px;padding-top:12px;color:var(--muted);font-size:12.5px;line-height:1.45}
+.fresh{height:130px;display:flex;flex-direction:column;justify-content:center;gap:10px}
+.day{min-height:44px;display:inline-flex;align-items:center;padding:9px 15px;border:1px solid var(--line);
+  border-radius:999px;background:var(--surface);font:750 13px system-ui,sans-serif;color:var(--ink)}
+.day.on{border-color:var(--forest);background:var(--forest-soft);color:var(--forest)}
+.forbtn{height:44px;margin-top:18px;display:flex;align-items:center;padding:0 14px;border:1px dashed var(--line);
+  border-radius:14px;color:var(--muted);font:750 13px system-ui,sans-serif}
+.modal-foot{flex:none;padding-top:14px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.note-box{flex:1;padding:8px 11px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft);
+  color:var(--muted);font-size:12.5px}
+.btn{min-width:118px;min-height:48px;display:inline-flex;align-items:center;justify-content:center;padding:0 18px;
+  border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);font:750 15px system-ui,sans-serif}
+.btn.primary{border-color:var(--forest);background:var(--forest);color:var(--on-forest)}
+.scroll-flag{position:absolute;left:330px;bottom:22px;z-index:5;display:flex;align-items:center;gap:8px;
+  padding:7px 12px;border-radius:999px;background:var(--danger);color:#fff;font:700 12.5px system-ui,sans-serif;
+  box-shadow:var(--card-shadow);transform:translateX(24px)}
+.scroll-flag svg{width:14px;height:14px;fill:currentColor}
+
+/* ——— ortak: varyant tuvali ——— */
+.canvas{position:absolute;left:330px;top:0;width:694px;height:100%;padding:26px 28px;display:flex;flex-direction:column;gap:14px}
+.card{border:1px solid var(--line);border-radius:20px;background:var(--surface);box-shadow:var(--card-shadow)}
+.canvas-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.canvas-head h4{margin:0;font:750 20px/1.2 system-ui,sans-serif}
+.canvas-head span{color:var(--muted);font-size:12.5px}
+.ic{width:19px;height:19px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+/* ——— A: cümle içinde düzenleme ——— */
+.sentence{padding:20px 22px 18px;font:400 20px/2.35 system-ui,sans-serif;color:var(--ink-soft)}
+.tok{min-height:44px;display:inline-flex;align-items:center;gap:7px;padding:5px 13px;margin:0 1px;
+  border:1px solid var(--line);border-radius:12px;background:var(--surface-soft);color:var(--ink);
+  font:700 19px/1.1 system-ui,sans-serif;vertical-align:middle;cursor:pointer}
+.tok:hover{border-color:var(--forest)}
+.tok:focus-visible{outline:3px solid var(--forest-soft);outline-offset:2px}
+.tok.dev{color:var(--forest);border-color:var(--forest-soft);background:var(--forest-soft)}
+.tok.num{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.tok.time{color:var(--sun);border-color:var(--sun);background:var(--sun-soft)}
+.tok.open{border-color:var(--forest);box-shadow:0 0 0 3px var(--forest-soft)}
+.tok .ic{width:16px;height:16px;stroke-width:1.9}
+.tok-add{min-height:44px;display:inline-flex;align-items:center;gap:6px;padding:5px 13px;border:1px dashed var(--line);
+  border-radius:12px;background:transparent;color:var(--muted);font:750 15px system-ui,sans-serif;vertical-align:middle;cursor:pointer}
+.tok-add:hover{color:var(--forest);border-color:var(--forest)}
+.tok-x{width:24px;height:24px;margin-left:2px;display:inline-grid;place-items:center;border:0;border-radius:999px;
+  background:transparent;color:var(--muted);font:700 15px/1 system-ui,sans-serif;cursor:pointer}
+.tok-x:hover{background:var(--danger-soft);color:var(--danger)}
+.pad{position:absolute;z-index:8;width:322px;padding:12px;border:1px solid var(--forest);border-radius:16px;
+  background:var(--surface);box-shadow:var(--shadow);display:none;flex-direction:column;gap:10px}
+.pad.show{display:flex}
+.pad-head{display:flex;align-items:baseline;justify-content:space-between;color:var(--muted);font-size:11.5px;
+  font-family:ui-monospace,Menlo,monospace;letter-spacing:.1em;text-transform:uppercase}
+.stepper{display:flex;align-items:center;gap:10px}
+.step-btn{width:56px;height:48px;flex:none;display:grid;place-items:center;border:1px solid var(--line);border-radius:13px;
+  background:var(--surface-soft);color:var(--ink);font:800 24px/1 system-ui,sans-serif;cursor:pointer}
+.step-btn:active{background:var(--forest-soft)}
+.pad input{flex:1;min-width:0;height:48px;padding:0 10px;border:1px solid var(--line);border-radius:13px;
+  background:var(--surface);color:var(--ink);font:800 26px/1 ui-monospace,Menlo,monospace;text-align:center;
+  font-variant-numeric:tabular-nums;-moz-appearance:textfield}
+.pad input::-webkit-outer-spin-button,.pad input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.pad input:focus{outline:none;border-color:var(--forest);box-shadow:0 0 0 3px var(--forest-soft)}
+.mini{min-height:36px;display:inline-flex;align-items:center;padding:6px 12px;border:1px solid var(--line);
+  border-radius:999px;background:var(--surface);color:var(--ink);font:750 13px system-ui,sans-serif;cursor:pointer}
+.mini.on{border-color:var(--forest);background:var(--forest-soft);color:var(--forest)}
+.pad-foot{color:var(--muted);font-size:11.5px}
+.a-foot{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:12px}
+
+/* ——— B: satır listesi + açılır şerit ——— */
+.rows{display:flex;flex-direction:column;overflow:hidden}
+.grp{padding:13px 18px 4px;color:var(--muted);font:800 11px system-ui,sans-serif;letter-spacing:.14em;text-transform:uppercase}
+.row{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:6px 14px 6px 18px;border:0;
+  background:transparent;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.row+.grp{border-top:1px solid var(--line)}
+.row.sep{border-top:1px solid var(--line)}
+.row:hover{background:var(--surface-soft)}
+.row:focus-visible{outline:3px solid var(--forest-soft);outline-offset:-3px}
+.row .glyph{width:34px;height:34px;flex:none;display:grid;place-items:center;border-radius:11px;
+  background:var(--forest-soft);color:var(--forest)}
+.row .txt{flex:1;min-width:0;font-size:16px;line-height:1.3;color:var(--muted)}
+.row .txt b{color:var(--ink);font-weight:750}
+.row .txt em{font-style:normal;font-family:ui-monospace,Menlo,monospace;font-weight:700;color:var(--forest)}
+.row .txt .t{font-family:ui-monospace,Menlo,monospace;font-weight:700;color:var(--sun)}
+.row .caret{flex:none;color:var(--muted);transition:transform .18s}
+.row .kill{width:44px;height:44px;flex:none;display:grid;place-items:center;border:0;border-radius:999px;
+  background:transparent;color:var(--muted);font:700 16px/1 system-ui,sans-serif;cursor:pointer}
+.row .kill:hover{background:var(--danger-soft);color:var(--danger)}
+.strip{max-height:0;overflow:hidden;transition:max-height .22s ease;background:var(--surface-soft)}
+.item.open .strip{max-height:140px}
+.item.open .caret{transform:rotate(90deg)}
+.item.open .row{background:var(--surface-soft)}
+.strip-in{display:flex;flex-direction:column;gap:9px;padding:10px 18px 12px}
+.seg{display:flex;gap:6px}
+.seg button{min-height:44px;flex:1;border:1px solid var(--line);border-radius:12px;background:var(--surface);
+  color:var(--ink);font:750 14px system-ui,sans-serif;cursor:pointer}
+.seg button.on{border-color:var(--forest);background:var(--forest-soft);color:var(--forest)}
+.strip-row{display:flex;align-items:center;gap:8px}
+.strip-row .step-btn{width:48px;height:44px;font-size:22px}
+.strip-row input{flex:1;height:44px;font-size:22px}
+.addrow{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:6px 18px;border:0;
+  border-top:1px solid var(--line);background:transparent;color:var(--muted);font:800 14px system-ui,sans-serif;cursor:pointer}
+.addrow:hover{color:var(--forest)}
+.plus{width:22px;height:22px;display:grid;place-items:center;border:1px solid currentColor;border-radius:999px;
+  font:600 13px/1 system-ui,sans-serif}
+.b-foot{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.tip{color:var(--muted);font-size:12.5px;line-height:1.45}
+
+/* ——— karşılaştırma tablosu ——— */
+.tablewrap{overflow-x:auto;border:1px solid var(--page-line);border-radius:14px;background:var(--paper)}
+table{border-collapse:collapse;width:100%;min-width:620px;color:var(--ink)}
+th,td{padding:11px 16px;text-align:left;border-bottom:1px solid var(--line);font-size:14px}
+th{font:700 11.5px ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+td.n{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;font-weight:700}
+tr:last-child td{border-bottom:0}
+.bad{color:var(--danger)}.good{color:var(--forest)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-motion" viewBox="0 0 24 24"><path d="M13 4.5a1.5 1.5 0 1 0 0-.01"/><path d="M8 21l3-6 1-4 3 3 3 1"/><path d="M12 11L8.5 9 6 12"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-5"/></symbol>
+  <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z"/></symbol>
+  <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-scroll" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 21l-5-6h10l-5 6zM12 3l5 6H7l5-6z"/></symbol>
+</svg>
+
+<div class="wrap">
+
+  <div class="intro">
+    <span class="eyebrow">Otomasyon sihirbazı · sıkışık düzen önerisi</span>
+    <h1>Koşul ve süre neden bu kadar yer kaplıyor, iki çıkış yolu</h1>
+    <p><b>Varyant A — cümle içinde düzenleme:</b> kural tek bir cümle olarak durur; cihaz, ölçüm, değer ve süre cümlenin
+      içindeki dokunulabilir parçalardır. Parçaya dokununca cümlenin hemen altında küçük bir kadran açılır, sayfa hiç kaymaz.</p>
+    <p><b>Varyant B — satır listesi + açılır şerit:</b> her parça 56 px'lik bir satır; satıra dokununca <em>o satırın altında</em>
+      104 px'lik kompakt bir düzenleyici şerit açılır. Yeni sayfa yok, liste yerinde kalır.</p>
+    <p>Üç sahne de tabletin gerçek CSS alanı olan <b class="mono">1024×640</b> kutusunda. Kutunun içinde kalıyorsa sığıyor demektir.
+      Ölçüler sayfa açılırken tarayıcıda gerçekten ölçülür — elle yazılmadı.</p>
+  </div>
+
+  <!-- ——————————————— SAHNE 1: BUGÜN ——————————————— -->
+  <section>
+    <div class="stage-head">
+      <h2>1 · Bugünkü sihirbaz</h2>
+      <span class="note">"Işık düzeyi 30'un altındaysa" koşulunu kurma adımı. Modalın gövdesi gerçekten kayıyor — deneyin.</span>
+    </div>
+    <div class="frame">
+      <div class="stage">
+        <div class="ruler">
+          <h3>Ölçüm</h3>
+          <p>Modal 92 dvh = 588 px. Başlık ve alt eylem şeridi düşünce koşul adımına kalan görünür alan bu kadar.</p>
+          <div class="metric"><span class="k">Adımın içeriği</span><span class="v mono" id="m-content">—</span><span class="s">tek koşul, tek ekran</span></div>
+          <div class="metric"><span class="k">Görünen alan</span><span class="v mono" id="m-view">—</span><span class="s">modal gövdesi</span></div>
+          <div class="metric bad"><span class="k">Kayan kısım</span><span class="v mono" id="m-over">—</span><span class="s" id="m-times">—</span></div>
+          <div class="metric bad"><span class="k">Sayı kadranı tek başına</span><span class="v mono">200 px</span><span class="s">+ / değer / − dikey duruyor</span></div>
+          <div class="metric bad"><span class="k">"5 dk bekle" bloğu</span><span class="v mono">173 px</span><span class="s">başlık + sayaç + ipucu = 3 satır</span></div>
+          <div class="legend"><span><span class="swatch" style="background:var(--danger)"></span>yer israfının kaynağı</span>
+            <span><span class="swatch" style="background:var(--rule)"></span>kesikli çizgi = gövdenin kırpıldığı yer</span></div>
+        </div>
+        <div class="today-slot">
+          <div class="modal">
+            <div class="modal-head">
+              <h4>Yeni otomasyon</h4>
+              <p>Koridor · varlık algılanınca ışık</p>
+            </div>
+            <div class="today-body" id="today-body">
+              <p class="sec">Ne olunca</p>
+              <div class="row-line blk" data-px="48">Corridor Detector <strong>varlık algılayınca</strong></div>
+              <p class="sec">Koşul</p>
+              <div class="row-line blk" data-px="48">Corridor Detector <span style="color:var(--muted)">· hareket sensörü</span></div>
+              <p class="lbl">Değer ne olsun</p>
+              <div class="parts blk" data-px="89">
+                <span class="nm">Işık düzeyi</span>
+                <div class="chips"><span class="chip">üstünde</span><span class="chip on">altında</span><span class="chip">arasında</span></div>
+              </div>
+              <div class="dial blk hot" data-px="200">
+                <div class="col"><span class="st">+</span><span class="val mono">30</span><span class="st">−</span></div>
+                <span class="un">lx</span>
+              </div>
+              <p class="hintline blk" data-px="48">Kural yalnızca ışık düzeyi bu değerin altındayken çalışır. Sensör değeri okuduğu anda karşılaştırılır.</p>
+              <div class="fresh blk" data-px="130">
+                <span class="nm" style="color:var(--muted);font-size:13px;font-weight:800">Okuma ne kadar taze olsun</span>
+                <div class="chips"><span class="day">farketmez</span><span class="day">son 10 sn</span><span class="day">son 30 sn</span><span class="day on">son 1 dk</span><span class="day">son 5 dk</span></div>
+                <span style="color:var(--muted);font-size:12.5px">Eski bir okumaya bakıp yanlış karar vermesin.</span>
+              </div>
+              <div class="forbtn blk" data-px="62">Şu kadar süredir böyleyse …</div>
+            </div>
+            <div class="modal-foot">
+              <span class="note-box">Koşulu tamamlayın, sonra ne yapılacağını seçeceğiz.</span>
+              <span class="btn">Geri</span><span class="btn primary">İleri</span>
+            </div>
+          </div>
+        </div>
+        <span class="scroll-flag"><svg class="ic" viewBox="0 0 24 24" style="stroke:none;fill:currentColor"><use href="#i-scroll"/></svg> gövde kayıyor</span>
+        <span class="stage-tag">1024 × 640 · bugünkü hâli</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ——————————————— SAHNE 2: VARYANT A ——————————————— -->
+  <section>
+    <div class="stage-head">
+      <h2>2 · Varyant A — cümle içinde düzenleme</h2>
+      <span class="note">Altı çizili parçalara dokunun: kadran cümlenin altında açılır, satırlar yerinden oynamaz.</span>
+    </div>
+    <div class="frame">
+      <div class="stage" id="stage-a">
+        <div class="ruler">
+          <h3>Fikir</h3>
+          <p>Kural bir cümledir. Cihaz, ölçüm, karşılaştırma, değer, tazelik ve süre o cümlenin tıklanabilir parçalarıdır.
+            Dokunma o parçanın altına 158 px'lik bir kadran açar; kadran kapanınca cümle yine üç satır.</p>
+          <div class="metric good"><span class="k">Kuralın tamamı</span><span class="v mono" id="a-total">—</span><span class="s">tetikleyici + koşul + 2 eylem</span></div>
+          <div class="metric good"><span class="k">Sahnede kalan boşluk</span><span class="v mono" id="a-free">—</span><span class="s">640 px'lik ekranda</span></div>
+          <div class="metric"><span class="k">Süre ("5 dk sonra kapat")</span><span class="v mono">0 px ek</span><span class="s">cümlenin içinde, kendi satırı yok</span></div>
+          <div class="metric"><span class="k">Koşul ekle/çıkar</span><span class="v mono">44 px</span><span class="s">cümlenin sonundaki "+ koşul", parçada ×</span></div>
+          <div class="legend"><span><span class="swatch" style="background:var(--forest)"></span>cihaz / koşul parçaları</span>
+            <span><span class="swatch" style="background:var(--sun)"></span>süre parçaları</span></div>
+        </div>
+        <div class="canvas">
+          <div class="canvas-head"><h4>Koridor ışığı</h4><span>4 parça · kaydırma yok</span></div>
+
+          <div class="card sentence" id="a-rule">
+            <button class="tok dev" type="button"><svg class="ic"><use href="#i-motion"/></svg>Corridor Detector</button>
+            <button class="tok" type="button">varlık algılayınca</button>,
+            <span style="color:var(--muted)">yalnız</span>
+            <button class="tok" type="button"><svg class="ic"><use href="#i-gauge"/></svg>ışık düzeyi</button>
+            <button class="tok" type="button" data-pad="pad-cmp">altındaysa değil</button>
+            <button class="tok num" type="button" data-pad="pad-lux"><span id="a-lux">30</span> lx</button>
+            <button class="tok-x" type="button" title="Koşulu kaldır" aria-label="Koşulu kaldır">×</button>
+            <button class="tok-add" type="button">+ koşul</button>,
+            <button class="tok dev" type="button"><svg class="ic"><use href="#i-bulb"/></svg>Corridor light</button>
+            <button class="tok" type="button">aç</button>,
+            <button class="tok time" type="button" data-pad="pad-dur"><svg class="ic"><use href="#i-timer"/></svg><span id="a-dur">5</span> dakika sonra</button>
+            <button class="tok" type="button">kapat</button>.
+            <button class="tok-add" type="button">+ eylem</button>
+          </div>
+
+          <p class="tip">Cümlenin kendisi kuralın önizlemesidir; ayrıca bir özet ekranı gerekmez.
+            Dokunulan parça yeşil halkayla işaretlenir, kadran hep aynı yerde ve aynı boyda açılır.</p>
+
+          <div class="a-foot">
+            <span class="tip">Değişiklikler anında cümleye yazılır.</span>
+            <span><span class="btn">İptal</span> <span class="btn primary">Kaydet</span></span>
+          </div>
+        </div>
+
+        <div class="pad" id="pad-lux">
+          <div class="pad-head"><span>Işık düzeyi eşiği</span><span class="mono">lx</span></div>
+          <div class="stepper">
+            <button class="step-btn" type="button" data-nudge="-5" data-target="a-lux">−</button>
+            <input type="number" inputmode="decimal" value="30" id="a-lux-input" aria-label="Işık düzeyi eşiği">
+            <button class="step-btn" type="button" data-nudge="5" data-target="a-lux">+</button>
+          </div>
+          <div class="chips" style="gap:6px">
+            <button class="mini" type="button" data-set="10" data-target="a-lux">10</button>
+            <button class="mini" type="button" data-set="20" data-target="a-lux">20</button>
+            <button class="mini on" type="button" data-set="30" data-target="a-lux">30</button>
+            <button class="mini" type="button" data-set="50" data-target="a-lux">50</button>
+            <button class="mini" type="button" data-set="100" data-target="a-lux">100</button>
+          </div>
+          <span class="pad-foot">Okuma tazeliği: son 1 dk · dokununca değişir</span>
+        </div>
+
+        <div class="pad" id="pad-cmp">
+          <div class="pad-head"><span>Karşılaştırma</span><span class="mono">&lt; &gt;</span></div>
+          <div class="seg">
+            <button class="on" type="button">altındaysa</button>
+            <button type="button">üstündeyse</button>
+            <button type="button">arasındaysa</button>
+          </div>
+          <span class="pad-foot">Seçim cümleye yazılır, kadran kapanır.</span>
+        </div>
+
+        <div class="pad" id="pad-dur">
+          <div class="pad-head"><span>Ne kadar sonra kapansın</span><span class="mono">dk</span></div>
+          <div class="stepper">
+            <button class="step-btn" type="button" data-nudge="-1" data-target="a-dur">−</button>
+            <input type="number" inputmode="numeric" value="5" id="a-dur-input" aria-label="Kapanma süresi, dakika">
+            <button class="step-btn" type="button" data-nudge="1" data-target="a-dur">+</button>
+          </div>
+          <div class="chips" style="gap:6px">
+            <button class="mini" type="button" data-set="1" data-target="a-dur">1 dk</button>
+            <button class="mini" type="button" data-set="2" data-target="a-dur">2 dk</button>
+            <button class="mini on" type="button" data-set="5" data-target="a-dur">5 dk</button>
+            <button class="mini" type="button" data-set="10" data-target="a-dur">10 dk</button>
+            <button class="mini" type="button" data-set="30" data-target="a-dur">30 dk</button>
+          </div>
+          <span class="pad-foot">Yazarak da girilebilir; klavye alanı büyütmez.</span>
+        </div>
+
+        <span class="stage-tag">1024 × 640 · varyant A</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ——————————————— SAHNE 3: VARYANT B ——————————————— -->
+  <section>
+    <div class="stage-head">
+      <h2>3 · Varyant B — satır listesi, altında açılan şerit</h2>
+      <span class="note">Satıra dokunun: düzenleyici o satırın altında açılır, diğer satırlar yerinde durur.</span>
+    </div>
+    <div class="frame">
+      <div class="stage" id="stage-b">
+        <div class="ruler">
+          <h3>Fikir</h3>
+          <p>Kuralın her parçası 56 px'lik bir satır. Dokunulan satırın altında 104 px'lik şerit açılır: segment,
+            sayaç ve hazır değerler tek bantta. Aynı anda tek şerit açık kalır, liste hiç sıçramaz.</p>
+          <div class="metric good"><span class="k">Liste kapalıyken</span><span class="v mono" id="b-closed">—</span><span class="s">6 satır + iki ekleme satırı</span></div>
+          <div class="metric good"><span class="k">Bir şerit açıkken</span><span class="v mono" id="b-open">—</span><span class="s">şu an ölçülen hâli</span></div>
+          <div class="metric"><span class="k">Süre satırı</span><span class="v mono">56 px</span><span class="s">bugün 173 px'lik bloktu</span></div>
+          <div class="metric"><span class="k">Koşul ekle</span><span class="v mono">48 px</span><span class="s">listenin içinde, kaybolmaz</span></div>
+          <div class="legend"><span><span class="swatch" style="background:var(--forest)"></span>cihaz ve ölçüm satırları</span>
+            <span><span class="swatch" style="background:var(--sun)"></span>süre satırları</span></div>
+        </div>
+        <div class="canvas">
+          <div class="canvas-head"><h4>Koridor ışığı</h4><span>satır listesi · tek şerit açık</span></div>
+
+          <div class="card rows" id="b-rules">
+            <p class="grp">Ne olunca</p>
+            <div class="item">
+              <button class="row" type="button">
+                <span class="glyph"><svg class="ic"><use href="#i-motion"/></svg></span>
+                <span class="txt"><b>Corridor Detector</b> · varlık algılayınca</span>
+                <svg class="ic caret"><use href="#i-chev"/></svg>
+              </button>
+              <div class="strip"><div class="strip-in">
+                <div class="seg"><button class="on" type="button">varlık algılandı</button><button type="button">varlık bitti</button></div>
+                <span class="tip">Cihazı değiştirmek için ada dokunun.</span>
+              </div></div>
+            </div>
+
+            <p class="grp">Yalnız şu doğruysa</p>
+            <div class="item open">
+              <button class="row" type="button">
+                <span class="glyph"><svg class="ic"><use href="#i-gauge"/></svg></span>
+                <span class="txt"><b>Işık düzeyi</b> <em>&lt; <span id="b-lux">30</span> lx</em> · son 1 dk</span>
+                <svg class="ic caret"><use href="#i-chev"/></svg>
+                <span class="kill" title="Koşulu kaldır" role="button" aria-label="Koşulu kaldır">×</span>
+              </button>
+              <div class="strip"><div class="strip-in">
+                <div class="seg">
+                  <button class="on" type="button">altında</button><button type="button">üstünde</button><button type="button">arasında</button>
+                </div>
+                <div class="strip-row">
+                  <button class="step-btn" type="button" data-nudge="-5" data-target="b-lux">−</button>
+                  <input type="number" inputmode="decimal" value="30" id="b-lux-input" aria-label="Işık düzeyi eşiği">
+                  <button class="step-btn" type="button" data-nudge="5" data-target="b-lux">+</button>
+                  <button class="mini" type="button" data-set="20" data-target="b-lux">20</button>
+                  <button class="mini on" type="button" data-set="30" data-target="b-lux">30</button>
+                  <button class="mini" type="button" data-set="50" data-target="b-lux">50</button>
+                </div>
+              </div></div>
+            </div>
+            <button class="addrow" type="button"><span class="plus">+</span> koşul ekle</button>
+
+            <p class="grp">Yap</p>
+            <div class="item">
+              <button class="row" type="button">
+                <span class="glyph"><svg class="ic"><use href="#i-bulb"/></svg></span>
+                <span class="txt"><b>Corridor light</b> · aç</span>
+                <svg class="ic caret"><use href="#i-chev"/></svg>
+              </button>
+              <div class="strip"><div class="strip-in">
+                <div class="seg"><button class="on" type="button">aç</button><button type="button">kapat</button><button type="button">değiştir</button></div>
+                <span class="tip">Parlaklık ve renk aynı şeritte, kaydırmadan.</span>
+              </div></div>
+            </div>
+            <div class="item sep">
+              <button class="row" type="button">
+                <span class="glyph" style="background:var(--sun-soft);color:var(--sun)"><svg class="ic"><use href="#i-timer"/></svg></span>
+                <span class="txt"><span class="t"><span id="b-dur">5</span> dakika</span> sonra <b>kapat</b></span>
+                <svg class="ic caret"><use href="#i-chev"/></svg>
+                <span class="kill" title="Süreyi kaldır" role="button" aria-label="Süreyi kaldır">×</span>
+              </button>
+              <div class="strip"><div class="strip-in">
+                <div class="strip-row">
+                  <button class="step-btn" type="button" data-nudge="-1" data-target="b-dur">−</button>
+                  <input type="number" inputmode="numeric" value="5" id="b-dur-input" aria-label="Kapanma süresi, dakika">
+                  <button class="step-btn" type="button" data-nudge="1" data-target="b-dur">+</button>
+                  <button class="mini" type="button" data-set="1" data-target="b-dur">1 dk</button>
+                  <button class="mini on" type="button" data-set="5" data-target="b-dur">5 dk</button>
+                  <button class="mini" type="button" data-set="15" data-target="b-dur">15 dk</button>
+                </div>
+              </div></div>
+            </div>
+            <button class="addrow" type="button"><span class="plus">+</span> eylem ekle</button>
+          </div>
+
+          <div class="b-foot">
+            <span class="tip">Satırın kendisi özettir; kapanınca yeni değer satırda yazar.</span>
+            <span><span class="btn">İptal</span> <span class="btn primary">Kaydet</span></span>
+          </div>
+        </div>
+        <span class="stage-tag">1024 × 640 · varyant B</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ——————————————— KARŞILAŞTIRMA ——————————————— -->
+  <section>
+    <div class="stage-head"><h2>4 · Aynı kural, üç düzen</h2>
+      <span class="note">"Corridor Detector varlık algılayınca · yalnız ışık &lt; 30 lx ise · Corridor light aç · 5 dk sonra kapat"</span></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>İş</th><th>Bugün</th><th>Varyant A</th><th>Varyant B</th></tr></thead>
+        <tbody>
+          <tr><td>Bir sayısal koşul kurmak</td><td class="n bad" id="t-today">—</td><td class="n good">158 px (kadran açıkken)</td><td class="n good">160 px (56 + 104)</td></tr>
+          <tr><td>"5 dakika sonra kapat"</td><td class="n bad">173 px · 3 satır</td><td class="n good">tek parça, ek satır yok</td><td class="n good">56 px · 1 satır</td></tr>
+          <tr><td>Sayı girmek</td><td>dikey +/değer/− · 200 px</td><td class="good">yatay sayaç + klavye + hazır değerler</td><td class="good">yatay sayaç + klavye + hazır değerler</td></tr>
+          <tr><td>Kuralın tamamını görmek</td><td class="bad">ayrı özet adımı</td><td class="good">cümlenin kendisi</td><td class="good">liste, tek ekranda</td></tr>
+          <tr><td>Koşul eklemek</td><td class="bad">akışın sonunda gizli</td><td class="good">cümlede "+ koşul"</td><td class="good">listede "+ koşul ekle"</td></tr>
+          <tr><td>1024×640'ta kaydırma</td><td class="n bad" id="t-scroll">—</td><td class="n good">yok</td><td class="n good">yok</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  // ——— ölçüm: sayılar elle yazılmadı, tarayıcı ölçüyor ———
+  function px(n){return Math.round(n)+" px";}
+  var body=document.getElementById("today-body");
+  function measure(){
+    var content=body.scrollHeight,view=body.clientHeight,over=content-view;
+    document.getElementById("m-content").textContent=px(content);
+    document.getElementById("m-view").textContent=px(view);
+    document.getElementById("m-over").textContent=px(over);
+    document.getElementById("m-times").textContent=(content/view).toFixed(1)+" ekran boyu";
+    document.getElementById("t-today").textContent=px(content)+" · "+px(over)+" kayıyor";
+    document.getElementById("t-scroll").textContent=px(over);
+    var rule=document.getElementById("a-rule");
+    document.getElementById("a-total").textContent=px(rule.offsetHeight);
+    document.getElementById("a-free").textContent=px(640-rule.offsetHeight-232);
+    var list=document.getElementById("b-rules"),openItem=list.querySelector(".item.open");
+    var extra=openItem?openItem.querySelector(".strip").scrollHeight:0;
+    document.getElementById("b-open").textContent=px(list.offsetHeight);
+    document.getElementById("b-closed").textContent=px(list.offsetHeight-extra);
+  }
+  measure();
+  window.addEventListener("resize",measure);
+
+  // ——— varyant A: parçaya dokun, altında kadran açılsın ———
+  var stageA=document.getElementById("stage-a");
+  function closePads(){
+    stageA.querySelectorAll(".pad.show").forEach(function(p){p.classList.remove("show");});
+    stageA.querySelectorAll(".tok.open").forEach(function(t){t.classList.remove("open");});
+  }
+  stageA.addEventListener("click",function(ev){
+    var tok=ev.target.closest("[data-pad]");
+    if(tok){
+      var pad=document.getElementById(tok.getAttribute("data-pad")),wasOpen=pad.classList.contains("show");
+      closePads();
+      if(wasOpen)return;
+      var st=stageA.getBoundingClientRect(),tr=tok.getBoundingClientRect();
+      pad.classList.add("show");tok.classList.add("open");
+      var left=Math.min(tr.left-st.left-8,1024-pad.offsetWidth-16);
+      pad.style.left=Math.max(338,left)+"px";
+      pad.style.top=(tr.bottom-st.top+10)+"px";
+      return;
+    }
+    if(!ev.target.closest(".pad"))closePads();
+  });
+  document.addEventListener("keydown",function(ev){if(ev.key==="Escape")closePads();});
+
+  // ——— sayaçlar: artır/azalt, yazarak gir, hazır değer ———
+  function write(id,value){
+    var out=document.getElementById(id),input=document.getElementById(id+"-input");
+    if(out)out.textContent=value;
+    if(input)input.value=value;
+    var scope=input?input.closest(".pad,.strip-in"):null;
+    if(scope)scope.querySelectorAll("[data-set][data-target='"+id+"']").forEach(function(b){
+      b.classList.toggle("on",Number(b.getAttribute("data-set"))===Number(value));
+    });
+  }
+  document.addEventListener("click",function(ev){
+    var nudge=ev.target.closest("[data-nudge]");
+    if(nudge){
+      var id=nudge.getAttribute("data-target"),cur=Number(document.getElementById(id+"-input").value)||0;
+      write(id,Math.max(1,cur+Number(nudge.getAttribute("data-nudge"))));return;
+    }
+    var set=ev.target.closest("[data-set]");
+    if(set){write(set.getAttribute("data-target"),Number(set.getAttribute("data-set")));return;}
+    var seg=ev.target.closest(".seg button");
+    if(seg){seg.parentNode.querySelectorAll("button").forEach(function(b){b.classList.remove("on");});seg.classList.add("on");}
+  });
+  document.addEventListener("input",function(ev){
+    if(ev.target.matches("input[type=number]")){
+      var id=ev.target.id.replace("-input","");
+      var out=document.getElementById(id);if(out)out.textContent=ev.target.value;
+    }
+  });
+
+  // ——— varyant B: satır aç/kapa, tek şerit açık kalır ———
+  var listB=document.getElementById("b-rules");
+  listB.addEventListener("click",function(ev){
+    if(ev.target.closest(".kill")||ev.target.closest(".strip"))return;
+    var row=ev.target.closest(".row");if(!row)return;
+    var item=row.parentNode,open=item.classList.contains("open");
+    listB.querySelectorAll(".item.open").forEach(function(i){i.classList.remove("open");});
+    if(!open)item.classList.add("open");
+    setTimeout(measure,240);
+  });
+})();
+</script>

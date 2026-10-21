@@ -1,0 +1,30 @@
+[Unit]
+Description=Villa Bridge smart-home runtime
+Documentation=https://github.com/drascom/Villa-Bridge
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+Group=@SERVICE_GROUP@
+WorkingDirectory=@PROJECT_ROOT@
+ExecStart=@NODE@ @PROJECT_ROOT@/apps/runtime/main.cjs --platform=@RUNTIME_PLATFORM@ --core-host=0.0.0.0 --core-entrypoint=@PROJECT_ROOT@/dist/index.js --mqtt-host=0.0.0.0 --data-dir=@DATA_DIR@
+# `always`, not `on-failure`: the dashboard applies settings by asking the runtime
+# to exit cleanly (POST /api/settings/apply). With `on-failure` that clean exit
+# would stop the service instead of restarting it, and the setup wizard could
+# never hand the coordinator over to the freshly written configuration.
+Restart=always
+RestartSec=5
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=@DATA_DIR@
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_name">Villa Bridge</string>
+    <string name="service_channel_name">Villa Bridge Core</string>
+    <string name="service_starting">Villa Bridge is starting…</string>
+    <string name="service_running">Villa Bridge is running</string>
+    <string name="service_stopping">Villa Bridge is stopping…</string>
+    <string name="service_error">Villa Bridge needs attention</string>
+    <string name="service_restarting">Villa Bridge restarts in %1$d s (attempt %2$d)</string>
+    <string name="service_exhausted">Villa Bridge stopped after repeated failures. Open the app to try again.</string>
+    <string name="runtime_starting_title">Starting Villa Bridge</string>
+    <string name="runtime_stage_preparing">Preparing the local runtime…</string>
+    <string name="runtime_stage_configuration">Checking the home configuration…</string>
+    <string name="runtime_stage_mqtt">Starting the MQTT broker…</string>
+    <string name="runtime_stage_zigbee">Connecting to the Zigbee coordinator…</string>
+    <string name="runtime_stage_matter">Starting the Matter bridge…</string>
+    <string name="runtime_stage_dashboard">Opening the dashboard…</string>
+    <string name="runtime_stopped_title">Villa Bridge is stopped</string>
+    <string name="runtime_stopped_message">Zigbee, MQTT and Matter services are off. Start the system when this tablet is ready to become the home controller again.</string>
+    <string name="runtime_start">Start Villa Bridge</string>
+    <string name="download_started">Saving to your Downloads folder…</string>
+    <string name="download_failed">The download could not be started on this tablet.</string>
+</resources>

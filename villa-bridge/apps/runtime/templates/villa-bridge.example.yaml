@@ -1,0 +1,28 @@
+# Villa Bridge core configuration — copied to <data>/config/villa-bridge.yaml on
+# first start and never overwritten afterwards. Host specific values (HTTP host
+# and port, MQTT url, data directories) are rewritten by the runtime at startup,
+# so the same template serves Android, Linux and Raspberry Pi.
+mode: direct
+pairingControl: true
+zigbee:
+  dataDir: ../zigbee
+  configurationFile: ../zigbee/configuration.yaml
+mqtt:
+  url: mqtt://127.0.0.1:1883
+  baseTopic: zigbee2mqtt
+  credentialsFile: ../zigbee/configuration.yaml
+aliasesFile: ../aliases.json
+matterbridge:
+  wsUrl: ws://127.0.0.1:8283
+homeAssistant:
+  discoveryEnabled: false
+alerts:
+  lowBatteryThreshold: 15
+selfHealing:
+  enabled: true
+  probeOffline: true
+debug:
+  enabled: true
+http:
+  host: 0.0.0.0
+  port: 8091

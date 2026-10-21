@@ -1,0 +1,11 @@
+<resources>
+    <style name="Theme.VillaBridge" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:colorAccent">#2F6F57</item>
+        <item name="android:navigationBarColor">#F4F4EF</item>
+        <item name="android:statusBarColor">#F4F4EF</item>
+        <item name="android:windowBackground">#F4F4EF</item>
+    </style>
+</resources>

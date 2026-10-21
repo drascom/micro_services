@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Telefon sınıfı (smallestScreenWidthDp < 600): panel dikey kullanılır, yön kilitlenir. -->
+    <bool name="lock_portrait_orientation">true</bool>
+</resources>

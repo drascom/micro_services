@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'none'">
+  <title>Villa Bridge Runtime</title>
+  <style>
+    :root{color-scheme:light;--ink:#17382d;--muted:#64736c;--forest:#2f6f57;--soft:#dcece4;--paper:#f4f4ef;--line:#d9ded9;--good:#27845c;--warn:#a66d21;--bad:#b34a45}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.45 system-ui,sans-serif}main{max-width:1080px;margin:auto;padding:28px}
+    header{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:24px}.eyebrow{text-transform:uppercase;letter-spacing:.14em;font-size:11px;font-weight:800;color:var(--forest)}h1{font:600 clamp(30px,5vw,48px)/1.04 Georgia,serif;margin:7px 0}.lead{color:var(--muted);max-width:650px;margin:0}
+    .pill{background:var(--soft);color:var(--forest);border-radius:99px;padding:8px 13px;font-weight:800;white-space:nowrap}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.card{background:white;border:1px solid var(--line);padding:19px;min-height:150px}.card.wide{grid-column:span 2}.label{color:var(--muted);font-size:12px}.value{display:block;font-size:24px;margin:8px 0;font-weight:800}.status{display:inline-flex;align-items:center;gap:7px;font-weight:750}.dot{width:9px;height:9px;border-radius:50%;background:var(--warn)}.status.good .dot{background:var(--good)}.status.bad .dot{background:var(--bad)}
+    form{display:grid;grid-template-columns:1fr 110px auto;gap:9px;margin-top:15px}input,button{border:1px solid var(--line);border-radius:9px;padding:12px;font:inherit}input{min-width:0;background:#fbfcfa}button{border:0;background:var(--forest);color:white;font-weight:800}button.secondary{background:var(--soft);color:var(--forest)}.actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:16px}.result{margin-top:12px;padding:10px;background:#f5f7f4;color:var(--muted);font-family:ui-monospace,monospace;font-size:12px;min-height:38px;overflow-wrap:anywhere}
+    footer{color:var(--muted);font-size:12px;margin-top:18px}@media(max-width:760px){main{padding:18px}.grid{grid-template-columns:1fr 1fr}.card.wide{grid-column:1/-1}form{grid-template-columns:1fr 90px}form button{grid-column:1/-1}}@media(max-width:480px){header{display:block}.pill{display:inline-flex;margin-top:15px}.grid{grid-template-columns:1fr}.card.wide{grid-column:auto}}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><div class="eyebrow">Standalone runtime</div><h1>Villa Bridge is awake.</h1><p class="lead">This host runs Villa Bridge, its private MQTT broker and the Matter bridge. Device controls remain on the main panel.</p></div>
+    <div class="pill">Local-first</div>
+  </header>
+  <section class="grid">
+    <article class="card"><span class="label">Node runtime</span><strong id="node" class="value">—</strong><span id="coreStatus" class="status"><span class="dot"></span>Starting</span></article>
+    <article class="card"><span class="label">Embedded MQTT</span><strong id="mqtt" class="value">—</strong><span id="mqttStatus" class="status"><span class="dot"></span>Checking</span></article>
+    <article class="card"><span class="label">Matter bridge</span><strong id="matter" class="value">—</strong><span id="matterStatus" class="status"><span class="dot"></span>Checking</span></article>
+    <article class="card wide">
+      <span class="label">Zigbee coordinator TCP probe</span>
+      <form id="probeForm"><input id="host" placeholder="SLZB host or IP" required><input id="port" inputmode="numeric" value="6638" required><button>Test connection</button></form>
+      <div id="probeResult" class="result">Enter the coordinator address when the tablet is connected.</div>
+    </article>
+    <article class="card">
+      <span class="label">Tablet network</span><strong id="address" class="value">—</strong><span id="arch" class="status"><span class="dot"></span>Reading device</span>
+    </article>
+    <article class="card wide">
+      <span class="label">Android setup</span>
+      <div class="actions"><button class="secondary" id="powerButton">Battery settings</button><button class="secondary" id="wifiButton">Wi-Fi settings</button><button class="secondary" id="multicastButton">Retest multicast</button></div>
+      <div id="runtimeResult" class="result">The foreground service holds the local server, Wi-Fi and multicast path open.</div>
+    </article>
+  </section>
+  <footer>Diagnostics on port 8092 · main panel on port 8091 · MQTT listens on tablet localhost only.</footer>
+</main>
+<script>
+  const $=id=>document.getElementById(id);
+  const setStatus=(id,ok,text)=>{const el=$(id);el.className=`status ${ok===true?"good":ok===false?"bad":""}`;el.innerHTML=`<span class="dot"></span>${text}`};
+  async function json(url,options){const response=await fetch(url,{headers:{"content-type":"application/json"},...options});return response.json()}
+  /* Konagin yasam dongusu: calisma zamani kendi olumunu goremez, konak bildirir. Hic bildirim
+     gelmediyse (Linux'ta systemd bunu yapmiyor) satir sessizce kendi haline birakilir. */
+  function renderHostLifecycle(host){
+    if(!host)return;
+    const line=host.exhausted
+      ?`Runtime restarts exhausted after ${host.restarts} consecutive failures (last exit code ${host.lastExitCode}).`
+      :host.restarts>0
+        ?`Runtime restarted ${host.restarts}/${host.maxRestarts} times · next backoff ${Math.round(host.nextDelayMs/1000)} s · last exit code ${host.lastExitCode}.`
+        :"Runtime has not crashed since the last stable start.";
+    $("runtimeResult").textContent=line;
+  }
+  async function refresh(){
+    try{
+      const data=await json("/api/android/diagnostics");
+      $("node").textContent=`v${data.node}`;
+      setStatus("coreStatus",data.core.ready,data.core.ready?`Core ready · ${Math.floor(data.uptimeSeconds/60)} min`:data.core.error||data.core.status);
+      $("mqtt").textContent=data.mqtt.listening?"Port 1883":"Starting";
+      setStatus("mqttStatus",data.mqtt.selfTest,data.mqtt.selfTest?"Publish/subscribe passed":data.mqtt.error||"Self-test pending");
+      $("matter").textContent=data.matter.ready?"Ready":data.matter.status;
+      setStatus("matterStatus",data.matter.ready,data.matter.ready?"Devices exposed to Matter":data.matter.error||"Waiting for bridge");
+      $("address").textContent=data.addresses[0]?.address||"No LAN address";
+      setStatus("arch",data.multicast.available,`${data.architecture} · mDNS ${data.multicast.available?"ready":"unavailable"}`);
+      renderHostLifecycle(data.host);
+    }catch(error){setStatus("coreStatus",false,error.message)}
+  }
+  $("probeForm").onsubmit=async event=>{
+    event.preventDefault();$("probeResult").textContent="Testing…";
+    const result=await json("/api/android/probe/tcp",{method:"POST",body:JSON.stringify({host:$("host").value,port:Number($("port").value)})});
+    $("probeResult").textContent=result.ok?`Connected to ${result.host}:${result.port} in ${result.latencyMs} ms.`:`Could not connect: ${result.error}`;
+    try{localStorage.setItem("villa-slzb-host",$("host").value)}catch{}
+  };
+  $("multicastButton").onclick=async()=>{const result=await json("/api/android/probe/multicast",{method:"POST",body:"{}"});$("runtimeResult").textContent=result.available?"Multicast socket opened successfully.":`Multicast failed: ${result.error}`;refresh()};
+  $("powerButton").onclick=()=>globalThis.VillaAndroid?.openPowerSettings();
+  $("wifiButton").onclick=()=>globalThis.VillaAndroid?.openWifiSettings();
+  try{$("host").value=localStorage.getItem("villa-slzb-host")||""}catch{}
+  refresh();setInterval(refresh,5000);
+</script>
+</body>
+</html>

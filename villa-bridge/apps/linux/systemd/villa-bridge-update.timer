@@ -1,0 +1,13 @@
+[Unit]
+Description=Check for Villa Bridge updates every 15 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+RandomizedDelaySec=2min
+AccuracySec=1min
+Persistent=true
+Unit=villa-bridge-update.service
+
+[Install]
+WantedBy=timers.target

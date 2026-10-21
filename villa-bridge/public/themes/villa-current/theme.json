@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "villa-current",
+  "name": "Villa Current",
+  "author": "Villa Bridge",
+  "behaviors": {
+    "light": "fixed-light-v1", "dark": "fixed-dark-v1", "system": "system-v1", "sun": "solar-v1"
+  },
+  "palettes": {
+    "light": {
+      "colors": {
+        "page": "#edf0f2", "ink": "#17211d", "inkSoft": "rgba(23,33,29,.66)", "glassCard": "rgba(255,255,255,.72)",
+        "glassTile": "rgba(255,255,255,.82)", "glassNav": "rgba(255,255,255,.88)", "glassEdge": "rgba(17,22,28,.10)",
+        "glassSheen": "rgba(255,255,255,.84)", "accent": "#184d3b", "accentSoft": "rgba(24,77,59,.12)",
+        "stateOn": "#be7410", "stateActive": "#247f62", "stateAlert": "#9d2f2a", "stateOffline": "#77807c",
+        "skyTop": "#edf0f2", "skyBottom": "#edf0f2", "sun": "#f1b554", "moon": "#e5e9ef",
+        "stars": "rgba(255,255,255,.20)", "mountainFar": "#cbd3d9", "mountainNear": "#aab7c2"
+      },
+      "materials": { "blur": 16, "saturation": 1.0, "brightness": 1.0, "shadow": "soft" }
+    },
+    "dark": {
+      "colors": {
+        "page": "#101514", "ink": "#f3f7f5", "inkSoft": "rgba(226,238,232,.78)", "glassCard": "rgba(10,14,20,.44)",
+        "glassTile": "rgba(42,50,61,.60)", "glassNav": "rgba(24,31,37,.82)", "glassEdge": "rgba(255,255,255,.26)",
+        "glassSheen": "rgba(255,255,255,.26)", "accent": "#a4e6c9", "accentSoft": "rgba(122,206,166,.20)",
+        "stateOn": "#ffd17c", "stateActive": "#4a9872", "stateAlert": "#f5978f", "stateOffline": "#8b9a93",
+        "skyTop": "#101514", "skyBottom": "#101514", "sun": "#ffd17c", "moon": "#eef2ff",
+        "stars": "rgba(255,255,255,.66)", "mountainFar": "#26342e", "mountainNear": "#18221e"
+      },
+      "materials": { "blur": 16, "saturation": 0.9, "brightness": 0.78, "shadow": "floating" }
+    },
+    "solar": {
+      "anchors": {
+        "night": { "colors": { "page": "#101831", "ink": "#f5f8fb", "inkSoft": "rgba(245,248,251,.70)", "glassCard": "rgba(10,14,20,.44)", "glassTile": "rgba(42,50,61,.60)", "glassNav": "rgba(24,33,52,.72)", "glassEdge": "rgba(255,255,255,.26)", "glassSheen": "rgba(255,255,255,.23)", "accent": "#a4ead1", "accentSoft": "rgba(131,220,187,.14)", "stateOn": "#ffd17c", "stateActive": "#4a9872", "stateAlert": "#ffaaa3", "stateOffline": "#8796a8", "skyTop": "#101831", "skyBottom": "#263757", "sun": "#ffd17c", "moon": "#eef2ff", "stars": "rgba(255,255,255,.80)", "mountainFar": "#24304a", "mountainNear": "#151e32" }, "materials": { "blur": 16, "saturation": 0.9, "brightness": 0.78, "shadow": "floating" } },
+        "dawn": { "colors": { "page": "#777fae", "ink": "#27243a", "inkSoft": "rgba(39,36,58,.70)", "glassCard": "rgba(255,247,244,.38)", "glassTile": "rgba(255,247,244,.55)", "glassNav": "rgba(255,247,244,.65)", "glassEdge": "rgba(255,247,244,.64)", "glassSheen": "rgba(255,255,255,.52)", "accent": "#205c49", "accentSoft": "rgba(32,92,73,.13)", "stateOn": "#d98814", "stateActive": "#2b6f58", "stateAlert": "#ad4842", "stateOffline": "#756f78", "skyTop": "#777fae", "skyBottom": "#f1ad82", "sun": "#ffd282", "moon": "#e5e7f2", "stars": "rgba(255,255,255,.36)", "mountainFar": "#88758d", "mountainNear": "#5b536d" }, "materials": { "blur": 16, "saturation": 1.0, "brightness": 1.0, "shadow": "soft" } },
+        "day": { "colors": { "page": "#7cb7df", "ink": "#10263a", "inkSoft": "rgba(16,38,58,.70)", "glassCard": "rgba(241,249,255,.40)", "glassTile": "rgba(246,251,255,.58)", "glassNav": "rgba(236,247,255,.70)", "glassEdge": "rgba(255,255,255,.72)", "glassSheen": "rgba(255,255,255,.58)", "accent": "#176348", "accentSoft": "rgba(23,99,72,.13)", "stateOn": "#d98814", "stateActive": "#247f62", "stateAlert": "#ad4842", "stateOffline": "#687988", "skyTop": "#7cb7df", "skyBottom": "#c4def0", "sun": "#ffbd35", "moon": "#e8edf7", "stars": "rgba(255,255,255,.18)", "mountainFar": "#7895ae", "mountainNear": "#526e8a" }, "materials": { "blur": 16, "saturation": 1.0, "brightness": 1.0, "shadow": "soft" } },
+        "dusk": { "colors": { "page": "#4d527f", "ink": "#fff8f2", "inkSoft": "rgba(255,248,242,.72)", "glassCard": "rgba(35,34,55,.38)", "glassTile": "rgba(45,43,65,.54)", "glassNav": "rgba(36,36,58,.68)", "glassEdge": "rgba(255,255,255,.27)", "glassSheen": "rgba(255,255,255,.28)", "accent": "#a9efd7", "accentSoft": "rgba(138,226,195,.15)", "stateOn": "#ffd17a", "stateActive": "#a2e8d0", "stateAlert": "#ffaaa3", "stateOffline": "#a59aa6", "skyTop": "#4d527f", "skyBottom": "#d97d66", "sun": "#ffd183", "moon": "#f0e8ee", "stars": "rgba(255,255,255,.54)", "mountainFar": "#66586f", "mountainNear": "#3e4056" }, "materials": { "blur": 16, "saturation": 1.0, "brightness": 0.9, "shadow": "floating" } }
+      }
+    }
+  }
+}

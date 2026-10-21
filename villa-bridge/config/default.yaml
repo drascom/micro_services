@@ -1,0 +1,43 @@
+mode: shadow
+pairingControl: true
+zigbee:
+  dataDir: /opt/zigbee2mqtt/data
+  configurationFile: /opt/zigbee2mqtt/data/configuration.yaml
+  # Kütüphanede tanımı olmayan cihazlar için harici converter klasörü (Zigbee2MQTT ile aynı biçim).
+  # Verilmezse dataDir/external_converters kullanılır; VILLA_BRIDGE_EXTERNAL_CONVERTERS_DIR ezer.
+  # externalConvertersDir: /opt/zigbee2mqtt/data/external_converters
+mqtt:
+  url: mqtt://127.0.0.1:1883
+  baseTopic: zigbee2mqtt
+  credentialsFile: /opt/zigbee2mqtt/data/configuration.yaml
+aliasesFile: /var/lib/matterbridge/.matterbridge/matterbridge-name-aliases.json
+matterbridge:
+  wsUrl: ws://127.0.0.1:8283
+homeAssistant:
+  discoveryEnabled: false
+alerts:
+  lowBatteryThreshold: 15
+# Gün doğumu / gün batımı tetikleyicisi için evin konumu. Ürün çok evli olduğundan varsayılan
+# koordinat yoktur; buradan ya da VILLA_BRIDGE_LATITUDE / VILLA_BRIDGE_LONGITUDE ile verilir.
+# Panelden girilen değer yapılandırmanın yanındaki location.json'a yazılır ve bunun önüne geçer.
+# location:
+#   latitude: 41.0082
+#   longitude: 28.9784
+#   timeZone: Europe/Istanbul
+selfHealing:
+  enabled: true
+  probeOffline: true
+debug:
+  enabled: true
+# MCP ucu (POST /mcp) yalnız Bearer ajan token'ı kabul eder. allowedOrigins boşken Origin başlığı
+# gönderen istek (tarayıcı) reddedilir; makine istemcisi Origin göndermediği için çalışır.
+# VILLA_BRIDGE_MCP_ALLOWED_ORIGINS ile virgülle ayırarak da verilebilir.
+# allowDangerousControls: kilit ve siren kanalları ajan (set_device) yolundan yazılabilsin mi?
+# Varsayılan false — bir otomasyonun evin kilidini açmaması gerekçesi bir model için de geçerli.
+# Panelden elle kumanda bundan etkilenmez.
+mcp:
+  allowedOrigins: []
+  allowDangerousControls: false
+http:
+  host: 0.0.0.0
+  port: 8091

@@ -1,0 +1,31 @@
+{
+  "name": "villa-bridge-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared standalone runtime for Villa Bridge, MQTT and Matterbridge",
+  "main": "main.cjs",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=18.20.4"
+  },
+  "dependencies": {
+    "aedes": "0.51.3",
+    "fastify": "4.28.1",
+    "matterbridge": "2.2.9",
+    "matterbridge-zigbee2mqtt": "2.4.7",
+    "mqtt": "5.15.2",
+    "node-persist-manager": "1.0.8",
+    "qrcode": "1.5.4",
+    "ws": "8.18.3",
+    "yaml": "2.8.2",
+    "zigbee-herdsman": "10.0.7",
+    "zigbee-herdsman-converters": "26.46.0"
+  },
+  "overrides": {
+    "@serialport/parser-delimiter": "12.0.0",
+    "@serialport/stream": "12.0.0",
+    "glob": "10.4.5",
+    "uuid": "11.1.1",
+    "debounce": "2.2.0"
+  }
+}

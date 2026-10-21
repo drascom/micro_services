@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_name">Villa Bridge</string>
+    <string name="service_channel_name">Villa Bridge Çekirdeği</string>
+    <string name="service_starting">Villa Bridge başlatılıyor…</string>
+    <string name="service_running">Villa Bridge çalışıyor</string>
+    <string name="service_stopping">Villa Bridge durduruluyor…</string>
+    <string name="service_error">Villa Bridge kontrol edilmeli</string>
+    <string name="service_restarting">Villa Bridge %1$d sn içinde yeniden başlıyor (%2$d. deneme)</string>
+    <string name="service_exhausted">Villa Bridge tekrarlanan hatalardan sonra durdu. Yeniden denemek için uygulamayı açın.</string>
+    <string name="runtime_starting_title">Villa Bridge başlatılıyor</string>
+    <string name="runtime_stage_preparing">Yerel çalışma ortamı hazırlanıyor…</string>
+    <string name="runtime_stage_configuration">Ev yapılandırması kontrol ediliyor…</string>
+    <string name="runtime_stage_mqtt">MQTT broker başlatılıyor…</string>
+    <string name="runtime_stage_zigbee">Zigbee koordinatörüne bağlanılıyor…</string>
+    <string name="runtime_stage_matter">Matter bridge başlatılıyor…</string>
+    <string name="runtime_stage_dashboard">Dashboard açılıyor…</string>
+    <string name="runtime_stopped_title">Villa Bridge durduruldu</string>
+    <string name="runtime_stopped_message">Zigbee, MQTT ve Matter servisleri kapalı. Bu tablet yeniden ev kontrol merkezi olacağı zaman sistemi başlatın.</string>
+    <string name="runtime_start">Villa Bridge’i başlat</string>
+    <string name="download_started">İndirilenler klasörüne kaydediliyor…</string>
+    <string name="download_failed">İndirme bu tablette başlatılamadı.</string>
+</resources>

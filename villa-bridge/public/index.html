@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#edf0f2">
+  <title>Villa</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%23184d3b%22%2F%3E%3Cpath%20d%3D%22M16%206%204%2016h3v10h6v-7h6v7h6V16h3z%22%20fill%3D%22%23fff%22%2F%3E%3C%2Fsvg%3E" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAAC8ElEQVR42u3aMU4CURSG0bsMV8AmLCmobKwoWYCB3p6Owg3QElZARUtLg5UFeyDQY7QwMVEzGhnmvXtu/g3M8xRfgnFzd2v25cITGBwGh8FhcBgcBofBYXAYHAaHGRwGh8FhcBgcBofBYXAYHAaHGRwGh8FhcBgcBofBYXAYHAaHGRwGR4P1hoPecOAd4PhCxvP+5Xn/wgccn9Yfjw6n4/n9DqdjfzzyJnC8bfI0/ZDx4WPyNPUy2XHMFvPzNzdbzOHIGxnL9er84y3Xq8wJEpnz89zgMidqJM/PJpc2UUN+NvSRMFFDfja/bIka8vNXlypRQ37+9vIkasjPP1ySRA35+Wcf1SdqyE+JmgvHf+Vn8kQN+SlRs+C4RH6mTdSQnxK1fhwt5Ge2RA35KVGrxdF+fuZJ1JCfErVCHNfNzwyJGvJTotaDo2v5WXGihvyUqDXg6HJ+VpmoIT8latk4CsrPmhI15KdELRJHuflZR6KG/JSoheGoIz9LT9SQnxK1DBy15mehiRryU6J2HUeG/CwuUUN+StTu4kiYn6UkashPido5HPKz+4ka8lOidgiH/CwlUUN+StTr45CfxSVqyE+Jek0c8rPQRA35KVGvg0N+Fp2oIT8laqs45GcdiRryU6K2hEN+1pSoIT8l6mVxyM8qEzXkp0Tt1k/2m93Wn7D5bXbbRP/PAQcccMABBxxwwAEHHHDAAQcccMABBxxwODgcHHDAAQcccMABBxwV49jsti0MjiJxtPMtcMABBxxwwAEHHHDAAQcccMABBxxwwAEHHHDAAQcccMABBxxwwAEHHHDAAQcccMABBxxwwAEHHHDAAQcccMABBxxwwAEHHHDAAQcccMABBxxwwAEHHHDAAQcccMABBxxwwAEHHMlx9Mej+8eHS6+db2nhQ/rjUSIcVsTgMDgMDoPD4DA4DA6Dw+AwOAwOMzgMDoPD4DA4DA6Dw+AwOAwOMzgMDoPD4DA4DA6Dw+AwOAwOMzjs+70C23R/iXCd1+YAAAAASUVORK5CYII=">
+  <script>
+    (()=>{try{
+      const saved=localStorage.getItem("villa-theme");
+      const mode=["light","dark","sun","system"].includes(saved)?saved:"sun";
+      const appearanceCache=JSON.parse(localStorage.getItem("villa-appearance-cache-v2")||"null");
+      let cachedResolvedTheme=null;
+      if(appearanceCache?.schemaVersion===2&&appearanceCache.colors&&appearanceCache.materials){
+        const css={page:"--theme-page",ink:"--theme-ink",inkSoft:"--theme-ink-soft",glassCard:"--theme-glass-card",glassTile:"--theme-glass-tile",glassNav:"--theme-glass-nav",glassEdge:"--theme-glass-edge",glassSheen:"--theme-glass-sheen",accent:"--theme-accent",accentSoft:"--theme-accent-soft",stateOn:"--theme-state-on",stateActive:"--theme-state-active",stateAlert:"--theme-state-alert",stateOffline:"--theme-state-offline",skyTop:"--theme-sky-top",skyBottom:"--theme-sky-bottom",sun:"--theme-sun",moon:"--theme-moon",stars:"--theme-stars",mountainFar:"--theme-mountain-far",mountainNear:"--theme-mountain-near"};
+        Object.entries(css).forEach(([key,property])=>{if(typeof appearanceCache.colors[key]==="string")document.documentElement.style.setProperty(property,appearanceCache.colors[key])});
+        document.documentElement.style.setProperty("--theme-glass-blur",`${Number(appearanceCache.materials.blur)||0}px`);
+        document.documentElement.style.setProperty("--theme-glass-saturation",String(Number(appearanceCache.materials.saturation)||1));
+        document.documentElement.style.setProperty("--theme-glass-brightness",String(Number(appearanceCache.materials.brightness)||1));
+        document.documentElement.dataset.themePackage=appearanceCache.packageId||"";
+        document.documentElement.dataset.themeTone=appearanceCache.tone||"";
+        cachedResolvedTheme=["light","dark"].includes(appearanceCache.resolvedTheme)?appearanceCache.resolvedTheme:null;
+      }
+      /* "Güneşe göre" kipinde İLK KARE doğru boyanmalı: hava servisi bu anda henüz cevap
+         vermedi, yani gün doğumu/batımı elimizde yok. Panel son bilinen saatleri (yerel saatte,
+         dakika cinsinden) `villa-sun-times` altında önbelleğe alıyor; burada onu okuyup temayı
+         daha ilk boyamada doğru seçiyoruz. Önbellek yoksa eski davranışa — sistem tercihine —
+         düşülür, yani kip hiçbir koşulda paneli kilitlemez. */
+      let sunDark=null;
+      if(mode==="sun"){
+        if(cachedResolvedTheme)sunDark=cachedResolvedTheme==="dark";
+        const times=JSON.parse(localStorage.getItem("villa-sun-times")||"null");
+        const rise=Number(times?.rise);
+        const set=Number(times?.set);
+        if(sunDark===null&&Number.isFinite(rise)&&Number.isFinite(set)&&set-rise>=60){
+          const now=new Date();
+          const minutes=now.getHours()*60+now.getMinutes();
+          sunDark=minutes<rise||minutes>=set;
+        }
+      }
+      const dark=mode==="dark"||(mode!=="light"&&(sunDark!==null?sunDark:window.matchMedia?.("(prefers-color-scheme: dark)").matches===true));
+      const resolved=dark?"dark":"light";
+      document.documentElement.dataset.theme=resolved;
+      /* Görünüm sistemi de İLK KAREDE belli olmalı: hareketli gökyüzü yalnız "güneşe göre"
+         kipinin işidir, diğer kiplerde sabit zemin çizilir. İşaret geç konsaydı sabit kipte
+         gökyüzü bir kare yanıp sönerdi. Panel bunu sonra `applyTheme` içinde tazeler. */
+      document.documentElement.dataset.sky=mode==="sun"?"live":"fixed";
+      /* Arka plan ayarları (`villa-sky`) da İLK KAREDE geçerli olmalı: kayıt sonradan okunsaydı
+         panel bir kare varsayılan kuşağı gösterip üstüne kullanıcının seçimini basardı ve bu
+         göze çarpardı. Asıl doğrulama panelin `loadSkySettings`'inde; burada yalnız işaretler
+         konur, bozuk değer sessizce atlanır ve CSS varsayılanı yerinde kalır. */
+      const sky=JSON.parse(localStorage.getItem("villa-sky")||"null");
+      if(sky&&typeof sky==="object"){
+        if(["off","a","b","c"].includes(sky.milkyway))document.documentElement.dataset.milkyway=sky.milkyway;
+        if(Number.isFinite(Number(sky.density)))document.documentElement.style.setProperty("--mw-a",String(Math.min(1,Math.max(0,Number(sky.density)))));
+        if(typeof sky.mountain==="boolean")document.documentElement.dataset.mountain=sky.mountain?"on":"off";
+        if(Number.isFinite(Number(sky.mountainHeight)))document.documentElement.style.setProperty("--mountain-h",`${Math.min(190,Math.max(40,Math.round(Number(sky.mountainHeight))))}px`);
+      }
+      document.documentElement.style.colorScheme=resolved;
+      document.querySelector('meta[name="theme-color"]').content=dark?"#101514":"#edf0f2";
+    }catch{}})();
+  </script>
+  <link rel="stylesheet" href="/css/panel.css">
+</head>
+<body class="home-mode">
+<!-- AY — gökyüzünün TEK gerçek DOM düğümü. Öbür üç katman hâlâ sözde öğe (gökyüzü `body::before`,
+     güneş `html::before`, dağ `html::after`); ay düğüme çıktı çünkü HALE ile ŞEKİL ayrı öğelerde
+     olmak zorunda: maske öğenin `filter` çıktısını da kırpar, tek öğede hale kaybolurdu. Dış kutu
+     haleyi ve kolun dönüşünü taşır, iç kutu dokulu yüzü evre maskesiyle keser. Ayrıntı ve dört
+     evrenin ölçümü `panel.css` içinde. Sabit görünümde düğüm `display:none`, hiç kurulmaz. -->
+<div class="sky-moon sky-moon-screen" aria-hidden="true">
+  <div class="sky-moon-face"><div class="sky-moon-half"><i></i></div><div class="sky-moon-bulge"></div></div>
+</div>
+<div class="shell">
+  <!-- SOL SABİT RAY — tablette panelin TEK kalıcı gezinmesi (not §7: "solda ince, sabit
+       gezinme"). Satırlar gerçek görünümlere bağlanır; uydurma "Odalar"/"Rutinler" sayfası
+       AÇILMAZ çünkü panelde öyle bir görünüm yok ve prototipin sahte verisi üretime taşınmaz.
+       Yönetici satırları `data-admin-only` taşır: gizleme yalnız SUNUM: yetkiyi her istekte
+       sunucu yeniden sorar. Satırlar `.nav-button` sınıfını da taşır — tıklama bağı
+       (`99-bind.js`) ve `active` işareti (`activateView`) tek yerde kurulu kalsın diye; ikinci
+       bir gezinme mekanizması kurulmaz. En altta Profil: menü levhasını açan TEK düğme
+       (not §12: sağ üstte tekrar eden profil düğmesi yok). -->
+  <aside class="side-rail">
+    <button class="rail-brand" type="button" data-view-link="home" data-i18n-aria="navHome" aria-label="Home"><span class="brand-mark" aria-hidden="true">V</span></button>
+    <nav class="rail-nav" data-i18n-aria="menu" aria-label="Menu">
+      <button id="leaveAdminModeButton" class="rail-button rail-leave-admin" type="button" data-admin-only data-i18n-aria="backToHomeMode" aria-label="Back to home mode"><span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10M9 20v-6h6v6"/></svg></span><span class="rail-label" data-i18n="navHome">Home</span></button>
+      <button class="nav-button rail-button active" type="button" data-view="home" data-resident-only><span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10M9 20v-6h6v6"/></svg></span><span class="rail-label" data-i18n="navHome">Home</span></button>
+      <!-- ODALAR — ev modunun görünümü (not §4.1). Aşama 2'de bu satır yoktu çünkü ortada oda
+           görünümü YOKTU; artık oda kartları `35-generator.js`ten türüyor ve hepsi burada
+           listeleniyor. Ana ekran yalnız "Genel görünümde göster" işaretli odaları basar; işareti
+           kapatılan oda kaybolmaz, yeri bu görünümdür. Satır ötekilerle AYNI mekanizmayı kullanır
+           (`.nav-button` + `data-view`): ikinci bir gezinme kurulmuyor. -->
+      <button class="nav-button rail-button" type="button" data-view="rooms" data-resident-only><span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5"/><path d="M5 9.5V20h14V9.5"/><path d="M10 20v-5h4v5"/></svg></span><span class="rail-label" data-i18n="navRooms">Rooms</span></button>
+      <button class="nav-button rail-button" type="button" data-view="devices" data-admin-only><span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="3"/><path d="M9 8h6M9 12h6M9 16h2"/></svg></span><span class="rail-label" data-i18n="navDevices">Devices</span></button>
+      <!-- RUTİNLER — ev modunun görünümü (not §4.1). Ev kullanıcısı burada rutini yalnız
+           ÇALIŞTIRIR (not §3); düzenleme yönetici modundaki Otomasyon ekranında kalır. Satır
+           `data-admin-only` TAŞIMAZ, çünkü çalıştırma yolu (`POST /api/automations/:id/run`)
+           sunucuda da ev moduna açıktır. -->
+      <button class="nav-button rail-button" type="button" data-view="routines" data-resident-only><span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></span><span class="rail-label" data-i18n="navRoutines">Routines</span></button>
+      <!-- YÖNETİCİ GEZİNMESİ (not §4.2): Genel Bakış · Cihazlar · Otomasyonlar · Bağlantılar ·
+           Sistem. Bu beş yol yönetici modunda görünür; günlük kullanıcı oda ayrıntısına oda
+           kartından gider ve teknik Cihazlar yolunu gezinmede görmez. Görsel sıra CSS'te Genel
+           Bakış ile başlar. "Sistem" bugünkü Ayarlar görünümünün ta kendisidir — kimliği
+           (`#settings`) ve iki sekmesi korunur, yalnız adı yönetici gezinmesinin dilindedir. -->
+      <button class="nav-button rail-button" type="button" data-view="adminOverview" data-admin-only><span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg></span><span class="rail-label" data-i18n="navOverview">Overview</span></button>
+      <button class="nav-button rail-button" type="button" data-view="automations" data-admin-only><span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M13 3 5 14h6l-1 7 8-11h-6l1-7Z"/></svg></span><span class="rail-label" data-i18n="navAutomations">Automations</span></button>
+      <button class="nav-button rail-button" type="button" data-view="connections" data-admin-only><span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 12a4 4 0 0 1 4-4h3a4 4 0 1 1 0 8h-2"/><path d="M16 12a4 4 0 0 1-4 4H9a4 4 0 1 1 0-8h2"/></svg></span><span class="rail-label" data-i18n="navConnections">Connections</span></button>
+      <button class="nav-button rail-button" type="button" data-view="settings" data-admin-only><span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M5.6 5.6l1.7 1.7M16.7 16.7l1.7 1.7M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7"/></svg></span><span class="rail-label" data-i18n="navSystem">System</span></button>
+    </nav>
+    <div class="rail-bottom">
+      <button class="rail-button rail-profile" type="button" data-app-menu aria-haspopup="dialog" aria-expanded="false" aria-controls="appMenuDialog"><span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/></svg></span><span class="rail-label" data-i18n="profile">Profile</span></button>
+    </div>
+  </aside>
+  <main>
+    <div id="systemAlertBar" class="system-alert-bar" role="alert" hidden><span class="system-alert-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 2.8 20h18.4L12 3Z"/><path d="M12 9v5m0 3v.1"/></svg></span><span id="systemAlertText"></span><span id="systemAlertCount" class="system-alert-count" hidden></span></div>
+    <!-- YÖNETİCİ UYARISI. Moddan çıkış sol rayda kendi düğmesidir; sayfa üstünde büyük bir mod
+         kartı yoktur. Yalnız fabrika PIN'i hâlâ kullanılıyorsa sistem uyarısı gibi sabit, ince
+         bir çubuk görünür. Kimlikler korunur; görünürlüğü `applyAuthUi` yönetir. -->
+    <div id="adminModeStrip" class="admin-mode-strip" data-admin-only>
+      <div id="defaultPinBanner" class="default-pin-banner" role="alert" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 2.5 20h19L12 4Z"/><path d="M12 10v4m0 3h.01"/></svg><div><strong data-i18n="defaultPinWarningTitle">The administrator PIN is still 1234</strong><span data-i18n="defaultPinWarningLead">Anyone on this network can open the setup screens. Change it under Settings - Administrator mode.</span></div><button id="defaultPinBannerAction" class="quiet" type="button" data-view-link="settings" data-i18n="changePin">Change PIN</button></div>
+    </div>
+    <div id="pairingBanner" class="pairing-banner"><div><strong data-i18n="pairingTitle">Searching for new devices</strong><div id="pairingText" class="device-meta" data-i18n="pairingHint">Put the nearby device into pairing mode.</div></div><div class="pairing-banner-actions"><button id="showPairing" class="secondary" data-i18n="showPairing" hidden>Show</button><button id="stopPairing" class="quiet" data-i18n="stopSearch">Stop searching</button></div></div>
+
+    <section id="home" class="view active">
+      <!-- ANA EKRAN BAŞLIĞI — not §6.1: TEK satır, üç bölüm.
+           sol = bağlam yazısı + ekran başlığı · orta = birleşik saat/hava · sağ = evin sağlığı.
+           Saat/hava artık panonun bir KARTI değil, başlığın orta hücresi: ayrı kart yok, ikinci
+           satır yok, ana ekranın dikey boyunu tüketmiyor. Sağ hücrede evin sağlığı (üç gösterge +
+           sunucu bağlantısı) ve pano eylemleri birlikte durur; iki yan hücre de `1fr` olduğu için
+           orta hücre gerçekten ortalanır — içerik genişliği ortalamayı kaydırmaz. -->
+      <header class="page-head"><button class="app-menu-button" type="button" data-app-menu aria-haspopup="dialog" aria-expanded="false" aria-controls="appMenuDialog" data-i18n-aria="openMenu" aria-label="Open menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><div class="home-heading"><p class="eyebrow" data-i18n="homeEyebrow">Home control</p><h1 class="home-title" data-i18n="navHome">Home</h1></div>
+        <!-- BİRLEŞİK SAAT/HAVA. Arkası şeffaf, ince bordür ve hafif iç ışık (`--glass-sheen`) —
+             kart değil. Aradaki dikey çizgi iki AYRI tıklanabilir bölgeyi anlatır: soldaki
+             `#clockDialog`u, sağdaki `#weatherDialog`u açar; iki pencere de olduğu gibi duruyor,
+             yalnız tetikleyicileri buraya taşındı. Dünya saatleri, alarm özeti ve hava ayrıntısı
+             başlıkta DEĞİL, o pencerelerin içinde — başlık iki satırdan uzamaz. -->
+        <section id="homeHub" class="home-hub" aria-label="Time and weather">
+          <button id="hubClockZone" class="hub-zone hub-zone-clock" type="button" aria-haspopup="dialog">
+            <span id="hubTime" class="hub-time">--:--<span id="hubSeconds" class="hub-seconds"></span></span>
+            <span class="hub-clock-meta"><span id="hubDate" class="hub-date"></span><span id="hubZoneName" class="hub-sub"></span></span>
+          </button>
+          <span class="hub-divider" aria-hidden="true"></span>
+          <!-- Hava bölgesi: büyük ikon solda, yazı sağda. Sahne görselini `applyWeatherScene`
+               (45-clock-weather.js) bölgenin BAŞINA ekler, bu yüzden yazılar tek bir sarmalın
+               (`.hub-weather-copy`) içinde durur — ikon eklendiğinde/kaldırıldığında sıra bozulmaz. -->
+          <button id="hubWeatherZone" class="hub-zone hub-zone-weather" type="button" aria-haspopup="dialog">
+            <span class="hub-weather-copy"><span id="hubWeatherBody" class="hub-weather"></span><span id="hubWeatherLocation" class="hub-label"></span></span>
+          </button>
+        </section>
+        <div class="home-status"><div class="home-metrics"><div id="homeSummary" class="home-summary"></div><!-- EVİN DURUMU — uzun kart değil, tek hap (demo `.home-health`). Ana ekrandan kalkan
+             `[data-widget="summary"]` kartının cümlesi buraya indi: nokta + kısa metin.
+             Metni `renderHomeHealth` (40-home.js) `genHomeHealthModel`den yazar; ikinci bir
+             sayım kuralı yok. Kart silinmedi, aşağıda `hidden` duruyor. --><button id="homeHealth" class="home-health" type="button" disabled><span class="status-dot" aria-hidden="true"></span><span id="homeHealthText" class="home-health-text"></span></button><span id="serverConnectionMetric" class="server-connection-metric" hidden><span data-i18n="server">Server</span><span id="serverConnectionDot" class="server-connection-dot" aria-hidden="true"></span></span></div><div class="home-actions"><!-- PANO DÜZENLEME EV MODUNDAN ÇEKİLDİ. Ana ekran artık ELLE dizilen bir pano değil,
+             cihazlardan TÜRETİLEN bir sonuç: kart ekleme/çıkarma ve oda oluşturma Odalar
+             görünümüne taşındı, kart görünürlüğü de orada kalıcı bir anahtar oldu. İki düğme
+             KALDIRILMADI, yalnız `hidden`: `#editDashboard`/`#addWidget` kimlikleri, bağları
+             (`99-bind.js`) ve `setDashboardEditing` akışı yerinde duruyor — geri dönüş yolu
+             bir tur daha açık kalsın. -->
+          <button id="addWidget" class="secondary" hidden><svg class="home-action-glyph" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7m-3.5-3.5h7"/></svg><span class="home-action-label" data-i18n="addWidget">＋ Add</span></button><button id="editDashboard" class="quiet" hidden><svg id="editDashboardGlyph" class="home-action-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg><span id="editDashboardLabel" class="home-action-label" data-i18n="editDashboard">✎ Edit</span></button><button id="homeAutomations" class="quiet" type="button" data-view-link="automations" data-admin-only><svg class="home-action-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3 5 14h6l-1 7 8-11h-6l1-7Z"/></svg><span class="home-action-label" data-i18n="navAutomations">Automations</span></button></div></div>
+      </header>
+      <div id="widgetBoard" class="widget-board">
+        <!-- ANA EKRANIN SIRASI: başlık · "Hızlı sahneler" · "Favoriler" · "Odalar".
+             Bölüm başlıkları yalnız birer ad satırı: düğme taşımazlar, çünkü "hepsini gör"
+             yolu sol raydaki Rutinler ve Odalar satırlarıdır. -->
+        <div class="home-section-head" data-home-section="scenes"><div><h2 data-i18n="quickScenesWidget">Quick scenes</h2><p data-i18n="homeQuickScenesLead">Change the mood of the home with one touch.</p></div></div>
+        <section class="dashboard-widget widget-wide quick-control-widget" data-widget="quick">
+          <div class="widget-edit-controls"><button data-widget-move="left">←</button><button data-widget-move="right">→</button><button data-widget-remove>×</button></div>
+          <!-- HIZLI SAHNELER (not §6.2). Şerit artık oda SEKMESİ değil, tek dokunuşluk RUTİN
+               çalıştırma alanı: dört sütun, kart boyu ~62px, içinde YALNIZ işlev ikonu ve kısa
+               eylem başlığı — açıklama paragrafı yok (not §12). Kartlar `35-generator.js`in
+               `genSceneCatalog`ından türer; ayrı bir sahne deposu YOKTUR, rutin = otomasyon.
+               Şeride dörtten fazlası sığmaz; tamamı sol raydaki Rutinler görünümündedir.
+               Kaydırma okları ve "yeni grup" düğmesi kalktı: sabit dört sütun kayacak bir şey
+               bırakmıyor, grup oluşturma panonun "＋ Ekle" penceresinde duruyor. -->
+          <div class="strip-row">
+            <div id="quickScenes" class="quick-scene-grid" role="group" data-i18n-aria="quickScenesLabel" aria-label="Quick scenes"><div class="empty" data-i18n="devicesPreparing">Preparing devices…</div></div>
+          </div>
+        </section>
+        <div id="widgetRail" class="widget-rail" tabindex="-1">
+          <!-- EMEKLİ: "Evin durumu" kartı ana ekranda BASILMAZ (özeti başlıktaki hapa döndü).
+               Kart, katalog girdisi ve `renderWidgetLists` akışı silinmedi — `retiredHomeWidgets`
+               (10-core.js) yalnız ızgaraya girmesini engelliyor. -->
+          <article class="dashboard-widget widget-card" data-widget="summary" hidden>
+            <div class="widget-edit-controls"><button data-widget-move="left">←</button><button data-widget-move="right">→</button><button data-widget-remove>×</button></div>
+            <h2 data-i18n="summaryWidget">Home status</h2><p data-i18n="summaryWidgetLead">Which devices are reachable, and what happened recently.</p>
+            <h3 class="widget-subhead" data-i18n="availabilityWidget">Device availability</h3><div class="widget-value"><strong id="onlineDeviceCount">—</strong><span data-i18n="online">online</span></div><div class="widget-facts"><span id="offlineDeviceCount" class="fact">—</span><span id="lowBatteryCount" class="fact" hidden></span></div>
+            <div class="widget-section-divider" role="presentation"></div>
+            <h3 class="widget-subhead" data-i18n="activityWidget">Home activity</h3><div id="activityEvents" class="widget-list"></div>
+          </article>
+          <!-- Favoriler bir dış kart değildir: Hızlı Sahneler ve Odalar gibi bölüm başlığı ile
+               altında doğrudan eylem döşemelerinden oluşur. İçini `renderFavoritesWidget`
+               doldurur; yalnız yıldızlanmış cihaz varsa basılır. -->
+          <article class="dashboard-widget favorites-widget" data-widget="favorites" hidden>
+            <div class="widget-edit-controls"><button data-widget-move="left">←</button><button data-widget-move="right">→</button><button data-widget-remove>×</button></div>
+            <div class="home-section-head" data-home-section="favorites"><div><h2 data-i18n="favoritesWidget">Favourites</h2><p data-i18n="favoritesWidgetLead">The devices you starred, in one place.</p></div></div>
+            <div id="favoriteTiles" class="group-control-grid"></div>
+          </article>
+          <!-- Odalar başlığı Favoriler bölümünden SONRA gelir ve yalnız altındaki oda
+               ızgarasını adlandırır. Böylece başlık, Favoriler bölümünün üstünde yanlış bağlama
+               düşmez. Oda kartlarının çalışma düğümleri `#roomWidgetGrid` içinde kalır. -->
+          <div class="home-section-head" data-home-section="rooms"><div><h2 data-i18n="navRooms">Rooms</h2><p data-i18n="homeRoomsLead">Choose a room first, then what you want to do.</p></div></div>
+          <div id="roomWidgetGrid" class="room-widget-grid">
+            <div id="widgetEmpty" class="widget-empty" hidden><span data-i18n="widgetEmpty">Your dashboard is empty.</span> <button class="secondary" data-open-widget-catalog data-i18n="addWidget">＋ Add</button> <button class="quiet" data-open-group-create data-i18n="createGroupAction">＋ Create</button></div>
+          </div>
+        </div>
+        <button id="widgetScrollLeft" class="widget-scroll-hint scroll-hint-left" type="button" hidden aria-label="More widgets to the left"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg></button>
+        <button id="widgetScrollHint" class="widget-scroll-hint scroll-hint-right" type="button" hidden aria-label="More widgets to the right"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+      </div>
+    </section>
+
+    <section id="devices" class="view">
+      <div id="pullRefresh" class="pull-refresh" role="status" aria-live="polite"><span class="pull-refresh-spinner" aria-hidden="true"></span><span id="pullRefreshText" data-i18n="pullToRefresh">Pull to refresh</span></div>
+      <header class="page-head"><button class="app-menu-button" type="button" data-app-menu aria-haspopup="dialog" aria-expanded="false" aria-controls="appMenuDialog" data-i18n-aria="openMenu" aria-label="Open menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><div class="page-head-title"><h1 data-i18n="navDevices">Devices</h1></div><button id="devicesAddDevice" class="primary add-device page-action-tile" data-admin-only disabled data-i18n-aria="addDevice" aria-label="Add device"><svg class="page-action-glyph" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="12" height="18" rx="3"/><path d="M7 8h4m-4 4h4m8 0v7m-3.5-3.5h7"/></svg><span class="page-action-label" data-i18n="addDevice">Add device</span></button></header>
+      <div class="toolbar"><div class="search-field"><input id="search" class="search" type="search" placeholder="Search devices…" data-i18n-placeholder="searchDevices" autocomplete="off"><button id="clearSearch" class="search-clear" type="button" hidden aria-label="Clear search"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><div class="toolbar-actions"><button class="secondary" id="refreshButton"><svg class="page-action-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M19 12a7 7 0 1 0-2 5"/></svg><span class="page-action-label" data-i18n="refresh">Refresh</span></button><label class="device-columns" data-device-columns-field><input id="deviceColumns" type="range" min="1" max="4" step="1" value="3" aria-label="Cards per row"><span id="deviceColumnsValue" class="device-columns-value" aria-hidden="true">3</span></label><div class="view-toggle" role="group" data-device-layout-toggle aria-label="Device layout"><button class="active" data-device-layout="grid" aria-pressed="true"><span class="layout-glyph grid"></span></button><button data-device-layout="list" aria-pressed="false"><span class="layout-glyph list"></span></button></div></div></div>
+      <div id="roomFilter" class="room-filter" role="group" data-i18n-aria="roomFilterLabel" aria-label="Filter by room" hidden></div>
+      <details id="deviceAttention" class="device-attention" hidden><summary class="device-attention-head"><span class="device-attention-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 3 20h18L12 3Z"/><path d="M12 9v5m0 3v.1"/></svg></span><div class="device-attention-copy"><h2 data-i18n="attentionDevices">Needs attention</h2><p data-i18n="attentionDevicesLead">Disconnected, incomplete or alerting devices appear here.</p></div><span id="attentionDeviceCount" class="device-attention-count">0</span></summary><div id="attentionDevices" class="device-grid devices-grid-view"></div></details>
+      <section id="allDevices" class="device-grid devices-grid-view"><div class="empty" data-i18n="devicesPreparing">Preparing devices…</div></section>
+    </section>
+
+    <!-- ODALAR GÖRÜNÜMÜ — evin bütün oda kartları, süzgeçsiz (not §4.1). Kartlar ana ekrandakinin
+         AYNISIDIR: aynı `groupWidgetHtml` çağrısı, aynı döşemeler, aynı ana anahtar; ikinci bir
+         kart dili açılmadı. Fark tek: ana ekran yalnız "Genel görünümde göster" işaretli odaları
+         basar, burada hepsi durur ve o anahtar kartın üstünde KALICI olarak görünür — pano
+         düzenleme kipine girmeye gerek kalmadı, o yüzden ev modundan çekildi.
+         Kart yönetimi (oda oluştur / kart kataloğu) da buraya taşındı: ana ekranın başlığında
+         artık düzenleme düğmeleri yok. -->
+    <section id="rooms" class="view">
+      <header class="page-head"><button class="app-menu-button" type="button" data-app-menu aria-haspopup="dialog" aria-expanded="false" aria-controls="appMenuDialog" data-i18n-aria="openMenu" aria-label="Open menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><div class="page-head-title"><h1 data-i18n="navRooms">Rooms</h1></div><div class="rooms-head-actions" data-admin-only><button id="roomsAddCard" class="quiet page-action-tile" type="button" data-open-widget-catalog data-i18n-aria="addWidget" aria-label="Add card"><svg class="page-action-glyph" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7m-3.5-3.5h7"/></svg><span class="page-action-label" data-i18n="addWidget">＋ Add</span></button><button id="roomsCreate" class="primary page-action-tile" type="button" data-open-group-create data-i18n-aria="createGroupAction" aria-label="Create room"><svg class="page-action-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-7-7h14"/></svg><span class="page-action-label" data-i18n="createGroupAction">＋ Create</span></button></div></header>
+      <p class="routine-lead" data-i18n="roomsLead">Every room card, whether or not it shows on the home screen.</p>
+      <div id="roomCards" class="room-card-grid"></div>
+    </section>
+
+    <!-- RUTİNLER GÖRÜNÜMÜ — ev kullanıcısının rutin listesi (not §3, §6.2). Ana ekrandaki şerit
+         yalnız ilk dördünü gösterir; tamamı burada durur ve UZUN AÇIKLAMA da yalnız burada
+         yazılır. Ekranda tek eylem var: çalıştır. Düzenleme/silme/yeni kural yönetici modundaki
+         Otomasyon ekranında; oraya giden bağ da yalnız yönetici modunda görünür. -->
+    <section id="routines" class="view">
+      <header class="page-head"><button class="app-menu-button" type="button" data-app-menu aria-haspopup="dialog" aria-expanded="false" aria-controls="appMenuDialog" data-i18n-aria="openMenu" aria-label="Open menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><div class="page-head-title"><h1 data-i18n="navRoutines">Routines</h1></div><button id="routinesManage" class="secondary page-action-tile" type="button" data-view-link="automations" data-admin-only data-i18n-aria="navAutomations" aria-label="Automations"><svg class="page-action-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3 5 14h6l-1 7 8-11h-6l1-7Z"/></svg><span class="page-action-label" data-i18n="navAutomations">Automations</span></button></header>
+      <p class="routine-lead" data-i18n="routinesLead">Tap a routine to run it now.</p>
+      <div id="routineList" class="routine-list"></div>
+    </section>
+
+    <!-- GENEL BAKIŞ — yönetici gezinmesinin ilk ekranı (not §4.2). Yönetici moduna geçen kişi
+         önce "evde durum ne?" sorar; cevap bugüne kadar Ayarlar, Bağlantılar ve Cihazlar
+         arasına dağılmıştı. Burada tek yerde duruyor: cihaz sayısı · çevrimiçi · otomasyon ·
+         düşük pil · servis sağlığı. Sayılar `35-generator.js`in saf modellerinden gelir
+         (`genHomeHealthModel`, `genSceneCatalog`) — ikinci bir sayım kuralı yazılmadı.
+         Ekran ANA EKRANIN DIŞINDA: 1024x640 bütçesi ana ekranın kendi akışına bakar.
+         Teknik terim burada serbesttir (not §11), çünkü bölümün tamamı `data-admin-only`. -->
+    <section id="adminOverview" class="view" data-admin-only>
+      <header class="page-head"><button class="app-menu-button" type="button" data-app-menu aria-haspopup="dialog" aria-expanded="false" aria-controls="appMenuDialog" data-i18n-aria="openMenu" aria-label="Open menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><div class="page-head-title"><h1 data-i18n="navOverview">Overview</h1></div></header>
+      <p class="routine-lead" data-i18n="adminOverviewLead">The state of the house in one place: devices, automations and the services behind them.</p>
+      <div id="adminOverviewStats" class="admin-stat-grid"></div>
+      <div class="admin-overview-columns">
+        <article class="setting-card admin-overview-card">
+          <div><h2 data-i18n="adminServicesTitle">Services</h2><p data-i18n="adminServicesLead">Zigbee, MQTT, Matter and Home Assistant. A service that has not been read yet says so — it is never counted as healthy.</p></div>
+          <ul id="adminServiceList" class="admin-service-list"></ul>
+        </article>
+        <article class="setting-card admin-overview-card">
+          <div><h2 data-i18n="adminAttentionTitle">Needs attention</h2><p data-i18n="adminAttentionLead">Every device reporting a problem, with the reason it reported. Tap a row to open the device.</p></div>
+          <div id="adminAttentionList" class="admin-attention-list"></div>
+          <p id="adminAttentionMore" class="admin-attention-more" hidden></p>
+        </article>
+      </div>
+    </section>
+
+    <section id="automations" class="view" data-admin-only>
+      <header class="page-head"><button class="app-menu-button" type="button" data-app-menu aria-haspopup="dialog" aria-expanded="false" aria-controls="appMenuDialog" data-i18n-aria="openMenu" aria-label="Open menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><div class="page-head-title"><h1 data-i18n="navAutomations">Automations</h1></div><button id="newAutomation" class="primary page-action-tile" type="button" data-i18n-aria="newAutomation" aria-label="New automation"><svg class="page-action-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-7-7h14"/></svg><span class="page-action-label" data-i18n="newAutomation">New automation</span></button></header>
+      <div id="automationAgentBar" class="automation-agent-bar" hidden><span class="automation-agent-bar-glyph" aria-hidden="true">🤖</span><p class="automation-agent-bar-note" data-i18n="automationAgentBarNote">An assistant changed these rules.</p><button id="revertAgentAutomations" class="secondary" type="button" data-i18n="automationAgentRevert">Undo assistant change</button></div>
+      <div id="automationList" class="automation-list"></div>
+    </section>
+
+    <section id="connections" class="view" data-admin-only>
+      <header class="page-head"><button class="app-menu-button" type="button" data-app-menu aria-haspopup="dialog" aria-expanded="false" aria-controls="appMenuDialog" data-i18n-aria="openMenu" aria-label="Open menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><div class="page-head-title"><h1 data-i18n="navConnections">Connections</h1></div></header>
+      <div class="connection-grid">
+        <article class="connection-card connection-summary-card zigbee-summary-card"><div class="connection-card-head"><div class="connection-brand" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h5m4 0h5M8 9l3 3-3 3m8-6-3 3 3 3"/></svg></div></div><h2>Zigbee</h2><p data-i18n="connectionZigbeeLead">Coordinator and in-home Zigbee device connection.</p><dl class="connection-summary-facts"><div><dt data-i18n="connectionCoordinator">Coordinator</dt><dd id="connectionsZigbeeCoordinator">—</dd></div><div><dt data-i18n="connectionChannel">Channel</dt><dd id="connectionsZigbeeChannel">—</dd></div><div><dt data-i18n="connectionDeviceCount">Devices</dt><dd id="connectionsZigbeeDevices">—</dd></div></dl><button id="reviewZigbeeConnection" class="secondary" type="button" data-i18n="connectionReview">Review connection</button></article>
+        <section id="tabletIpGuide" class="ha-network-guide connection-network-guide">
+          <h3 data-i18n="haStableIpTitle">Keep the tablet IP address stable</h3>
+          <p><span data-i18n="haCurrentIp">Current tablet IP:</span> <code id="haCurrentIp">—</code>. <span data-i18n="haIpDynamic">Your router may assign a different address after a restart.</span></p>
+          <ol><li data-i18n="haDhcpReservation">Recommended: create a DHCP reservation in your router. In the current Wi-Fi network details, find the MAC address Android uses for this network, then bind that MAC to the current IP.</li><li data-i18n="haStaticAlternative">Alternative: Android Settings → Network & Internet → Internet → current network → pencil/advanced → IP settings → Static. Keep gateway, DNS and subnet values consistent with the router network.</li></ol>
+          <p data-i18n="haIpNotMqtt">This changes the tablet’s network address; it is different from editing the MQTT URL in Villa Bridge.</p>
+          <div class="ha-guide-actions"><button id="openWifiSettings" class="secondary" type="button" hidden data-i18n="openWifiSettings">Open Wi-Fi settings</button></div>
+        </section>
+        <article class="connection-card"><div class="connection-card-head"><div class="connection-brand" role="img" aria-label="Matter"><svg class="matter-logo" viewBox="0 0 74.325 72.644" aria-hidden="true"><path d="M65.715 32.905c-7.996 2.19-15.164 7.406-19.636 15.152s-5.407 16.568-3.306 24.587l7.835-4.526a23.9 23.9 0 0 1 1.105-11.836l18.309 10.569 4.303-2.487v-4.967L56.016 48.829a23.92 23.92 0 0 1 9.699-6.879zM8.607 32.905v9.045a23.91 23.91 0 0 1 9.699 6.879L0 59.398v4.967l4.303 2.487 18.306-10.569c1.39 3.868 1.726 7.938 1.108 11.836l7.832 4.526c2.101-8.02 1.167-16.841-3.306-24.587A32.52 32.52 0 0 0 8.607 32.905zM37.161 0l-4.303 2.484v21.138c-4.046-.731-7.736-2.476-10.804-4.961l-7.838 4.522c5.895 5.83 14 9.429 22.946 9.429s17.051-3.599 22.946-9.429l-7.835-4.522a23.92 23.92 0 0 1-10.807 4.961V2.484z"/></svg></div><button id="openMatter" class="secondary connection-action" data-i18n="connectPlatform">Connect Matter system</button></div><h2 data-i18n="homePlatforms">Matter systems</h2><p data-i18n="platformsLead">Open Matter pairing and scan the code in a Matter-compatible controller.</p><div id="fabricList" class="fabric-list"></div></article>
+        <article class="connection-card home-assistant-card"><div class="connection-card-head"><div class="connection-brand" role="img" aria-label="Home Assistant"><svg class="home-assistant-logo" viewBox="0 0 240 240" aria-hidden="true"><path d="M240 224.762c0 8.25-6.75 15-15 15H15c-8.25 0-15-6.75-15-15v-90c0-8.25 4.77-19.769 10.61-25.609L109.39 10.373c5.83-5.83 15.38-5.83 21.21 0l98.79 98.789c5.83 5.83 10.61 17.36 10.61 25.61v90-.01Z" fill="#F2F4F9"/><path d="M229.39 109.153 130.61 10.373c-5.83-5.83-15.38-5.83-21.21 0l-98.79 98.78C4.78 114.983 0 126.512 0 134.762v90c0 8.25 6.75 15 15 15h92.27l-40.63-40.63a20.43 20.43 0 0 1-6.64 1.13c-11.3 0-20.5-9.2-20.5-20.5s9.2-20.5 20.5-20.5 20.5 9.2 20.5 20.5c0 2.33-.41 4.56-1.13 6.65L111 218.042v-115.88c-6.8-3.34-11.5-10.32-11.5-18.39 0-11.3 9.2-20.5 20.5-20.5s20.5 9.2 20.5 20.5c0 8.07-4.7 15.05-11.5 18.39v81.27l31.46-31.46a20.5 20.5 0 1 1 12.45 13.01L129 208.892v30.88h96c8.25 0 15-6.75 15-15v-90c0-8.25-4.77-19.77-10.61-25.61v-.009Z" fill="#18BCF2"/></svg></div><button id="toggleHaSetup" class="secondary connection-action ha-connect-button" type="button" aria-expanded="false" aria-controls="haSetupDetails" data-i18n="connectHomeAssistant">Connect Home Assistant</button></div><h2>Home Assistant</h2><p data-i18n="haLead">Connect Home Assistant to the same MQTT broker, then enable discovery when you are ready to publish the devices.</p></article>
+      </div>
+    </section>
+
+    <section id="settings" class="view" data-admin-only>
+      <header class="page-head"><button class="app-menu-button" type="button" data-app-menu aria-haspopup="dialog" aria-expanded="false" aria-controls="appMenuDialog" data-i18n-aria="openMenu" aria-label="Open menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><div class="page-head-title"><h1 data-i18n="navSystem">System</h1></div></header>
+      <div class="system-hub-grid">
+        <button class="system-hub-card" type="button" data-system-jump="accountsCard" data-system-targets="accountsCard,agentAccessCard"><span class="system-hub-glyph" aria-hidden="true">●</span><span><strong data-i18n="systemUsersTitle">Users</strong><small data-i18n="systemUsersLead">Home access and administrator security.</small></span><b data-i18n="systemManage">Manage ›</b></button>
+        <button class="system-hub-card" type="button" data-system-jump="appearanceSettingsCard" data-system-targets="appearanceSettingsCard,homeLocationForm,batteryAlertCard,dashboardGuideCard"><span class="system-hub-glyph" aria-hidden="true">☼</span><span><strong data-i18n="systemAppearanceTitle">Appearance and sky</strong><small data-i18n="systemAppearanceLead">Theme, colours and live background.</small></span><b data-i18n="systemEdit">Edit ›</b></button>
+        <button class="system-hub-card" type="button" data-system-jump="screenSleepCard" data-system-targets="screenSleepCard,tabletCareCard,androidRuntimeCard"><span class="system-hub-glyph" aria-hidden="true">▭</span><span><strong data-i18n="systemTabletTitle">Wall tablet</strong><small data-i18n="systemTabletLead">Brightness, screensaver and night behaviour.</small></span><b data-i18n="systemTabletAction">Tablet settings ›</b></button>
+        <button class="system-hub-card" type="button" data-system-jump="homeBackupCard" data-system-targets="homeBackupCard"><span class="system-hub-glyph" aria-hidden="true">▣</span><span><strong data-i18n="systemBackupTitle">Backup</strong><small data-i18n="systemBackupLead">Rooms, automations and connection settings.</small></span><b data-i18n="systemBackupAction">View backups ›</b></button>
+        <button class="system-hub-card" type="button" data-system-jump="systemRestartCard" data-system-targets="systemRestartCard"><span class="system-hub-glyph" aria-hidden="true">↻</span><span><strong data-i18n="systemMaintenanceTitle">Service maintenance</strong><small data-i18n="systemMaintenanceLead">Restart Villa Bridge safely.</small></span><b data-i18n="systemMaintenanceAction">Maintenance ›</b></button>
+        <button class="system-hub-card" type="button" data-system-jump="debugCard" data-system-targets="settingsServerNotice,setupWizardCard,networkSettingsCard,zigbeeToolsCard,debugCard"><span class="system-hub-glyph" aria-hidden="true">△</span><span><strong data-i18n="systemAdvancedTitle">Advanced tools</strong><small data-i18n="systemAdvancedLead">Network, Zigbee and diagnostic information.</small></span><b data-i18n="systemAdvancedAction">Open tools ›</b></button>
+      </div>
+      <!-- İKİ SEKME. Rol ayrımı DEĞİL: bölümün tamamı `data-admin-only`, iki sekmeyi de
+           yalnız yönetici görür. Amaç kalabalığı azaltmak — sık dokunulan ayarlar bir
+           sekmede, kurulumda bir kez dokunulanlar öbüründe. Seçim `localStorage`ta durur. -->
+      <div class="settings-tabs" role="tablist" data-i18n-aria="navSystem" aria-label="System">
+        <button id="settingsTabUsage" class="settings-tab" type="button" role="tab" aria-selected="true" aria-controls="settingsPanelUsage" data-settings-tab="usage" data-i18n="settingsTabUsage">Everyday</button>
+        <button id="settingsTabSetup" class="settings-tab" type="button" role="tab" aria-selected="false" tabindex="-1" aria-controls="settingsPanelSetup" data-settings-tab="setup" data-i18n="settingsTabSetup">Setup</button>
+      </div>
+      <div id="settingsPanelUsage" class="settings-tab-panel" role="tabpanel" aria-labelledby="settingsTabUsage" tabindex="0">
+        <article id="accountsCard" class="setting-card accounts-card">
+          <div><h2 data-i18n="adminModeTitle">Administrator mode</h2><p data-i18n="adminModeCardLead">One PIN unlocks the setup screens. Everyday controls never ask for it.</p><div class="auth-account-meta"><span id="modeStateBadge" class="auth-role-badge">Administrator mode</span></div></div>
+          <form id="adminPinForm" class="admin-password-form"><div class="admin-password-fields"><input id="adminPinInput" type="password" inputmode="numeric" pattern="[0-9]{4,8}" minlength="4" maxlength="8" autocomplete="new-password" data-i18n-placeholder="newAdminPin" placeholder="New PIN (4-8 digits)" required><input id="adminPinConfirm" type="password" inputmode="numeric" pattern="[0-9]{4,8}" minlength="4" maxlength="8" autocomplete="new-password" data-i18n-placeholder="confirmAdminPin" placeholder="Confirm new PIN" required></div><div id="adminPinError" class="auth-error" role="alert" aria-live="assertive" hidden></div><button class="secondary" type="submit" data-i18n="changePin">Change PIN</button></form>
+        </article>
+        <article id="appearanceSettingsCard" class="setting-card appearance-settings-card" data-admin-only>
+          <div><h2 data-i18n="appearancePackageTitle">Appearance package</h2><p data-i18n="appearancePackageLead">Choose a material family and tune fixed or solar colours without changing the sun behaviour.</p></div>
+          <div class="appearance-package-row"><label class="setting-field"><span data-i18n="themePackage">Theme package</span><select id="themePackageSelect"></select></label></div>
+          <div class="appearance-palette-grid">
+            <fieldset><legend data-i18n="themeLight">Light</legend><label><span data-i18n="pageColor">Page</span><input type="color" data-theme-override="light.page"></label><label><span data-i18n="accentColor">Accent</span><input type="color" data-theme-override="light.accent"></label></fieldset>
+            <fieldset><legend data-i18n="themeDark">Dark</legend><label><span data-i18n="pageColor">Page</span><input type="color" data-theme-override="dark.page"></label><label><span data-i18n="accentColor">Accent</span><input type="color" data-theme-override="dark.accent"></label></fieldset>
+          </div>
+          <div class="appearance-settings-actions"><button id="resetThemeOverrides" class="quiet" type="button" data-i18n="resetThemeColors">Reset colours</button><button id="saveThemeOverrides" class="primary" type="button" data-i18n="saveThemeColors">Save colours</button></div>
+        </article>
+        <!-- EKRAN VE UYKU. Ayarlar kullanıcıya ait, panelde durur; Android tarafı yalnız
+             uygular. Köprü yoksa kart kendiliğinden gizli kalır. -->
+        <article id="screenSleepCard" class="setting-card tablet-care-card" hidden>
+          <div><h2 data-i18n="screenSleepTitle">Screen and sleep</h2><p data-i18n="screenSleepLead">Decide what the screen does when nobody is in the room.</p></div>
+          <div class="tablet-screen-grid">
+            <label class="setting-field"><span data-i18n="screenIdleLabel">Show the screensaver after</span><select id="screenIdleSeconds"><option value="30" data-i18n="screenIdle30">30 seconds</option><option value="60" data-i18n="screenIdle60">1 minute</option><option value="120" data-i18n="screenIdle120">2 minutes</option><option value="300" data-i18n="screenIdle300">5 minutes</option><option value="900" data-i18n="screenIdle900">15 minutes</option></select><small data-i18n="screenIdleHelp">The clock and date screen appears after this long on the home view, and a touch brings the panel back.</small></label>
+            <label class="setting-field"><span data-i18n="screenDimBrightnessLabel">Brightness while the screensaver shows</span><input id="screenDimBrightness" type="range" min="2" max="60" step="2"><small><span id="screenDimBrightnessValue">—</span></small></label>
+            <label class="setting-toggle"><input id="screenDimEnabled" type="checkbox"><span data-i18n="screenDimEnabledLabel">Dim the screen while the screensaver shows</span></label>
+          </div>
+          <div class="tablet-screen-night">
+            <label class="setting-toggle"><input id="screenNightEnabled" type="checkbox"><span data-i18n="screenNightLabel">Dim further at night</span></label>
+            <div class="tablet-night-fields">
+              <label class="setting-field"><span data-i18n="screenNightStart">From</span><input id="screenNightStart" type="time"></label>
+              <label class="setting-field"><span data-i18n="screenNightEnd">Until</span><input id="screenNightEnd" type="time"></label>
+              <label class="setting-field"><span data-i18n="screenNightBrightness">Night brightness</span><input id="screenNightBrightness" type="range" min="1" max="40" step="1"><small><span id="screenNightBrightnessValue">—</span></small></label>
+            </div>
+            <p id="screenNightState" class="tablet-night-state" role="status" hidden data-i18n="screenNightActive">Night brightness is in effect right now.</p>
+          </div>
+        </article>
+        <article id="homeLocationForm" class="setting-card location-card"><div><h2 data-i18n="homeLocationTitle">Home location</h2><p data-i18n="homeLocationLead">Sunrise and sunset triggers need to know where the house is. Nothing is sent anywhere; the times are worked out on this device.</p></div><div class="home-location-row"><div class="home-location-place"><strong id="homeLocationName">—</strong><p id="homeLocationSun" class="location-sun"></p></div><button id="chooseHomeLocation" class="secondary" type="button" data-i18n="chooseHomeLocation">Choose location</button></div></article>
+        <article id="batteryAlertCard" class="setting-card battery-alert-card">
+          <div><h2 data-i18n="lowBatteryThreshold">Low battery warning</h2><p data-i18n="lowBatteryThresholdLead">Create an alert when a battery reaches this percentage.</p></div>
+          <div class="battery-alert-row"><label class="setting-field"><span data-i18n="lowBatteryThresholdField">Warn below (%)</span><input id="lowBatteryThreshold" type="number" min="5" max="50" step="1" required></label><button id="saveBatteryThreshold" class="secondary" type="button" data-i18n="save">Save</button></div>
+        </article>
+        <article id="dashboardGuideCard" class="setting-card dashboard-guide-card"><div><h2 data-i18n="dashboardGuideTitle">Dashboard guide</h2><p data-i18n="dashboardGuideLead">Replay the short tour that points out the dashboard controls.</p></div><div class="onboarding-settings-actions"><button id="restartDashboardTour" class="quiet" type="button" data-i18n="showDashboardGuide">Show dashboard guide</button></div></article>
+      </div>
+      <div id="settingsPanelSetup" class="settings-tab-panel" role="tabpanel" aria-labelledby="settingsTabSetup" tabindex="0" hidden>
+        <div id="settingsServerNotice" class="settings-server-notice" role="note"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="7" rx="2"/><rect x="4" y="14" width="16" height="7" rx="2"/><path d="M8 6.5h.01M8 17.5h.01M12 6.5h5M12 17.5h5"/></svg><div><strong data-i18n="serverSettingsTitle">You are editing the active server</strong><p data-i18n="serverSettingsLead">Zigbee, MQTT and Matter changes are saved on the Villa Bridge server shown in this browser, not locally on this tablet or browser.</p></div><div class="settings-server-address"><span data-i18n="serverAddress">Server IP</span><code id="connectedServerAddress">—</code></div></div>
+        <article id="setupWizardCard" class="setting-card onboarding-settings-card"><div><h2 data-i18n="guidesTitle">Setup wizard</h2><p id="setupWizardLead" data-i18n="guidesLead">Run the simple setup again to review the coordinator, MQTT and Matter addresses.</p></div><div class="onboarding-settings-actions"><button id="restartOnboarding" class="secondary" type="button" data-i18n="runSetupAgain">Run setup again</button></div></article>
+        <!-- BAĞLANTI VE AĞ — koordinatör, MQTT ve Matter adresleri kurulum sihirbazında
+             soruluyor; burada yalnız sihirbazın SORMADIĞI iki ayar kalır. Kanal değişikliği
+             servisi yeniden başlatır, onarım anahtarı başlatmaz. -->
+        <article id="networkSettingsCard" class="setting-card network-settings-card">
+          <div><h2 data-i18n="networkSettingsTitle">Connection and network</h2><p data-i18n="networkSettingsLead">Coordinator, MQTT and Matter addresses are asked by the setup wizard. Only the settings it does not ask stay here.</p></div>
+          <div class="network-settings-grid"><div class="setting-field"><label for="zigbeeChannel" data-i18n="zigbeeChannel">Zigbee channel</label><select id="zigbeeChannel"><option>11</option><option>12</option><option>13</option><option>14</option><option>15</option><option>16</option><option>17</option><option>18</option><option>19</option><option>20</option><option>21</option><option>22</option><option>23</option><option>24</option><option>25</option><option>26</option></select><small data-i18n="zigbeeChannelLead">Changing the channel can disconnect devices and requires a service restart.</small></div><div class="setting-field"><label for="selfHealingEnabled" data-i18n="selfHealing">Automatic repair</label><select id="selfHealingEnabled"><option value="true" data-i18n="enabled">Enabled</option><option value="false" data-i18n="disabled">Disabled</option></select><small data-i18n="selfHealingLead">When a device announces itself again, refresh its reporting setup automatically. Unreachable devices are never polled.</small></div></div>
+          <div class="settings-actions"><div><strong data-i18n="restartNoticeTitle">A restart is required</strong><div class="settings-note" data-i18n="restartNotice">Saving creates recoverable backups and restarts Villa Bridge. Device names and Zigbee network keys are not changed.</div></div><button id="saveNetworkSettings" class="primary" type="button" data-i18n="save">Save</button></div>
+        </article>
+        <article id="agentAccessCard" class="setting-card agent-access-card" data-admin-only>
+          <div><h2 data-i18n="agentAccessTitle">Assistant access</h2><p data-i18n="agentAccessLead">Give your own AI assistant a token so it can read the home over the MCP endpoint. A token never expires and is shown only once, right after you create it.</p></div>
+          <form id="agentTokenForm" class="agent-token-create"><input id="agentTokenName" maxlength="48" autocomplete="off" data-i18n-placeholder="agentTokenNamePlaceholder" placeholder="Laptop assistant" required><button class="secondary" type="submit" data-i18n="agentTokenCreate">Create token</button></form>
+          <div id="agentTokenReveal" class="agent-token-reveal" role="status" hidden><strong data-i18n="agentTokenRevealTitle">Copy this token now</strong><p data-i18n="agentTokenRevealLead">This is the only time the token is shown. If you lose it, revoke it and create a new one.</p><div class="agent-token-value"><code id="agentTokenValue"></code><button id="copyAgentToken" class="secondary" type="button" data-i18n="copyToken">Copy</button></div></div>
+          <div id="agentTokenList" class="agent-token-list"></div>
+        </article>
+        <article id="homeBackupCard" class="setting-card backup-card home-backup-card" data-admin-only>
+          <div class="backup-shield home-backup-shield" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5v-9Z"/><path d="M12 12v9"/><path d="m3 7.5 9 4.5 9-4.5"/></svg></div>
+          <div><h2 data-i18n="homeBackupTitle">Backup</h2><p data-i18n="homeBackupLead">One file with everything: rooms, device and button names, automations, favourites, notes and the Zigbee network itself.</p><p class="backup-warning" data-i18n="fullBackupKeyWarning">This file contains your Zigbee network key. Keep it private — never e-mail it or upload it to a shared folder.</p></div>
+          <div class="backup-actions"><button id="downloadFullBackup" class="primary" type="button"><span class="button-icon" aria-hidden="true">↓</span><span data-i18n="homeBackupExport">Save a backup</span></button><button id="chooseFullRestore" class="secondary" type="button"><span class="button-icon" aria-hidden="true">↻</span><span data-i18n="homeBackupImport">Restore a backup</span></button><input id="fullRestoreFile" type="file" accept=".zip,.json,application/zip,application/json" hidden></div>
+        </article>
+        <article id="systemRestartCard" class="setting-card system-restart-card" data-admin-only>
+          <div><h2 data-i18n="systemSectionTitle">System</h2><p data-i18n="systemSectionLead">Restart the radio or the whole service when the home stops responding. Names, rooms, automations and the Zigbee network are never touched.</p></div>
+          <div class="system-restart-rows">
+            <div class="system-restart-row"><div><strong data-i18n="coordinatorRestartTitle">Restart the coordinator</strong><small data-i18n="coordinatorRestartLead">Resets the radio chip inside the coordinator. Devices stay paired and the network keeps its key.</small><small class="system-restart-hint" data-i18n="coordinatorRestartHint">If this does not help, unplug the coordinator for 10 seconds and plug it back in.</small><small id="coordinatorRestartUnavailable" class="system-restart-hint" hidden></small></div><button id="restartCoordinator" class="secondary" type="button" data-i18n="coordinatorRestartAction">Restart coordinator</button></div>
+            <div class="system-restart-row"><div><strong data-i18n="serviceRestartTitle">Restart the service</strong><small data-i18n="serviceRestartLead">Stops and starts Villa Bridge itself. The panel reconnects on its own once the service is back.</small></div><button id="restartService" class="danger-button" type="button" data-i18n="serviceRestartAction">Restart service</button></div>
+          </div>
+          <p id="systemRestartStatus" class="system-restart-status" role="status" hidden></p>
+        </article>
+        <article id="androidRuntimeCard" class="setting-card runtime-card" hidden><div><h2 data-i18n="runtimeTitle">Villa Bridge runtime</h2><p data-i18n="runtimeLead">Stop Zigbee, MQTT and Matter together when this tablet must release the home network.</p><span id="runtimeStatusText" class="runtime-state" data-i18n="runtimeRunning">System running</span></div><button id="stopRuntime" class="danger-button" type="button" data-i18n="runtimeStop">Stop entire system</button></article>
+        <article id="tabletCareCard" class="setting-card tablet-care-card" hidden>
+          <div><h2 data-i18n="tabletCareTitle">Wall tablet</h2><p data-i18n="tabletCareLead">Keep the tablet awake and running as the home controller, and decide what the screen does when nobody is in the room.</p></div>
+          <div class="tablet-care-status">
+            <div class="tablet-care-row"><div><strong data-i18n="batteryGuardTitle">Background protection</strong><small data-i18n="batteryGuardLead">Android may put sleeping apps to sleep for good. Exempting Villa Bridge keeps Zigbee, MQTT and Matter alive while the screen is off. You can refuse, and you can take it back later.</small></div><div class="tablet-care-action"><span id="batteryGuardStatus" class="tablet-care-badge">—</span><button id="requestBatteryExemption" class="secondary" type="button" data-i18n="batteryGuardAction">Ask Android</button></div></div>
+            <div class="tablet-care-row"><div><strong data-i18n="screenBrightnessSystemTitle">Brightness follows the tablet</strong><small data-i18n="screenBrightnessSystemLead">With permission, the slider in the menu writes the tablet’s own brightness setting — the same value you see in Android settings, and a change made there comes back here. Without it Villa Bridge still works, but the slider only dims its own screen.</small></div><div class="tablet-care-action"><span id="systemBrightnessStatus" class="tablet-care-badge">—</span></div></div>
+            <div class="tablet-care-row"><div><strong data-i18n="watchdogTitle">Automatic restart</strong><small id="watchdogSummary" data-i18n="watchdogHealthy">The system has not crashed since the last stable start.</small></div></div>
+          </div>
+        </article>
+        <article id="zigbeeToolsCard" class="setting-card zigbee-settings-card" data-admin-only>
+          <section class="zigbee-tools zigbee-settings-section"><div class="zigbee-tools-icon" aria-hidden="true">⌁</div><div><h2 data-i18n="zigbeeTools">Zigbee setup tools</h2><p data-i18n="zigbeeToolsLead">Advanced pairing and recovery tools stay here for administrators.</p><div class="zigbee-tool-grid"><div class="zigbee-tool"><select id="pairingRouter" aria-label="Pair through router"><option value="" data-i18n="coordinator">Coordinator</option></select></div><div class="zigbee-tool"><input id="installCode" type="text" autocomplete="off" spellcheck="false" data-i18n-placeholder="installCodePlaceholder" placeholder="Install code or Zigbee QR value"><button id="addInstallCode" class="secondary" type="button" data-i18n="add">Add</button></div><div class="zigbee-tool zigbee-tool-actions"><button id="scanNetworkMap" class="secondary" type="button" data-i18n="networkMap">Network map</button></div><div id="networkMapResults" class="network-graph-host"></div><section class="zigbee-group-manager"><div class="zigbee-group-panel"><div class="zigbee-panel-head"><span class="zigbee-panel-icon" aria-hidden="true">◇</span><div><strong data-i18n="zigbeeGroups">Zigbee groups</strong><p data-i18n="zigbeeGroupsLead">Create a real Zigbee group so several lights react together with one radio command.</p></div></div><div class="zigbee-group-create"><input id="zigbeeGroupName" maxlength="64" data-i18n-placeholder="groupNamePlaceholder" placeholder="Living room"><button id="createZigbeeGroup" class="secondary" type="button" aria-label="Create group">＋</button></div><div id="zigbeeGroupList" class="zigbee-group-list"></div></div><div class="zigbee-binding-panel"><div class="zigbee-panel-head"><span class="zigbee-panel-icon" aria-hidden="true">⌁</span><div><strong data-i18n="directBinding">Direct binding</strong><p data-i18n="directBindingLead">Connect a button directly to a light or group. It keeps working even when Villa Bridge is offline.</p></div></div><div class="zigbee-binding-actions"><select id="bindSource"></select><select id="bindSourceEndpoint"></select><select id="bindTarget"></select><select id="bindTargetEndpoint"></select><button id="bindDevices" class="secondary" type="button" title="Bind">⌁</button><button id="unbindDevices" class="quiet" type="button" title="Unbind">×</button><div class="zigbee-binding-flow"><span data-i18n="sourceDevice">Button or remote</span><span aria-hidden="true">→</span><span data-i18n="targetDevice">Light or group</span></div><div id="zigbeeBindingList" class="zigbee-binding-list"></div></div></div></section></div></div></section>
+        </article>
+        <article id="debugCard" class="setting-card debug-card">
+          <div class="debug-head"><div><h2 data-i18n="debugMode">Debug mode</h2><p data-i18n="debugModeLead">Keep a short, privacy-safe list of recent system errors while testing.</p></div><div class="debug-toggle-wrap"><span id="debugModeStatus" data-i18n="enabled">Enabled</span><button id="toggleDebug" class="switch" type="button" aria-pressed="true" aria-label="Debug mode"><span></span></button></div></div>
+          <div id="debugLogPanel" class="debug-log-panel" hidden><div class="debug-log-toolbar"><strong id="debugLogTitle">Recent errors</strong><div class="debug-log-actions"><button id="refreshDebugErrors" class="quiet" type="button" data-i18n="refreshErrors">Refresh</button><button id="clearDebugErrors" class="secondary" type="button" data-i18n="clearErrors">Clear</button></div></div><div id="debugErrorList" class="debug-error-list"></div></div>
+          <div class="debug-log-panel debug-network-panel"><div class="debug-log-toolbar"><strong id="debugNetworkTitle">Device network events</strong><div class="debug-log-actions"><button id="refreshDebugNetworkEvents" class="quiet" type="button" data-i18n="refreshErrors">Refresh</button></div></div><p class="debug-network-lead" data-i18n="deviceNetworkEventsLead">Joins, drops and deletions stay here even after a restart.</p><div id="debugNetworkList" class="debug-network-list"></div></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ARKA PLAN — yönetici sayfası DEĞİL: herkes açabilir, hiçbir şey sunucuya yazılmaz.
+         Yukarıdaki `#settings` ile karıştırılmasın; burada yalnız "Güneşe göre" görünümünün
+         gökyüzü ayarları var ve hepsi bu cihazda kalır (`localStorage`).
+         DÜZEN: iki sütun — SOLDA kontrol kenar sütunu (kendi içinde kayar), SAĞDA ÖNİZLEME
+         KARTI (sabit durur, kaymaz). Gökyüzü artık sayfanın zemininde değil o kartın içinde
+         canlanıyor; kartın içi tabletin gerçek ekranının (1024×640) ölçekli bir kopyasıdır,
+         yani kullanıcı ne görüyorsa ekranda da o olacak. -->
+    <section id="skySettings" class="view">
+      <header class="page-head">
+        <button class="app-menu-button" type="button" data-app-menu aria-haspopup="dialog" aria-expanded="false" aria-controls="appMenuDialog" data-i18n-aria="openMenu" aria-label="Open menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        <div class="page-head-title"><h1 data-i18n="navBackground">Background</h1><p class="sky-settings-lead" data-i18n="skySettingsLead">Only the “By the sun” view uses these, and they stay on this tablet.</p></div>
+        <button id="skyResetButton" class="secondary" type="button" data-i18n="skyResetDefaults">Reset to defaults</button>
+      </header>
+      <div id="skyModeNotice" class="sky-mode-notice" role="note" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18h16"/><path d="M7.5 18a4.5 4.5 0 0 1 9 0"/><path d="M12 5.5V8M5.4 8.4 7 10M18.6 8.4 17 10"/></svg><p data-i18n="skyModeNoticeLead">The moving sky is off right now, so none of this shows on screen.</p><button id="skyModeSwitch" class="secondary" type="button" data-i18n="skyModeNoticeAction">Switch to “By the sun”</button></div>
+      <!-- İKİ SÜTUN: solda kontrol kenar sütunu, sağda önizleme. Yükseklik `measureSkyStage`
+           tarafından ölçülüp yazılır; sayfa kaymaz, taşan kontroller kendi sütununda kayar. -->
+      <div class="sky-layout">
+      <!-- KONTROLLER — her ayar kendi bloğunda, hepsi solda alt alta. Saat ve ay evresi yalnız
+           ÖNİZLEMEdir: kaydedilmez, sayfadan çıkınca kendiliğinden kapanır. -->
+      <aside class="sky-controls" data-i18n-aria="navBackground" aria-label="Background">
+        <article class="sky-block">
+          <!-- Saat satırı bir taşıma denetimi gibi: oynat/duraklat + okunur saat. Tek düğme iki
+               durum taşır (`aria-pressed`), ikon CSS'te ona göre değişir. -->
+          <div class="sky-block-head"><h2 data-i18n="skyPreviewHour">Hour</h2><div class="sky-head-actions"><button id="skyPreviewPlay" class="sky-play" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="sky-play-glyph" d="M8 5.5 18 12 8 18.5Z"/><path class="sky-pause-glyph" d="M9.5 5.5v13M14.5 5.5v13"/></svg><span id="skyPreviewPlayLabel" data-i18n="skyPreviewPlay">Play</span></button><output id="skyPreviewValue" class="sky-readout" for="skyPreviewHour">12:00</output></div></div>
+          <input id="skyPreviewHour" type="range" min="0" max="1439" step="5" value="720" data-i18n-aria="skyPreviewHour" aria-label="Hour">
+          <div class="sky-chips" role="group" data-i18n-aria="skyPreviewHour" aria-label="Hour">
+            <button type="button" data-sky-jump="dawn" data-i18n="skyPreviewDawn">Sunrise</button>
+            <button type="button" data-sky-jump="noon" data-i18n="skyPreviewNoon">Midday</button>
+            <button type="button" data-sky-jump="dusk" data-i18n="skyPreviewDusk">Sunset</button>
+            <button type="button" data-sky-jump="midnight" data-i18n="skyPreviewMidnight">Night</button>
+            <button id="skyPreviewNow" type="button" data-i18n="skyPreviewNow">Now</button>
+          </div>
+        </article>
+        <article class="sky-block">
+          <div class="sky-block-head"><h2 data-i18n="skyPreviewMoon">Moon phase</h2></div>
+          <output id="skyPreviewPhaseValue" class="sky-block-value" for="skyPreviewPhase">Full moon · 100% lit</output>
+          <p class="sky-block-note" data-i18n="skyPreviewMoonLead">Picking a phase in daylight moves the hour to the middle of the night.</p>
+          <input id="skyPreviewPhase" type="range" min="0" max="100" step="1" value="0" data-i18n-aria="skyPreviewMoon" aria-label="Moon phase">
+          <div class="sky-chips" role="group" data-i18n-aria="skyPreviewMoon" aria-label="Moon phase">
+            <button type="button" data-sky-moon="new" data-i18n="skyMoonNew">New moon</button>
+            <button type="button" data-sky-moon="first" data-i18n="skyMoonFirstQuarter">First quarter</button>
+            <button type="button" data-sky-moon="full" data-i18n="skyMoonFull">Full moon</button>
+            <button type="button" data-sky-moon="last" data-i18n="skyMoonLastQuarter">Last quarter</button>
+            <button id="skyPreviewMoonNow" type="button" data-i18n="skyPreviewMoonNow">Real phase</button>
+          </div>
+        </article>
+        <article class="sky-block">
+          <div class="sky-block-head"><h2 data-i18n="skyMilkyWay">Milky Way</h2></div>
+          <div class="sky-choice-row" role="group" data-i18n-aria="skyMilkyWay" aria-label="Milky Way">
+            <button type="button" data-sky-milkyway="off" aria-pressed="false" data-i18n="skyMilkyWayOff">Off</button>
+            <button type="button" data-sky-milkyway="a" aria-pressed="false" data-i18n="skyMilkyWayA">Thin thread</button>
+            <button type="button" data-sky-milkyway="b" aria-pressed="false" data-i18n="skyMilkyWayB">Balanced</button>
+            <button type="button" data-sky-milkyway="c" aria-pressed="false" data-i18n="skyMilkyWayC">Wide dust</button>
+          </div>
+          <div class="sky-slider-row">
+            <label for="skyDensity" data-i18n="skyDensity">Brightness</label>
+            <input id="skyDensity" type="range" min="0" max="100" step="1" value="65">
+            <output id="skyDensityValue" class="sky-readout" for="skyDensity">65%</output>
+          </div>
+        </article>
+        <article class="sky-block">
+          <div class="sky-block-head"><h2 data-i18n="skyStars">Stars</h2><output id="skyStarGainValue" class="sky-readout" for="skyStarGain">100%</output></div>
+          <p class="sky-block-note" data-i18n="skyStarsLead">Daylight always clears them.</p>
+          <input id="skyStarGain" type="range" min="0" max="150" step="5" value="100" data-i18n-aria="skyStars" aria-label="Stars">
+        </article>
+        <article class="sky-block">
+          <div class="sky-block-head"><h2 data-i18n="skyMountain">Mountains</h2></div>
+          <label class="sky-toggle"><input id="skyMountainOn" type="checkbox" checked><span data-i18n="skyMountainShow">Show the ridge</span></label>
+          <div class="sky-slider-row">
+            <label for="skyMountainHeight" data-i18n="skyMountainHeight">Height</label>
+            <input id="skyMountainHeight" type="range" min="40" max="190" step="2" value="94">
+            <output id="skyMountainHeightValue" class="sky-readout" for="skyMountainHeight">94 px</output>
+          </div>
+        </article>
+      </aside>
+      <!-- ÖNİZLEME KARTI. İç kutu (`.sky-stage-screen`) tam 1024×640 px'tir — tabletin gerçek CSS
+           viewport'u — ve tek bir `transform:scale()` ile karta sığar; ölçeği panel ölçüp yazar
+           (`--sky-stage-scale`). Katmanlar ana ekranın gökyüzüyle AYNI kuralları paylaşır, yalnız
+           `fixed` yerine `absolute` konumlanır; ana ekranın gökyüzü bundan hiç etkilenmez. -->
+      <article class="setting-card sky-preview-card" id="skyPreviewCard">
+        <div class="sky-stage-frame">
+          <div class="sky-stage" id="skyStage" aria-hidden="true">
+            <div class="sky-stage-screen">
+              <div class="sky-stage-sky"></div>
+              <div class="sky-stage-sun"></div>
+              <div class="sky-moon sky-moon-stage"><div class="sky-moon-face"><div class="sky-moon-half"><i></i></div><div class="sky-moon-bulge"></div></div></div>
+              <div class="sky-stage-mountain"></div>
+            </div>
+          </div>
+        </div>
+      </article>
+      </div>
+      <!-- Önizleme açıkken ekranda duran rozet: gökyüzünün gerçek saat sanılmaması için. Dokunmak
+           önizlemeyi kapatır. -->
+      <button id="skyPreviewBadge" class="sky-preview-badge" type="button" hidden><b id="skyPreviewBadgeTime">12:00</b><span data-i18n="skyPreviewBadge">preview · tap for now</span></button>
+    </section>
+  </main>
+</div>
+
+<!-- YONETICI MODU. Giris ekrani degil: panel zaten acik, bu diyalog yalnizca kurulum
+     ekranlarini acan modu ister. Yanlis PIN sunucuda hiz sinirina takilir. -->
+<div id="modePinDialog" class="auth-gate" role="dialog" aria-modal="true" aria-labelledby="modePinTitle" hidden><form id="modePinForm" class="modal auth-modal"><div class="auth-hero"><div class="auth-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg></div><div><h2 id="modePinTitle" data-i18n="enterAdminMode">Enter administrator mode</h2><p data-i18n="adminModeLead">Setup screens stay locked until the administrator PIN is entered.</p></div></div><div class="auth-fields"><div class="field"><label for="modePinInput" data-i18n="adminPin">Administrator PIN</label><input id="modePinInput" type="password" inputmode="numeric" autocomplete="current-password" maxlength="8" required><small id="modePinFieldHint" class="auth-help"></small></div></div><div id="modePinError" class="auth-error" role="alert" aria-live="assertive" hidden></div><div class="modal-actions"><button id="modePinCancel" class="quiet" type="button" data-i18n="cancel">Cancel</button><button id="modePinSubmit" class="primary" type="submit" data-i18n="unlock">Unlock</button></div></form></div>
+<dialog id="roomDetailDialog" class="room-detail-dialog" aria-labelledby="roomDetailTitle">
+  <div class="modal room-detail-modal">
+    <div class="room-detail-head">
+      <div class="room-detail-title"><span id="roomDetailIcon" class="room-card-icon" aria-hidden="true"></span><div><div class="eyebrow" data-i18n="roomControls">Room controls</div><h2 id="roomDetailTitle">Room</h2></div></div>
+      <button id="closeRoomDetail" class="device-detail-close" type="button" data-i18n-aria="close" aria-label="Close">×</button>
+    </div>
+    <div id="roomDetailBody" class="room-detail-body"></div>
+  </div>
+</dialog>
+<dialog id="systemDetailDialog" class="room-detail-dialog system-detail-dialog" aria-labelledby="systemDetailTitle">
+  <div class="modal room-detail-modal system-detail-modal">
+    <div class="room-detail-head system-detail-head">
+      <div class="room-detail-title system-detail-title"><span id="systemDetailIcon" class="system-detail-icon" aria-hidden="true"></span><div><div class="eyebrow" data-i18n="navSystem">System</div><h2 id="systemDetailTitle">Settings</h2><p id="systemDetailLead" class="system-detail-lead"></p></div></div>
+      <button id="closeSystemDetail" class="device-detail-close" type="button" data-i18n-aria="close" aria-label="Close">×</button>
+    </div>
+    <div id="systemDetailBody" class="room-detail-body system-detail-body"></div>
+  </div>
+</dialog>
+<dialog id="appMenuDialog" class="app-menu-dialog" aria-labelledby="appMenuTitle">
+  <div class="modal app-menu-modal">
+    <div class="app-menu-head"><div class="app-menu-who"><span class="brand-mark" aria-hidden="true">V</span><div class="app-menu-identity"><h2 id="appMenuTitle" data-i18n="menu">Menu</h2><span id="appMenuRole" class="app-menu-role"></span></div></div><button id="closeAppMenu" class="device-detail-close" type="button" data-i18n-aria="close" aria-label="Close">×</button></div>
+    <nav class="app-menu-nav" data-i18n-aria="menu" aria-label="Menu">
+      <button class="nav-button active" type="button" data-view="home" data-resident-only><span class="app-menu-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10M9 20v-6h6v6"/></svg></span><span class="app-menu-text"><b data-i18n="navHome">Home</b><span data-i18n="navHomeLead">Rooms, scenes and favourites</span></span><svg class="app-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+      <button class="nav-button" type="button" data-view="rooms" data-resident-only><span class="app-menu-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5"/><path d="M5 9.5V20h14V9.5"/><path d="M10 20v-5h4v5"/></svg></span><span class="app-menu-text"><b data-i18n="navRooms">Rooms</b><span data-i18n="navRoomsLead">Every room card in one place</span></span><svg class="app-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+      <button class="nav-button" type="button" data-view="devices" data-admin-only><span class="app-menu-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="3"/><path d="M9 8h6M9 12h6M9 16h2"/></svg></span><span class="app-menu-text"><b data-i18n="navDevices">Devices</b><span data-i18n="navDevicesLead">Every paired device and its state</span></span><svg class="app-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+      <button class="nav-button" type="button" data-view="routines" data-resident-only><span class="app-menu-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></span><span class="app-menu-text"><b data-i18n="navRoutines">Routines</b><span data-i18n="navRoutinesLead">Run a routine with one tap</span></span><svg class="app-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+      <button class="nav-button" type="button" data-view="adminOverview" data-admin-only><span class="app-menu-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg></span><span class="app-menu-text"><b data-i18n="navOverview">Overview</b><span data-i18n="navOverviewLead">Devices, automations and service health</span></span><svg class="app-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+      <button class="nav-button" type="button" data-view="connections" data-admin-only><span class="app-menu-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 12a4 4 0 0 1 4-4h3a4 4 0 1 1 0 8h-2"/><path d="M16 12a4 4 0 0 1-4 4H9a4 4 0 1 1 0-8h2"/></svg></span><span class="app-menu-text"><b data-i18n="navConnections">Connections</b><span data-i18n="navConnectionsLead">Zigbee, Matter and Home Assistant</span></span><svg class="app-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+      <button class="nav-button" type="button" data-view="settings" data-admin-only><span class="app-menu-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M5.6 5.6l1.7 1.7M16.7 16.7l1.7 1.7M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7"/></svg></span><span class="app-menu-text"><b data-i18n="navSystem">System</b><span data-i18n="navSystemLead">Network, backups and setup tools</span></span><svg class="app-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+    </nav>
+    <div class="app-menu-utilities">
+      <div class="app-menu-utility app-menu-utility-stack"><span class="app-menu-utility-label" data-i18n="appearance">Appearance</span><div class="theme-switch" role="group" data-i18n-aria="appearance" aria-label="Appearance"><button type="button" data-theme-mode="light" aria-pressed="false"><svg class="app-menu-switch-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/></svg><span data-i18n="themeLight">Light</span></button><button type="button" data-theme-mode="dark" aria-pressed="false"><svg class="app-menu-switch-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8.2 8.2 0 1 0 10.5 10.5Z"/></svg><span data-i18n="themeDark">Dark</span></button><button type="button" data-theme-mode="sun" aria-pressed="false"><svg class="app-menu-switch-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18h16"/><path d="M7.5 18a4.5 4.5 0 0 1 9 0"/><path d="M12 5.5V8M5.4 8.4 7 10M18.6 8.4 17 10"/></svg><span data-i18n="themeSun">By the sun</span></button><button type="button" data-theme-mode="system" aria-pressed="false"><svg class="app-menu-switch-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M9 21h6"/></svg><span data-i18n="themeSystem">System</span></button></div></div>
+      <!-- Tema segmentinin hemen ALTINDA duran gezinme satırı: gökyüzü ayarları ayrı bir sayfa.
+           Yönetici kısıtı YOK (`data-admin-only` bilerek konmadı) — hiçbir şey sunucuya yazılmaz.
+           `.app-menu-nav` sarmalayıcısı yalnız biçim için: satır üstteki menü satırlarıyla aynı
+           dili (ikon + başlık + açıklama) taşısın diye. -->
+      <div id="appMenuBackground" class="app-menu-nav app-menu-nav-appearance" hidden>
+        <button class="nav-button" type="button" data-view="skySettings"><span class="app-menu-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="17" cy="6.5" r="2.5"/><path d="M3 19h18"/><path d="m3 19 5.5-8 3.5 4.6L14.5 12l6.5 7"/></svg></span><span class="app-menu-text"><b data-i18n="navBackground">Background</b><span data-i18n="navBackgroundLead">Milky Way, stars and the ridge</span></span><svg class="app-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+      </div>
+      <!-- PARLAKLIK. Menüde duruyor çünkü günlük bir ayardır: `data-admin-only` bilerek YOK,
+           ev sakini de duvardaki tabletin parlaklığını değiştirebilmeli. İzin varsa doğrudan
+           cihazın kendi parlaklık ayarını yazar; yoksa satır bunu söyler ve yalnız bu ekranı
+           karartır. Kurulum nitelikli ayarlar (bekleme süresi, kararma, gece) Ayarlar
+           sayfasındaki "Duvardaki tablet" kartında. -->
+      <div id="appMenuBrightness" class="app-menu-utility app-menu-utility-stack" hidden>
+        <span class="app-menu-utility-label" data-i18n="screenBrightnessLabel">Brightness</span>
+        <div class="app-menu-brightness">
+          <svg class="app-menu-brightness-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.4"/></svg>
+          <input id="menuBrightness" type="range" min="5" max="100" step="5" data-i18n-aria="screenBrightnessLabel" aria-label="Brightness">
+          <svg class="app-menu-brightness-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.2 5.2l1.9 1.9M16.9 16.9l1.9 1.9M18.8 5.2l-1.9 1.9M7.1 16.9l-1.9 1.9"/></svg>
+          <span id="menuBrightnessValue" class="app-menu-brightness-value">—</span>
+        </div>
+        <small id="menuBrightnessNote" class="app-menu-brightness-note" hidden data-i18n="screenBrightnessNeedsPermission">Right now this only dims Villa Bridge’s own screen. Allow it to write the tablet’s brightness setting to change the device itself.</small>
+        <button id="grantSystemBrightness" class="quiet app-menu-brightness-grant" type="button" hidden data-i18n="screenBrightnessGrant">Allow</button>
+        <small id="menuBrightnessAutoNote" class="app-menu-brightness-note" hidden data-i18n="screenBrightnessAutoOff">Automatic brightness was switched off so this slider can hold its value.</small>
+      </div>
+      <div class="app-menu-utility"><span class="app-menu-utility-label" data-i18n="language">Language</span><div class="language-switch" role="group" data-i18n-aria="language" aria-label="Language"><button type="button" data-language="en" class="active">EN</button><button type="button" data-language="tr">TR</button></div></div>
+    </div>
+    <div class="app-menu-foot">
+      <div class="connection"><span id="sideDot" class="status-dot"></span><span id="sideStatus" data-i18n="connecting">Connecting to home control</span></div>
+      <button id="menuChangePin" class="secondary session-utility pin-utility" type="button" data-admin-only data-i18n-aria="changePin" aria-label="Change PIN"><svg class="app-menu-foot-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8m-3 3 3 3m-6 0 3 3"/></svg><span data-i18n="changePin">Change PIN</span></button>
+      <button class="secondary session-utility mode-utility" type="button" data-mode-toggle aria-label="Administrator mode"><svg class="app-menu-foot-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v3"/></svg><span data-mode-toggle-label>Administrator mode</span></button>
+    </div>
+  </div>
+</dialog>
+<dialog id="nameDialog"><form id="nameForm" class="modal" method="dialog"><h2 id="nameDialogTitle" data-i18n="changeDisplayName">Change display name</h2><p id="nameDialogLead" data-i18n="displayNameLead">This name will be shared across all home connections.</p><div class="field"><label for="nameInput" data-i18n="newName">New name</label><input id="nameInput" minlength="2" maxlength="32" autocomplete="off" required></div><div class="modal-actions"><button id="cancelName" class="quiet" type="button" data-i18n="cancel">Cancel</button><button id="saveName" class="primary" type="submit" data-i18n="save">Save</button></div></form><button class="device-detail-close modal-dismiss" type="button" data-dismiss-modal="cancelName" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="noteDialog"><form id="noteForm" class="modal"><h2 data-i18n="deviceNote">Device note</h2><p id="noteDeviceName"></p><div class="field"><label for="noteInput" data-i18n="note">Note</label><textarea id="noteInput" rows="5" maxlength="500" data-i18n-placeholder="notePlaceholder" placeholder="e.g. Left wall switch"></textarea></div><div class="modal-actions"><button id="cancelNote" class="quiet" type="button" data-i18n="cancel">Cancel</button><button class="primary" type="submit" data-i18n="save">Save</button></div></form><button class="device-detail-close modal-dismiss" type="button" data-dismiss-modal="cancelNote" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="deviceOptionsDialog"><form id="deviceOptionsForm" class="modal"><h2 data-i18n="deviceOptions">Device options</h2><p id="deviceOptionsName"></p><div class="settings-grid"><div class="field"><label for="deviceTransition" data-i18n="transition">Smooth transition (seconds)</label><input id="deviceTransition" type="number" min="0" max="60" step=".1" value="0"></div><div class="field"><label for="deviceDebounce" data-i18n="debounce">Ignore repeats (seconds)</label><input id="deviceDebounce" type="number" min="0" max="60" step=".1" value="0"></div></div><label class="image-family"><input id="deviceRetain" type="checkbox"><span data-i18n="retainState">Keep the last MQTT state</span></label><div class="modal-actions"><button id="cancelDeviceOptions" class="quiet" type="button" data-i18n="cancel">Cancel</button><button class="primary" type="submit" data-i18n="save">Save</button></div></form><button class="device-detail-close modal-dismiss" type="button" data-dismiss-modal="cancelDeviceOptions" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="deviceRoleDialog"><div class="modal"><h2 data-i18n="deviceRoleTitle">What is this device?</h2><p id="deviceRoleLead"></p><div id="deviceRoleChoices" class="device-role-choices"></div><div class="modal-actions"><button id="skipDeviceRole" class="quiet" type="button" data-i18n="skip">Skip</button></div></div><button class="device-detail-close modal-dismiss" type="button" data-dismiss-modal="skipDeviceRole" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="deviceRoomDialog"><div class="modal"><h2 data-i18n="deviceRoomTitle">Which room?</h2><p id="deviceRoomLead"></p><div id="deviceRoomChoices" class="device-role-choices"></div><form id="deviceRoomForm" class="device-room-create"><label for="deviceRoomName" data-i18n="deviceRoomNewLabel">Or create a new room</label><div class="device-room-create-row"><input id="deviceRoomName" type="text" maxlength="32" autocomplete="off" data-i18n-placeholder="deviceRoomNewPlaceholder" placeholder="Living room"><button class="secondary" type="submit" data-i18n="deviceRoomCreate">Create</button></div></form><div class="modal-actions"><button id="skipDeviceRoom" class="quiet" type="button" data-i18n="deviceRoomLater">Later</button></div></div><button class="device-detail-close modal-dismiss" type="button" data-dismiss-modal="skipDeviceRoom" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="deviceLostDialog"><div class="modal device-lost-modal"><h2 id="deviceLostTitle" data-i18n="deviceLostTitle">Device left the network</h2><p id="deviceLostLead" data-i18n="deviceLostLead">The device dropped off the network before setup finished, so nothing was saved. Put it back into pairing mode and try again.</p><div class="modal-actions"><button id="closeDeviceLost" class="quiet" type="button" data-i18n="close">Close</button><button id="retryDeviceLost" class="primary" type="button" data-i18n="retrySetup">Try again</button></div></div><button class="device-detail-close modal-dismiss" type="button" data-dismiss-modal="closeDeviceLost" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="imageDialog"><form id="imageForm" class="modal" method="dialog"><h2 data-i18n="chooseDeviceImage">Which one looks like your device?</h2><p id="imageDialogLead"></p><div id="imageChoices" class="image-choices"></div><label class="image-family"><input id="applyImageToModel" type="checkbox"><span data-i18n="useForSameModel">Use this picture automatically for devices with the same model.</span></label><div class="modal-actions"><button id="cancelImage" class="quiet" type="button" data-i18n="cancel">Cancel</button><button id="saveImage" class="primary" type="submit" data-i18n="saveImage">Save picture</button></div></form><button class="device-detail-close modal-dismiss" type="button" data-dismiss-modal="cancelImage" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="pairingDialog"><div class="modal pairing-modal"><div id="pairingVisual" class="pairing-visual" aria-hidden="true"><span class="pairing-ring"></span><span class="pairing-ring"></span><span class="pairing-ring"></span><span class="pairing-core"><svg class="pairing-wifi" viewBox="0 0 24 24" aria-hidden="true"><path class="pairing-wave pairing-wave-3" d="M2.5 8.6a15 15 0 0 1 19 0"/><path class="pairing-wave pairing-wave-2" d="M6 12.6a10 10 0 0 1 12 0"/><path class="pairing-wave pairing-wave-1" d="M9.5 16.6a5 5 0 0 1 5 0"/><circle class="pairing-wifi-dot" cx="12" cy="19.6" r="1.3"/></svg></span></div><div class="eyebrow" id="pairingPhase" data-i18n="pairingSearching">Searching</div><h2 id="pairingModalTitle" data-i18n="pairingTitle">Searching for new devices</h2><p id="pairingModalText" data-i18n="pairingHint">Put the nearby device into pairing mode.</p><div id="pairingDevice" class="pairing-device" hidden><span data-i18n="deviceFound">Device found</span><strong id="pairingDeviceName">—</strong></div><p id="pairingWarning" class="pairing-warning" data-i18n="pairingRemovedWarning" hidden>This device was removed a moment ago. If pairing does not finish, wait a minute and try again.</p><p id="pairingWaitLine" class="pairing-wait" data-i18n="pairingDeviceWait" hidden>The device briefly lost its connection. Waiting for it to come back…</p><div class="modal-actions"><button id="hidePairing" class="quiet" type="button" data-i18n="hidePairing">Hide</button><button id="cancelPairing" class="secondary" type="button" data-i18n="stopSearch">Stop searching</button></div></div><button class="device-detail-close modal-dismiss" type="button" data-dismiss-modal="hidePairing" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="removeDialog"><div class="modal"><h2 data-i18n="removeDeviceTitle">Remove from Zigbee network?</h2><p id="removeDeviceWarning" class="danger-copy"></p><p class="force-remove-copy" data-i18n="forceRemoveLead">If the device no longer responds, force delete removes only its stale coordinator record.</p><div class="field"><label id="removeDeviceInstruction" for="removeConfirmation"></label><input id="removeConfirmation" autocomplete="off" autocapitalize="none" spellcheck="false"></div><div class="modal-actions remove-actions"><button id="cancelRemove" class="quiet" type="button" data-i18n="cancel">Cancel</button><button id="confirmRemove" class="danger-button" type="button" data-i18n="removePermanently" disabled>Remove permanently</button><button id="forceRemove" class="danger-button force-delete-button" type="button" data-i18n="forceRemove" disabled>Force delete record</button></div></div><button class="device-detail-close modal-dismiss" type="button" data-dismiss-modal="cancelRemove" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="homeAttentionDialog" class="home-attention-dialog" aria-labelledby="homeAttentionTitle"><div class="modal home-attention-modal"><div class="home-attention-head"><span class="home-attention-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 3 20h18L12 3Z"/><path d="M12 9v5m0 3v.1"/></svg></span><h2 id="homeAttentionTitle" data-i18n="adminAttentionTitle">Needs attention</h2><button id="closeHomeAttention" class="home-attention-close" type="button" data-i18n-aria="close" aria-label="Close">×</button></div><div id="homeAttentionList" class="home-attention-list"></div></div></dialog>
+<dialog id="repairDialog" class="repair-dialog"><div class="modal repair-modal" role="status" aria-live="polite"><span class="command-spinner repair-spinner" aria-hidden="true"></span><h2 data-i18n="repairInProgress">Repairing device…</h2><p id="repairDeviceName"></p></div></dialog>
+<dialog id="homeBackupDialog"><div class="modal home-backup-modal"><h2 data-i18n="homeRestoreTitle">Restore this backup?</h2><p id="homeBackupFileMeta" class="home-backup-meta"></p><div id="homeBackupSummary" class="home-backup-summary" role="status" aria-live="polite"></div><div class="home-backup-modes" role="radiogroup" data-i18n-aria="homeRestoreModeLabel" aria-label="How should it be restored?"><label class="home-backup-mode"><input type="radio" name="homeBackupMode" value="merge" checked><span><strong data-i18n="homeRestoreMergeTitle">Add alongside</strong><small data-i18n="homeRestoreMergeLead">Bring the backup back and keep anything you have added since.</small></span></label><label class="home-backup-mode replace-mode"><input type="radio" name="homeBackupMode" value="replace"><span><strong data-i18n="homeRestoreReplaceTitle">Replace everything</strong><small data-i18n="homeRestoreReplaceLead">Return exactly to the backup. Anything added since it was taken disappears.</small></span></label></div><div class="modal-actions"><button id="cancelHomeRestore" class="quiet" type="button" data-i18n="cancel">Cancel</button><button id="confirmHomeRestore" class="primary" type="button" data-i18n="homeRestoreApply" disabled>Restore now</button></div></div><button class="device-detail-close modal-dismiss" type="button" data-dismiss-modal="cancelHomeRestore" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="runtimeStopDialog"><div class="modal"><h2 data-i18n="runtimeStopTitle">Stop Villa Bridge?</h2><p class="danger-copy" data-i18n="runtimeStopConfirm">Stop Zigbee, MQTT and Matter on this tablet? The app will keep a Start button available.</p><div class="modal-actions"><button id="cancelRuntimeStop" class="quiet" type="button" data-i18n="cancel">Cancel</button><button id="confirmRuntimeStop" class="danger-button" type="button" data-i18n="runtimeStop">Stop entire system</button></div></div><button class="device-detail-close modal-dismiss" type="button" data-dismiss-modal="cancelRuntimeStop" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="deviceActionDialog"><div class="modal device-action-modal"><div class="device-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12h18M12 3v18"/><circle cx="12" cy="12" r="8"/></svg></div><h2 id="deviceActionName">Device</h2><p id="deviceActionLead" data-i18n="deviceActionConfirmLead">Confirm this command.</p><div class="modal-actions"><button id="closeDeviceActions" class="quiet" type="button" data-i18n="cancel">Cancel</button><button id="confirmDeviceAction" class="danger-button" type="button" data-i18n="confirmAction">Yes, continue</button></div></div><button class="device-detail-close modal-dismiss" type="button" data-dismiss-modal="closeDeviceActions" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="clockDialog" class="hub-modal" aria-labelledby="clockDialogTitle"><div class="modal"><h2 id="clockDialogTitle" data-i18n="hubClockTitle">World clock and alarms</h2><p data-i18n="hubClockLead">See your cities side by side and keep the list tidy.</p><div class="hub-columns"><section class="hub-section"><h3 data-i18n="selectedCities">Selected cities</h3><div id="clockDialogRows" class="hub-rows"></div></section><section class="hub-section"><h3 data-i18n="hubAddCity">Add a city</h3><div class="location-search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="clockCitySearch" type="search" autocomplete="off" data-i18n-placeholder="searchCity" placeholder="Search city…"></div><div id="clockSearchStatus" class="location-search-status"></div><div id="clockSearchResults" class="location-results"></div><h3 class="hub-alarm-heading" data-i18n="hubAlarms">Alarm</h3><div class="alarm-setup"><p class="alarm-lead" data-i18n="alarmLead">One alarm, kept on this tablet only. It rings here; it does not switch anything on.</p><label class="alarm-toggle"><input id="alarmEnabled" type="checkbox"><span data-i18n="alarmOn">Alarm on</span></label><div class="alarm-fields"><div class="alarm-field alarm-time-field"><span id="alarmTimeLabel" data-i18n="alarmTime">Alarm time</span><button type="button" id="alarmTimeButton" class="alarm-time-button" aria-haspopup="dialog" aria-labelledby="alarmTimeLabel alarmTimeValue"><b id="alarmTimeValue">07:30</b><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.3V12l3 1.8"/></svg></button></div><label class="alarm-field"><span data-i18n="alarmRepeat">Repeat</span><select id="alarmRepeat"><option value="daily" data-i18n="alarmDaily">Every day</option><option value="weekly" data-i18n="alarmWeekly">Once a week</option></select></label><label class="alarm-field" id="alarmDayField"><span data-i18n="alarmDay">Day</span><select id="alarmWeekday"></select></label></div><p id="alarmStatus" class="alarm-status" role="status"></p></div></section></div></div><button class="device-detail-close modal-dismiss" type="button" id="closeClockDialog" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="alarmTimeDialog" class="quick-dialog time-picker-dialog" aria-labelledby="alarmTimeDialogTitle"><div class="modal quick-modal time-picker-card"><div class="quick-modal-head"><div><div class="eyebrow" data-i18n="hubAlarms">Alarm</div><h2 id="alarmTimeDialogTitle" data-i18n="alarmTimePick">Set the alarm time</h2></div><button id="closeAlarmTimeDialog" class="device-detail-close" type="button" data-i18n-aria="close" aria-label="Close">×</button></div><div class="time-picker-legend"><span data-i18n="alarmHour">Hour</span><span data-i18n="alarmMinute">Minute</span></div><div class="time-picker-wheels"><div class="time-picker-band" aria-hidden="true"></div><div id="alarmHourWheel" class="time-wheel" role="listbox" tabindex="0" data-i18n-aria="alarmHour" aria-label="Hour"></div><div id="alarmMinuteWheel" class="time-wheel" role="listbox" tabindex="0" data-i18n-aria="alarmMinute" aria-label="Minute"></div></div><div class="modal-actions"><button id="cancelAlarmTime" class="secondary" type="button" data-i18n="cancel">Cancel</button><button id="confirmAlarmTime" class="primary" type="button" data-i18n="save">Save</button></div></div></dialog>
+<dialog id="alarmDialog" class="alarm-dialog" role="dialog" aria-labelledby="alarmDialogTitle"><div class="alarm-ring"><span class="alarm-ring-glyph" aria-hidden="true">⏰</span><h2 id="alarmDialogTitle" data-i18n="alarmRinging">Alarm</h2><div id="alarmRingTime" class="alarm-ring-time">--:--</div><p id="alarmRingDate" class="alarm-ring-date"></p><button id="stopAlarm" class="primary alarm-stop" type="button" data-i18n="alarmStop">Stop</button></div></dialog>
+<dialog id="weatherDialog" class="hub-modal" aria-labelledby="weatherDialogTitle"><div class="modal"><h2 id="weatherDialogTitle" data-i18n="weather">Weather</h2><div class="weather-meta"><p id="weatherDialogMeta"></p><button id="changeWeatherLocation" class="weather-location-change" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.7-6L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.7 6L3 16"/><path d="M3 21v-5h5"/></svg><span data-i18n="chooseWeatherLocation">Choose weather location</span></button></div><div id="weatherDialogBody"></div></div><button class="device-detail-close modal-dismiss" type="button" data-dismiss-modal="" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="weatherLocationDialog"><div class="modal location-modal"><h2 data-i18n="chooseWeatherLocation">Choose weather location</h2><p data-i18n="chooseWeatherLocationLead">Search for the city whose weather you want to see.</p><div class="location-search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="weatherLocationSearch" type="search" autocomplete="off" data-i18n-placeholder="searchCity" placeholder="Search city…"></div><div id="weatherSearchStatus" class="location-search-status"></div><div id="weatherSearchResults" class="location-results"></div></div><button class="device-detail-close modal-dismiss" type="button" id="closeWeatherLocationDialog" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="homeLocationDialog"><div class="modal location-modal"><h2 data-i18n="chooseHomeLocationTitle">Where is your home?</h2><p data-i18n="chooseHomeLocationLead">Pick the town your home is in. Sun and moon positions are calculated locally from its time zone.</p><button id="useWeatherLocationForHome" class="secondary location-current" type="button" data-i18n="useWeatherLocation">Use the weather location</button><div class="location-search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="homeLocationSearch" type="search" autocomplete="off" data-i18n-placeholder="searchCity" placeholder="Search city…"></div><div id="homeSearchStatus" class="location-search-status"></div><div id="homeSearchResults" class="location-results"></div><details class="location-manual"><summary data-i18n="enterCoordinates">Enter coordinates by hand</summary><form id="homeLocationManualForm" class="location-fields"><div class="setting-field"><label for="homeLatitude" data-i18n="latitude">Latitude</label><input id="homeLatitude" name="latitude" type="number" step="0.000001" min="-90" max="90" inputmode="decimal" placeholder="36.8969"></div><div class="setting-field"><label for="homeLongitude" data-i18n="longitude">Longitude</label><input id="homeLongitude" name="longitude" type="number" step="0.000001" min="-180" max="180" inputmode="decimal" placeholder="30.7133"></div><div class="setting-field"><label for="homeTimeZone" data-i18n="timeZone">Time zone</label><input id="homeTimeZone" name="timeZone" type="text" maxlength="100" autocomplete="off" placeholder="Europe/London"></div><button id="saveHomeLocation" class="primary" type="submit" data-i18n="save">Save</button></form></details></div><button class="device-detail-close modal-dismiss" type="button" id="closeHomeLocationDialog" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="widgetDialog"><div class="modal add-modal"><div class="add-modal-head"><h2 id="addDialogTitle" tabindex="-1" data-i18n="addToDashboard">Add to dashboard</h2><button id="dismissWidgetDialog" class="device-detail-close" type="button" data-i18n-aria="close" aria-label="Close">×</button></div><div class="modal-tabs" role="tablist" data-i18n-aria="addToDashboard" aria-label="Add to dashboard"><button id="addTabWidgets" class="modal-tab" type="button" role="tab" aria-selected="true" aria-controls="addPanelWidgets" data-add-tab="widgets" data-i18n="addWidgetsTab">Widgets</button><button id="addTabGroups" class="modal-tab" type="button" role="tab" aria-selected="false" tabindex="-1" aria-controls="groupForm" data-add-tab="groups" data-i18n="addGroupsTab">Device groups</button></div><section id="addPanelWidgets" class="modal-tab-panel" role="tabpanel" aria-labelledby="addTabWidgets" tabindex="0"><p data-i18n="addWidgetLead">Choose compact widgets for the information you want to see at a glance.</p><div id="widgetCatalog" class="widget-catalog"></div></section><form id="groupForm" class="modal-tab-panel" role="tabpanel" aria-labelledby="addTabGroups" tabindex="0" hidden><p data-i18n="groupDialogLead">Give the widget a simple name, then choose its controls.</p><div class="group-form-columns"><div class="group-form-column group-form-settings"><div class="field"><label for="groupName" data-i18n="groupName">Group name</label><input id="groupName" minlength="2" maxlength="32" autocomplete="off" required data-i18n-placeholder="groupNamePlaceholder" placeholder="Living room"><span class="room-suggest-hint" data-i18n="roomSuggestHint">Pick a suggestion or type your own name.</span><div id="roomSuggestions" class="room-suggestions"></div></div><div id="groupOrderRow" class="group-order-row" hidden><span data-i18n="groupOrder">Order</span><div class="group-order-actions"><button id="groupMoveLeft" class="secondary" type="button" data-i18n-aria="moveGroupEarlier" aria-label="Move earlier">←</button><span id="groupOrderPosition" class="group-order-position"></span><button id="groupMoveRight" class="secondary" type="button" data-i18n-aria="moveGroupLater" aria-label="Move later">→</button></div></div><div class="group-settings-foot"><button id="deleteGroup" class="danger-button" type="button" data-i18n="deleteGroup" hidden>Delete group</button></div></div><div class="group-form-column group-form-devices"><p id="groupDeviceGate" class="group-device-gate" data-i18n="groupDeviceGate" hidden>First give the group a name — pick a suggestion or type your own. The devices appear right after.</p><div id="groupPickerFrame" class="group-picker-frame"><div class="group-picker-head"><strong id="groupDevicesHeading" data-i18n="groupDevices">Devices and controls</strong><span id="groupSelectionCount"></span></div><input id="groupDeviceSearch" class="group-device-search" type="search" autocomplete="off" data-i18n-placeholder="groupDeviceSearchPlaceholder" placeholder="Search devices" data-i18n-aria="groupDeviceSearchPlaceholder" aria-label="Search devices"><div id="groupDeviceChoices" class="group-device-choices"></div></div></div></div><div class="modal-actions group-modal-actions"><div><button id="cancelGroup" class="quiet" type="button" data-i18n="cancel">Cancel</button><button id="saveGroup" class="primary" type="submit" data-i18n="saveGroup">Save group</button></div></div></form></div></dialog>
+<dialog id="groupDeleteDialog"><div class="modal"><h2 data-i18n="deleteGroupTitle">Delete this room?</h2><p id="groupDeleteLead" class="danger-copy"></p><p class="group-delete-note" data-i18n="deleteGroupNote">The devices themselves stay untouched — only the room disappears.</p><div class="modal-actions"><button id="cancelGroupDelete" class="quiet" type="button" data-i18n="cancel">Cancel</button><button id="confirmGroupDelete" class="danger-button" type="button" data-i18n="deleteGroup">Delete group</button></div></div><button class="device-detail-close modal-dismiss" type="button" data-dismiss-modal="cancelGroupDelete" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="automationDialog" class="automation-dialog"><div class="modal automation-modal"><div class="automation-head"><div class="automation-head-text"><h2 id="automationTitle" data-i18n="automationWhenTitle">When should it run?</h2><p id="automationLead" data-i18n="automationWhenLead">Pick the moment that starts it.</p></div><button id="closeAutomationWizard" class="device-detail-close automation-close" type="button" data-i18n-aria="close" aria-label="Close">×</button></div><nav id="automationProgress" class="automation-progress" aria-label="Automation steps" data-i18n-aria="automationProgressLabel" hidden></nav><div id="automationBody" class="automation-body"></div><div class="modal-actions automation-actions"><div id="automationNextNote" class="automation-next-note" hidden><p id="automationNextHint" class="automation-next-hint"></p></div><button id="automationBack" class="secondary automation-back" type="button" data-i18n="back">Back</button><button id="automationNext" class="primary automation-next" type="button" data-i18n="next">Next</button></div></div></dialog>
+<dialog id="automationActionDialog"><div class="modal device-action-modal"><div class="device-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 3 5 14h6l-1 7 8-11h-6l1-7Z"/></svg></div><h2 id="automationActionName">Automation</h2><p data-i18n="automationActionLead">Choose what you want to do with this automation.</p><div class="modal-actions"><button id="closeAutomationActions" class="quiet" type="button" data-i18n="cancel">Cancel</button><button id="runAutomationNow" class="secondary" type="button" data-i18n="automationRunNow">Run now</button><button id="duplicateAutomation" class="secondary" type="button" data-i18n="automationDuplicate">Duplicate</button><button id="editAutomation" class="primary" type="button" data-i18n="automationEdit">Edit</button><button id="deleteAutomation" class="danger-button" type="button" data-i18n="automationDelete">Delete</button></div></div><button class="device-detail-close modal-dismiss" type="button" data-dismiss-modal="closeAutomationActions" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="simpleLinkDialog" class="simple-link-dialog"><div class="modal simple-link-modal"><div id="simpleLinkStep" class="eyebrow"></div><h2 id="simpleLinkTitle" data-i18n="simpleLinkStepOneTitle">Which button?</h2><p id="simpleLinkLead" data-i18n="simpleLinkStepOneLead">Choose the button or remote that should start it.</p><div id="simpleLinkRooms" class="room-filter" data-i18n-aria="roomFilterLabel" role="group" aria-label="Filter by room" hidden></div><div id="simpleLinkChoices" class="simple-link-choices"></div><div id="simpleLinkSummary" class="simple-link-summary" hidden></div><div class="modal-actions"><button id="simpleLinkBack" class="quiet" type="button" data-i18n="cancel">Cancel</button><button id="simpleLinkSave" class="primary" type="button" data-i18n="save" disabled hidden>Save</button></div></div><button class="device-detail-close modal-dismiss" type="button" data-dismiss-modal="" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<dialog id="matterDialog" class="room-detail-dialog connection-detail-dialog" aria-labelledby="matterDialogTitle"><div class="modal room-detail-modal"><div class="room-detail-head"><div class="room-detail-title"><span class="system-detail-icon" aria-hidden="true">◇</span><div><div class="eyebrow">Matter</div><h2 id="matterDialogTitle" data-i18n="connectPlatform">Connect Matter system</h2></div></div><button class="device-detail-close" type="button" id="closeMatter" data-i18n-aria="close" aria-label="Close">×</button></div><div class="room-detail-body"><p data-i18n="matterLead">Choose “Add Matter device” in Alexa, Apple Home or a compatible Matter controller and scan this code.</p><div id="qr" class="qr"></div><div id="manualCode" class="code"></div><div id="matterWaiting" class="matter-waiting"><span class="matter-waiting-dot" aria-hidden="true"></span><span data-i18n="matterPairingWaiting">Waiting for pairing…</span></div><p class="matter-hint" data-i18n="matterEcosystemHint">Each ecosystem needs its own code: close this window and press the button again to add another controller such as Alexa.</p></div></div></dialog>
+<dialog id="haSetupDialog" class="room-detail-dialog connection-detail-dialog" aria-labelledby="haSetupDialogTitle"><div class="modal room-detail-modal"><div class="room-detail-head"><div class="room-detail-title"><span class="system-detail-icon" aria-hidden="true">HA</span><div><div class="eyebrow" data-i18n="navConnections">Connections</div><h2 id="haSetupDialogTitle">Home Assistant</h2></div></div><button id="closeHaSetup" class="device-detail-close" type="button" data-i18n-aria="close" aria-label="Close">×</button></div><div class="room-detail-body"><div id="haSetupDetails" class="ha-setup-details"><div class="ha-layout"><ol class="ha-steps"><li data-i18n="haStepOne">In Home Assistant, open Settings → Devices & services → Add integration.</li><li data-i18n="haStepTwo">Select MQTT and enter the broker address shown here.</li><li data-i18n="haStepThree">Enter the protocol and credentials exactly as shown. Leave username and password blank when authentication is not required.</li><li data-i18n="haStepFour">Keep the discovery prefix as “homeassistant”, then enable discovery below.</li></ol><div class="ha-values"><div class="ha-value"><span data-i18n="brokerAddress">Broker address</span><code id="haBroker">—</code></div><div class="ha-value"><span data-i18n="brokerPort">Port</span><code id="haPort">—</code></div><div class="ha-value"><span data-i18n="mqttProtocol">MQTT protocol</span><code id="haProtocol">3.1.1</code></div><div class="ha-value"><span data-i18n="mqttUsername">Username</span><code id="haUsername">—</code></div><div class="ha-value"><span data-i18n="mqttPassword">Password</span><div class="ha-secret"><code id="haPassword">—</code><button id="toggleHaPassword" type="button" aria-label="Show password" hidden>◉</button></div></div><div class="ha-value"><span data-i18n="baseTopic">Base topic</span><code id="haBaseTopic">—</code></div><div class="ha-value"><span data-i18n="discoveryPrefix">Discovery prefix</span><code>homeassistant</code></div><div class="ha-value"><span data-i18n="discoveryStatus">Automatic discovery</span><code id="haDiscoveryStatus" class="unknown-text">Disabled</code></div><div class="ha-actions"><button id="toggleHaDiscovery" class="secondary" type="button">Start service</button></div></div></div></div></div></div></dialog>
+<dialog id="lightDialog" class="light-dialog"><div class="light-modal"><div class="light-modal-head"><div><div class="eyebrow" data-i18n="quickControl">Quick control</div><h2 id="lightTitle">Device</h2></div><button id="closeLight" class="device-detail-close" type="button" data-i18n-aria="close" aria-label="Close">×</button></div><div class="light-hero"><button id="lightPower" class="light-power" aria-label="Power"><span class="power-glyph"></span></button></div><div id="lightControls" class="light-controls"></div><div class="light-modal-actions"><button id="showLightDevice" class="secondary" type="button" data-i18n="showInDevices">Show in Devices</button></div></div></dialog>
+<dialog id="quickControlDialog" class="quick-dialog" aria-labelledby="quickControlTitle"><div class="modal quick-modal"><div class="quick-modal-head"><div><div class="eyebrow" data-i18n="quickControl">Quick control</div><h2 id="quickControlTitle">Device</h2></div><button id="closeQuickControl" class="device-detail-close" type="button" data-i18n-aria="close" aria-label="Close">×</button></div><div id="quickControlBody" class="quick-modal-body"></div><div class="quick-modal-actions"><button id="quickControlDetails" class="quick-details-button" type="button" data-i18n-aria="quickControlDetails" aria-label="Details"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg></button></div></div></dialog>
+<dialog id="deviceDetailDialog" class="device-detail-dialog"><div class="modal device-detail-modal"><div class="device-detail-head"><div class="device-detail-title"><span id="deviceDetailIcon" class="device-status-icon" aria-hidden="true"></span><div class="device-detail-heading"><div id="deviceDetailKind" class="eyebrow"></div><div class="device-detail-nameline"><h2 id="deviceDetailName">Device</h2><span id="deviceDetailMeta" class="device-detail-meta"></span></div></div></div><button id="closeDeviceDetail" class="device-detail-close" type="button" data-i18n-aria="close" aria-label="Close">×</button></div><div id="deviceDetailBody" class="device-detail-body"></div></div></dialog>
+<dialog id="onboardingDialog" class="onboarding-dialog"><div class="onboarding-shell"><div id="onboardingProgress" class="onboarding-progress" aria-hidden="true"></div><div id="onboardingBody"></div><div class="onboarding-actions"><button id="skipOnboarding" class="coach-skip" type="button" data-i18n="setupLater">Set up later</button><div class="onboarding-actions-right"><button id="onboardingBack" class="quiet" type="button" data-i18n="back">Back</button><button id="onboardingNext" class="primary" type="button" data-i18n="next">Next</button></div></div></div><button class="device-detail-close modal-dismiss" type="button" data-dismiss-modal="skipOnboarding" data-i18n-aria="close" aria-label="Close">×</button></dialog>
+<div id="coachLayer" class="coach-layer" hidden><div class="coach-blocker"></div><div id="coachSpotlight" class="coach-spotlight"></div><section id="coachTooltip" class="coach-tooltip" role="dialog" aria-modal="true" aria-labelledby="coachTitle"><div id="coachStep" class="coach-step"></div><h2 id="coachTitle"></h2><p id="coachText"></p><div class="coach-actions"><button id="coachSkip" class="coach-skip" type="button" data-i18n="skipTour">Skip tour</button><div class="coach-actions-right"><button id="coachBack" class="quiet" type="button" data-i18n="back">Back</button><button id="coachNext" class="primary" type="button" data-i18n="next">Next</button></div></div></section></div>
+<div id="screensaver" class="screensaver" role="dialog" aria-modal="true" tabindex="-1" hidden><div class="screensaver-inner"><div id="screensaverAlert" class="screensaver-alert" role="alert" hidden></div><div id="screensaverClock" class="screensaver-clock">--:--</div><div id="screensaverDate" class="screensaver-date"></div><div id="screensaverWeather" class="screensaver-weather" hidden></div><p class="screensaver-hint" data-i18n="screensaverHint">Touch the screen to continue</p></div></div>
+<div id="toast" class="toast" role="status"></div>
+
+<script src="/js/10-core.js"></script>
+<script src="/js/20-auth.js"></script>
+<script src="/js/30-device-view.js"></script>
+<script src="/js/35-generator.js"></script>
+<script src="/js/40-home.js"></script>
+<script src="/js/45-clock-weather.js"></script>
+<script src="/js/50-widgets.js"></script>
+<script src="/js/60-pairing.js"></script>
+<script src="/js/70-settings.js"></script>
+<script src="/js/72-admin-overview.js"></script>
+<script src="/js/80-zigbee-tools.js"></script>
+<script src="/js/82-theme-packages.js"></script>
+<script src="/js/84-celestial-view.js"></script>
+<script src="/js/88-simple-link.js"></script>
+<script src="/js/90-shell.js"></script>
+<script src="/js/panel-automation.js"></script>
+<script src="/js/95-tv-navigation.js"></script>
+<script src="/js/99-bind.js"></script>
+</body>
+</html>

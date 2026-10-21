@@ -1,0 +1,12 @@
+[Unit]
+Description=Safely update Villa Bridge from GitHub
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/villa-bridge-update
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=30min
+UMask=0022

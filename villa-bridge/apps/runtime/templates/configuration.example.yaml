@@ -1,0 +1,27 @@
+# Villa Bridge Zigbee configuration (Zigbee2MQTT compatible).
+#
+# The runtime copies this file to <data>/zigbee/configuration.yaml the first time
+# it starts and replaces every GENERATE marker with freshly generated random
+# values, so no two installations share a Zigbee network key or an MQTT password.
+# The finished file is NEVER overwritten again.
+#
+# `serial.port` below is a placeholder from the RFC 5737 documentation range. It
+# can never be a real coordinator, and Villa Bridge refuses to open a Zigbee
+# session while it is in place: the panel starts in setup mode instead. Enter the
+# real coordinator address in the setup wizard at http://<host>:8091.
+#
+# Keep the completed file private: it holds the Zigbee network key.
+mqtt:
+  base_topic: zigbee2mqtt
+  user: villa-bridge
+  password: GENERATE
+serial:
+  port: tcp://192.0.2.10:6638
+  adapter: zstack
+advanced:
+  channel: 15
+  pan_id: GENERATE
+  ext_pan_id: GENERATE
+  network_key: GENERATE
+frontend:
+  enabled: false

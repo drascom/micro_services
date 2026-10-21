@@ -1,0 +1,39 @@
+{
+  "name": "villa-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "check": "node scripts/check-graph.mjs",
+    "test": "npm run build && npm run check",
+    "linux:doctor": "apps/linux/doctor.sh",
+    "android:prepare": "node scripts/prepare-android-node.mjs",
+    "android:build": "node scripts/android-build.mjs",
+    "android:devices": "adb devices -l",
+    "android:install": "npm run android:build && adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk",
+    "failover:test": "npm run build && node --test test/failover.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "fastify": "^5.6.2",
+    "mqtt": "^5.14.1",
+    "qrcode": "^1.5.4",
+    "ws": "^8.18.3",
+    "yaml": "^2.8.2",
+    "zigbee-herdsman": "^10.0.7",
+    "zigbee-herdsman-converters": "^26.46.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.2",
+    "@types/qrcode": "^1.5.5",
+    "@types/ws": "^8.18.1",
+    "tar": "^7.5.22",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
