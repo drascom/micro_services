@@ -1,40 +1,39 @@
-# Microservices
+# LivAuto Scan
 
-A monorepo of standalone services. Each top-level directory is an independent
-microservice with its own dependencies, configuration, and install steps.
-**See each service's own README for full instructions.**
+## Brief Introduction and Purpose
 
-## Services
+LivAuto Scan is a FastAPI service that processes hair-transplant pre-operative questionnaires received as email attachments. It extracts and normalizes questionnaire data for downstream review.
 
-| Service | What it is | Platform | Branch | Docs |
-|---------|------------|----------|--------|------|
-| **scan** | LivAuto Scan — processes hair-transplant pre-op questionnaires from email attachments (FastAPI) | Linux (systemd) | `scan` | [scan/README.md](scan/README.md) |
-| **diziflix** | Catalogue & playback API for the diziflix Tizen TV client (FastAPI) | Linux (systemd) / macOS | `diziflix` | `diziflix/server/README.md` |
-| **assistant** | Local personal assistant — SwiftUI desktop ring with a TypeScript/Pi backend | macOS | `assistant` | `assistant/README.md` |
+## Quick Install
 
-diziflix and assistant live on their own branches.
+From the repository root on the `scan` branch:
 
-## Quick start
-
-Each service is self-contained — `cd` into it and follow its README.
-
-**scan** (Linux / systemd):
 ```bash
 cd scan
-cp .env.example .env   # then edit secrets
+cp .env.example .env
+# Set the required credentials and configuration in .env.
 chmod +x install.sh
 ./install.sh
-systemctl start scan-emails
 ```
 
-**diziflix** (on the `diziflix` branch; Linux / systemd, runs on macOS too):
+The installer creates the Python environment and configures the `scan-emails` systemd service where systemd is available.
+
+## Developing Mode
+
+From the repository root:
+
 ```bash
-cd diziflix/server
-./install.sh           # venv + deps + fixture + systemd unit (Linux only)
-curl http://localhost:8090/api/health
+cd scan
+uv venv venv
+uv pip install --python venv/bin/python -r requirements.txt
+venv/bin/uvicorn app:app --reload --host 0.0.0.0 --port 1000
 ```
 
-## Adding a service
+The local service listens on port `1000`. Use the project configuration and authentication settings documented in `.env.example` and the application source.
 
-Create a new top-level directory containing its own `README.md` and an
-install script (e.g. `install.sh`), then add a row to the **Services** table above.
+## Source Citations
+
+- [Application entry point](scan/app.py)
+- [Installer and service configuration](scan/install.sh)
+- [Project login notes](scan/README.md)
+- [Python dependencies](scan/requirements.txt)
