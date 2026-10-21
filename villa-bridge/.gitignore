@@ -20,3 +20,4 @@ apps/android/app/.cxx/
 apps/android/build/
 apps/runtime/node_modules/
 !.env.example
+coordinator-backups/
