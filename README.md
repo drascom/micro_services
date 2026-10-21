@@ -1,40 +1,35 @@
-# Microservices
+# Personal Assistant
 
-A monorepo of standalone services. Each top-level directory is an independent
-microservice with its own dependencies, configuration, and install steps.
-**See each service's own README for full instructions.**
+## Brief Introduction and Purpose
 
-## Services
+A local macOS personal assistant with a SwiftUI desktop interface, a TypeScript/Pi backend, speech input and output, and local-model fallback. This branch contains the assistant project; its detailed operating guide is in [`assistant/README.md`](assistant/README.md).
 
-| Service | What it is | Platform | Branch | Docs |
-|---------|------------|----------|--------|------|
-| **scan** | LivAuto Scan — processes hair-transplant pre-op questionnaires from email attachments (FastAPI) | Linux (systemd) | `scan` | [scan/README.md](scan/README.md) |
-| **diziflix** | Catalogue & playback API for the diziflix Tizen TV client (FastAPI) | Linux (systemd) / macOS | `diziflix` | `diziflix/server/README.md` |
-| **assistant** | Local personal assistant — SwiftUI desktop ring with a TypeScript/Pi backend | macOS | `assistant` | `assistant/README.md` |
+## Quick Install
 
-diziflix and assistant live on their own branches.
+From the repository root on the `assistant` branch:
 
-## Quick start
-
-Each service is self-contained — `cd` into it and follow its README.
-
-**scan** (Linux / systemd):
 ```bash
-cd scan
-cp .env.example .env   # then edit secrets
-chmod +x install.sh
-./install.sh
-systemctl start scan-emails
+cd assistant
+scripts/setup.sh
 ```
 
-**diziflix** (on the `diziflix` branch; Linux / systemd, runs on macOS too):
+The setup script installs the project's declared prerequisites and components. Review its options before running it if you want a dry run or want to defer large model downloads.
+
+## Developing Mode
+
+From the repository root:
+
 ```bash
-cd diziflix/server
-./install.sh           # venv + deps + fixture + systemd unit (Linux only)
-curl http://localhost:8090/api/health
+cd assistant
+npm run check
+npm test
+./run.sh serve
 ```
 
-## Adding a service
+See the detailed project guide for configuration, native-app workflows, and additional test commands.
 
-Create a new top-level directory containing its own `README.md` and an
-install script (e.g. `install.sh`), then add a row to the **Services** table above.
+## Source Citations
+
+- [Detailed project guide](assistant/README.md)
+- [Package manifest](assistant/package.json)
+- [Declared component sources and versions](assistant/components.json)
