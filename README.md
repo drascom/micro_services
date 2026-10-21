@@ -1,6 +1,6 @@
 # Microservices
 
-This repository hosts independent projects, each developed on its own branch. `main` is the project index and shared repository-management branch.
+This repository hosts independent projects. Each project lives on its own branch with its files at the branch root; `main` holds only this index and the shared agent rules.
 
 ## Projects
 

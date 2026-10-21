@@ -4,9 +4,10 @@ Repository-wide guidance for coding agents working in `drascom/micro_services`.
 
 ## Repository model
 
-- `main` is the repository index and shared-management branch; it does not host project implementation work.
-- Each project has one dedicated branch named for that project (for example, `scan`, `diziflix`, `assistant`, `inet-viewer`, `villa-bridge`, or `cloudstream-mac`). Keep that project's implementation and project-specific documentation on its branch.
-- Do not combine project branches or move project implementation into `main` unless the user explicitly asks.
+- `main` holds only the project index (`README.md`) and these shared rule files (`CLAUDE.md`, `AGENTS.md`, `.gitignore`); no project code.
+- Each project lives on its own branch (`scan`, `diziflix`, `assistant`, `inet-viewer`, `villa-bridge`, `cloudstream-mac`) with its files at the branch root — no `<project>/` subdirectory. Each project branch has its own `README.md`, `CLAUDE.md`, `AGENTS.md` and `.gitignore`; project run/test commands are in that branch's `CLAUDE.md`.
+- Branches are never merged into `main` or into each other unless the user explicitly asks.
+- Local layout: one git worktree per branch at `~/Documents/work/micro_services/<branch>/` (this branch at `.../main/`); on hermes `~/work/micro_services/<branch>/`.
 - Before editing, verify the current branch and working tree. Preserve unrelated changes and do not overwrite work in progress.
 
 ## README requirements
@@ -14,7 +15,7 @@ Repository-wide guidance for coding agents working in `drascom/micro_services`.
 - The root `README.md` on `main` is only the repository homepage: maintain a concise project inventory table with each project's name, a short description, and a direct link to that project's README on its branch.
 - The root `README.md` on a project branch must describe only that branch's project, and must be written in English.
 - Project README sections must appear in this order, using these headings: `Brief Introduction and Purpose`, `Quick Install`, `Developing Mode`, and `Source Citations`. Keep instructions specific to that project and cite verifiable sources; do not invent commands, dependencies, or citations.
-- When adding or renaming a project, update the `main` inventory and its branch README. Keep shared root management files consistent across project branches when those files are intentionally changed.
+- When adding or renaming a project, update the `main` inventory and its branch README. Project branches do not carry these shared files.
 
 ## Project changes
 
