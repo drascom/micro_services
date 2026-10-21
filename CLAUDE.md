@@ -1,24 +1,24 @@
-# CLAUDE.md
+> Branch `scan` of `drascom/micro_services` holds only this project, at the branch root; other projects live on their own branches and nothing is merged into `main`.
+> Local checkout: `~/Documents/work/micro_services/scan/` (git worktree). Keep the root README in English with the headings Brief Introduction and Purpose, Quick Install, Developing Mode, Source Citations.
 
-Repository-wide guidance for agents working in `drascom/micro_services`.
+# CLAUDE.md — scan (LivAuto Scan)
 
-## Repository model
+FastAPI service that processes medical questionnaires from email attachments. Listens on `http://0.0.0.0:1000`, runs as systemd service `scan-emails` on Linux.
 
-- `main` is the repository index and shared-management branch; project implementation belongs on a dedicated branch named for that project (`scan`, `diziflix`, `assistant`, `inet-viewer`, etc.).
-- Keep each project's implementation and project-specific documentation on its own branch. Do not combine project branches or move implementation into `main` unless explicitly requested.
-- Before editing, verify the current branch and working tree. Preserve unrelated work and avoid overwriting in-progress changes.
+## Commands
+```bash
+cp .env.example .env && ./install.sh          # setup; edit .env first
+uvicorn app:app --host 0.0.0.0 --port 1000 --reload   # local dev (venv/ + uv pip install -r requirements.txt)
+systemctl start|stop|status scan-emails       # service; logs: journalctl -u scan-emails -f
+curl "http://localhost:1000/scan?uid=12345"   # GET or POST {"uid": "..."}; /health for health
+```
 
-## README requirements
+## Architecture
+Pipeline (`execution/`, one module per step, each runnable standalone): fetch email PDFs by UID (IMAP) → extract PDF text → `normalize_markdown.py` (preserves checkboxes) → `extract_medical_data.py` (LLM + schema validation) → JSON response. `app.py` is the FastAPI entry/orchestrator; `execution/config.py` loads `.env` into typed dataclasses and `validate_config()` checks it at startup.
 
-- The root `README.md` on `main` is only the repository homepage. Keep a concise table listing every project, a short description, and a direct link to its README on its project branch.
-- The root `README.md` on each project branch must cover only that project and must be in English.
-- Use these headings in this exact order: `Brief Introduction and Purpose`, `Quick Install`, `Developing Mode`, `Source Citations`. Keep all commands and citations verifiable from the project sources; do not guess.
-- When adding or renaming a project, update the homepage index and that project's branch README. Keep shared management files consistent across branches when intentionally changing them.
-
-## Safe project work
-
-- Work only on the branch for the requested project. Do not change another project's branch as a side effect.
-- Keep project dependencies, configuration, and deployment details isolated to that project.
-- Secrets belong only in ignored local environment files. Document required variables in `.env.example`; never commit credentials.
-- Follow each project's existing environment and test commands; prefer `uv` over `pip` for Python where available.
-- Verify README links and commands against the target branch before committing.
+- Each module returns a dataclass with `status`, `data`, `message`; errors bubble up with clear messages.
+- PDF extraction is pluggable via `PDF_EXTRACTION_METHOD`: `pymupdf` (default, fastest), `pdfplumber` (better for complex form layouts), `docling` (remote service, legacy).
+- `LLM_PROVIDER` selects OpenAI, Anthropic, or local Ollama — configure only the one in use.
+- Questionnaires are detected by filename patterns (config-driven).
+- Checkbox handling is special-cased across all extraction methods — keep it when touching extraction.
+- `.env` holds secrets and is gitignored; never commit it.
