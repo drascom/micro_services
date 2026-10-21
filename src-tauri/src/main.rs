@@ -42,7 +42,18 @@ struct DesktopState {
     local_probe: Arc<dyn DiscoveryProvider>,
     network: MacOsNetwork,
     details: SourceDetails,
+    /// First launch only: until this instant a denial is reported as
+    /// `pending`, because macOS denies while its permission prompt is open.
+    prompt_deadline: std::sync::Mutex<Option<std::time::Instant>>,
 }
+
+/// System Settings > Privacy & Security > Local Network.
+const LOCAL_NETWORK_SETTINGS_URL: &str =
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork";
+/// How long a first-launch denial is treated as "waiting for the prompt".
+const PROMPT_GRACE: Duration = Duration::from_secs(30);
+/// Native probe timeout for the light status check (polled every ~2 s).
+const STATUS_PROBE_TIMEOUT: f64 = 1.5;
 
 #[derive(Serialize)]
 struct DesktopSourceResponse {
@@ -80,6 +91,8 @@ struct DesktopEnvironment {
 enum LocalNetworkStatus {
     Granted,
     Denied,
+    /// First launch: the OS prompt may still be open; not scanning yet.
+    Pending,
     Offline,
     ProbeFailed,
     /// No signal proved or disproved access; scanning is still allowed.
@@ -116,18 +129,21 @@ extern "C" {
 }
 
 /// Runs the native Bonjour round-trip probe; returns its code and state log.
-fn native_local_network_probe() -> (i32, String) {
+fn native_local_network_probe(timeout_seconds: f64) -> (i32, String) {
     #[cfg(target_os = "macos")]
     {
         let mut buffer = vec![0u8; 8192];
         let code = unsafe {
-            inet_viewer_local_network_probe(8.0, buffer.as_mut_ptr().cast(), buffer.len())
+            inet_viewer_local_network_probe(timeout_seconds, buffer.as_mut_ptr().cast(), buffer.len())
         };
         let end = buffer.iter().position(|byte| *byte == 0).unwrap_or(buffer.len());
         (code, String::from_utf8_lossy(&buffer[..end]).into_owned())
     }
     #[cfg(not(target_os = "macos"))]
-    (0, String::new())
+    {
+        let _ = timeout_seconds;
+        (0, String::new())
+    }
 }
 
 /// Reads the ARP table in this process (sysctl), returned in `arp -an` format.
@@ -609,6 +625,29 @@ fn combine_signals(native: i32, unicast: UnicastSignal) -> Verdict {
     }
 }
 
+/// Permission phase shown to the UI. A denial inside the first-launch prompt
+/// window is `Pending`; a grant ends that window for good.
+fn permission_phase(
+    verdict: Verdict,
+    now: std::time::Instant,
+    prompt_deadline: &mut Option<std::time::Instant>,
+) -> LocalNetworkStatus {
+    match verdict {
+        Verdict::Granted => {
+            *prompt_deadline = None;
+            LocalNetworkStatus::Granted
+        }
+        Verdict::Denied if prompt_deadline.is_some_and(|deadline| now < deadline) => {
+            LocalNetworkStatus::Pending
+        }
+        Verdict::Denied => {
+            *prompt_deadline = None;
+            LocalNetworkStatus::Denied
+        }
+        Verdict::Unknown => LocalNetworkStatus::Unknown,
+    }
+}
+
 fn native_label(native: i32) -> &'static str {
     match native {
         0 => "granted",
@@ -927,7 +966,7 @@ async fn desktop_request_local_network(
     let gateway = state.network.gateway;
     let ((native, native_log), (unicast, unicast_log)) =
         tauri::async_runtime::spawn_blocking(move || {
-            (native_local_network_probe(), unicast_gateway_probe(gateway))
+            (native_local_network_probe(8.0), unicast_gateway_probe(gateway))
         })
         .await
         .map_err(error_message)?;
@@ -1005,6 +1044,54 @@ async fn desktop_request_local_network(
     ))
 }
 
+/// Light permission check (native probe + gateway unicast, no LAN sweep);
+/// the UI polls it while waiting for the prompt or while the modal is open.
+#[tauri::command]
+async fn desktop_local_network_status(
+    state: State<'_, DesktopState>,
+) -> Result<LocalNetworkCheck, String> {
+    let gateway = state.network.gateway;
+    let ((native, native_log), (unicast, unicast_log)) =
+        tauri::async_runtime::spawn_blocking(move || {
+            (
+                native_local_network_probe(STATUS_PROBE_TIMEOUT),
+                unicast_gateway_probe(gateway),
+            )
+        })
+        .await
+        .map_err(error_message)?;
+    let verdict = combine_signals(native, unicast);
+    let status = {
+        let mut deadline = state.prompt_deadline.lock().map_err(error_message)?;
+        permission_phase(verdict, std::time::Instant::now(), &mut deadline)
+    };
+    let authorized = matches!(status, LocalNetworkStatus::Granted | LocalNetworkStatus::Unknown);
+    let previous = state
+        .local_network_authorized
+        .swap(authorized, Ordering::AcqRel);
+    if previous != authorized {
+        write_probe_log(&format!(
+            "--- status gateway={gateway}\n{native_log}{unicast_log}\nverdict={verdict:?} status={status:?}\n"
+        ));
+    }
+    let (code, message) = match status {
+        LocalNetworkStatus::Granted => ("granted", "Yerel Ağ izni açık."),
+        LocalNetworkStatus::Pending => ("prompt_pending", "Yerel Ağ izni bekleniyor."),
+        LocalNetworkStatus::Denied => ("tcc_denied", "macOS Yerel Ağ izni kapalı."),
+        _ => ("unverified", "Yerel Ağ izni doğrulanamadı; tarama yine de deneniyor."),
+    };
+    Ok(local_network_check(
+        &state.network,
+        status,
+        code,
+        message,
+        authorized,
+        native_label(native),
+        unicast.label(),
+        "not_run",
+    ))
+}
+
 #[tauri::command]
 fn desktop_environment() -> DesktopEnvironment {
     let netbird = netbird_path();
@@ -1017,14 +1104,22 @@ fn desktop_environment() -> DesktopEnvironment {
 
 #[tauri::command]
 fn desktop_open_local_network_settings() -> Result<(), String> {
-    let status = std::process::Command::new("/usr/bin/open")
-        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork")
-        .status()
-        .map_err(error_message)?;
-    status
-        .success()
-        .then_some(())
-        .ok_or_else(|| "Sistem Ayarları açılamadı.".into())
+    #[cfg(target_os = "macos")]
+    {
+        let status = std::process::Command::new("/usr/bin/open")
+            .arg(LOCAL_NETWORK_SETTINGS_URL)
+            .status()
+            .map_err(error_message)?;
+        status
+            .success()
+            .then_some(())
+            .ok_or_else(|| "Sistem Ayarları açılamadı.".into())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = LOCAL_NETWORK_SETTINGS_URL;
+        Err("Yerel Ağ ayarı yalnızca macOS'ta vardır.".into())
+    }
 }
 
 fn netbird_path() -> Option<std::path::PathBuf> {
@@ -1080,6 +1175,15 @@ fn main() {
                 let data_dir = app.path().app_data_dir()?;
                 std::fs::create_dir_all(&data_dir)?;
                 let database = data_dir.join("inet-viewer.sqlite");
+                // No database yet = first launch: macOS shows its one-time
+                // Local Network prompt now, so early denials mean "pending".
+                let prompt_deadline = (!database.exists())
+                    .then(|| std::time::Instant::now() + PROMPT_GRACE);
+                // Trigger the OS prompt from the main app process right away.
+                tauri::async_runtime::spawn_blocking(|| {
+                    let (code, log) = native_local_network_probe(8.0);
+                    write_probe_log(&format!("--- startup probe result={code}\n{log}"));
+                });
                 let database_url = format!("sqlite://{}", database.display());
                 let pool = tauri::async_runtime::block_on(inet_viewer_server::connect_database(
                     &database_url,
@@ -1161,6 +1265,7 @@ fn main() {
                     local_probe,
                     network,
                     details,
+                    prompt_deadline: std::sync::Mutex::new(prompt_deadline),
                 });
                 Ok(())
             })
@@ -1176,19 +1281,28 @@ fn main() {
                 desktop_start_scan,
                 desktop_scan_progress,
                 desktop_request_local_network,
+                desktop_local_network_status,
                 desktop_open_local_network_settings,
                 desktop_environment,
             ])
             .build(tauri::generate_context!())
             .expect("inet-viewer masaüstü uygulaması başlatılamadı");
 
-    app.run(|handle, event| {
-        if let RunEvent::Reopen { .. } = event {
+    app.run(|handle, event| match event {
+        RunEvent::Reopen { .. } => {
             if let Some(window) = handle.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();
             }
         }
+        // Back from System Settings: the UI re-checks the permission.
+        RunEvent::WindowEvent {
+            event: tauri::WindowEvent::Focused(true),
+            ..
+        } => {
+            let _ = handle.emit("window-focused", ());
+        }
+        _ => {}
     });
 }
 
@@ -1255,6 +1369,53 @@ mod tests {
         for ty in inet_viewer_server::discovery::MDNS_BROWSE_TYPES {
             assert!(declared.iter().any(|item| item == ty), "{ty} missing in Info.plist");
         }
+    }
+
+    #[test]
+    fn first_launch_denial_is_pending_until_the_prompt_window_ends() {
+        let start = std::time::Instant::now();
+        let mut deadline = Some(start + PROMPT_GRACE);
+        assert_eq!(
+            permission_phase(Verdict::Denied, start, &mut deadline),
+            LocalNetworkStatus::Pending
+        );
+        assert_eq!(
+            permission_phase(Verdict::Granted, start + Duration::from_secs(5), &mut deadline),
+            LocalNetworkStatus::Granted
+        );
+        // A grant ends the prompt window: a later revoke is a real denial.
+        assert_eq!(deadline, None);
+        assert_eq!(
+            permission_phase(Verdict::Denied, start + Duration::from_secs(6), &mut deadline),
+            LocalNetworkStatus::Denied
+        );
+    }
+
+    #[test]
+    fn denial_after_the_prompt_window_or_on_later_launches_is_denied() {
+        let start = std::time::Instant::now();
+        let mut deadline = Some(start + PROMPT_GRACE);
+        assert_eq!(
+            permission_phase(Verdict::Denied, start + PROMPT_GRACE, &mut deadline),
+            LocalNetworkStatus::Denied
+        );
+        let mut later_launch = None;
+        assert_eq!(
+            permission_phase(Verdict::Denied, start, &mut later_launch),
+            LocalNetworkStatus::Denied
+        );
+        assert_eq!(
+            permission_phase(Verdict::Unknown, start, &mut later_launch),
+            LocalNetworkStatus::Unknown
+        );
+    }
+
+    #[test]
+    fn settings_url_opens_the_local_network_pane() {
+        assert_eq!(
+            LOCAL_NETWORK_SETTINGS_URL,
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork"
+        );
     }
 
     #[test]

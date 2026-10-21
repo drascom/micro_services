@@ -17,11 +17,14 @@ fn is_desktop() -> bool {
 }
 
 #[wasm_bindgen(
-    inline_js = "export function isDesktopRuntime() { return !!window.__TAURI_INTERNALS__; } export function enableGlass() { if (window.__TAURI_INTERNALS__ && /Mac/.test(navigator.userAgent)) document.documentElement.classList.add('glass'); } export async function desktopInvoke(command, args) { return await window.__TAURI_INTERNALS__.invoke(command, args || {}); } export async function copyText(value) { await navigator.clipboard.writeText(value); } export async function listenEvent(name, callback) { const tauri = window.__TAURI_INTERNALS__; const handler = tauri.transformCallback((event) => callback(event.payload)); return await tauri.invoke('plugin:event|listen', { event: name, target: { kind: 'Any' }, handler }); }"
+    inline_js = "export function isDesktopRuntime() { return !!window.__TAURI_INTERNALS__; } export function isMacPlatform() { return /Mac/.test(navigator.userAgent); } export function enableGlass() { if (window.__TAURI_INTERNALS__ && /Mac/.test(navigator.userAgent)) document.documentElement.classList.add('glass'); } export async function desktopInvoke(command, args) { return await window.__TAURI_INTERNALS__.invoke(command, args || {}); } export async function copyText(value) { await navigator.clipboard.writeText(value); } export async function listenEvent(name, callback) { const tauri = window.__TAURI_INTERNALS__; const handler = tauri.transformCallback((event) => callback(event.payload)); return await tauri.invoke('plugin:event|listen', { event: name, target: { kind: 'Any' }, handler }); }"
 )]
 extern "C" {
     #[wasm_bindgen(js_name = isDesktopRuntime)]
     fn desktop_runtime() -> bool;
+
+    #[wasm_bindgen(js_name = isMacPlatform)]
+    fn is_mac_platform() -> bool;
 
     /// macOS desktop: transparent window with vibrancy, so the page is see-through.
     #[wasm_bindgen(js_name = enableGlass)]
@@ -313,10 +316,8 @@ struct ScanQueuedResponse {}
 
 #[derive(Clone, Debug, Deserialize)]
 struct LocalNetworkCheck {
-    authorized: bool,
     status: String,
     code: String,
-    message: String,
     interface: String,
     private_ip: String,
     cidr: String,
@@ -352,18 +353,84 @@ async fn start_scan() -> Result<ScanQueuedResponse, String> {
     }
 }
 
-fn onboarding_accepted() -> bool {
-    !is_desktop()
-        || web_sys::window()
-            .and_then(|window| window.local_storage().ok().flatten())
-            .and_then(|storage| {
-                storage
-                    .get_item("inet-viewer-local-network-onboarding")
-                    .ok()
-                    .flatten()
-            })
-            .as_deref()
-            == Some("accepted")
+/// Local Network permission as the UI sees it (macOS desktop only).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PermissionUi {
+    /// First check not answered yet.
+    Checking,
+    /// First launch: macOS prompt may be open; never shown as denied.
+    Pending,
+    Granted,
+    Denied,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct PermissionModel {
+    ui: PermissionUi,
+    modal_open: bool,
+}
+
+impl PermissionModel {
+    const fn new() -> Self {
+        Self { ui: PermissionUi::Checking, modal_open: false }
+    }
+
+    /// Poll every ~2 s while waiting for the prompt or while the modal is open.
+    fn polling(self) -> bool {
+        matches!(self.ui, PermissionUi::Checking | PermissionUi::Pending) || self.modal_open
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PermissionInput {
+    /// Backend `status`: granted | unknown | pending | denied | ...
+    Status(&'static str),
+    Dismiss,
+    Reopen,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PermissionEffect {
+    None,
+    /// First check succeeded: the startup scan.
+    StartScan,
+    /// Permission arrived after waiting/denial: "İzin verildi" + full scan.
+    GrantedScan,
+}
+
+fn status_input(status: &str) -> PermissionInput {
+    PermissionInput::Status(match status {
+        "pending" => "pending",
+        "denied" => "denied",
+        // Unknown/offline/probe_failed do not block scanning (backend rule).
+        _ => "granted",
+    })
+}
+
+fn next_permission(model: PermissionModel, input: PermissionInput) -> (PermissionModel, PermissionEffect) {
+    match input {
+        PermissionInput::Status("pending") => (
+            PermissionModel { ui: PermissionUi::Pending, modal_open: false },
+            PermissionEffect::None,
+        ),
+        PermissionInput::Status("denied") => {
+            let modal_open = model.ui != PermissionUi::Denied || model.modal_open;
+            (PermissionModel { ui: PermissionUi::Denied, modal_open }, PermissionEffect::None)
+        }
+        PermissionInput::Status(_) => {
+            let effect = match model.ui {
+                PermissionUi::Granted => PermissionEffect::None,
+                PermissionUi::Checking => PermissionEffect::StartScan,
+                PermissionUi::Pending | PermissionUi::Denied => PermissionEffect::GrantedScan,
+            };
+            (PermissionModel { ui: PermissionUi::Granted, modal_open: false }, effect)
+        }
+        PermissionInput::Dismiss => (PermissionModel { modal_open: false, ..model }, PermissionEffect::None),
+        PermissionInput::Reopen => (
+            PermissionModel { modal_open: model.ui == PermissionUi::Denied, ..model },
+            PermissionEffect::None,
+        ),
+    }
 }
 
 async fn load_summary() -> Result<StatusSummary, String> {
@@ -674,7 +741,13 @@ fn App() -> impl IntoView {
     let (selected, set_selected) = signal(None::<uuid::Uuid>);
     let (connection, set_connection) = signal("bağlanıyor".to_string());
     let (scan_message, set_scan_message) = signal(String::new());
-    let (onboarded, set_onboarded) = signal(onboarding_accepted());
+    let permission = RwSignal::new(PermissionModel::new());
+    let (permission_diag, set_permission_diag) = signal(String::new());
+    let (permission_checking, set_permission_checking) = signal(false);
+    let (toast, set_toast) = signal(None::<String>);
+    // Set on window focus or "Tekrar kontrol et"; the permission loop checks.
+    let recheck = RwSignal::new(false);
+    let permission_ui = is_desktop() && is_mac_platform();
     let (progress, set_progress) = signal(None::<ScanProgressView>);
     let (diagnostics_open, set_diagnostics_open) = signal(stored_diagnostics_open());
     // Requested but no progress yet, or a scan is running: no second start.
@@ -719,32 +792,16 @@ fn App() -> impl IntoView {
             set_sources,
             set_connection,
         ));
-        if is_desktop() && onboarded.get_untracked() {
-            spawn_local(async move {
-                match invoke::<LocalNetworkCheck>(
-                    "desktop_request_local_network",
-                    serde_json::json!({}),
-                )
-                .await
-                {
-                    Ok(check) if check.authorized => {
-                        let _ = start_scan().await;
-                        set_scan_message.set("İlk yerel ağ taraması sürüyor…".into());
-                    }
-                    Ok(check) => {
-                        set_scan_message.set(format!(
-                            "{} ({})",
-                            check.message,
-                            check.diagnostics()
-                        ));
-                        set_onboarded.set(false);
-                    }
-                    Err(error) => {
-                        set_scan_message.set(format!("Yerel ağ doğrulanamadı: {error}"));
-                        set_onboarded.set(false);
-                    }
-                }
-            });
+        if is_desktop() {
+            spawn_local(permission_loop(PermissionLoop {
+                permission,
+                recheck,
+                set_diag: set_permission_diag,
+                set_checking: set_permission_checking,
+                set_scan_message,
+                set_toast,
+                set_scan_pending,
+            }));
         }
     });
 
@@ -811,6 +868,14 @@ fn App() -> impl IntoView {
             })}
         </header>
         <main class="app-shell">
+            <Show when=move || permission_ui && permission.get().ui == PermissionUi::Pending>
+                <div class="perm-banner" role="status"><span class="spinner" aria-hidden="true"></span>"İzin bekleniyor… macOS penceresinde “İzin Ver”i seçin."</div>
+            </Show>
+            <Show when=move || permission_ui && permission.get().ui == PermissionUi::Denied && !permission.get().modal_open>
+                <button type="button" class="perm-banner warn" on:click=move |_| permission.update(|model| *model = next_permission(*model, PermissionInput::Reopen).0)>
+                    <span class="warn-badge" aria-hidden="true">"!"</span>"Yerel ağ izni kapalı — LAN cihazları görünmüyor. Ayrıntılar…"
+                </button>
+            </Show>
             {move || {
                 if loading.get() && summary.get().is_none() {
                     return view! { <Loading /> }.into_any();
@@ -855,6 +920,7 @@ fn App() -> impl IntoView {
                                         store_diagnostics_open(false);
                                     }>"✕"</button>
                                 </div>
+                                <p class="diag-permission">{move || format!("Yerel Ağ izni: {}", permission_diag.get())}</p>
                                 <div class="diag-grid">
                                     {move || sources.get().into_iter().map(|item| view! {
                                         <article>
@@ -878,51 +944,117 @@ fn App() -> impl IntoView {
                     }).map(IntoAny::into_any).unwrap_or_else(|| view! { <Loading /> }.into_any())
             }}
         </main>
-        <Show when=move || is_desktop() && !onboarded.get()>
-            <LocalNetworkOnboarding set_onboarded />
+        <Show when=move || permission_ui && permission.get().modal_open>
+            <LocalNetworkPermissionModal permission checking=permission_checking recheck />
         </Show>
+        {move || toast.get().map(|text| view! { <div class="toast" role="status">{text}</div> })}
         <DeviceDetails devices selected set_selected set_devices />
     }
 }
 
-#[component]
-fn LocalNetworkOnboarding(set_onboarded: WriteSignal<bool>) -> impl IntoView {
-    let (message, set_message) = signal(None::<Result<String, String>>);
-    let (testing, set_testing) = signal(false);
-    view! {
-        <div class="onboarding-backdrop" role="presentation">
-          <section class="onboarding-card" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
-            <p class="eyebrow">"İLK KURULUM"</p>
-            <h2 id="onboarding-title">"Yerel ağ erişimi gerekli"</h2>
-            <p>"Inet Viewer cihazları doğrudan bu Mac üzerinde keşfeder ve envanteri yerel SQLite veritabanında saklar. Ana panel için macOS Yerel Ağ izni gerekir."</p>
-            <p>"NetBird isteğe bağlıdır. NetBird kurulu değilse yalnızca LAN cihazlarıyla devam edebilirsiniz; uygulama parola veya token istemez."</p>
-            <div class="endpoint-actions">
-                <button class="primary" type="button" disabled=move || testing.get() on:click=move |_| {
-                    set_testing.set(true);
+struct PermissionLoop {
+    permission: RwSignal<PermissionModel>,
+    recheck: RwSignal<bool>,
+    set_diag: WriteSignal<String>,
+    set_checking: WriteSignal<bool>,
+    set_scan_message: WriteSignal<String>,
+    set_toast: WriteSignal<Option<String>>,
+    set_scan_pending: WriteSignal<bool>,
+}
+
+/// One light permission check; applies the result to the model.
+async fn check_permission(
+    permission: RwSignal<PermissionModel>,
+    set_diag: WriteSignal<String>,
+) -> PermissionEffect {
+    match invoke::<LocalNetworkCheck>("desktop_local_network_status", serde_json::json!({})).await {
+        Ok(check) => {
+            set_diag.set(check.diagnostics());
+            let (model, effect) = next_permission(permission.get_untracked(), status_input(&check.status));
+            permission.set(model);
+            effect
+        }
+        Err(error) => {
+            set_diag.set(format!("kontrol başarısız: {error}"));
+            PermissionEffect::None
+        }
+    }
+}
+
+/// First check at startup, ~2 s polling while pending or while the modal is
+/// open, and one check each time the window regains focus.
+async fn permission_loop(ctx: PermissionLoop) {
+    let focused = ctx.recheck;
+    let callback = Closure::<dyn FnMut(JsValue)>::new(move |_| focused.set(true));
+    let _ = listen_event("window-focused", callback.as_ref().unchecked_ref()).await;
+    callback.forget();
+    let mut since_check = u32::MAX; // first pass checks immediately
+    loop {
+        let model = ctx.permission.get_untracked();
+        // Focus also re-checks when granted, so a revoke is noticed.
+        let refocus = focused.get_untracked();
+        if since_check >= 2000 && model.polling() || refocus {
+            focused.set(false);
+            since_check = 0;
+            ctx.set_checking.set(true);
+            let effect = check_permission(ctx.permission, ctx.set_diag).await;
+            ctx.set_checking.set(false);
+            match effect {
+                PermissionEffect::None => {}
+                PermissionEffect::StartScan => {
+                    ctx.set_scan_pending.set(true);
+                    ctx.set_scan_message.set("İlk yerel ağ taraması sürüyor…".into());
+                    if let Err(error) = start_scan().await {
+                        ctx.set_scan_pending.set(false);
+                        ctx.set_scan_message.set(error);
+                    }
+                }
+                PermissionEffect::GrantedScan => {
+                    ctx.set_toast.set(Some("İzin verildi — tam tarama başlıyor".into()));
+                    let set_toast = ctx.set_toast;
                     spawn_local(async move {
-                        let result = invoke::<LocalNetworkCheck>("desktop_request_local_network", serde_json::json!({})).await;
-                        match result {
-                            Ok(check) if check.authorized => {
-                                if let Some(storage) = web_sys::window().and_then(|window| window.local_storage().ok().flatten()) {
-                                    let _ = storage.set_item("inet-viewer-local-network-onboarding", "accepted");
-                                }
-                                let _ = start_scan().await;
-                                set_message.set(Some(Ok(format!("{} {}", check.message, check.diagnostics()))));
-                                set_onboarded.set(true);
-                            }
-                            Ok(check) => set_message.set(Some(Err(format!("{} {}", check.message, check.diagnostics())))),
-                            Err(error) => set_message.set(Some(Err(format!("Yerel ağ denemesi başarısız: {error}. Sistem Ayarları > Gizlilik ve Güvenlik > Yerel Ağ bölümünde Inet Viewer iznini açıp tekrar deneyin.")))),
-                        }
-                        set_testing.set(false);
+                        TimeoutFuture::new(3500).await;
+                        set_toast.set(None);
                     });
-                }>{move || if testing.get() { "Kontrol ediliyor…" } else { "Yerel ağ erişimini iste / tekrar kontrol et" }}</button>
-                <button type="button" on:click=move |_| {
+                    ctx.set_scan_pending.set(true);
+                    if let Err(error) = start_scan().await {
+                        ctx.set_scan_pending.set(false);
+                        ctx.set_scan_message.set(error);
+                    }
+                }
+            }
+        } else {
+            focused.set(false);
+        }
+        TimeoutFuture::new(500).await;
+        since_check = since_check.saturating_add(500);
+    }
+}
+
+#[component]
+fn LocalNetworkPermissionModal(
+    permission: RwSignal<PermissionModel>,
+    checking: ReadSignal<bool>,
+    recheck: RwSignal<bool>,
+) -> impl IntoView {
+    view! {
+        <div class="onboarding-backdrop perm-backdrop" role="presentation">
+          <section class="onboarding-card perm-card" role="dialog" aria-modal="true" aria-labelledby="perm-title" aria-describedby="perm-body">
+            <div class="perm-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.6-3.9-9s1.3-6.4 3.9-9" /></svg>
+            </div>
+            <h2 id="perm-title">"Yerel ağ izni gerekli"</h2>
+            <p id="perm-body">"Inet Viewer, LAN'daki cihazları görmek için macOS Yerel Ağ iznine ihtiyaç duyar. NetBird listesi izin olmadan da çalışır."</p>
+            <p class="perm-steps">"Inet Viewer'ın anahtarını açın, sonra buraya dönün."</p>
+            <div class="perm-actions">
+                <button type="button" class="perm-secondary" on:click=move |_| permission.update(|model| *model = next_permission(*model, PermissionInput::Dismiss).0)>"Daha sonra"</button>
+                <button type="button" class="perm-secondary" disabled=move || checking.get() on:click=move |_| recheck.set(true)>{move || if checking.get() { "Kontrol ediliyor…" } else { "Tekrar kontrol et" }}</button>
+                <button type="button" class="perm-primary" autofocus on:click=move |_| {
                     spawn_local(async move {
                         let _ = invoke::<()>("desktop_open_local_network_settings", serde_json::json!({})).await;
                     });
                 }>"Sistem Ayarları'nı aç"</button>
             </div>
-            <p class="endpoint-message" role=move || message.get().and_then(Result::err).map(|_| "alert")>{move || message.get().map(|result| result.unwrap_or_else(|error| error)).unwrap_or_default()}</p>
           </section>
         </div>
     }
@@ -1548,6 +1680,59 @@ mod tests {
             ),
             Ordering::Greater
         );
+    }
+
+    fn apply(model: PermissionModel, status: &str) -> (PermissionModel, PermissionEffect) {
+        next_permission(model, status_input(status))
+    }
+
+    #[test]
+    fn permission_pending_then_granted_scans_without_showing_denied() {
+        let (model, effect) = apply(PermissionModel::new(), "pending");
+        assert_eq!(model.ui, PermissionUi::Pending);
+        assert!(!model.modal_open);
+        assert_eq!(effect, PermissionEffect::None);
+        assert!(model.polling());
+        let (model, effect) = apply(model, "granted");
+        assert_eq!(model, PermissionModel { ui: PermissionUi::Granted, modal_open: false });
+        assert_eq!(effect, PermissionEffect::GrantedScan);
+        assert!(!model.polling());
+    }
+
+    #[test]
+    fn first_check_granted_starts_the_startup_scan_once() {
+        let (model, effect) = apply(PermissionModel::new(), "unknown");
+        assert_eq!(model.ui, PermissionUi::Granted);
+        assert_eq!(effect, PermissionEffect::StartScan);
+        assert_eq!(apply(model, "granted").1, PermissionEffect::None);
+    }
+
+    #[test]
+    fn denial_opens_the_modal_and_later_is_a_banner_that_reopens_it() {
+        let (model, _) = apply(PermissionModel::new(), "denied");
+        assert_eq!(model, PermissionModel { ui: PermissionUi::Denied, modal_open: true });
+        assert!(model.polling());
+        let (model, _) = next_permission(model, PermissionInput::Dismiss);
+        assert_eq!(model, PermissionModel { ui: PermissionUi::Denied, modal_open: false });
+        assert!(!model.polling());
+        // A repeated denial (focus re-check) keeps the dismissed modal closed.
+        let (model, _) = apply(model, "denied");
+        assert!(!model.modal_open);
+        let (model, _) = next_permission(model, PermissionInput::Reopen);
+        assert!(model.modal_open);
+    }
+
+    #[test]
+    fn grant_seen_after_focus_closes_the_modal_and_triggers_a_scan() {
+        let (denied, _) = apply(PermissionModel::new(), "denied");
+        let (model, effect) = apply(denied, "granted");
+        assert_eq!(model, PermissionModel { ui: PermissionUi::Granted, modal_open: false });
+        assert_eq!(effect, PermissionEffect::GrantedScan);
+        let (dismissed, _) = next_permission(denied, PermissionInput::Dismiss);
+        assert_eq!(apply(dismissed, "granted").1, PermissionEffect::GrantedScan);
+        // Reopen does nothing once granted; a later revoke opens the modal again.
+        assert!(!next_permission(model, PermissionInput::Reopen).0.modal_open);
+        assert!(apply(model, "denied").0.modal_open);
     }
 
     #[test]
