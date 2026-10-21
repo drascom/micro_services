@@ -1,0 +1,6 @@
++;enp1s0;IPv4;Masked\032Printer;_ipp._tcp;local
+=;enp1s0;IPv4;Masked\032Printer;Internet Printer;local;PRINTER-01.local;192.0.2.31;631;"ty=Example Printer 1000" "usb_MFG=Example Corp" "deviceid=02:00:00:00:00:31"
+=;enp1s0;IPv6;Living\032Room;_airplay._tcp;local;MEDIA-01.LOCAL.;2001:db8::32;7000;"model=ExampleTV" "manufacturer=Example Corp" "deviceid=02-00-00-00-00-32"
+=;enp1s0;IPv4;File\032Server;Microsoft Windows Network;local;NAS-01.local;192.0.2.33;445;"model=ExampleNAS" "serial=MASKED-SERIAL"
+?;enp1s0;IPv4;unknown
+=;enp1s0;IPv4;Broken;_http._tcp;local;broken.local;not-an-ip;80;

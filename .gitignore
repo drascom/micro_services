@@ -1,25 +1,20 @@
-# Environment files (secrets) in all service directories
-**/.env
-
-# Virtual environments in all service directories
-**/venv/
-
-# Python cache
-**/__pycache__/
-**/*.pyc
-**/*.pyo
-**/*.pyd
-
-# IDE
-.vscode/
+/target
+/dist
+/crates/web/dist
+/data
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.db-shm
+*.db-wal
+*.log
+.env
+.env.*
+!.env.example
+deploy/inet-viewer.env
 .idea/
-*.swp
-*.swo
-*~
-.claude/
-# macOS Finder metadata
+.vscode/
 .DS_Store
-**/.DS_Store
-deepseek-harness/
-dsh-app/
-.assistant-archive/
+/.branch-work
+/src-tauri/gen

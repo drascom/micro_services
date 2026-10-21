@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Inet Viewer",
+  "version": "0.1.0",
+  "identifier": "com.drascom.inet-viewer",
+  "build": {
+    "beforeDevCommand": "trunk serve --config crates/web/Trunk.toml",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "trunk build --release --config crates/web/Trunk.toml",
+    "frontendDist": "../crates/web/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Inet Viewer",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "category": "Utility",
+    "shortDescription": "LAN ve NetBird cihaz görünümü",
+    "copyright": "Copyright © 2026",
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "signingIdentity": "-",
+      "infoPlist": "Info.plist"
+    },
+    "icon": ["icons/icon.png", "icons/icon.icns"]
+  }
+}

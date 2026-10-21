@@ -1,0 +1,23 @@
+[package]
+name = "inet-viewer-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+chrono.workspace = true
+gloo-net.workspace = true
+inet-viewer-shared = { path = "../shared" }
+leptos.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+serde-wasm-bindgen = "0.6"
+futures-util.workspace = true
+gloo-timers.workspace = true
+web-sys.workspace = true
+uuid.workspace = true
+js-sys = "0.3"
+futures-channel = "0.3"

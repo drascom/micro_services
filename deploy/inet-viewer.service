@@ -1,0 +1,43 @@
+[Unit]
+Description=inet-viewer network inventory dashboard
+Documentation=file:/usr/local/share/doc/inet-viewer/OPERATIONS.md
+After=network-online.target netbird.service avahi-daemon.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+StateDirectory=inet-viewer
+StateDirectoryMode=0750
+LogsDirectory=inet-viewer
+LogsDirectoryMode=0750
+WorkingDirectory=/var/lib/inet-viewer
+EnvironmentFile=/etc/inet-viewer/inet-viewer.env
+ExecStart=/usr/local/bin/inet-viewer-server
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

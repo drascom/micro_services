@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <specVersion><major>1</major><minor>0</minor></specVersion>
+  <device>
+    <deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>
+    <friendlyName>Salon TV &amp; Ses</friendlyName>
+    <manufacturer>Samsung Electronics</manufacturer>
+    <modelName>UE55TU7000</modelName>
+    <UDN>uuid:00000000-0000-1000-8000-000000000001</UDN>
+    <deviceList>
+      <device><friendlyName>Inner</friendlyName></device>
+    </deviceList>
+  </device>
+</root>

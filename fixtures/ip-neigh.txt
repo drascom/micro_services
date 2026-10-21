@@ -1,0 +1,5 @@
+192.0.2.21 dev enp1s0 lladdr 02:00:00:00:00:21 REACHABLE
+192.0.2.22 dev enp1s0 lladdr 02-00-00-00-00-22 STALE
+2001:db8::23 dev enp1s0 lladdr 02:00:00:00:00:23 router DELAY
+192.0.2.24 dev enp1s0 FAILED
+not-an-ip dev enp1s0 lladdr broken FUTURE

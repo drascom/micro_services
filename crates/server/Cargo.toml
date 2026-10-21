@@ -1,0 +1,29 @@
+[package]
+name = "inet-viewer-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+chrono.workspace = true
+inet-viewer-shared = { path = "../shared" }
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+futures-util.workspace = true
+socket2 = { version = "0.6", features = ["all"] }
+libc = "0.2"
+mdns-sd = "0.21"
+
+[dev-dependencies]
+http-body-util.workspace = true
+tower.workspace = true
