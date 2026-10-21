@@ -1,40 +1,34 @@
-# Microservices
+# diziflix
 
-A monorepo of standalone services. Each top-level directory is an independent
-microservice with its own dependencies, configuration, and install steps.
-**See each service's own README for full instructions.**
+## Brief Introduction and Purpose
 
-## Services
+A FastAPI catalogue and playback service for the diziflix Tizen TV client. It provides a stable API over fixture or library-backed catalogue data and handles server-side media discovery. The detailed server guide is in [`diziflix/server/README.md`](diziflix/server/README.md).
 
-| Service | What it is | Platform | Branch | Docs |
-|---------|------------|----------|--------|------|
-| **scan** | LivAuto Scan — processes hair-transplant pre-op questionnaires from email attachments (FastAPI) | Linux (systemd) | `scan` | [scan/README.md](scan/README.md) |
-| **diziflix** | Catalogue & playback API for the diziflix Tizen TV client (FastAPI) | Linux (systemd) / macOS | `diziflix` | `diziflix/server/README.md` |
-| **assistant** | Local personal assistant — SwiftUI desktop ring with a TypeScript/Pi backend | macOS | `assistant` | `assistant/README.md` |
+## Quick Install
 
-diziflix and assistant live on their own branches.
+From the repository root on the `diziflix` branch:
 
-## Quick start
-
-Each service is self-contained — `cd` into it and follow its README.
-
-**scan** (Linux / systemd):
-```bash
-cd scan
-cp .env.example .env   # then edit secrets
-chmod +x install.sh
-./install.sh
-systemctl start scan-emails
-```
-
-**diziflix** (on the `diziflix` branch; Linux / systemd, runs on macOS too):
 ```bash
 cd diziflix/server
-./install.sh           # venv + deps + fixture + systemd unit (Linux only)
-curl http://localhost:8090/api/health
+./install.sh
 ```
 
-## Adding a service
+The installer creates the Python environment, installs requirements, prepares fixture data, and installs the systemd service on supported Linux systems.
 
-Create a new top-level directory containing its own `README.md` and an
-install script (e.g. `install.sh`), then add a row to the **Services** table above.
+## Developing Mode
+
+From the repository root:
+
+```bash
+cd diziflix/server
+source venv/bin/activate
+uvicorn app.main:app --reload --port 8090
+```
+
+The server health endpoint is available at `http://localhost:8090/api/health` while it is running.
+
+## Source Citations
+
+- [Detailed server documentation](diziflix/server/README.md)
+- [API contract](diziflix/API.md)
+- [Server dependencies](diziflix/server/requirements.txt)
