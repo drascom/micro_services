@@ -20,6 +20,14 @@
 # macOS Finder metadata
 .DS_Store
 **/.DS_Store
-deepseek-harness/
-dsh-app/
-.assistant-archive/
+
+# --- project ---
+*.apk
+*.aab
+.DS_Store
+*.bak
+*.log
+node_modules/
+.env
+.env.*
+!.env.example

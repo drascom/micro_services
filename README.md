@@ -26,7 +26,6 @@ tr-livetv-addon/start.sh      # PORT=7788 by default
 The launchers' sources are `launchers/*.applescript`; they look for `run-*.sh` next to the `.app` bundle. After editing, rebuild and re-sign:
 
 ```sh
-cd cloudstream-mac
 osacompile -o "CloudStream TV.app/Contents/Resources/Scripts/main.scpt" launchers/cloudstream-tv.applescript
 osacompile -o nexora.app/Contents/Resources/Scripts/main.scpt launchers/nexora.applescript
 codesign -f -s - "CloudStream TV.app" nexora.app
@@ -36,6 +35,6 @@ Addon settings (`PORT`, `NODE`) are listed in `.env.example`.
 
 ## Source Citations
 
-- [Emulator launcher](cloudstream-mac/run-emulator.sh), [tablet launcher](cloudstream-mac/run-tablet.sh)
-- [Addon README](cloudstream-mac/tr-livetv-addon/README.md) and [server](cloudstream-mac/tr-livetv-addon/server.js)
+- [Emulator launcher](run-emulator.sh), [tablet launcher](run-tablet.sh)
+- [Addon README](tr-livetv-addon/README.md) and [server](tr-livetv-addon/server.js)
 - Channel list: https://iptv-org.github.io/iptv/countries/tr.m3u
