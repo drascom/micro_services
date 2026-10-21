@@ -5,7 +5,7 @@ Repository-wide guidance for coding agents working in `drascom/micro_services`.
 ## Repository model
 
 - `main` is the repository index and shared-management branch; it does not host project implementation work.
-- Each project has one dedicated branch named for that project (for example, `scan`, `diziflix`, `assistant`, or `inet-viewer`). Keep that project's implementation and project-specific documentation on its branch.
+- Each project has one dedicated branch named for that project (for example, `scan`, `diziflix`, `assistant`, `inet-viewer`, `villa-bridge`, or `cloudstream-mac`). Keep that project's implementation and project-specific documentation on its branch.
 - Do not combine project branches or move project implementation into `main` unless the user explicitly asks.
 - Before editing, verify the current branch and working tree. Preserve unrelated changes and do not overwrite work in progress.
 
