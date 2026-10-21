@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#6289a8">
+  <title>Villa Bridge — Görsel Deney</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23124937'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='38' fill='white' font-family='serif'%3EV%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="sky" aria-hidden="true">
+    <div class="stars"></div>
+    <div class="sky-orbit"><div class="sun"></div><div class="moon"></div></div>
+    <div class="mountains mountain-far"></div>
+    <div class="mountains mountain-near"></div>
+  </div>
+
+  <div class="prototype-shell" id="app">
+    <aside class="side-rail" aria-label="Ana menü">
+      <button class="brand" type="button" data-go="home" aria-label="Villa ana ekranı"><span>V</span></button>
+      <nav class="rail-nav" id="railNav"></nav>
+      <div class="rail-bottom">
+        <button class="rail-button profile-button" type="button" data-action="profile" aria-label="Profil ve görünüm">
+          <span class="rail-icon">●</span><span class="rail-label">Profil</span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="main-stage">
+      <header class="topbar">
+        <div class="title-block">
+          <button class="back-button" id="backButton" type="button" data-action="back" hidden aria-label="Geri">‹</button>
+          <div><p class="eyebrow" id="pageEyebrow">Günlük kontrol</p><h1 id="pageTitle">Evim</h1></div>
+        </div>
+        <div class="header-now" id="headerNow" aria-label="Saat ve hava durumu">
+          <button class="header-now-zone header-clock" type="button" data-action="clock-detail">
+            <span class="header-time" data-live-time>08:20</span>
+            <span class="header-now-copy"><strong>21 Ağustos, Cuma</strong><small>Antalya · Dünya saatleri</small></span>
+          </button>
+          <button class="header-now-zone header-weather" type="button" data-action="weather-detail">
+            <span class="header-weather-glyph" data-weather-icon>☀️</span>
+            <span class="header-now-copy"><strong class="header-temperature" data-weather-temp>25°</strong><small data-weather-copy>Açık</small></span>
+          </button>
+        </div>
+        <div class="topbar-actions">
+          <div class="home-health" id="homeHealth"><span class="status-dot"></span><span>Her şey yolunda</span></div>
+        </div>
+      </header>
+
+      <div class="view-root" id="viewRoot" aria-live="polite"></div>
+    </main>
+
+    <nav class="mobile-nav" id="mobileNav" aria-label="Alt menü"></nav>
+  </div>
+
+  <div class="scrim" id="scrim" hidden></div>
+
+  <aside class="profile-drawer" id="profileDrawer" aria-labelledby="profileTitle" aria-hidden="true">
+    <div class="drawer-head">
+      <div><p class="eyebrow">Villa Bridge</p><h2 id="profileTitle">Ev profili</h2></div>
+      <button class="icon-button" type="button" data-action="close-drawer" aria-label="Kapat">×</button>
+    </div>
+    <div class="profile-person"><span class="large-avatar">DA</span><div><strong>Demir Ailesi</strong><small id="profileRole">Ev kullanıcısı</small></div></div>
+    <section class="drawer-section">
+      <div class="drawer-row"><span><b>Parlaklık</b><small>Bu ekranda uygulanır</small></span><output id="brightnessValue">86%</output></div>
+      <input id="brightnessSlider" type="range" min="45" max="100" value="86" aria-label="Ekran parlaklığı">
+    </section>
+    <section class="drawer-section">
+      <div class="drawer-row"><span><b>Dil</b><small>Prototip yalnız Türkçe</small></span><span class="tag">TR</span></div>
+    </section>
+    <button class="admin-entry" type="button" data-action="toggle-admin"><span class="admin-entry-icon">⌘</span><span><b id="adminEntryTitle">Yönetici moduna geç</b><small id="adminEntryLead">Cihazlar, bağlantılar ve sistem</small></span><span>›</span></button>
+    <p class="prototype-note">Bu bir görsel prototiptir. Buradaki işlemler evinizde hiçbir değişiklik yapmaz.</p>
+  </aside>
+
+  <dialog class="detail-dialog" id="detailDialog">
+    <div class="dialog-card">
+      <button class="dialog-close" type="button" data-action="close-dialog" aria-label="Kapat">×</button>
+      <div id="dialogBody"></div>
+    </div>
+  </dialog>
+
+  <dialog class="confirm-dialog" id="confirmDialog">
+    <div class="dialog-card confirm-card">
+      <div class="confirm-icon">!</div>
+      <p class="eyebrow">Demo onayı</p>
+      <h2 id="confirmTitle">İşlemi onaylayın</h2>
+      <p id="confirmText"></p>
+      <div class="dialog-actions"><button class="button secondary" type="button" data-action="cancel-confirm">Vazgeç</button><button class="button danger" type="button" data-action="accept-confirm">Devam et</button></div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
