@@ -126,10 +126,12 @@ def _run_one(site: str, ingest: Callable[..., Any]) -> None:
 
 
 def tick(now: Optional[float] = None, *, ingest: Optional[Callable[..., Any]] = None,
-         sleep: Callable[[float], None] = time.sleep, gap: Optional[float] = None) -> list[str]:
-    """Run the ingest of every due site (one at a time). Returns the sites attempted.
+         sleep: Callable[[float], None] = time.sleep, gap: Optional[float] = None, archive: Any = None) -> list[str]:
+    """Run the ingest of every due site (one at a time), then the due archive batches. Returns the sites attempted
+    (an archive batch as ``<site>#archive``).
 
-    ``now``/``ingest``/``sleep`` are injectable for tests. A concurrent tick returns [] at once.
+    ``now``/``ingest``/``sleep`` are injectable for tests; ``archive`` = the batch runner (False: no archive pass).
+    A concurrent tick returns [] at once.
     """
     if not _tick_lock.acquire(blocking=False):
         return []
@@ -145,6 +147,14 @@ def tick(now: Optional[float] = None, *, ingest: Optional[Callable[..., Any]] = 
                 sleep(pause)
             _run_one(site, run)
             ran.append(site)
+        # the archive pass (library/archive.py): after the home scans (home content first), only for sites whose yaml says
+        # ``archive.enabled: true`` and whose batch interval is up; off = not a single request
+        if archive is not False:
+            try:
+                from .library import archive as larchive
+                ran += [f"{site}#archive" for site in larchive.tick(ts, run=archive or None)]
+            except Exception:
+                log.exception("archive tick failed")
         return ran
     finally:
         _tick_lock.release()

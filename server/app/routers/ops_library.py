@@ -1,6 +1,8 @@
 """Admin "Kütüphane": merkezi kütüphane listesi + video kaynağı sağlığı (K/T).
 
 `GET /api/ops/library`              süzgeçli/sayfalı liste + toplam + facet sayıları
+`POST /api/ops/library/reset`        test aid: empty the library while running (body ``{cache: bool}``, optional);
+                                    409 ``busy`` while a job runs. See ``library/libreset.py``
 `GET /api/ops/library/{id}/videos`  bir öğenin video kaynakları (durum, host, son hata/deneme, `diagnosis` = son oynatma
                                     hatasının sunucu yoklaması + vekil durumu); diziyse
                                     `seasons[]` = sezon şeridi (TMDB sezon posteri var mı, bölüm/still sayısı)
@@ -25,6 +27,7 @@ from typing import Any, Iterable, Optional
 from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
 
 from .. import config, db
 from ..cache import fold
@@ -384,3 +387,17 @@ def library_videos(item_id: str, limit: int = Query(500, ge=1, le=2000)) -> dict
         "truncated": int(agg["n"]) > len(rows),
         "seasons": strip,
     }
+
+
+class ResetBody(BaseModel):
+    cache: bool = False
+
+
+@router.post("/api/ops/library/reset")
+def reset_library(body: Optional[ResetBody] = None) -> dict[str, Any]:
+    """Empty the library (keeps home categories + profiles; ``cache`` also empties imgcache/subcache). 409 ``busy``."""
+    from ..library import libreset
+    try:
+        return {"ok": True, **libreset.reset_library(cache=bool(body and body.cache))}
+    except libreset.Busy as exc:
+        raise ApiError(409, "busy", f"a job is running ({exc}); wait for it to finish")

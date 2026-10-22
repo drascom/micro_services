@@ -92,12 +92,13 @@ def series_rules(cfg) -> list[dict]:
 
 
 def gate_of(cfg) -> dict:
-    return cfg.availability_gate
+    """The site's ``availability_gate:`` (``{}`` when absent or the ``AVAILABILITY_GATE`` kill switch is off)."""
+    return cfg.availability_gate if config.AVAILABILITY_GATE else {}
 
 
 def configured(cfg) -> bool:
     """The site has ``blocked:`` rules or an ``availability_gate:``: nothing here does anything for a site without them."""
-    return bool(cfg.blocked) or bool(cfg.availability_gate)
+    return bool(cfg.blocked) or bool(gate_of(cfg))
 
 
 def probe_count(cfg) -> int:
@@ -271,6 +272,66 @@ def rows_of(site: str, *, limit: int = 100) -> list[dict]:
     return [dict(r) for r in db.query("SELECT * FROM blocked_pages WHERE site=? ORDER BY checked_at DESC LIMIT ?", (site, limit))]
 
 
+# --- dead pages (a series page that is gone / lists no episode) --------------------------------------------------------
+# The block is keyed by the PAGE of one site (``blocked_pages`` (site, url) + its ``source_key``), never by the canonical title:
+# the same title from another site stays. ``via`` gone = HTTP 404/410 or the site's own "not found" page, empty = a series page
+# without any episode. Like every blocked row it is fresh for BLOCKED_RECHECK_DAYS (no ingest, no request), then the page is
+# asked again (a page that came back is taken again).
+VIA_GONE, VIA_EMPTY = "gone", "empty"
+
+
+def block_dead(site: str, key: str, url: str, norm: dict, via: str, reason: str, now: Optional[float] = None) -> dict:
+    """Record a dead series page of ``site`` (``via`` gone | empty) and mark ``norm`` so the caller takes the source out of the
+    library (``series_crawl.gate_removes``). Returns the verdict (``series_verdict`` shape)."""
+    now = time.time() if now is None else now
+    verdict = {"state": BLOCKED, "reason": (reason or "")[:200], "via": via, "probed": 0, "pages": [], "blocked": [], "retry": []}
+    record(site, url, BLOCKED, verdict["reason"], via, kind=KIND_SERIES, key=key, now=int(now))
+    norm[MARKER] = make_marker(verdict, now)
+    log.warning("gate %s: dead page %s (%s): %s", site, url, via, reason)
+    return verdict
+
+
+def unblock(site: str, url: str) -> int:
+    """Admin "remove the block": the row of ``url`` and, for a series / film row, the other rows of the same source (its episode
+    pages); a source marked ``blocked`` is offered again. The next scan that meets the page takes it again. Rows removed."""
+    row = db.query_one("SELECT * FROM blocked_pages WHERE site=? AND url=?", (site, url))
+    if not row:
+        return 0
+    conn = db.connect()
+    try:
+        n = conn.execute("DELETE FROM blocked_pages WHERE site=? AND url=?", (site, url)).rowcount
+        if row["kind"] in (KIND_SERIES, KIND_MOVIE) and row["source_key"]:
+            n += conn.execute("DELETE FROM blocked_pages WHERE site=? AND source_key=?", (site, row["source_key"])).rowcount
+        conn.execute("UPDATE video_sources SET status='unknown',failures=0,last_error=NULL WHERE source=? AND status='blocked' "
+                     "AND (locator=? OR source_key=?)", (site, url, row["source_key"] or "\x00"))
+        conn.commit()
+    finally:
+        conn.close()
+    return n
+
+
+def _iso(ts: Any) -> Optional[str]:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(ts))) if ts else None
+
+
+def events(limit: int = 200, site: Optional[str] = None) -> list[dict]:
+    """The blocked series / film pages as admin events (``kind: blocked_page``; episode rows only in ``rows_of``), newest first: ``{id, kind, at, site, url, page_kind, source_key,
+    via, reason, until}`` (``until`` = when the page is asked again). Never raises."""
+    try:
+        sql, args = "SELECT * FROM blocked_pages WHERE status='blocked' AND kind IN ('series','movie')", []
+        if site:
+            sql += " AND site=?"
+            args.append(site)
+        rows = db.query(sql + " ORDER BY checked_at DESC LIMIT ?", (*args, limit))
+    except Exception:
+        return []
+    import hashlib
+    return [{"id": "bp_" + hashlib.sha1(f"{r['site']}|{r['url']}".encode()).hexdigest()[:12], "kind": "blocked_page",
+             "at": _iso(r["checked_at"]), "site": r["site"], "url": r["url"], "page_kind": r["kind"], "source_key": r["source_key"],
+             "via": r["via"], "reason": r["reason"] or "", "until": _iso(r["checked_at"] + window()) if window() > 0 else None}
+            for r in rows]
+
+
 def marker_ok(marker: Any, now: Optional[float] = None) -> bool:
     """The ``_gate`` marker of an item says "verified" and is still inside the recheck window."""
     if not isinstance(marker, dict) or marker.get("state") != OK:
@@ -411,6 +472,13 @@ def remove_items(site: str, keys: set[str] | list[str]) -> int:
     if not keys:
         return 0
     try:
+        present = {r[0] for r in db.query("SELECT source_key FROM source_items WHERE source=? AND source_key IN (%s)"
+                                          % ",".join("?" * len(keys)), (site, *keys))}
+        present |= {r[0] for r in db.query("SELECT DISTINCT source_key FROM video_sources WHERE source=? AND source_key IN (%s)"
+                                           % ",".join("?" * len(keys)), (site, *keys))}
+        keys = sorted(present)
+        if not keys:
+            return 0
         from . import purge
         return int(purge.purge_source_items(site, keys).get("library_items", 0))
     except Exception as exc:

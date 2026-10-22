@@ -4,6 +4,21 @@ endpoints (fetch/query/outline/test_config/resolvers/test_resolvers/submit). Net
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 import _sandbox  # noqa: F401,E402  throw-away DATA_DIR/DB + no TMDB key; must precede any `app` import
+
+_onboard_on = None
+
+
+def setUpModule():   # onboarding is frozen (ONBOARD_ENABLED=0 by default); its own tests run it switched on
+    global _onboard_on
+    from unittest import mock as _mock
+    from app import config as _config
+    _onboard_on = _mock.patch.object(_config, "ONBOARD_ENABLED", True)
+    _onboard_on.start()
+
+
+def tearDownModule():
+    _onboard_on.stop()
+
 import json
 import os
 import re

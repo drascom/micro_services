@@ -601,6 +601,7 @@ class LayerScopeTest(Base):
 
 class NotAppliedTest(Base):
     def test_autoapply_off_keeps_a_proposal_record_and_nothing_else(self):
+        self.autoapply(False)   # the default is on
         self.agent(yaml_data=self.play_yaml(SELECTOR("iframe.new")), recipe_data=[NEW_RECIPE])
         result = self.run_heal(layer="resolvers,newhost")             # two layers: the union may change resolvers AND take a new recipe
         self.assertEqual((result["status"], result["outcome"], result["applied"]), ("healed", "not_applied", False))

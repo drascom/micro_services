@@ -21,6 +21,8 @@ ROW_TITLES = {
     "new_series": "Yeni Eklenen Diziler",
     "latest_series": "Yeni Eklenen Diziler",
     "noteworthy_movies": "Dikkate Değer Filmler",
+    "noteworthy_series": "Dikkate Değer Diziler",
+    "spotlight": "Öne Çıkan Dizi ve Filmler",
 }
 # Titles of the rows of the tv-v1 home layout (`series`, `movies`, `trending_*`, `continue`, `mylist`) are owned by
 # `homelayout.TITLES` (row_title consults it first); the entries above serve the legacy boot and the old row ids.
@@ -153,6 +155,11 @@ def episode_label(season: int, episode: int, title: Optional[str]) -> str:
     return f"{head} · {name}"
 
 
+def _fresh_label(label: str, card: dict) -> str:
+    """A "Yeni Bölümler" card without an episode name says so: "S02 B06 · Yeni bölüm"."""
+    return label + " · Yeni bölüm" if card.get("fresh") and " · " not in label else label
+
+
 def episode_entry(item: dict, season: int, ep: dict, progress: Optional[dict] = None) -> dict:
     """Request-local copy of ``item`` that ``item_json`` serialises as an EPISODE card (``card_kind=episode``).
 
@@ -169,7 +176,7 @@ def _episode_card_fields(out: dict, card: dict) -> None:
         "card_kind": "episode",
         "card_key": f"episode:{eid}",
         "episode_id": eid,
-        "episode_label": episode_label(card["season"], ep["episode"], ep.get("title")),
+        "episode_label": _fresh_label(episode_label(card["season"], ep["episode"], ep.get("title")), card),
         "season": card["season"],
         "episode": ep["episode"],
         "still_url": still,
@@ -378,10 +385,11 @@ def _newest_episode(item: dict, today: str) -> Optional[tuple[int, dict]]:
 
 
 def new_episode_entries(snap: Snapshot, profile_id: str) -> list[dict]:
-    """``new_episodes`` row: the newest READY episode of every series on the sites' "latest episodes" lists
-    (``latest_episodes_<site>``, merged by ``_role_lists``; each site's order = newest first); one card per
-    production (an episode has one canonical id whatever site it came from). Series without a ready newest
-    episode are left out (new-content rows only show ``ready``)."""
+    """``new_episodes`` row ("Yeni Bölümler"): ONE card per series of the sites' "latest episodes" lists
+    (``latest_episodes_<site>``, merged by ``_role_lists``; each site's order = newest first): the series' newest READY
+    episode (highest season / episode; an episode has one canonical id whatever site it came from), label
+    "S02 B06 · <name>" or "S02 B06 · Yeni bölüm". A series whose inventory is not read yet (no episodes) is a plain
+    title card when it is playable (the client opens the series page, nothing to select); else it is left out."""
     listed = _role_lists(snap, "latest_episodes")
     if not listed:
         return []
@@ -394,7 +402,11 @@ def new_episode_entries(snap: Snapshot, profile_id: str) -> list[dict]:
         seen.add(item["id"])
         found = _newest_episode(item, today)
         if found and (found[1].get("availability") or {}).get("state", "ready") == "ready":
-            out.append(episode_entry(item, found[0], found[1], eprog.get(found[1]["id"])))
+            entry = episode_entry(item, found[0], found[1], eprog.get(found[1]["id"]))
+            entry["_card"]["fresh"] = True
+            out.append(entry)
+        elif not found and (item.get("availability") or {}).get("state", "ready") == "ready":
+            out.append(item)
     return out
 
 

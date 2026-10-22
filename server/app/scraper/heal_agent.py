@@ -56,6 +56,7 @@ PROPOSAL_RECIPE_CHARS = 4000
 NO_SOURCES = "no_sources"
 SERIES_INVENTORY = "series_inventory"   # evidence of a scan whose series pages mostly could not be read (``playheal.record_crawl``; trigger ``crawl``)
 STREAM_BLOCKED = "stream_blocked"       # evidence of streams the server resolves but the stream host refuses (``playheal.record_stream_blocked``)
+ARCHIVE = "archive"                     # evidence of an archive page (series index / film list page) that drifted (``library/archive.py``)
 SOURCELESS = (NO_SOURCES, SERIES_INVENTORY)   # evidence kinds without a failing PLAYBACK example: verified in the sandbox, not by playing examples
 
 
@@ -135,6 +136,7 @@ LAYERS = {
     "provider": (("providers",), "candidates found but no stream: the video HOST changed (host / type / quality; stage `player_page.*`, a "
                                  "provider stage) = a LIBRARY RECIPE; the site yaml may only change its `providers` names"),
     "fetch": (("fetch_mode",), "the page itself cannot be fetched (stage `page` / `fetch`)"),
+    "archive": (("archive",), "an archive page (the series index / a film list page of `archive:`) does not parse (stage `archive.*`, evidence `archive`)"),
 }
 LAYER_ORDER = tuple(LAYERS)
 LAYER_KEYS = {name: keys for name, (keys, _doc) in LAYERS.items()}
@@ -146,6 +148,8 @@ def _layer_of_failure(f: dict) -> set:
     cands = [c for c in f.get("candidates") or [] if isinstance(c, dict)]
     if stage == "normalize":
         return {"normalize"}
+    if stage.startswith("archive"):
+        return {"archive"}
     if stage.startswith(("list", "collection", "drift")):
         return {"list"}
     if stage.startswith("detail"):
@@ -172,6 +176,8 @@ def layers_of(evidence: dict, cfg: Optional[scfg.SiteConfig] = None) -> list:
             layers.add("resolvers")
     elif str(evidence.get("kind") or "playback") == STREAM_BLOCKED:   # the player is found and resolved, the stream host refuses: the video HOST side
         layers |= {"provider"}
+    elif str(evidence.get("kind") or "playback") == ARCHIVE:
+        layers |= {"archive"}
     elif str(evidence.get("kind") or "playback") == SERIES_INVENTORY:   # series pages the inventory pass cannot read: the selectors / the key + title rules
         layers |= {"series_page", "normalize"}
     for f in evidence.get("failing") or []:
@@ -324,6 +330,12 @@ def repair_message(cfg: scfg.SiteConfig, evidence: dict, trigger: str) -> str:
                    "(row_selector, fields.url, episode_url_regex, series_url_regex, series_slug_regex, same_series_regex) or the series "
                    "key / title rules (normalize) no longer fit. Failing examples are the series pages (`locator`); ok_examples still "
                    "read. Verify with test_config(playable: true): the criterion series_inventory_ok.")
+    elif kind == ARCHIVE:
+        info = evidence.get("archive") if isinstance(evidence.get("archive"), dict) else {}
+        problem = (f"The archive page `archive.{info.get('part')}` ({info.get('url')}) no longer parses: "
+                   f"{'; '.join(str(r) for r in (info.get('reasons') or [])[:4])}. Fetch it with fetch_page, find the new "
+                   f"row_selector / field selectors with query_html / outline_page and fix ONLY `archive.{info.get('part')}` "
+                   "(keep every field, its attr / cast; keep enabled / batch / paths). The gate re-reads that page with your yaml.")
     elif kind == STREAM_BLOCKED:
         stream = evidence.get("stream") if isinstance(evidence.get("stream"), dict) else {}
         problem = (f"{window.get('failed')} different sources of this site resolve to a stream the stream host `{stream.get('host')}` "
@@ -435,6 +447,9 @@ def _reasons(evidence: dict) -> list[str]:
         return [f"{window.get('failed')} of {window.get('n')} series items without episode sources"]
     if evidence.get("kind") == SERIES_INVENTORY:
         return [f"{window.get('failed')} of {window.get('n')} series pages could not be read"]
+    if evidence.get("kind") == ARCHIVE:
+        info = evidence.get("archive") if isinstance(evidence.get("archive"), dict) else {}
+        return [f"archive {info.get('part') or '?'} drift"] + [str(r)[:120] for r in (info.get("reasons") or [])[:3]]
     if evidence.get("kind") == STREAM_BLOCKED:   # short Turkish reason for the admin heal record
         failing = [f for f in evidence.get("failing") or [] if isinstance(f, dict)]
         stream = evidence.get("stream") if isinstance(evidence.get("stream"), dict) else {}
@@ -694,7 +709,7 @@ def _gate_and_apply(cfg: scfg.SiteConfig, evidence: dict, record: dict, trace: d
     if new_data is None and not plan:
         return _fail("agent proposed no effective change (the yaml and the recipes equal the active ones)"
                      + (f": {notes}" if notes else ""), trace)
-    if kind in SOURCELESS and new_data is None:
+    if kind in SOURCELESS + (ARCHIVE,) and new_data is None:
         return _fail("proposal rejected: a site without episode sources / readable series pages needs a yaml change (normalize.episode_source / "
                      "series_page / resolvers), the proposal changes none", trace)
     layers = trace.get("layers") or layers_of(evidence, cfg)
@@ -732,8 +747,14 @@ def _gate_and_apply(cfg: scfg.SiteConfig, evidence: dict, record: dict, trace: d
             verified["criteria"] = {c: (crit.get(c) or {}).get("value") for c in wanted}
             if need:
                 return _fail("proposal rejected: criteria not met in the sandbox: " + ", ".join(need), trace)
+    if kind == ARCHIVE:   # the drifted archive page parses again with the proposal (library/archive.py)
+        from ..library import archive as larchive
+        problem = larchive.verify_proposal(new_cfg, evidence)
+        verified["archive"] = {"ok": problem is None, "reason": problem}
+        if problem:
+            return _fail(f"proposal rejected: {problem}", trace)
     # --- the failing examples play again (not for a no-sources site: its examples have no playback page yet)
-    if kind not in SOURCELESS:
+    if kind not in SOURCELESS and kind != ARCHIVE:
         locators = list(dict.fromkeys(str(f.get("locator")) for f in evidence.get("failing") or [] if isinstance(f, dict) and f.get("locator")))
         picks = locators[:FIX_EXAMPLES]
         if not picks:

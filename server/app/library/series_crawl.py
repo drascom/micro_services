@@ -182,11 +182,41 @@ def inventory_due(item_id: str) -> bool:
         return False
 
 
+ARCHIVE_MARKER = "_archive"   # set by library/archive.py on the titles it wrote
+ARCHIVE_RETRIES = 3
+
+
+def archive_frozen(norm: dict, reason: Optional[str]) -> bool:
+    """A series the archive pass wrote (``_archive``) is not read again for ``stale`` / ``aired`` / an unfinished read: only
+    the home feed (the scan's own cards, ``in_run``), a forced run, or a FAILED read (``retry`` with 1..2 failures) asks again."""
+    if not isinstance(norm.get(ARCHIVE_MARKER), dict) or reason in (None, "forced", "new_episode"):
+        return False
+    inv = norm.get(MARKER) if isinstance(norm.get(MARKER), dict) else {}
+    fails = int(inv.get("fails") or 0)
+    return not (reason in ("retry", "missing") and (reason == "missing" or 1 <= fails < ARCHIVE_RETRIES))
+
+
 # --- one series: fetch + parse (no writes) -------------------------------------------------------------------
 
 class NotSeriesPage(ValueError):
     """The page the inventory was asked to read is not a series page (``series_url_regex`` does not match): the record's
     ``source_url`` is wrong, which retrying never fixes (``series_dir`` / ``_series_page_unknown``), not a transient error."""
+
+
+class PageGone(NotSeriesPage):
+    """The series page is gone (HTTP 404/410, or the site's own "page not found" page: a dead link such as an old footer
+    spotlight URL). Same handling as :class:`NotSeriesPage`: not retried until the record's ``source_url`` changes."""
+
+
+# <title> of a site's own "not found" page (soft 404: served with a 200 by the browser engine)
+_GONE_TITLE = re.compile(r"(?:^|[^\d])(?:404|410)(?:[^\d]|$)|bulunamad|not\s+found|sayfa\s+yok", re.I)
+
+
+def page_gone(html: str) -> bool:
+    """Is ``html`` the site's "page not found" page (judged by its ``<title>`` only; the caller asks only for a page that
+    yielded nothing)?"""
+    found = re.search(r"<title[^>]*>(.*?)</title>", html or "", re.I | re.S)
+    return bool(found and _GONE_TITLE.search(found.group(1)))
 
 
 def series_url(cfg: scfg.SiteConfig, key: str, norm: dict) -> str:
@@ -220,6 +250,8 @@ def crawl(cfg: scfg.SiteConfig, url: str) -> dict[str, Any]:
     fetch_failed = False
     generic_pages = False   # the page parser names the other season pages itself (generic engine)
     parser_warnings: list[str] = []
+    first_html: Optional[str] = None
+    anchors = 0   # episode links of the first page found by URL pattern (selector-independent; 0 + no episode = an empty series page)
     while queue and len(visited) < config.SERIES_CRAWL_MAX_PAGES:
         page_url = queue.pop(0)
         if page_url in visited:
@@ -230,6 +262,8 @@ def crawl(cfg: scfg.SiteConfig, url: str) -> dict[str, Any]:
             html = fetch.page(cfg, page_url)
         except Exception as exc:
             if not visited:
+                if gate.http_status(exc) in (404, 410):
+                    raise PageGone(f"dizi sayfası bulunamadı (HTTP {gate.http_status(exc)}): {page_url}") from exc
                 raise
             fetch_failed = True
             warnings.append(f"sezon sayfası alınamadı: {str(exc)[:120]}")
@@ -237,6 +271,7 @@ def crawl(cfg: scfg.SiteConfig, url: str) -> dict[str, Any]:
             continue
         visited.append(page_url)
         if len(visited) == 1:   # a ``blocked:`` rule on the series page itself: nothing to read, the series is not public
+            first_html = html
             hit = sblocked.match(html, gate.series_rules(cfg), "series_page")
             if hit:
                 return {"episodes": [], "unaired": [], "metadata": {}, "seasons": [], "declared": [], "missing": [], "first": None,
@@ -245,6 +280,7 @@ def crawl(cfg: scfg.SiteConfig, url: str) -> dict[str, Any]:
         inv = site_extractors.series_inventory(cfg.site_id, html, page_url, spec)
         if len(visited) == 1:
             structured = bool(inv.get("structured"))
+            anchors = int((inv.get("metrics") or {}).get("anchor_count") or 0)
             if spec and inv.get("metrics") is not None:
                 verdict = drift.detect(inv["metrics"], (cfg.baseline() or {}).get("series_page") or {"min_items": 1})
                 if verdict["drift"]:
@@ -279,13 +315,15 @@ def crawl(cfg: scfg.SiteConfig, url: str) -> dict[str, Any]:
         why = f": {parser_warnings[0]}" if generic_pages and parser_warnings else ""
         if any("series_url_regex" in w for w in parser_warnings):
             raise NotSeriesPage("sayfa dizi sayfası değil (series_url_regex eşleşmedi)")
+        if first_html is not None and page_gone(first_html):
+            raise PageGone(f"dizi sayfası bulunamadı (sitenin 404 sayfası): {url}")
         raise ValueError("sayfa bir dizi sayfası gibi görünmüyor (engellenmiş ya da yapı değişmiş olabilir)" + why)
     result = {
         "episodes": [episodes[key] for key in sorted(episodes)],
         "unaired": [{"season": s, "episode": e, "air_date": d} for (s, e), d in sorted(unaired.items())],
         "metadata": metadata, "seasons": sorted({s for s, _ in episodes}), "declared": sorted(declared),
         "missing": missing, "first": first, "last": last, "pages": len(visited), "warnings": warnings,
-        "structured": structured, "drift": drift_reasons, "fetch_failed": fetch_failed,
+        "structured": structured, "drift": drift_reasons, "fetch_failed": fetch_failed, "anchors": anchors,
     }
     result["warnings"].extend(w for w in verify(result) if w not in warnings)
     return result
@@ -505,6 +543,8 @@ def select(site: str, cfg: scfg.SiteConfig, by_key: Optional[dict] = None, now: 
                     stats["skipped_unknown"] = stats.get("skipped_unknown", 0) + 1
                 continue
         reason = "forced" if force else due(inv, card, now)
+        if reason and not in_run and archive_frozen(norm, reason):
+            continue   # an archive title is read once; only the home feed (or a failed read, < 3 times) asks again
         if not reason and stats is not None and in_backoff(inv, now):
             stats["backoff"] = stats.get("backoff", 0) + 1
         if reason:

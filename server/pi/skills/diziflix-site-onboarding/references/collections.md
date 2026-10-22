@@ -22,6 +22,8 @@ A collection id is `<role>_<site_id>` (`collections.list_id`), e.g. `trending_or
 | `latest_series` | ranking signal for the home slider and the trend rows; no row of its own | yes |
 | `latest_movies` | ranking signal for the home slider and the trend rows; no row of its own | yes |
 | `noteworthy_movies` | feeds the 'Dikkate Değer Filmler' row and also scores for the slider and trends | yes |
+| `noteworthy_series` | feeds the 'Dikkate Değer Diziler' row and also scores for the slider and trends | yes |
+| `spotlight` | feeds the 'Öne Çıkan Dizi ve Filmler' row and also scores for the slider and trends | yes |
 | `featured` | ranking signal for the home slider and the trend rows; no row of its own | yes |
 | `upcoming` | the 'Yakında' row: not on the home screen, only reachable through /api/row/yakinda | yes (not on the home screen) |
 | `new` | newest titles list | no |
@@ -56,6 +58,8 @@ collections:
 | Yeni eklenen bölümler, Son bölümler, Güncellenen diziler | `latest_episodes` |
 | Yeni filmler, Son eklenen filmler, En son filmler | `latest_movies` |
 | Dikkate değer, Editörün seçimi, IMDb en iyi, Önerilen filmler | `noteworthy_movies` |
+| Dikkate değer diziler, Önerilen diziler | `noteworthy_series` |
+| Öne çıkan dizi ve filmler (a series + films block, e.g. a footer link list) | `spotlight` |
 | the hero / slider / "Öne çıkanlar" at the top | `featured` |
 | Yakında, Vizyona girecekler | `upcoming` |
 
@@ -117,6 +121,8 @@ list_url: /
 collections:
   - {id: trending_ornekfilm, title: Trendler, path: /trendler, role: trending}
   - {id: noteworthy_movies_ornekfilm, title: Dikkate Değer Filmler, path: "/filmler?sirala=imdb", role: noteworthy_movies}
+  - {id: noteworthy_series_ornekfilm, title: Dikkate Değer Diziler, path: "/diziler?sirala=imdb", role: noteworthy_series}
+  - {id: spotlight_ornekfilm, title: Öne Çıkan Dizi ve Filmler, path: /one-cikanlar, role: spotlight}
 ```
 
 A section with its own markup: own `fields` (and a numeric sort).

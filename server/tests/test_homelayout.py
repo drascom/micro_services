@@ -174,12 +174,12 @@ class LayoutTests(DbCase):
         return snap_of(*items)
 
     def test_default_layout_ids_and_titles(self):
-        self.assertEqual(hl.layout("p"), ["continue", "trending_series", "series", "trending_movies", "noteworthy_movies",
-                                          "movies", "mylist"])
+        self.assertEqual(hl.layout("p"), ["continue", "new_episodes", "latest_movies", "trending_series", "trending_movies",
+                                          "must_watch", "series", "movies"])
         self.assertEqual(config.HOME_LAYOUT, hl.layout("anyone"))
         self.assertEqual([hl.title(None, r) for r in hl.layout("p")],
-                         ["İzlemeye Devam Et", "Haftanın Trendleri · Diziler", "Tüm Diziler", "Haftanın Trendleri · Filmler",
-                          "Dikkate Değer Filmler", "Tüm Filmler", "Listem"])
+                         ["İzlemeye Devam Et", "Yeni Bölümler", "Yeni Filmler", "Trend Diziler", "Trend Filmler",
+                          "İzlenmesi Gereken Dizi ve Filmler", "Tüm Diziler", "Tüm Filmler"])
 
     def test_layout_can_be_overridden_and_drops_repeats(self):
         with patch.object(config, "HOME_LAYOUT", ["movies", "series", "movies"]):
@@ -198,7 +198,7 @@ class LayoutTests(DbCase):
         self.lists("trending_siteA", "s2", "m2")
         out = self.compose(snap)
         self.assertEqual([r["id"] for r in out["rows"]],
-                         ["trending_series", "series", "trending_movies", "movies"])   # no continue / noteworthy / mylist data
+                         ["trending_series", "trending_movies", "series", "movies"])   # no continue / must_watch data
         for r in out["rows"]:
             self.assertEqual((r["loaded"], r["offset"], r["total"]), (True, 0, len(r["items"])))
             self.assertEqual(r["title"], hl.TITLES[r["id"]])
@@ -218,13 +218,12 @@ class LayoutTests(DbCase):
         only_movies = snap_of(mk("m1", added=1))
         self.assertEqual([r["id"] for r in self.compose(only_movies)["rows"]], ["trending_movies", "movies"])
 
-    def test_mylist_is_last_and_only_when_filled(self):
+    def test_mylist_is_no_home_row_but_its_pool_stays(self):
         snap = self.full_library()
         with patch.object(rows, "mylist_ids", return_value=["m2", "gone", "s1"]):
             out = self.compose(snap)
-        self.assertEqual(out["rows"][-1]["id"], "mylist")
-        self.assertEqual(ids(out["rows"][-1]["items"]), ["m2", "s1"])
-        self.assertNotIn("mylist", [r["id"] for r in self.compose(snap)["rows"]])
+            self.assertEqual(ids(rows.row_pool(snap, "mylist", "p", {})), ["m2", "s1"])
+        self.assertNotIn("mylist", [r["id"] for r in out["rows"]])
 
     def test_mylist_and_continue_keep_titles_without_a_source(self):
         gone = mk("gone", state="unavailable")
@@ -232,7 +231,7 @@ class LayoutTests(DbCase):
         pmap = {"gone": dict(episode_id="gone", position=5, duration=100, pct=5, updated_at=9)}
         with patch.object(rows, "mylist_ids", return_value=["gone"]):
             out = hl.compose(snap, "p", pmap, NOW)
-        self.assertEqual([r["id"] for r in out["rows"]], ["continue", "mylist"])      # the rest of the home: nothing playable
+        self.assertEqual([r["id"] for r in out["rows"]], ["continue"])      # the rest of the home: nothing playable
 
     def test_boot_wraps_compose_with_the_old_envelope_and_hero_is_the_first_hero(self):
         snap = snap_of(mk("s1", "series", added=1), mk("m1", added=2))
@@ -298,6 +297,23 @@ class HeroTests(DbCase):
                        mk("fans", "series", followers=5000))
         self.lists("featured_siteA", "featured")
         self.assertEqual(ids(self.heroes(snap)), ["featured", "fresh", "fans", "plain"])     # 20 / 15 / ~9.2 / 0
+
+    def test_featured_lists_lead_in_site_order_round_robin_without_type_alternation(self):
+        snap = self.library()
+        self.lists("featured_siteA", "m4", "m3", "s4")
+        self.lists("featured_siteB", "s3", "m4")                   # m4 twice: once
+        self.assertEqual(ids(self.heroes(snap)), ["m4", "s3", "m3", "s4", "s0", "m0"])   # then the score fill
+
+    def test_unplayable_or_backdropless_featured_titles_are_skipped_and_filled_by_score(self):
+        snap = snap_of(mk("f_dead", "series", state="unavailable"), mk("f_noart", "movie", backdrop=False),
+                       mk("f_ok", "movie"), *[mk("s%d" % n, "series", rating=9.0 - n) for n in range(4)],
+                       *[mk("m%d" % n, rating=9.0 - n) for n in range(4)])
+        self.lists("featured_siteA", "f_dead", "f_noart", "f_ok")
+        self.assertEqual(ids(self.heroes(snap)), ["f_ok", "s0", "m0", "s1", "m1", "s2"])
+
+    def test_featured_lists_are_capped_at_the_slider_size(self):
+        self.lists("featured_siteA", *["s%d" % n for n in range(4, -1, -1)], "m0", "m1")
+        self.assertEqual(ids(self.heroes(self.library())), ["s4", "s3", "s2", "s1", "s0", "m0"])
 
     def test_card_fields_taglines_and_my_list_flag(self):
         snap = snap_of(mk("trend", "series"), mk("newf", "movie", added=1), mk("old", "movie", year=1999, rating=7.0))
@@ -440,11 +456,12 @@ class NoteworthyTests(DbCase):
 
     def test_empty_pool_means_no_row_and_the_row_sits_before_all_movies(self):
         snap = snap_of(mk("m1", added=1, rating=5.0, year=THIS_YEAR))
-        self.assertNotIn("noteworthy_movies", [r["id"] for r in self.compose(snap)["rows"]])
+        self.assertNotIn("must_watch", [r["id"] for r in self.compose(snap)["rows"]])
         snap = snap_of(mk("m1", added=1), mk("c1", rating=8.0, year=1970, added=2))
         got = [r["id"] for r in self.compose(snap)["rows"]]
-        self.assertEqual(got, ["trending_movies", "noteworthy_movies", "movies"])
+        self.assertEqual(got, ["trending_movies", "must_watch", "movies"])
         self.assertEqual(hl.title(snap, "noteworthy_movies"), "Dikkate Değer Filmler")
+        self.assertEqual(hl.title(snap, "must_watch"), "İzlenmesi Gereken Dizi ve Filmler")
 
     def test_classics_score_nothing(self):
         snap = snap_of(mk("c1", rating=8.0, year=1970))
@@ -463,8 +480,39 @@ class NoteworthyTests(DbCase):
             first = route.get_row("noteworthy_movies", profile="p", offset=0, limit=20, source="")
         self.assertEqual((page["title"], page["total"], ids(page["items"])), ("Dikkate Değer Filmler", 25, ["c04", "c03", "c02", "c01", "c00"]))
         self.assertEqual(ids(first["items"]), ids(self.pool(snap, "noteworthy_movies"))[:20])
-        boot_row = next(r for r in self.compose(snap)["rows"] if r["id"] == "noteworthy_movies")
+        boot_row = next(r for r in self.compose(snap)["rows"] if r["id"] == "must_watch")   # no lists: classics only
         self.assertEqual(ids(boot_row["items"]), ids(first["items"]))
+
+
+class MergedRowTests(DbCase):
+    def test_latest_movies_row_is_the_sites_latest_movies_lists_round_robin_playable(self):
+        snap = snap_of(mk("a1"), mk("a2", state="unavailable"), mk("b1"), mk("ser", "series"))
+        self.lists("latest_movies_siteA", "a1", "a2", "ser")
+        self.lists("latest_movies_siteB", "b1")
+        self.assertEqual(ids(self.pool(snap, "latest_movies")), ["a1", "b1"])
+        self.assertEqual([r["id"] for r in self.compose(snap)["rows"]][0], "latest_movies")
+        self.assertEqual(hl.title(snap, "latest_movies"), "Yeni Filmler")
+
+    def test_trending_takes_spotlight_before_trending_per_site_then_the_score_fill(self):
+        snap = snap_of(mk("sp", rating=None), mk("tr"), mk("b1"), mk("ss", "series"), mk("ts", "series"),
+                       mk("fill", rating=8.0))
+        self.lists("spotlight_siteA", "sp", "ss")
+        self.lists("trending_siteA", "tr", "ts")
+        self.lists("trending_siteB", "b1")
+        self.assertEqual(ids(self.pool(snap, "trending_movies")), ["sp", "b1", "tr", "fill"])
+        self.assertEqual(ids(self.pool(snap, "trending_series"))[:2], ["ss", "ts"])
+        self.assertNotIn("spotlight", hl.layout("p"))
+        self.assertEqual(ids(self.pool(snap, "spotlight")), ["sp", "ss"])     # old row id still answers
+
+    def test_must_watch_mixes_noteworthy_series_and_movies_then_classics(self):
+        snap = snap_of(mk("s1", "series"), mk("s2", "series"), mk("n1"), mk("n2"), mk("c1", rating=9.0, year=1970))
+        self.lists("noteworthy_series_siteA", "s1", "s2")
+        self.lists("noteworthy_movies_siteA", "n1", "n2", "c1")
+        self.lists("noteworthy_movies_siteB", "n2")
+        self.assertEqual(ids(self.pool(snap, "must_watch")), ["s1", "n1", "n2", "s2", "c1"])
+        self.assertEqual(ids(self.pool(snap, "noteworthy_series")), ["s1", "s2"])   # old ids unchanged
+        self.assertEqual(ids(self.pool(snap, "noteworthy_movies")), ["n1", "n2", "c1"])
+        self.assertNotIn("noteworthy_movies", hl.layout("p"))
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -528,7 +576,8 @@ class HttpTests(unittest.TestCase):
             page = self.get("/api/row/%s?profile=p1&offset=0&limit=100" % r["id"])
             self.assertEqual((page["title"], page["total"]), (r["title"], r["total"]), r["id"])
         for old in ("trending", "new_series", "latest_series", "new_episodes", "latest_episodes", "new_movies", "noteworthy_movies",
-                    "new", "top10", "mylist", "continue", "series", "movies", "trending_series", "trending_movies"):
+                    "new", "top10", "mylist", "continue", "series", "movies", "trending_series", "trending_movies",
+                    "spotlight", "noteworthy_series", "latest_movies", "must_watch"):
             self.assertEqual(self.get("/api/row/%s?profile=p1" % old)["id"], old)
         self.get("/api/row/not_a_row?profile=p1", 404)
 

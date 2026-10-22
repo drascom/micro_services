@@ -98,7 +98,7 @@ A user note or feedback message ("Kullanıcı notu" / a later user message) is d
       `latest_series` (Son eklenen diziler / Yeni diziler / Yeni eklenen diziler / Yeni başlayan diziler: cards are SERIES),
       `latest_episodes` (Yeni eklenen BÖLÜMLER / Son bölümler: cards are EPISODES; never mix the two up: look at what the
       card is, a show or an episode), `latest_movies` (Yeni / Son eklenen filmler), `noteworthy_movies`
-      (Dikkate değer / IMDb / Editörün seçimi), `featured` (the hero slider), `upcoming` (Yakında). Never write an
+      (Dikkate değer / IMDb / Editörün seçimi), `noteworthy_series` (Dikkate değer diziler), `spotlight` (Öne çıkan dizi ve filmler), `featured` (the hero slider), `upcoming` (Yakında). Never write an
       "all series / all films", genre or paged catalogue list. The user's note maps a section / link to a category ("... -> Anime"): write a
       `category` collection (`category: <slug>` (slug from `Mevcut kategoriler` in the first message; not listed = `ask_user`, field
       `category:<slug>`, "eklensin mi?"), id `category_<slug>_<site_id>`; one per category. No note = NO category collection.

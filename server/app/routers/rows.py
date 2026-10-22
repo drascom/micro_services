@@ -16,6 +16,7 @@ router = APIRouter(tags=["rows"])
 STATIC_ROWS = {
     "continue", "new", "top10", "mylist", "yakinda", "series", "movies", "trending_series", "trending_movies",
     "noteworthy_movies", "trending", "new_episodes", "latest_episodes", "new_movies", "new_series", "latest_series",
+    "noteworthy_series", "spotlight", "latest_movies", "must_watch",
 }
 
 

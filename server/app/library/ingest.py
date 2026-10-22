@@ -200,9 +200,9 @@ def _keep_series_facts(norm: dict, old: dict) -> None:
     series_crawl.reapply_detail(norm, old)
 
 
-def _collection_items(items: list[dict], collection: dict, limit: int) -> list[dict]:
-    """Apply config-owned membership filters and ordering to parsed cards."""
-    required = collection.get("required_fields") or []
+def _collection_items(items: list[dict], collection: dict, limit: int, relax: Optional[list] = None) -> list[dict]:
+    """Apply config-owned membership filters and ordering to parsed cards (``relax``: required fields not checked)."""
+    required = [f for f in collection.get("required_fields") or [] if f not in (relax or ())]
     excluded = collection.get("excluded_fields") or []
     selected = [
         item for item in items
@@ -223,8 +223,43 @@ def _collection_items(items: list[dict], collection: dict, limit: int) -> list[d
 _row_sink: contextvars.ContextVar = contextvars.ContextVar("ingest_collection_rows", default=None)
 
 
-def _fetch_collection(cfg: scfg.SiteConfig, collection: dict, limit: int) -> list[dict]:
-    """Fetch one list page with optional collection-specific parse rules."""
+def _topup_items(items: list[dict], collection: dict, limit: int) -> list[dict]:
+    """Page cards a ``min_keep`` window may fill up with (``scollections.keep_of``): those that pass the filters only with the
+    ``min_keep_relax`` fields relaxed, page order; ``[]`` without a window or relaxed fields."""
+    n, relax = scollections.keep_of(collection)
+    if not n or not relax:
+        return []
+    strict = {id(i) for i in _collection_items(items, collection, len(items))}
+    return [i for i in _collection_items(items, collection, len(items), relax) if id(i) not in strict][:limit]
+
+
+def _keep_window(conn, memberships: list[tuple[str, str, int]], windows: dict[str, tuple[int, int]]) -> list[tuple[str, str, int]]:
+    """Apply the ``min_keep`` windows: ``windows`` = list id -> (min_keep, how many of its work items are this scan's own cards;
+    the rest are page top-up cards). Each such list becomes: this scan's cards, then the previous members (``library_lists``
+    order), then the top-up cards, until ``min_keep`` (never fewer than this scan's own cards); positions renumbered."""
+    if not windows:
+        return memberships
+    out = [m for m in memberships if m[0] not in windows]
+    for lid, (n, fresh_n) in windows.items():
+        mine = sorted((m for m in memberships if m[0] == lid), key=lambda m: m[2])
+        if not mine:
+            continue   # nothing this scan: the previous list stays as it is
+        fresh = list(dict.fromkeys(cid for _l, cid, pos in mine if pos < fresh_n))
+        extra = list(dict.fromkeys(cid for _l, cid, pos in mine if pos >= fresh_n))
+        prev = [r["canonical_id"] for r in conn.execute(
+            "SELECT canonical_id FROM library_lists WHERE list_id = ? ORDER BY position", (lid,))]
+        ids = list(fresh)
+        for cid in prev + extra:
+            if len(ids) >= n:
+                break
+            if cid not in ids:
+                ids.append(cid)
+        out += [(lid, cid, pos) for pos, cid in enumerate(ids)]
+    return out
+
+
+def _fetch_collection(cfg: scfg.SiteConfig, collection: dict, limit: int, topup: Optional[list] = None) -> list[dict]:
+    """Fetch one list page with optional collection-specific parse rules (``topup``: gets the ``min_keep`` top-up cards)."""
     path = collection["path"]
     row_selector = collection.get("row_selector") or cfg.row_selector
     fields = collection.get("fields") or cfg.list_fields
@@ -233,12 +268,18 @@ def _fetch_collection(cfg: scfg.SiteConfig, collection: dict, limit: int) -> lis
     html = fetch.page(cfg, urljoin(cfg.base_url, path), wait_for=row_selector, **post)
     raw = parse.parse_list(html, row_selector, fields)
     valid, metrics = schema.validate_items(cfg.schema, raw)
-    verdict = drift.detect(metrics, {"min_fill_ratio": cfg.baseline().get("min_fill_ratio", .5)})
+    # baseline ``collections: {<id>: {min_items, min_fill_ratio, critical_field_fill}}`` = that collection's own thresholds (a
+    # section without images, ...); else only the site's ``min_fill_ratio``
+    base = cfg.baseline()
+    rules = (base.get("collections") or {}).get(collection.get("id") or "") or {"min_fill_ratio": base.get("min_fill_ratio", .5)}
+    verdict = drift.detect(metrics, rules)
     if verdict["drift"]:
         raise ValueError(f"invalid collection {path}: {verdict['reasons']}")
     sink = _row_sink.get()
     if sink is not None:
         sink.extend(valid)
+    if topup is not None:
+        topup.extend(_topup_items(valid, collection, limit))
     return _collection_items(valid, collection, limit)
 
 
@@ -262,6 +303,16 @@ def load_collection(cfg: scfg.SiteConfig, collection: dict, main_items: list[dic
     return _fetch_collection(cfg, collection, limit)
 
 
+def empty_series_page(result: dict, norm: dict) -> bool:
+    """A series page that was read fine but lists no episode at all: no aired / announced episode, no episode link anywhere on the page
+    (``anchors``: URL pattern, selector-independent, so a selector drift is not "empty"), not a ``blocked:`` page, no failed season
+    page, and the record itself knows no episode page either (a card that names an episode = the parse missed it)."""
+    if (result.get("episodes") or result.get("unaired") or result.get("blocked_page") or result.get("fetch_failed")
+            or result.get("anchors", 1)):
+        return False
+    return not any(isinstance(e, dict) and e.get("kind") == "episode" for e in norm.get("video_sources") or [])
+
+
 def _enrich_series_catalogs(cfg: scfg.SiteConfig, by_key: dict[str, dict],
                             raw_by_key: dict[str, dict], reports: list[dict],
                             errors: list[dict], *, force: bool = False,
@@ -279,24 +330,37 @@ def _enrich_series_catalogs(cfg: scfg.SiteConfig, by_key: dict[str, dict],
             continue
         card = (cards or {}).get(key)
         report_id = "episodes_" + key.replace("/", "_")
-        if not force and series_crawl.due(norm.get(series_crawl.MARKER), card) is None:
+        reason = None if force else series_crawl.due(norm.get(series_crawl.MARKER), card)
+        if not force and (reason is None or (card is None and series_crawl.archive_frozen(norm, reason))):
             reports.append({"id": report_id, "title": (norm.get("title") or key) + " bölümleri",
                             "url": norm.get("source_url"), "status": "cached",
                             "count": len(norm.get("video_sources") or []), "duration_seconds": 0})
             continue
         # a card that links an EPISODE page: the series page comes from the site's list rows (library/series_dir.py); none known = no
         # request and no error ("unknown": the crawl leaves the series alone until its source_url changes)
-        if series_dir.ensure(cfg, norm) == "unknown":
+        # (a URL already judged "no series page" / gone is not asked again until it changes, whatever opens it)
+        if series_dir.ensure(cfg, norm) == "unknown" or (not force and series_dir.unknown_for(norm)):
             reports.append({"id": report_id, "title": (norm.get("title") or key) + " bölümleri", "url": norm.get("source_url"),
-                            "status": "unknown", "duration_seconds": 0})
+                            "status": "unknown", "reason": (norm.get(series_crawl.MARKER) or {}).get("error"),
+                            "duration_seconds": 0})
             continue
         url = series_crawl.series_url(cfg, key, norm)
         started = time.monotonic()
         try:
             result = series_crawl.crawl(cfg, url)
-        except series_crawl.NotSeriesPage:   # the page is no series page whatever the directory said: not an error, not retried
+        except series_crawl.NotSeriesPage as exc:   # the page is no series page (or is gone) whatever the directory said: not retried
             series_dir.mark_unknown(norm)
-            reports.append({"id": report_id, "title": (norm.get("title") or key) + " bölümleri", "url": url, "status": "unknown",
+            if isinstance(exc, series_crawl.PageGone):   # the reason stays on the series (admin / hydrate diagnostics)
+                log.warning("ingest %s: series %s: %s", cfg.site_id, key, exc)
+                series_crawl.mark_failed(norm, exc, time.time())
+                # a dead page of THIS site: (site, page) is blocked and the source leaves the library (library/gate.py block_dead)
+                verdict = gate.block_dead(cfg.site_id, key, url, norm, gate.VIA_GONE, str(exc))
+                reports.append({"id": report_id, "title": (norm.get("title") or key) + " bölümleri", "url": url,
+                                "status": "blocked", "gone": True, "reason": str(exc), "gate": verdict, "pages": 1,
+                                "duration_seconds": round(time.monotonic() - started, 2)})
+                continue
+            reports.append({"id": report_id, "title": (norm.get("title") or key) + " bölümleri", "url": url,
+                            "status": "unknown", "gone": isinstance(exc, series_crawl.PageGone), "reason": str(exc),
                             "duration_seconds": round(time.monotonic() - started, 2)})
             continue
         except Exception as exc:
@@ -308,6 +372,12 @@ def _enrich_series_catalogs(cfg: scfg.SiteConfig, by_key: dict[str, dict],
                             "duration_seconds": round(time.monotonic() - started, 2)})
             continue
         now = time.time()
+        if empty_series_page(result, norm):   # a series page without any episode (not a selector drift): blocked like a dead page
+            verdict = gate.block_dead(cfg.site_id, key, url, norm, gate.VIA_EMPTY, "dizi sayfasında bölüm yok: " + url, now)
+            reports.append({"id": report_id, "title": (norm.get("title") or key) + " bölümleri", "url": url, "status": "blocked",
+                            "reason": verdict["reason"], "gate": verdict, "pages": result.get("pages") or 1,
+                            "duration_seconds": round(time.monotonic() - started, 2)})
+            continue
         # content that is not public (yaml ``blocked:`` / ``availability_gate:``; library/gate.py): judged before anything is written;
         # the probes keep the politeness delay after the series page that was just read
         pacer = gate.Pacer()
@@ -340,7 +410,7 @@ def ingest_discovered_items(site: str, items: list[dict]) -> list[str]:
     ordered_ids: list[str] = []
     # a series / film with a fresh "not public" verdict (library/gate.py) is not cached from a search card; one that was not
     # judged yet may stay on the card, opening it reads the inventory (``hydrate_series_item``) which judges and hides it
-    blocked_keys = gate.blocked_item_keys(site) if gate.configured(cfg) else set()
+    blocked_keys = gate.blocked_item_keys(site)
     # a search hit that is an EPISODE card resolves to its series page like a scan's card (library/series_dir.py; no request)
     directory = series_dir.for_site(cfg) if series_dir.spec_of(cfg) else None
     with _discovery_lock:
@@ -523,9 +593,29 @@ def prewarm_item_metadata(item_ids: list[str]) -> dict[str, int]:
     return {"attempted": attempted, "cached": cached, "updated": updated}
 
 
-def hydrate_series_item(item_id: str) -> bool:
+def _hydrate_reason(report: dict, norm: dict) -> str:
+    """Why an on-demand inventory read produced no (new) episodes, in one line ("" for a successful read)."""
+    status = report.get("status")
+    marker = norm.get(series_crawl.MARKER) if isinstance(norm.get(series_crawl.MARKER), dict) else {}
+    if status == "success":
+        return ""
+    if status == "cached":
+        if series_crawl.in_backoff(marker):
+            nxt = float(marker.get("at") or 0) + series_crawl._gap(marker, config.SERIES_CRAWL_RETRY_HOURS)
+            return (f"geri çekilmede ({int(marker.get('fails') or 0)}. hata: {marker.get('error') or '?'}); sonraki deneme "
+                    + time.strftime("%Y-%m-%d %H:%M", time.localtime(nxt)))
+        return "envanter yakın zamanda okundu (yeniden okuma zamanı gelmedi)"
+    if status == "unknown":
+        return str(report.get("reason") or marker.get("error") or "bu URL için dizi sayfası bilinmiyor")
+    return str(report.get("error") or report.get("reason") or status or "envanter okunmadı")
+
+
+def hydrate_series_item(item_id: str, outcome: Optional[dict] = None) -> bool:
     """Read one series' season inventory when its detail is opened (only if it is due: never read, unfinished,
-    stale or behind a newer episode) and write it. True when the library changed."""
+    stale or behind a newer episode) and write it. True when the library changed. ``outcome`` (optional, filled in place):
+    ``{"status", "reason", "source", "source_key", "url"}`` of this attempt, for the caller's diagnostics (a hydrate that
+    read nothing must say why)."""
+    outcome = outcome if outcome is not None else {}
     with _discovery_lock:
         # the first source of the title (``series_crawl.source_rows`` order: sites with an inventory module, then by name)
         # that is a series AND has the inventory stage enabled: a title with several sources must not look at a source that
@@ -542,6 +632,7 @@ def hydrate_series_item(item_id: str) -> bool:
                 found = (row, cfg, norm, raw)
                 break
         if found is None:
+            outcome.update(status="no_source", reason="dizi envanteri açık bir kaynak yok (series_crawl kapalı ya da tür dizi değil)")
             return False
         row, cfg, norm, raw = found
         before = json.dumps(norm, sort_keys=True)
@@ -549,6 +640,9 @@ def hydrate_series_item(item_id: str) -> bool:
         errors: list[dict] = []
         key = row["source_key"]
         _enrich_series_catalogs(cfg, {key: norm}, {key: raw}, reports, errors)
+        report = reports[-1] if reports else {}
+        outcome.update(source=row["source"], source_key=key, url=report.get("url") or norm.get("source_url"),
+                       status=report.get("status") or "none", reason=_hydrate_reason(report, norm))
         if json.dumps(norm, sort_keys=True) == before:
             return False
         if series_crawl.gate_removes(norm):   # opened a series that turned out not to be public: it leaves the library
@@ -649,6 +743,7 @@ def _ingest_source(site: str) -> dict[str, Any]:
     collection_reports: list[dict] = []
     work: list[tuple[str, list[dict], Optional[str]]] = []
     handled_main = False
+    windows: dict[str, tuple[int, int]] = {}   # ``min_keep`` lists -> (min_keep, own cards of this scan); see _keep_window
     archive_rows: list[dict] = []   # whole collection pages (pre-limit) for the series directory
     sink_token = _row_sink.set(archive_rows)
     try:
@@ -667,8 +762,12 @@ def _ingest_source(site: str) -> dict[str, Any]:
                         continue
                     cid_list = scollections.list_id(role, site, cslug)
                 gslug = c.get("genre") if role == "genre" else None
+                keep_n = scollections.keep_of(c)[0]
                 if parses_main_list(cfg, c):
                     items = _collection_items(result.items, c, limit)
+                    if keep_n:
+                        windows[cid_list or main_id] = (keep_n, len(items))
+                        items = items + _topup_items(result.items, c, limit)
                     work.append((cid_list or main_id, items, gslug))
                     collection_reports.append({"id": cid_list or main_id, "title": c.get("title", cid_list),
                         "url": urljoin(cfg.base_url, c["path"]), "status": "success",
@@ -676,8 +775,9 @@ def _ingest_source(site: str) -> dict[str, Any]:
                     handled_main = True
                     continue
                 started = time.monotonic()
+                topup: list[dict] = []
                 try:
-                    items = _fetch_collection(cfg, c, limit)
+                    items = _fetch_collection(cfg, c, limit, topup)
                 except Exception as exc:  # graceful: skip a broken collection
                     log.warning("ingest %s: collection %s failed: %s", site, cid_list, exc)
                     collection_errors.append({"list": cid_list, "error": str(exc)})
@@ -688,10 +788,14 @@ def _ingest_source(site: str) -> dict[str, Any]:
                 collection_reports.append({"id": cid_list, "title": c.get("title", cid_list),
                     "url": urljoin(cfg.base_url, c["path"]), "status": "success", "count": len(items),
                     "duration_seconds": round(time.monotonic() - started, 2)})
+                if keep_n:
+                    windows[cid_list] = (keep_n, len(items))
+                    items = items + topup
                 if items:
                     work.append((cid_list, items, gslug))
     finally:
         _row_sink.reset(sink_token)
+        fetch.drop_page_memo()   # list + collections parsed: later stages (detail pages, series pages) fetch as before
     if not handled_main and not any(w[0] == main_id for w in work):
         work.insert(0, (main_id, result.items[:limit], None))
         collection_reports.insert(0, {"id": main_id, "title": "Ana sayfa", "url": urljoin(cfg.base_url, cfg.list_url),
@@ -724,6 +828,32 @@ def _ingest_source(site: str) -> dict[str, Any]:
         featured_items = [i for i in result.items if i.get("featured") == "poster-media"]
         if featured_items:
             work.append((featured_id, featured_items, None))
+
+    # Pages of this site with a fresh blocked row (library/gate.py: not public, or a dead page = gone / no episode; keyed by (site,
+    # page), never by the title) are not taken from ANY list: no write, no membership, no inventory request, not counted in the
+    # collection (a dead footer spotlight link leaves the row; the row's fill logic is unchanged). Already written ones leave the library.
+    dead_hits: set[str] = set()
+    try:
+        dead = gate.blocked_item_keys(site)
+    except Exception as exc:   # the block list is an extra: a failing read never breaks an ingest
+        log.warning("ingest %s: blocked pages not read: %s", site, exc)
+        dead = set()
+    if dead:
+        for index, (list_id, items, gslug) in enumerate(work):
+            kept = []
+            for raw in items:
+                norm = normalize(site, raw)
+                if norm and norm["source_key"] in dead:
+                    dead_hits.add(norm["source_key"])
+                else:
+                    kept.append(raw)
+            if len(kept) != len(items):
+                work[index] = (list_id, kept, gslug)
+                for rep in collection_reports:
+                    if rep.get("id") == list_id and isinstance(rep.get("count"), int):
+                        rep["blocked"] = len(items) - len(kept)
+                        rep["count"] = max(0, rep["count"] - rep["blocked"])
+                        break
 
     # A title can occur first as a sparse hero, then as a richer movie card.
     # Merge before choosing an ID; all memberships must refer to that same ID.
@@ -768,6 +898,9 @@ def _ingest_source(site: str) -> dict[str, Any]:
     # inventory is judged after it, in series_crawl); what is blocked and already in the library leaves it (user data stays)
     gate_stats = gate.new_counters()
     gate_skip: set[str] = set()
+    if dead_hits:
+        gate_stats["items"] += len(dead_hits)
+        gate_stats["removed"] += gate.remove_items(site, dead_hits)   # no-op for keys that are not in the library
     if gate.configured(cfg):
         try:
             gate_skip = gate.blocked_item_keys(site) & set(by_key)
@@ -899,6 +1032,7 @@ def _ingest_source(site: str) -> dict[str, Any]:
 
         aliases = {r["alias"]: r["canonical_id"] for r in conn.execute("SELECT * FROM catalogue_aliases")}
         memberships = [(lid, aliases.get(cid, cid), pos) for lid, cid, pos in memberships]
+        memberships = _keep_window(conn, memberships, windows)   # ``min_keep`` lists: this scan + the previous members
         # Full rebuild of the membership table for this run's lists.
         list_ids = {m[0] for m in memberships}
         for lid in list_ids:
@@ -1001,7 +1135,8 @@ def ingest_source(site: str, trigger: str = "cli") -> dict[str, Any]:
         started_at = state._now()
         owned = state.activity_start(site, "scan", trigger)
         try:
-            result = _ingest_source(site)
+            with fetch.page_memo():   # one fetch per (url, method, body) for the main list + every collection of this scan
+                result = _ingest_source(site)
         except Exception as exc:
             log.exception("ingest failed for %s", site)
             result = {"source": site, "error": str(exc), "ingested": 0}

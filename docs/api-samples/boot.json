@@ -1,87 +1,46 @@
 {
   "hero": {
-    "id": "dizi-sinyal",
+    "id": "film-gece",
     "card_kind": "title",
-    "card_key": "title:dizi-sinyal",
+    "card_key": "title:film-gece",
     "availability": {
       "state": "ready",
       "reason": null,
       "has_trailer": true
     },
-    "type": "series",
-    "title": "Kayıp Sinyal",
-    "year": 2021,
-    "card": "/img/dizi-sinyal/card?w=342&h=192",
-    "portrait": "/img/dizi-sinyal/portrait?w=300&h=450",
-    "backdrop": "/img/dizi-sinyal/backdrop?w=1280&h=720",
+    "type": "movie",
+    "title": "Gece Yarısı Treni",
+    "year": 2024,
+    "card": "/img/film-gece/card?w=342&h=192",
+    "portrait": "/img/film-gece/portrait?w=300&h=450",
+    "backdrop": "/img/film-gece/backdrop?w=1280&h=720",
     "has_backdrop": true,
-    "overview": "Uzak bir istasyondan gelen sinyalin peşinde bir ekip.",
+    "overview": "Bir tren, bir bavul ve çözülmesi gereken bir gece.",
     "genres": [
-      "Bilim Kurgu",
-      "Gizem"
+      "Gerilim",
+      "Dram"
     ],
-    "rating": 8.3,
+    "rating": 7.4,
     "country": "US",
-    "followers": 1172,
+    "followers": 310,
     "badge": null,
     "sources": [
       "yabancidizi"
     ],
-    "tmdb_id": 2001,
-    "imdb_id": "tt2000001",
+    "tmdb_id": 1001,
+    "imdb_id": "tt1000001",
     "playback": "video",
     "progress": {
-      "episode_id": "dizi-sinyal:s2:e1",
-      "position": 600,
-      "duration": 2700,
-      "pct": 22
+      "episode_id": "film-gece",
+      "position": 3000,
+      "duration": 6480,
+      "pct": 46
     },
-    "logo_text": "Kayıp Sinyal",
-    "tagline": "Haftanın Dizisi",
-    "in_mylist": false
+    "logo_text": "Gece Yarısı Treni",
+    "tagline": "Haftanın Filmi",
+    "in_mylist": true
   },
   "heroes": [
-    {
-      "id": "dizi-sinyal",
-      "card_kind": "title",
-      "card_key": "title:dizi-sinyal",
-      "availability": {
-        "state": "ready",
-        "reason": null,
-        "has_trailer": true
-      },
-      "type": "series",
-      "title": "Kayıp Sinyal",
-      "year": 2021,
-      "card": "/img/dizi-sinyal/card?w=342&h=192",
-      "portrait": "/img/dizi-sinyal/portrait?w=300&h=450",
-      "backdrop": "/img/dizi-sinyal/backdrop?w=1280&h=720",
-      "has_backdrop": true,
-      "overview": "Uzak bir istasyondan gelen sinyalin peşinde bir ekip.",
-      "genres": [
-        "Bilim Kurgu",
-        "Gizem"
-      ],
-      "rating": 8.3,
-      "country": "US",
-      "followers": 1172,
-      "badge": null,
-      "sources": [
-        "yabancidizi"
-      ],
-      "tmdb_id": 2001,
-      "imdb_id": "tt2000001",
-      "playback": "video",
-      "progress": {
-        "episode_id": "dizi-sinyal:s2:e1",
-        "position": 600,
-        "duration": 2700,
-        "pct": 22
-      },
-      "logo_text": "Kayıp Sinyal",
-      "tagline": "Haftanın Dizisi",
-      "in_mylist": false
-    },
     {
       "id": "film-gece",
       "card_kind": "title",
@@ -122,6 +81,47 @@
       "logo_text": "Gece Yarısı Treni",
       "tagline": "Haftanın Filmi",
       "in_mylist": true
+    },
+    {
+      "id": "dizi-sinyal",
+      "card_kind": "title",
+      "card_key": "title:dizi-sinyal",
+      "availability": {
+        "state": "ready",
+        "reason": null,
+        "has_trailer": true
+      },
+      "type": "series",
+      "title": "Kayıp Sinyal",
+      "year": 2021,
+      "card": "/img/dizi-sinyal/card?w=342&h=192",
+      "portrait": "/img/dizi-sinyal/portrait?w=300&h=450",
+      "backdrop": "/img/dizi-sinyal/backdrop?w=1280&h=720",
+      "has_backdrop": true,
+      "overview": "Uzak bir istasyondan gelen sinyalin peşinde bir ekip.",
+      "genres": [
+        "Bilim Kurgu",
+        "Gizem"
+      ],
+      "rating": 8.3,
+      "country": "US",
+      "followers": 1172,
+      "badge": null,
+      "sources": [
+        "yabancidizi"
+      ],
+      "tmdb_id": 2001,
+      "imdb_id": "tt2000001",
+      "playback": "video",
+      "progress": {
+        "episode_id": "dizi-sinyal:s2:e1",
+        "position": 600,
+        "duration": 2700,
+        "pct": 22
+      },
+      "logo_text": "Kayıp Sinyal",
+      "tagline": "Haftanın Dizisi",
+      "in_mylist": false
     },
     {
       "id": "dizi-merdiven",
@@ -363,8 +363,224 @@
       "offset": 0
     },
     {
+      "id": "new_episodes",
+      "title": "Yeni Bölümler",
+      "loaded": true,
+      "items": [
+        {
+          "id": "dizi-sinyal",
+          "card_kind": "episode",
+          "card_key": "episode:dizi-sinyal:s3:e1",
+          "availability": {
+            "state": "ready",
+            "reason": null,
+            "has_trailer": true
+          },
+          "type": "series",
+          "title": "Kayıp Sinyal",
+          "year": 2021,
+          "card": "/img/dizi-sinyal/card?w=342&h=192",
+          "portrait": "/img/dizi-sinyal/portrait?w=300&h=450",
+          "backdrop": "/img/dizi-sinyal/backdrop?w=1280&h=720",
+          "has_backdrop": true,
+          "overview": "Uzak bir istasyondan gelen sinyalin peşinde bir ekip.",
+          "genres": [
+            "Bilim Kurgu",
+            "Gizem"
+          ],
+          "rating": 8.3,
+          "country": "US",
+          "followers": 1172,
+          "badge": null,
+          "sources": [
+            "yabancidizi"
+          ],
+          "tmdb_id": 2001,
+          "imdb_id": "tt2000001",
+          "playback": "video",
+          "progress": null,
+          "episode_id": "dizi-sinyal:s3:e1",
+          "episode_label": "S03 B01 · Yankı",
+          "season": 3,
+          "episode": 1,
+          "still_url": "/img/dizi-sinyal:s3:e1/still?w=320&h=180",
+          "has_still": true,
+          "primary_action": {
+            "kind": "play_episode",
+            "item_id": "dizi-sinyal",
+            "episode_id": "dizi-sinyal:s3:e1"
+          }
+        },
+        {
+          "id": "dizi-hat",
+          "card_kind": "episode",
+          "card_key": "episode:dizi-hat:s1:e5",
+          "availability": {
+            "state": "ready",
+            "reason": null,
+            "has_trailer": false
+          },
+          "type": "series",
+          "title": "Sınır Hattı",
+          "year": 2026,
+          "card": "/img/dizi-hat/card?w=342&h=192",
+          "portrait": "/img/dizi-hat/portrait?w=300&h=450",
+          "backdrop": "/img/dizi-hat/backdrop?w=1280&h=720",
+          "has_backdrop": false,
+          "overview": "Tek bölümü olan dizi.",
+          "genres": [
+            "Aksiyon"
+          ],
+          "rating": 7.9,
+          "country": "US",
+          "followers": null,
+          "badge": null,
+          "sources": [
+            "yabancidizi"
+          ],
+          "tmdb_id": null,
+          "imdb_id": null,
+          "playback": "video",
+          "progress": null,
+          "episode_id": "dizi-hat:s1:e5",
+          "episode_label": "S01 B05 · Hat Kopuyor",
+          "season": 1,
+          "episode": 5,
+          "still_url": "/img/dizi-hat:s1:e5/still?w=320&h=180",
+          "has_still": false,
+          "primary_action": {
+            "kind": "play_episode",
+            "item_id": "dizi-hat",
+            "episode_id": "dizi-hat:s1:e5"
+          }
+        },
+        {
+          "id": "dizi-yakinda",
+          "card_kind": "episode",
+          "card_key": "episode:dizi-yakinda:s1:e1",
+          "availability": {
+            "state": "ready",
+            "reason": null,
+            "has_trailer": false
+          },
+          "type": "series",
+          "title": "Yakında Gelen",
+          "year": 2026,
+          "card": "/img/dizi-yakinda/card?w=342&h=192",
+          "portrait": "/img/dizi-yakinda/portrait?w=300&h=450",
+          "backdrop": "/img/dizi-yakinda/backdrop?w=1280&h=720",
+          "has_backdrop": false,
+          "overview": "Yeni bölümü henüz yayınlanmadı.",
+          "genres": [
+            "Komedi"
+          ],
+          "rating": 7.0,
+          "country": "US",
+          "followers": null,
+          "badge": null,
+          "sources": [
+            "yabancidizi"
+          ],
+          "tmdb_id": null,
+          "imdb_id": null,
+          "playback": "video",
+          "progress": null,
+          "episode_id": "dizi-yakinda:s1:e1",
+          "episode_label": "S01 B01 · Pilot",
+          "season": 1,
+          "episode": 1,
+          "still_url": "/img/dizi-yakinda:s1:e1/still?w=320&h=180",
+          "has_still": false,
+          "primary_action": {
+            "kind": "play_episode",
+            "item_id": "dizi-yakinda",
+            "episode_id": "dizi-yakinda:s1:e1"
+          }
+        }
+      ],
+      "total": 3,
+      "offset": 0
+    },
+    {
+      "id": "latest_movies",
+      "title": "Yeni Filmler",
+      "loaded": true,
+      "items": [
+        {
+          "id": "film-gece",
+          "card_kind": "title",
+          "card_key": "title:film-gece",
+          "availability": {
+            "state": "ready",
+            "reason": null,
+            "has_trailer": true
+          },
+          "type": "movie",
+          "title": "Gece Yarısı Treni",
+          "year": 2024,
+          "card": "/img/film-gece/card?w=342&h=192",
+          "portrait": "/img/film-gece/portrait?w=300&h=450",
+          "backdrop": "/img/film-gece/backdrop?w=1280&h=720",
+          "has_backdrop": true,
+          "overview": "Bir tren, bir bavul ve çözülmesi gereken bir gece.",
+          "genres": [
+            "Gerilim",
+            "Dram"
+          ],
+          "rating": 7.4,
+          "country": "US",
+          "followers": 310,
+          "badge": null,
+          "sources": [
+            "yabancidizi"
+          ],
+          "tmdb_id": 1001,
+          "imdb_id": "tt1000001",
+          "playback": "video",
+          "progress": {
+            "episode_id": "film-gece",
+            "position": 3000,
+            "duration": 6480,
+            "pct": 46
+          }
+        },
+        {
+          "id": "film-liman",
+          "card_kind": "title",
+          "card_key": "title:film-liman",
+          "availability": {
+            "state": "ready",
+            "reason": null,
+            "has_trailer": false
+          },
+          "type": "movie",
+          "title": "Sessiz Liman",
+          "year": null,
+          "card": "/img/film-liman/card?w=342&h=192",
+          "portrait": "/img/film-liman/portrait?w=300&h=450",
+          "backdrop": "/img/film-liman/backdrop?w=1280&h=720",
+          "has_backdrop": false,
+          "overview": "",
+          "genres": [],
+          "rating": null,
+          "country": null,
+          "followers": null,
+          "badge": null,
+          "sources": [
+            "yabancidizi"
+          ],
+          "tmdb_id": null,
+          "imdb_id": null,
+          "playback": "video",
+          "progress": null
+        }
+      ],
+      "total": 2,
+      "offset": 0
+    },
+    {
       "id": "trending_series",
-      "title": "Haftanın Trendleri · Diziler",
+      "title": "Trend Diziler",
       "loaded": true,
       "items": [
         {
@@ -567,6 +783,220 @@
         }
       ],
       "total": 6,
+      "offset": 0
+    },
+    {
+      "id": "trending_movies",
+      "title": "Trend Filmler",
+      "loaded": true,
+      "items": [
+        {
+          "id": "film-gece",
+          "card_kind": "title",
+          "card_key": "title:film-gece",
+          "availability": {
+            "state": "ready",
+            "reason": null,
+            "has_trailer": true
+          },
+          "type": "movie",
+          "title": "Gece Yarısı Treni",
+          "year": 2024,
+          "card": "/img/film-gece/card?w=342&h=192",
+          "portrait": "/img/film-gece/portrait?w=300&h=450",
+          "backdrop": "/img/film-gece/backdrop?w=1280&h=720",
+          "has_backdrop": true,
+          "overview": "Bir tren, bir bavul ve çözülmesi gereken bir gece.",
+          "genres": [
+            "Gerilim",
+            "Dram"
+          ],
+          "rating": 7.4,
+          "country": "US",
+          "followers": 310,
+          "badge": null,
+          "sources": [
+            "yabancidizi"
+          ],
+          "tmdb_id": 1001,
+          "imdb_id": "tt1000001",
+          "playback": "video",
+          "progress": {
+            "episode_id": "film-gece",
+            "position": 3000,
+            "duration": 6480,
+            "pct": 46
+          }
+        },
+        {
+          "id": "film-mavi",
+          "card_kind": "title",
+          "card_key": "title:film-mavi",
+          "availability": {
+            "state": "ready",
+            "reason": null,
+            "has_trailer": false
+          },
+          "type": "movie",
+          "title": "Mavi Liman Yolu",
+          "year": 2023,
+          "card": "/img/film-mavi/card?w=342&h=192",
+          "portrait": "/img/film-mavi/portrait?w=300&h=450",
+          "backdrop": "/img/film-mavi/backdrop?w=1280&h=720",
+          "has_backdrop": true,
+          "overview": "Bir liman kasabasında geçen sıcak bir hikaye.",
+          "genres": [
+            "Dram"
+          ],
+          "rating": 8.1,
+          "country": "US",
+          "followers": 90,
+          "badge": null,
+          "sources": [
+            "yabancidizi"
+          ],
+          "tmdb_id": null,
+          "imdb_id": null,
+          "playback": "video",
+          "progress": null
+        },
+        {
+          "id": "film-liman",
+          "card_kind": "title",
+          "card_key": "title:film-liman",
+          "availability": {
+            "state": "ready",
+            "reason": null,
+            "has_trailer": false
+          },
+          "type": "movie",
+          "title": "Sessiz Liman",
+          "year": null,
+          "card": "/img/film-liman/card?w=342&h=192",
+          "portrait": "/img/film-liman/portrait?w=300&h=450",
+          "backdrop": "/img/film-liman/backdrop?w=1280&h=720",
+          "has_backdrop": false,
+          "overview": "",
+          "genres": [],
+          "rating": null,
+          "country": null,
+          "followers": null,
+          "badge": null,
+          "sources": [
+            "yabancidizi"
+          ],
+          "tmdb_id": null,
+          "imdb_id": null,
+          "playback": "video",
+          "progress": null
+        },
+        {
+          "id": "film-durak",
+          "card_kind": "title",
+          "card_key": "title:film-durak",
+          "availability": {
+            "state": "ready",
+            "reason": null,
+            "has_trailer": false
+          },
+          "type": "movie",
+          "title": "Son Durak",
+          "year": 2022,
+          "card": "/img/film-durak/card?w=342&h=192",
+          "portrait": "/img/film-durak/portrait?w=300&h=450",
+          "backdrop": "/img/film-durak/backdrop?w=1280&h=720",
+          "has_backdrop": true,
+          "overview": "Son trenin son yolcuları.",
+          "genres": [
+            "Gerilim"
+          ],
+          "rating": 7.0,
+          "country": "US",
+          "followers": null,
+          "badge": null,
+          "sources": [
+            "yabancidizi"
+          ],
+          "tmdb_id": null,
+          "imdb_id": null,
+          "playback": "video",
+          "progress": null
+        }
+      ],
+      "total": 4,
+      "offset": 0
+    },
+    {
+      "id": "must_watch",
+      "title": "İzlenmesi Gereken Dizi ve Filmler",
+      "loaded": true,
+      "items": [
+        {
+          "id": "film-mavi",
+          "card_kind": "title",
+          "card_key": "title:film-mavi",
+          "availability": {
+            "state": "ready",
+            "reason": null,
+            "has_trailer": false
+          },
+          "type": "movie",
+          "title": "Mavi Liman Yolu",
+          "year": 2023,
+          "card": "/img/film-mavi/card?w=342&h=192",
+          "portrait": "/img/film-mavi/portrait?w=300&h=450",
+          "backdrop": "/img/film-mavi/backdrop?w=1280&h=720",
+          "has_backdrop": true,
+          "overview": "Bir liman kasabasında geçen sıcak bir hikaye.",
+          "genres": [
+            "Dram"
+          ],
+          "rating": 8.1,
+          "country": "US",
+          "followers": 90,
+          "badge": null,
+          "sources": [
+            "yabancidizi"
+          ],
+          "tmdb_id": null,
+          "imdb_id": null,
+          "playback": "video",
+          "progress": null
+        },
+        {
+          "id": "film-klasik",
+          "card_kind": "title",
+          "card_key": "title:film-klasik",
+          "availability": {
+            "state": "ready",
+            "reason": null,
+            "has_trailer": false
+          },
+          "type": "movie",
+          "title": "Eski Dostlar",
+          "year": 1985,
+          "card": "/img/film-klasik/card?w=342&h=192",
+          "portrait": "/img/film-klasik/portrait?w=300&h=450",
+          "backdrop": "/img/film-klasik/backdrop?w=1280&h=720",
+          "has_backdrop": false,
+          "overview": "Yıllar sonra bir araya gelen dostlar.",
+          "genres": [
+            "Dram"
+          ],
+          "rating": 8.6,
+          "country": "US",
+          "followers": null,
+          "badge": null,
+          "sources": [
+            "yabancidizi"
+          ],
+          "tmdb_id": null,
+          "imdb_id": null,
+          "playback": "video",
+          "progress": null
+        }
+      ],
+      "total": 2,
       "offset": 0
     },
     {
@@ -777,220 +1207,6 @@
       "offset": 0
     },
     {
-      "id": "trending_movies",
-      "title": "Haftanın Trendleri · Filmler",
-      "loaded": true,
-      "items": [
-        {
-          "id": "film-gece",
-          "card_kind": "title",
-          "card_key": "title:film-gece",
-          "availability": {
-            "state": "ready",
-            "reason": null,
-            "has_trailer": true
-          },
-          "type": "movie",
-          "title": "Gece Yarısı Treni",
-          "year": 2024,
-          "card": "/img/film-gece/card?w=342&h=192",
-          "portrait": "/img/film-gece/portrait?w=300&h=450",
-          "backdrop": "/img/film-gece/backdrop?w=1280&h=720",
-          "has_backdrop": true,
-          "overview": "Bir tren, bir bavul ve çözülmesi gereken bir gece.",
-          "genres": [
-            "Gerilim",
-            "Dram"
-          ],
-          "rating": 7.4,
-          "country": "US",
-          "followers": 310,
-          "badge": null,
-          "sources": [
-            "yabancidizi"
-          ],
-          "tmdb_id": 1001,
-          "imdb_id": "tt1000001",
-          "playback": "video",
-          "progress": {
-            "episode_id": "film-gece",
-            "position": 3000,
-            "duration": 6480,
-            "pct": 46
-          }
-        },
-        {
-          "id": "film-mavi",
-          "card_kind": "title",
-          "card_key": "title:film-mavi",
-          "availability": {
-            "state": "ready",
-            "reason": null,
-            "has_trailer": false
-          },
-          "type": "movie",
-          "title": "Mavi Liman Yolu",
-          "year": 2023,
-          "card": "/img/film-mavi/card?w=342&h=192",
-          "portrait": "/img/film-mavi/portrait?w=300&h=450",
-          "backdrop": "/img/film-mavi/backdrop?w=1280&h=720",
-          "has_backdrop": true,
-          "overview": "Bir liman kasabasında geçen sıcak bir hikaye.",
-          "genres": [
-            "Dram"
-          ],
-          "rating": 8.1,
-          "country": "US",
-          "followers": 90,
-          "badge": null,
-          "sources": [
-            "yabancidizi"
-          ],
-          "tmdb_id": null,
-          "imdb_id": null,
-          "playback": "video",
-          "progress": null
-        },
-        {
-          "id": "film-liman",
-          "card_kind": "title",
-          "card_key": "title:film-liman",
-          "availability": {
-            "state": "ready",
-            "reason": null,
-            "has_trailer": false
-          },
-          "type": "movie",
-          "title": "Sessiz Liman",
-          "year": null,
-          "card": "/img/film-liman/card?w=342&h=192",
-          "portrait": "/img/film-liman/portrait?w=300&h=450",
-          "backdrop": "/img/film-liman/backdrop?w=1280&h=720",
-          "has_backdrop": false,
-          "overview": "",
-          "genres": [],
-          "rating": null,
-          "country": null,
-          "followers": null,
-          "badge": null,
-          "sources": [
-            "yabancidizi"
-          ],
-          "tmdb_id": null,
-          "imdb_id": null,
-          "playback": "video",
-          "progress": null
-        },
-        {
-          "id": "film-durak",
-          "card_kind": "title",
-          "card_key": "title:film-durak",
-          "availability": {
-            "state": "ready",
-            "reason": null,
-            "has_trailer": false
-          },
-          "type": "movie",
-          "title": "Son Durak",
-          "year": 2022,
-          "card": "/img/film-durak/card?w=342&h=192",
-          "portrait": "/img/film-durak/portrait?w=300&h=450",
-          "backdrop": "/img/film-durak/backdrop?w=1280&h=720",
-          "has_backdrop": true,
-          "overview": "Son trenin son yolcuları.",
-          "genres": [
-            "Gerilim"
-          ],
-          "rating": 7.0,
-          "country": "US",
-          "followers": null,
-          "badge": null,
-          "sources": [
-            "yabancidizi"
-          ],
-          "tmdb_id": null,
-          "imdb_id": null,
-          "playback": "video",
-          "progress": null
-        }
-      ],
-      "total": 4,
-      "offset": 0
-    },
-    {
-      "id": "noteworthy_movies",
-      "title": "Dikkate Değer Filmler",
-      "loaded": true,
-      "items": [
-        {
-          "id": "film-mavi",
-          "card_kind": "title",
-          "card_key": "title:film-mavi",
-          "availability": {
-            "state": "ready",
-            "reason": null,
-            "has_trailer": false
-          },
-          "type": "movie",
-          "title": "Mavi Liman Yolu",
-          "year": 2023,
-          "card": "/img/film-mavi/card?w=342&h=192",
-          "portrait": "/img/film-mavi/portrait?w=300&h=450",
-          "backdrop": "/img/film-mavi/backdrop?w=1280&h=720",
-          "has_backdrop": true,
-          "overview": "Bir liman kasabasında geçen sıcak bir hikaye.",
-          "genres": [
-            "Dram"
-          ],
-          "rating": 8.1,
-          "country": "US",
-          "followers": 90,
-          "badge": null,
-          "sources": [
-            "yabancidizi"
-          ],
-          "tmdb_id": null,
-          "imdb_id": null,
-          "playback": "video",
-          "progress": null
-        },
-        {
-          "id": "film-klasik",
-          "card_kind": "title",
-          "card_key": "title:film-klasik",
-          "availability": {
-            "state": "ready",
-            "reason": null,
-            "has_trailer": false
-          },
-          "type": "movie",
-          "title": "Eski Dostlar",
-          "year": 1985,
-          "card": "/img/film-klasik/card?w=342&h=192",
-          "portrait": "/img/film-klasik/portrait?w=300&h=450",
-          "backdrop": "/img/film-klasik/backdrop?w=1280&h=720",
-          "has_backdrop": false,
-          "overview": "Yıllar sonra bir araya gelen dostlar.",
-          "genres": [
-            "Dram"
-          ],
-          "rating": 8.6,
-          "country": "US",
-          "followers": null,
-          "badge": null,
-          "sources": [
-            "yabancidizi"
-          ],
-          "tmdb_id": null,
-          "imdb_id": null,
-          "playback": "video",
-          "progress": null
-        }
-      ],
-      "total": 2,
-      "offset": 0
-    },
-    {
       "id": "movies",
       "title": "Tüm Filmler",
       "loaded": true,
@@ -1161,53 +1377,6 @@
         }
       ],
       "total": 5,
-      "offset": 0
-    },
-    {
-      "id": "mylist",
-      "title": "Listem",
-      "loaded": true,
-      "items": [
-        {
-          "id": "film-gece",
-          "card_kind": "title",
-          "card_key": "title:film-gece",
-          "availability": {
-            "state": "ready",
-            "reason": null,
-            "has_trailer": true
-          },
-          "type": "movie",
-          "title": "Gece Yarısı Treni",
-          "year": 2024,
-          "card": "/img/film-gece/card?w=342&h=192",
-          "portrait": "/img/film-gece/portrait?w=300&h=450",
-          "backdrop": "/img/film-gece/backdrop?w=1280&h=720",
-          "has_backdrop": true,
-          "overview": "Bir tren, bir bavul ve çözülmesi gereken bir gece.",
-          "genres": [
-            "Gerilim",
-            "Dram"
-          ],
-          "rating": 7.4,
-          "country": "US",
-          "followers": 310,
-          "badge": null,
-          "sources": [
-            "yabancidizi"
-          ],
-          "tmdb_id": 1001,
-          "imdb_id": "tt1000001",
-          "playback": "video",
-          "progress": {
-            "episode_id": "film-gece",
-            "position": 3000,
-            "duration": 6480,
-            "pct": 46
-          }
-        }
-      ],
-      "total": 1,
       "offset": 0
     }
   ],

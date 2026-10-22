@@ -19,6 +19,21 @@ from app import images
 from PIL import Image
 
 
+_real_load_site = scfg.load_site
+
+
+def _pinned_load_site(site_id):
+    cfg = _real_load_site(site_id)
+    if site_id == "yabancidizi":
+        cfg.data["collections"] = [{"id": "genre_yabancidizi", "title": "Yabancı Dizi", "path": "/", "role": "genre", "genre": "yabancidizi"}]
+    return cfg
+
+
+def pin_main_collection():
+    """Generic ingest tests on yabancidizi: one whole-main-list collection, independent of the live yaml's home sections."""
+    return patch.object(ingest_module.scfg, "load_site", side_effect=_pinned_load_site)
+
+
 def film(title="Mayday", year=2026):
     return {"title": title, "year": year, "detail_url": "film/mayday",
             "poster_url": "/uploads/series/mayday.jpg", "genres": ["Aksiyon"]}
@@ -38,7 +53,8 @@ class IngestTests(unittest.TestCase):
 
     def ingest(self, items, site="yabancidizi", drift=False):
         result = RunResult(site, items=items, drift={"drift": drift})
-        with patch.object(ingest_module, "run_site", return_value=result), \
+        with pin_main_collection(), \
+                patch.object(ingest_module, "run_site", return_value=result), \
                 patch.object(ingest_module.tmdb, "enabled", return_value=False), \
                 patch.object(ingest_module, "_enrich_series_catalogs"), \
                 patch.object(ingest_module, "_fetch_collection", return_value=[]):

@@ -3,6 +3,8 @@ and robots.txt respect (the ``/ara`` search paths are Disallow'd on sinemalar).
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import re
 import threading
 import time
@@ -375,13 +377,41 @@ def fetch(url: str, *, timeout: float = 25.0, retries: int = 3) -> str:
     raise FetchError(f"failed to fetch {url}: {last_exc}")
 
 
+# One scan's page memo (:func:`page_memo`): (url, method, form body) -> HTML. The main ``list:`` and every collection on the same page
+# are parsed from ONE fetch; the memo lives only inside the ``with`` block (one ingest run) and is dropped afterwards.
+_page_memo: contextvars.ContextVar = contextvars.ContextVar("fetch_page_memo", default=None)
+
+
+@contextlib.contextmanager
+def page_memo():
+    """Within the block, :func:`page` fetches each (url, method, form body) once; failures are not remembered."""
+    token = _page_memo.set({})
+    try:
+        yield
+    finally:
+        _page_memo.reset(token)
+
+
+def drop_page_memo() -> None:
+    """End the memo early (its pages are parsed; the block's own exit still restores the previous state)."""
+    if _page_memo.get() is not None:
+        _page_memo.set(None)
+
+
 def page(cfg, url: str, *, wait_for: str = "", method: str = "GET", data=None) -> str:
     """Every configured HTML page uses the shared browser transport. ``method="POST"`` (+ ``data`` = form fields, ``{}`` = empty body)
-    is for a yaml collection that says so: http mode and the site's own host only (``transport._post_job``)."""
+    is for a yaml collection that says so: http mode and the site's own host only (``transport._post_job``). Inside
+    :func:`page_memo` a page already fetched in this scan is served from the memo (``wait_for`` of the first fetch wins)."""
     from .transport import fetch_page
-    if (method or "GET").upper() == "POST":
-        return fetch_page(cfg, url, wait_for=wait_for, method="POST", data=data)
-    return fetch_page(cfg, url, wait_for=wait_for)
+    post = (method or "GET").upper() == "POST"
+    memo = _page_memo.get()
+    key = (url, "POST" if post else "GET", repr(sorted((data or {}).items())) if post else "")
+    if memo is not None and key in memo:
+        return memo[key]
+    html = fetch_page(cfg, url, wait_for=wait_for, method="POST", data=data) if post else fetch_page(cfg, url, wait_for=wait_for)
+    if memo is not None:
+        memo[key] = html
+    return html
 
 
 def browser_page(cfg, url: str, *, wait_for: str = "") -> str:

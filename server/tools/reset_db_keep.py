@@ -27,30 +27,43 @@ def _tables(conn: sqlite3.Connection) -> tuple[list[str], set[str]]:
     return plain + virtual, shadow
 
 
+def clear_tables(conn: sqlite3.Connection, keep=KEEP_TABLES) -> list[str]:
+    """Delete every row of every table of ``conn`` except ``keep`` ones (+ their AUTOINCREMENT counters) in ONE
+    ``BEGIN IMMEDIATE`` transaction (rolled back on failure). ``conn`` must be in autocommit mode
+    (``isolation_level=None``). Returns the cleared table names. Shared by ``reset`` (service stopped) and the admin
+    live reset (``app/library/libreset.py``), so both use the same table selection."""
+    keep = set(keep)
+    conn.execute("PRAGMA foreign_keys=OFF")
+    tables, _shadow = _tables(conn)
+    cleared = [t for t in tables if t not in keep]
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        for t in cleared:
+            conn.execute('DELETE FROM "%s"' % t.replace('"', '""'))
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE name='sqlite_sequence'").fetchone():
+            conn.executemany("DELETE FROM sqlite_sequence WHERE name=?", [(t,) for t in cleared])
+        conn.execute("COMMIT")
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
+    return cleared
+
+
+def kept_counts(conn: sqlite3.Connection, keep=KEEP_TABLES) -> dict:
+    tables, _shadow = _tables(conn)
+    return {t: conn.execute('SELECT COUNT(*) FROM "%s"' % t.replace('"', '""')).fetchone()[0]
+            for t in tables if t in set(keep)}
+
+
 def reset(db_path: str, keep=KEEP_TABLES) -> dict:
     """Wipe ``db_path`` except the ``keep`` tables; returns ``{"kept": {table: rows}, "cleared": [tables]}``."""
-    keep = set(keep)
     conn = sqlite3.connect(db_path, timeout=30, isolation_level=None)
     try:
-        conn.execute("PRAGMA foreign_keys=OFF")
-        tables, _shadow = _tables(conn)
-        cleared = [t for t in tables if t not in keep]
-        conn.execute("BEGIN IMMEDIATE")
-        try:
-            for t in cleared:
-                conn.execute('DELETE FROM "%s"' % t.replace('"', '""'))
-            if conn.execute("SELECT 1 FROM sqlite_master WHERE name='sqlite_sequence'").fetchone():
-                conn.executemany("DELETE FROM sqlite_sequence WHERE name=?", [(t,) for t in cleared])
-            conn.execute("COMMIT")
-        except BaseException:
-            conn.execute("ROLLBACK")
-            raise
+        cleared = clear_tables(conn, keep)
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         conn.execute("VACUUM")
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        kept = {t: conn.execute('SELECT COUNT(*) FROM "%s"' % t.replace('"', '""')).fetchone()[0]
-                for t in tables if t in keep}
-        return {"kept": kept, "cleared": cleared}
+        return {"kept": kept_counts(conn, keep), "cleared": cleared}
     finally:
         conn.close()
 

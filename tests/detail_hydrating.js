@@ -1,6 +1,6 @@
 // Detail screen + hydration watcher (real detail.js + hydrate_watch.js): `hydrating: true` shows "Detaylar yükleniyor…" instead of an empty
 // season/episode area (not focusable), the watcher is started, `ready` redraws the open detail with the new data (focus snapshot restored BEFORE
-// the nav root is rebuilt, buttons keep stable focus keys) and toasts once, `unavailable` shows the failure text + toast, timeout/error only drop
+// the nav root is rebuilt, buttons keep stable focus keys) (no "ready" popup), `unavailable` shows the failure text + toast, timeout/error only drop
 // the placeholder (no toast), leaving the screen keeps the watcher running (toast still appears, no redraw), `hydrating` undefined = old behaviour.
 const fs = require('fs'), path = require('path'), vm = require('vm'), assert = require('assert');
 const { el, find, findAll, walk, timers } = require('./_fake_dom');
@@ -88,7 +88,7 @@ const inNavRow = (node) => { for (let n = node; n; n = n.parentNode) if (n.getAt
     assert.equal(findAll(w.container, 'ep-row').length, 2);
     assert.deepEqual(w.labels(), ['Oynat · S01 B01', 'Listeme Ekle'], 'action buttons recomputed from the new data');
     assert.deepEqual(w.log.nav.slice(0, 2), ['restoreNext:actions:1:data-focus-key:act:mylist', 'setRoot'], 'focus snapshot restored before the new root is set');
-    assert.deepEqual(w.log.toasts, ['success:Dizi']);
+    assert.deepEqual(w.log.toasts, [], 'ready: no popup');
     assert.equal(w.H.count(), 0);
     assert.equal(w.t.pending() <= 1, true);
   }
@@ -142,7 +142,7 @@ const inNavRow = (node) => { for (let n = node; n; n = n.parentNode) if (n.getAt
     w.screen.exit();
     assert.equal(w.H.isWatching('d'), true, 'the watcher survives the screen');
     await w.advance(3000);
-    assert.deepEqual(w.log.toasts, ['success:Dizi']);
+    assert.deepEqual(w.log.toasts, [], 'ready: no popup');
     assert.equal(w.container.children.length, before, 'old container untouched');
     assert.equal(w.H.count(), 0);
   }
@@ -154,7 +154,7 @@ const inNavRow = (node) => { for (let n = node; n; n = n.parentNode) if (n.getAt
     w.H.watch('other', 'Başka');
     w.log.nav.length = 0;
     await w.advance(3000);
-    assert.deepEqual(w.log.toasts, ['success:Başka']);
+    assert.deepEqual(w.log.toasts, [], 'ready: no popup');
     assert(w.has('Detaylar yükleniyor…'), 'open detail still shows its own placeholder');
     assert.deepEqual(w.log.nav, [], 'open detail not rebuilt');
   }
@@ -167,7 +167,16 @@ const inNavRow = (node) => { for (let n = node; n; n = n.parentNode) if (n.getAt
     assert(w.labels().indexOf('Oynat') >= 0);
     await w.advance(3000);
     assert(!w.has('Detaylar yükleniyor…')); assert(w.has('Yeni özet'));
-    assert.deepEqual(w.log.toasts, ['success:Film']);
+    assert.deepEqual(w.log.toasts, [], 'ready: no popup');
+  }
+  // ---- H2) film hydration network error: spinner note turns into a short failure text (spinner does not spin forever)
+  {
+    const w = await open(movie({ hydrating: true }), [movie({ hydrating: true })]);
+    w.DZ.api.detail = (id, pid, opts) => opts && opts.poll ? Promise.reject(new Error('down')) : Promise.resolve(movie({ hydrating: true }));
+    await w.advance(3000);
+    assert.equal(findAll(w.container, 'hydrating-note').length, 0);
+    assert(w.has('Detaylar şu an alınamadı.'));
+    assert.equal(w.log.toasts.length, 0);
   }
 
   // ---- I) re-opening while the same id is already watched does not start a second watcher; a finished hydration cancels a stale one
@@ -183,6 +192,21 @@ const inNavRow = (node) => { for (let n = node; n; n = n.parentNode) if (n.getAt
     w.screen.enter(el('div'), { id: 'd' });
     await tick();
     assert.equal(w.H.count(), 0, 'detail already complete: stale watcher dropped (no duplicate toast)');
+  }
+
+  // ---- S) soft redraw: scroll transform kept, title/buttons visible at once, new sections fade in, cleanup after the timer
+  {
+    const w = await open(series({ hydrating: true }), [series({ hydrating: false, overview: 'Uzun özet', seasons: [season(1, [ep(1, 1)])] })]);
+    find(w.container, 'detail').style.transform = 'translate3d(0,-120px,0)';
+    await w.advance(3000);
+    const page = find(w.container, 'detail');
+    assert.equal(page.style.transform, 'translate3d(0,-120px,0)', 'scroll position kept across the redraw');
+    assert(find(w.container, 'browser').className.indexOf('dz-reveal') >= 0, 'season browser fades in');
+    assert(find(w.container, 'detail-overview').parentNode.className.indexOf('dz-reveal') >= 0, 'overview fades in');
+    assert(find(w.container, 'detail-actions').className.indexOf('dz-reveal') < 0, 'buttons (focus) not faded');
+    w.t.advance(1000); await tick();
+    assert.equal(findAll(w.container, 'dz-reveal').length, 0, 'reveal classes removed (timer fallback without transitionend)');
+    assert.equal(page.classList.contains('dz-soft'), false);
   }
 
   console.log('Detail hydration: placeholder, watcher start, ready redraw + focus restore, unavailable/timeout/error, leave-screen toast, old server: OK');

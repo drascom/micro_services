@@ -1,5 +1,7 @@
 # Site ekleme (onboarding): resolver, player_page, provider kütüphanesi, sandbox, pi skill, admin Site ekle/Siteler
 
+> **DONDURULDU (2026-10-22):** otomatik onboarding `ONBOARD_ENABLED=0` (varsayılan) ile kapalı (start/message/save + sandbox `discover_site`/`submit` -> 403 `onboard_disabled`, admin Yeni site/Taslaklar/Düzenle gizli); scraper'lar elle yazılır, heal otomatik düzeltir. Kod pattern referansı için duruyor, ileride silinecek. Resolver/provider/sandbox/heal bölümleri geçerli.
+
 > Bu bölüm CLAUDE.md'den taşındı (2026-10-02). Metin birebir taşınmıştır; kısa harita ve kurallar `CLAUDE.md`'dedir.
 
 ## Genel ilke ve yaml anahtarları

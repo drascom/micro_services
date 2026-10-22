@@ -81,7 +81,7 @@ class RoleListTests(DbCase):
         self.assertEqual(rows._role_lists(snapshot(item("a1"), source="mock"), "trending"), [])
         self.assertEqual(rows._role_lists(SimpleNamespace(by_id={"a1": item("a1")}), "trending"), [])
         self.assertEqual(set(HOME_ROLES), {"trending", "latest_episodes", "latest_series", "latest_movies",
-                                           "noteworthy_movies", "featured"})
+                                           "noteworthy_movies", "noteworthy_series", "spotlight", "featured"})
 
     def test_one_site_is_exactly_its_list_in_position_order(self):
         """Old behaviour (fixed `*_yabancidizi` ids): the list as stored, minus ids the snapshot does not know."""
@@ -133,7 +133,7 @@ class RowTests(DbCase):
         self.assertEqual(rows.row_title(snap, "latest_series"), "Yeni Eklenen Diziler")
         self.assertEqual(rows.row_pool(snapshot(series("sa1"), source="mock"), "new_series", "", {}), [])
 
-    def test_new_series_and_new_episodes_rows_are_no_home_rows_any_more_but_stay_fetchable(self):
+    def test_new_series_is_no_home_row_any_more_but_stays_fetchable_new_episodes_is_one(self):
         snap = snapshot(item("t1"), series("n1"), series("e1"), series("s9"), item("m1"))
         self.lists("trending_siteA", "t1")
         self.lists("latest_episodes_siteA", "e1")
@@ -142,9 +142,8 @@ class RowTests(DbCase):
             out = rows.tv_boot(snap, "p", {})
         home_ids = [r["id"] for r in out["rows"]]
         self.assertNotIn("new_series", home_ids)
-        self.assertNotIn("new_episodes", home_ids)
         self.assertNotIn("trending", home_ids)
-        self.assertEqual(home_ids, ["trending_series", "series", "trending_movies", "movies"])
+        self.assertEqual(home_ids, ["new_episodes", "trending_series", "trending_movies", "series", "movies"])
         self.assertEqual(ids(rows.row_pool(snap, "new_series", "", {})), ["n1"])
         self.assertEqual(ids(rows.row_pool(snap, "new_episodes", "", {})), ["e1"])
         self.assertEqual(ids(rows.row_pool(snap, "trending", "", {})), ["t1"])
@@ -192,13 +191,12 @@ class RowTests(DbCase):
             out = rows.tv_boot(snap, "p", {})
         by_row = {r["id"]: [i["id"] for i in r["items"]] for r in out["rows"]}
         self.assertEqual(by_row["trending_movies"][:2], ["t1", "t2"])
-        self.assertEqual(by_row["noteworthy_movies"], ["n1"])
+        self.assertEqual(by_row["must_watch"], ["n1"])
         self.assertEqual(by_row["trending_series"], ["e1"])     # no trending series: filled by score (latest_episodes member)
-        self.assertNotIn("new_episodes", by_row)
-        # slider = every backdrop title of the library (films only here), best score first: trending t1/t2 lead
-        self.assertEqual([h["id"] for h in out["heroes"]][:2], ["t1", "t2"])
-        self.assertEqual(set(h["id"] for h in out["heroes"]), {"t1", "t2", "f1", "f2"})
-        self.assertEqual(out["hero"]["id"], "t1")
+        self.assertEqual(by_row["new_episodes"], ["e1"])
+        # slider = the sites' featured lists first (round-robin), then the best score: trending t1/t2
+        self.assertEqual([h["id"] for h in out["heroes"]], ["f1", "f2", "t1", "t2"])
+        self.assertEqual(out["hero"]["id"], "f1")
 
     def test_hero_needs_a_backdrop_and_playable_titles(self):
         no_art = item("noart", added=7)

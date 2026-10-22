@@ -1,23 +1,29 @@
 """Home screen of the tv-v1 boot: the hero carousel, the rows, and the score that ranks "trending".
 
-Layout (top to bottom): hero carousel (``HERO_SERIES`` series + ``HERO_MOVIES`` movies, alternating, fixed on top) ->
-the rows in the admin's order (``home_categories``): by default ``continue`` -> ``trending_series`` -> the admin's category
-rows ``cat_<slug>`` (``library/categories.py``) -> ``series`` -> ``trending_movies`` -> ``noteworthy_movies`` -> ``movies``
--> ``mylist``; the skeleton rows can only be moved, categories can be put anywhere between them (see ``config.HOME_LAYOUT``;
+Layout (top to bottom): hero carousel (the sites' ``featured_<site>`` hero sections first, in site order, then filled
+by score up to ``HERO_SERIES`` + ``HERO_MOVIES``, series/movies alternating; fixed on top) ->
+the rows in the admin's order (``home_categories``), by default series and movie rows alternating: ``continue`` ->
+``new_episodes`` (series) -> ``latest_movies`` (movies) -> ``trending_series`` -> ``trending_movies`` -> ``must_watch``
+(mixed) -> the admin's category rows ``cat_<slug>`` (``library/categories.py``) -> ``series`` -> ``movies`` (``mylist``
+is no row: the clients open "Listem" as its own page, ``/api/row/mylist`` still answers);
+the skeleton rows can only be moved, categories can be put anywhere between them (see ``config.HOME_LAYOUT``;
 :func:`layout` is the one place that decides the row list, per profile). A ``cat_<slug>`` row = the ``category_<slug>_*``
 lists of all sites merged round-robin (playable only per ``HOME_ONLY_READY``); hidden while the category is off or has
 fewer playable titles than its ``min_items``.
 
 Classification: every canonical library item (all sites merged) belongs to its ``type`` (series | movie). The rows are
-type pools: ``series`` / ``movies`` = ALL titles of the type, newest added first; ``trending_<type>`` = the type's
-titles of the sites' ``trending_<site>`` lists (round-robin over sites), filled up to ``TREND_TARGET`` with the best
-:func:`trend_score` titles. ``noteworthy_movies`` = the sites' ``noteworthy_movies`` lists (movies) followed by the
-CLASSICS (:func:`is_classic`). The other role lists (``latest_*``, ``featured``) are no rows any more: they are
-SCORING SIGNALS (:class:`Signals`, together with the trending and noteworthy lists); classics score nothing. With
+type pools: ``series`` / ``movies`` = ALL titles of the type, newest added first; ``latest_movies`` = the sites'
+``latest_movies_<site>`` lists (movies, round-robin); ``trending_<type>`` = the type's titles of the sites'
+``spotlight_<site>`` + ``trending_<site>`` lists (each site's spotlight then trending list, round-robin over sites),
+filled up to ``TREND_TARGET`` with the best :func:`trend_score` titles. ``must_watch`` = the sites'
+``noteworthy_series`` + ``noteworthy_movies`` lists round-robin, followed by the CLASSICS (:func:`is_classic`). The old
+row ids ``spotlight``, ``noteworthy_series``, ``noteworthy_movies`` are no home rows any more but still answer
+``/api/row/<id>``. The role lists are also SCORING SIGNALS (:class:`Signals`; ``featured`` also leads the slider,
+:func:`heroes`); classics score nothing. With
 ``config.HOME_ONLY_READY`` (default) rows and hero list only playable titles (``availability.state == "ready"``);
 search and catalogue are not affected. A classic is never picked by score for the trending fill or the slider (the
-"Dikkate Değer Filmler" row is its place; only a site's own trending list puts one up there). ``continue`` and
-``mylist`` are the profile's own lists and are shown as they are.
+"İzlenmesi Gereken" row is its place; only a site's own trending list puts one up there). ``continue`` is the
+profile's own list and is shown as it is.
 
 Everything is a pure function of (snapshot, profile id, progress map, clock) plus reads of ``library_lists``;
 missing fields count as 0, nothing here raises for odd data.
@@ -34,17 +40,22 @@ from . import config, rows
 from .library import categories
 
 # ---- rows ---------------------------------------------------------------------------------------------------------
+# the skeleton rows (ids = ``categories.SYSTEM_DEFAULT``) and their titles
 TITLES = {
     "continue": "İzlemeye Devam Et",
-    "trending_series": "Haftanın Trendleri · Diziler",
+    "new_episodes": "Yeni Bölümler",
+    "latest_movies": "Yeni Filmler",
+    "trending_series": "Trend Diziler",
+    "trending_movies": "Trend Filmler",
+    "must_watch": "İzlenmesi Gereken Dizi ve Filmler",
     "series": "Tüm Diziler",
-    "trending_movies": "Haftanın Trendleri · Filmler",
-    "noteworthy_movies": "Dikkate Değer Filmler",
     "movies": "Tüm Filmler",
-    "mylist": "Listem",
 }
+# old home rows: no skeleton rows any more, still fetchable via `/api/row/<id>` (titles in `rows.ROW_TITLES`)
+LEGACY_IDS = ("spotlight", "noteworthy_series", "noteworthy_movies")
+# `mylist` ("Listem") is no home row either: the clients open it as its own page; `/api/row/mylist` still answers
 # ids `rows.row_pool` hands to :func:`pool`
-POOL_IDS = ("trending_series", "series", "trending_movies", "noteworthy_movies", "movies")
+POOL_IDS = ("latest_movies", "trending_series", "trending_movies", "must_watch", "series", "movies") + LEGACY_IDS
 ROW_ITEMS = 20          # cards per row in the boot (`/api/row/<id>` pages through the rest)
 TREND_TARGET = 20       # a trending row is filled with scored titles up to this many
 
@@ -53,7 +64,7 @@ TREND_TOP = 50          # a title on a site's trending list: TREND_TOP - positio
 TREND_MIN = 5           # ... but never less than this (listed = ahead of every unlisted title)
 ROLE_POINTS = 20        # per other role list the title is on (latest_episodes/_series/_movies, noteworthy_movies, featured)
 ROLE_CAP = 40           # ... at most this many in total
-SCORE_ROLES = ("latest_episodes", "latest_series", "latest_movies", "noteworthy_movies", "featured")
+SCORE_ROLES = ("latest_episodes", "latest_series", "latest_movies", "noteworthy_movies", "noteworthy_series", "spotlight", "featured")
 ADDED_WINDOWS = ((14, 15), (45, 8))   # (days since `added_at`, points): the first window that fits counts
 YEAR_POINTS = 10        # release year >= this year - 1
 EPISODE_DAYS, EPISODE_POINTS = 14, 15   # series whose newest published episode aired within this many days
@@ -187,8 +198,8 @@ def _fixed_layout() -> list[str]:
         if row_id not in out:
             out.append(row_id)
     cats = [categories.row_id(s) for s in categories.enabled_slugs()]
-    if cats:   # the admin's category rows: after the trending-series row, before "Tüm Diziler"
-        at = next((out.index(r) for r in ("series", "movies", "mylist") if r in out), len(out))
+    if cats:   # the admin's category rows: before "Tüm Diziler"
+        at = next((out.index(r) for r in ("series", "movies") if r in out), len(out))
         out[at:at] = cats
     return out
 
@@ -266,8 +277,15 @@ class Context:
                           key=lambda i: (-(i.get("added_at") or 0), i["id"]))
         if row_id in ("trending_series", "trending_movies"):
             return self._trending("series" if row_id == "trending_series" else "movie")
+        if row_id == "latest_movies":
+            return [i for i in rows._role_lists(self.snap, "latest_movies", kind="movie") if self.show(i)]
+        if row_id == "must_watch":
+            return self._must_watch()
         if row_id == "noteworthy_movies":
             return self._noteworthy()
+        if row_id in ("noteworthy_series", "spotlight"):   # the sites' own section lists (round-robin over sites, list order)
+            kind = "series" if row_id == "noteworthy_series" else None
+            return [i for i in rows._role_lists(self.snap, row_id, kind=kind) if self.show(i)]
         slug = categories.slug_of_row(row_id)
         if slug:
             return self._category(slug)
@@ -275,11 +293,20 @@ class Context:
             return [self.snap.by_id[i] for i in self.saved if i in self.snap.by_id]
         return rows.row_pool(self.snap, row_id, self.profile_id, self.pmap)   # continue, genre_*, the old row ids
 
+    def _site_lists(self, *roles: str) -> list[list[dict]]:
+        """Per site: the site's ``<role>_<site>`` lists of ``roles`` concatenated in that order (sites in list-id order)."""
+        per_site: dict[str, list[dict]] = {}
+        for role in roles:
+            for list_id, items in rows._role_by_list(self.snap, role).items():
+                per_site.setdefault(list_id[len(role) + 1:], []).extend(items)
+        return [per_site[k] for k in sorted(per_site)]
+
     def _trending(self, kind: str) -> list[dict]:
-        """The sites' trending lists (this type only, round-robin over the sites, no repeats), then - while shorter than
-        ``TREND_TARGET`` - the best-scoring remaining titles of the type (score 0 is never added)."""
+        """The sites' spotlight + trending lists (this type only; per site spotlight first, then trending; round-robin
+        over the sites, no repeats), then - while shorter than ``TREND_TARGET`` - the best-scoring remaining titles of
+        the type (score 0 is never added)."""
         pool = rows._round_robin([[i for i in items if i["type"] == kind and self.show(i)]
-                                  for items in self.signals.trending_lists])
+                                  for items in self._site_lists("spotlight", "trending")])
         if len(pool) < TREND_TARGET:
             taken = {i["id"] for i in pool}
             scored = []
@@ -302,6 +329,20 @@ class Context:
         pool = [i for i in rows._round_robin(categories.member_lists(self.snap, slug)) if self.show(i)]
         return pool if sum(1 for i in pool if is_ready(i)) >= cat["min_items"] else []
 
+    def _must_watch(self) -> list[dict]:
+        """``must_watch`` ("İzlenmesi Gereken Dizi ve Filmler"): the sites' ``noteworthy_series`` + ``noteworthy_movies``
+        lists (each its own type, all lists round-robin, list order, playable per ``HOME_ONLY_READY``), then the classics
+        as in :meth:`_noteworthy`; no repeats."""
+        lists = [[i for i in items if i["type"] == kind and self.show(i)]
+                 for role, kind in (("noteworthy_series", "series"), ("noteworthy_movies", "movie"))
+                 for items in rows._role_by_list(self.snap, role).values()]
+        pool = rows._round_robin(_alternate(lists))
+        taken = {i["id"] for i in pool}
+        classics = [i for i in self.snap.items
+                    if i["id"] not in taken and self.show(i) and is_classic(i, self.now)]
+        classics.sort(key=lambda i: (-_num(i.get("rating")), i["id"]))
+        return pool + classics
+
     def _noteworthy(self) -> list[dict]:
         """The sites' ``noteworthy_movies`` lists (movies, round-robin over the sites, list order), then the classics
         (:func:`is_classic`, playable per ``HOME_ONLY_READY``) best rated first (ties: id); no repeats."""
@@ -311,6 +352,16 @@ class Context:
                     if i["id"] not in taken and self.show(i) and is_classic(i, self.now)]
         classics.sort(key=lambda i: (-_num(i.get("rating")), i["id"]))
         return pool + classics
+
+
+def _alternate(lists: list[list[dict]]) -> list[list[dict]]:
+    """Order the given lists so a round-robin merge alternates the halves (series lists, movie lists): s1, m1, s2, m2."""
+    series = [l for l in lists if l and l[0]["type"] == "series"]
+    movies = [l for l in lists if l and l[0]["type"] != "series"]
+    out = []
+    for k in range(max(len(series), len(movies))):
+        out.extend(a[k] for a in (series, movies) if k < len(a))
+    return out
 
 
 def pool(snap, row_id: str, profile_id: str = "", pmap: Optional[dict] = None, now: Optional[float] = None) -> list[dict]:
@@ -337,12 +388,21 @@ def hero_tagline(item: dict, parts: dict[str, float]) -> str:
 
 
 def heroes(ctx: Context) -> list[dict]:
-    """The slider: the best-scoring ``HERO_SERIES`` series and ``HERO_MOVIES`` movies (ties: rating, then id), shown
-    series, movie, series, movie, ... A type with too few candidates is topped up from the other (total never above
-    ``HERO_SERIES + HERO_MOVIES``). Candidates must have a backdrop and (``HOME_ONLY_READY``) be playable."""
+    """The slider: first the sites' own hero sections (the ``featured_<site>`` lists, round-robin over the sites, each
+    site's order kept, no type alternation), then - while shorter than ``HERO_SERIES + HERO_MOVIES`` - the best-scoring
+    series and movies (ties: rating, then id), shown series, movie, series, ...; a type with too few candidates is topped
+    up from the other. Candidates must have a backdrop and (``HOME_ONLY_READY``) be playable; no title twice."""
+    def ok(item: dict) -> bool:
+        return bool(item.get("backdrop_url")) and ctx.show(item)
+
+    total = config.HERO_SERIES + config.HERO_MOVIES
+    picked = rows._round_robin([[i for i in items if ok(i)]
+                                for items in rows._role_by_list(ctx.snap, "featured").values()])[:max(total, 0)]
+    picked = [(i, score_parts(i, ctx.signals, ctx.now)) for i in picked]
+    taken = {i["id"] for i, _p in picked}
     ranked = []
     for item in ctx.snap.items:
-        if item.get("backdrop_url") and ctx.show(item):
+        if item["id"] not in taken and ok(item):
             parts = score_parts(item, ctx.signals, ctx.now)
             if parts["trending"] <= 0 and is_classic(item, ctx.now):
                 continue   # a classic is never picked by score alone (only a site's trending list puts it up here)
@@ -350,15 +410,21 @@ def heroes(ctx: Context) -> list[dict]:
     ranked.sort(key=lambda t: t[:3])
     series = [t for t in ranked if t[3]["type"] == "series"]
     movies = [t for t in ranked if t[3]["type"] != "series"]
-    want_s, want_m = config.HERO_SERIES, config.HERO_MOVIES
+    if picked:   # fill the rest of the slider by score, both types together
+        want = total - len(picked)
+        want_s = min(len(series), max(want - want // 2, 0))
+        want_m = want - want_s
+    else:
+        want_s, want_m = config.HERO_SERIES, config.HERO_MOVIES
     n_s, n_m = min(len(series), want_s), min(len(movies), want_m)
     spare = want_s + want_m - n_s - n_m
     n_s += min(len(series) - n_s, spare)
     spare = want_s + want_m - n_s - n_m
     n_m += min(len(movies) - n_m, spare)
+    picked += [(t[3], t[4]) for t in _interleave(series[:n_s], movies[:n_m])]
     saved = set(ctx.saved)
     out = []
-    for _neg, _rating, _iid, item, parts in _interleave(series[:n_s], movies[:n_m]):
+    for item, parts in picked:
         card = rows.item_json(item, ctx.pmap.get(item["id"]))
         card.update(logo_text=item["title"], tagline=hero_tagline(item, parts), in_mylist=item["id"] in saved)
         out.append(card)

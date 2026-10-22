@@ -3,7 +3,8 @@
 A collection is ``{id, title, path, role, ...}``; its items land in ``library_lists`` under ``list_id = id``. By convention
 the id is ``<role>_<site_id>`` (e.g. ``trending_yabancidizi``), so the home screen can merge the lists of EVERY site by role
 without knowing the site names. Per-collection overrides: ``row_selector``, ``fields``, ``required_fields``,
-``excluded_fields``, ``sort_by``, ``sort_desc``, ``genre`` (role ``genre``), ``category`` (role ``category``).
+``excluded_fields``, ``sort_by``, ``sort_desc``, ``genre`` (role ``genre``), ``category`` (role ``category``), ``min_keep`` (+
+``min_keep_relax``: sliding window, see ``keep_of``).
 
 Role ``category`` = an admin-managed home category ("Kore Dizileri", "Anime", ...; ``library/categories``): the entry carries
 ``category: <slug>`` (REQUIRED for that role, ignored for the others) and its id is ``category_<slug>_<site_id>``; its
@@ -26,6 +27,8 @@ ROLES = {
     "latest_series": "ranking signal for the home slider and the trend rows (recency); no row of its own (newly added series cards; NOT episodes, see latest_episodes)",
     "latest_movies": "ranking signal for the home slider and the trend rows (recency); no row of its own",
     "noteworthy_movies": "feeds the 'Dikkate Değer Filmler' row (movies only; classics are added after them) and also scores for the slider and trends",
+    "noteworthy_series": "feeds the 'Dikkate Değer Diziler' row (series only, the site's order) and also scores for the slider and trends",
+    "spotlight": "feeds the 'Öne Çıkan Dizi ve Filmler' row (series and movies, the site's order) and also scores for the slider and trends",
     "featured": "ranking signal for the home slider and the trend rows (the site's hero / 'öne çıkanlar'); no row of its own",
     "upcoming": "the 'Yakında' row (`yakinda`): not on the home screen, only reachable through /api/row/yakinda",
     "new": "newest titles list (legacy role of the main list)",
@@ -36,7 +39,21 @@ ROLES = {
 CATEGORY_ROLE = "category"
 CATEGORY_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,47}$")
 # roles whose lists are merged across all sites (into a home row or into the scoring signals of the slider / trend rows)
-HOME_ROLES = ("trending", "latest_episodes", "latest_series", "latest_movies", "noteworthy_movies", "featured")
+HOME_ROLES = ("trending", "latest_episodes", "latest_series", "latest_movies", "noteworthy_movies", "noteworthy_series", "spotlight",
+              "featured")
+
+
+# --- optional sliding window of a list (yaml ``min_keep: N`` [+ ``min_keep_relax: [field, ...]``] on a collection) -------------
+# The list keeps at least N members: this scan's cards first, then the previous scan's members (``library_lists`` order, the oldest
+# fall off), then - only while still short (first scan) - cards of the same page that miss just the ``min_keep_relax`` required fields.
+def keep_of(spec: object) -> tuple[int, list[str]]:
+    """``(min_keep, relaxed required fields)`` of a collection; ``(0, [])`` = no window (an invalid value reads as none)."""
+    if not isinstance(spec, dict):
+        return 0, []
+    raw = spec.get("min_keep")
+    n = raw if isinstance(raw, int) and not isinstance(raw, bool) and 0 < raw <= 200 else 0
+    relax = spec.get("min_keep_relax") or []
+    return n, [str(f) for f in relax] if n and isinstance(relax, list) else []
 
 
 def list_id(role: str, site_id: str, category: Optional[str] = None) -> str:

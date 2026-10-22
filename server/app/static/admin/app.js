@@ -32,10 +32,15 @@ var FL={found:'Bulundu',not_found:'Bulunamadı'};
 var FM={retry:'kaynak yeniden çözüldü',search:'başka sitede bulundu',heal:'ajan onarımı'};
 function finLabel(e){return (e.title||e.canonical_id||'?')+(e.season!=null&&e.episode!=null?' · S'+(e.season<10?'0':'')+e.season+' B'+(e.episode<10?'0':'')+e.episode:'')}
 function onbCls(e){return e.status==='failed'?'bad':e.status==='needs_input'||e.status==='engine_gap'||(e.passed===false&&e.status!=='cancelled')?'warn':e.status==='saved'||e.status==='ready'?'ok':''}
+/* engelli sayfa (blocked_pages): neden */
+var BV={gone:'Ölü sayfa',empty:'Bölümsüz',gate:'Oynatıcı yok',rule:'Telif/engel'};
 function pill(cls,txt){return '<span class="pill '+cls+'">'+esc(txt)+'</span>'}
 function pbiLabel(e){return (e.title||e.canonical_id||'?')+(e.season!=null&&e.episode!=null?' · S'+(e.season<10?'0':'')+e.season+' B'+(e.episode<10?'0':'')+e.episode:'')}
 function evPill(e){
   if(e.kind==='onboard')return pill('heal','Site ekle');
+  if(e.kind==='reset')return pill('warn','Sıfırlama');
+  if(e.kind==='hydrate')return pill(e.status==='error'?'bad':'warn','! Bölüm yok');
+  if(e.kind==='blocked_page')return pill('warn','⊘ '+(BV[e.via]||e.via||'Engelli'));
   if(e.kind==='playback_issue')return pill(e.heal_class?'bad':'warn',(e.heal_class?'✕ ':'! ')+(e.label||e.code||'?'));
   if(e.kind==='finder')return e.state==='found'?pill('ok','✓ Bulundu'):pill('warn','! Bulunamadı');
   if(e.kind==='tmdb')return e.status==='error'?pill('bad','✕ Hata'):e.dry_run?pill('run','Önizleme'):e.status==='partial'?pill('warn','! Kısmi'):pill('ok','✓ Uygulandı');
@@ -174,16 +179,30 @@ function visible(){
   return events.filter(function(e){
     if(typeFilter==='scan'&&e.kind!=='scan')return false;
     if(typeFilter==='onboard'&&e.kind!=='onboard')return false;
-    if(typeFilter==='heal'&&(e.kind==='scan'||e.kind==='tmdb'||e.kind==='onboard'||e.kind==='finder'||e.kind==='playback_issue'))return false;
+    if(typeFilter==='heal'&&(e.kind==='scan'||e.kind==='tmdb'||e.kind==='onboard'||e.kind==='finder'||e.kind==='playback_issue'||e.kind==='reset'||e.kind==='hydrate'||e.kind==='blocked_page'))return false;
     if(typeFilter==='issue'&&e.kind!=='playback_issue')return false;
+    if(typeFilter==='blocked'&&e.kind!=='blocked_page')return false;
+    if(typeFilter!=='blocked'&&typeFilter!=='all'&&e.kind==='blocked_page')return false;
     if(typeFilter==='tmdb'&&!(e.kind==='tmdb'||(e.kind==='scan'&&e.tmdb_enrich)))return false;
-    if(typeFilter==='bad'&&!(e.status==='error'||e.status==='partial'||e.outcome==='failed'||e.outcome==='not_applied'||e.kind==='cooldown'||e.kind==='rollback'||(e.kind==='onboard'&&(e.status==='failed'||e.passed===false))||(e.kind==='finder'&&e.state==='not_found')||(e.kind==='playback_issue'&&e.heal_class)))return false;
+    if(typeFilter==='bad'&&!(e.status==='error'||e.status==='partial'||e.outcome==='failed'||e.outcome==='not_applied'||e.kind==='cooldown'||e.kind==='rollback'||(e.kind==='onboard'&&(e.status==='failed'||e.passed===false))||(e.kind==='finder'&&e.state==='not_found')||(e.kind==='playback_issue'&&e.heal_class)||e.kind==='hydrate'))return false;
     return true;
   });
 }
 function evHtml(e){
   var cls,title,meta;
-  if(e.kind==='onboard'){
+  if(e.kind==='blocked_page'){
+    cls='scan warn';
+    title='Engelli sayfa · '+esc(e.site)+' '+evPill(e);
+    meta=esc(e.source_key||e.url||'')+' · '+esc(e.reason||'');
+  } else if(e.kind==='hydrate'){
+    cls='scan '+(e.status==='error'?'bad':'warn');
+    title='Dizi bölümleri okunamadı · '+esc(e.title||e.canonical_id||'?')+' '+evPill(e);
+    meta=esc(e.site||'')+' · '+esc(e.reason||e.status||'');
+  } else if(e.kind==='reset'){
+    cls='scan warn';
+    title='Kütüphane sıfırlandı '+evPill(e);
+    meta=num((e.cleared||[]).length)+' tablo temizlendi'+(e.cache?' · '+num(e.cache_files)+' önbellek dosyası':'')+' · '+dur(e.seconds);
+  } else if(e.kind==='onboard'){
     cls='scan '+onbCls(e);
     title='Site ekle · '+esc(hostOf(e.url)||e.site_id||'?')+' '+evPill(e);
     meta=esc(OL[e.status]||e.status||'?')+(e.site_id?' · '+esc(e.site_id):'')+(e.turns!=null?' · '+num(e.turns)+' tur':'')+(e.passed===false?' · kriterler sağlanmadı':'')+(e.seconds!=null?' · '+dur(e.seconds):'')+(e.site_quality&&e.site_quality.grade?' · kalite: '+esc(e.site_quality.grade):'');
@@ -264,7 +283,22 @@ function renderDetail(){
   var el=$('detail'),e=events.filter(function(x){return key(x)===sel})[0];
   if(!e){el.innerHTML='<div class="empty">Ayrıntısını görmek için soldan bir olay seçin.<br><small>Her tarama, düzeltme, cooldown ve geri alma bir olaydır.</small></div>'+catLine();return}
   var h='<button class="close" id="close">Kapat</button>',s=siteOf(e.site)||{};
-  if(e.kind==='onboard'){
+  if(e.kind==='blocked_page'){
+    h+=evPill(e)+'<h3>'+esc(e.source_key||e.url)+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+'</div>'+
+      '<div class="kv">'+kv(esc(e.site||'-'),'Site')+kv(esc(BV[e.via]||e.via||'-'),'Neden')+kv(esc(e.page_kind||'-'),'Sayfa türü')+kv(e.until?esc(full(e.until)):'-','Yeniden denenir')+'</div>'+
+      '<div class="note" style="border-color:var(--warn)">'+esc(e.reason||'')+'</div>'+
+      '<div class="note" style="border-color:var(--muted)"><span class="mono" style="overflow-wrap:anywhere">'+esc(e.url)+'</span><br>Engel yalnız bu sitedeki bu sayfa içindir; aynı yapım başka siteden gelebilir.</div>'+
+      '<div class="act"><button data-unblock="'+esc(e.url)+'" data-site="'+esc(e.site)+'">Engeli kaldır</button></div>';
+  } else if(e.kind==='hydrate'){
+    h+=evPill(e)+'<h3>'+esc(e.title||e.canonical_id||'?')+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+'</div>'+
+      '<div class="kv">'+kv(esc(e.site||'-'),'Site')+kv(esc(e.status||'-'),'Durum')+kv('<span class="mono">'+esc(e.source_key||'-')+'</span>','Kaynak anahtarı')+'</div>'+
+      '<div class="note" style="border-color:var(--'+(e.status==='error'?'bad':'warn')+')">'+esc(e.reason||'')+'</div>'+
+      (e.url?'<div class="note" style="border-color:var(--muted)"><span class="mono" style="overflow-wrap:anywhere">'+esc(e.url)+'</span></div>':'');
+  } else if(e.kind==='reset'){
+    h+=evPill(e)+'<h3>Kütüphane sıfırlandı</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+'</div>'+
+      '<div class="kv">'+kv(num((e.cleared||[]).length),'temizlenen tablo')+kv(Object.keys(e.kept||{}).map(esc).join(', ')||'-','korunan')+kv(e.cache?num(e.cache_files):'-','önbellek dosyası')+kv(dur(e.seconds),'Süre')+'</div>'+
+      '<div class="note" style="border-color:var(--muted)">Yedek: <span class="mono">'+esc(e.backup||'-')+'</span></div>';
+  } else if(e.kind==='onboard'){
     h+=evPill(e)+'<h3>'+esc(hostOf(e.url)||'Site ekle')+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+'</div>'+
       '<div class="kv">'+kv(esc(OL[e.status]||e.status||'?'),'Durum')+kv(e.site_id?esc(e.site_id):'-','Site kimliği')+kv(num(e.turns),'tur')+kv(dur(e.seconds),'Süre')+'</div>';
     if(e.url)h+='<div class="note" style="border-color:var(--muted)"><span class="mono" style="overflow-wrap:anywhere">'+esc(e.url)+'</span></div>';
@@ -395,6 +429,13 @@ $('detail').addEventListener('click',function(ev){
       if(r&&r.ok)alert('v'+r.version+' geri yüklendi');
       else alert((r&&r.error&&r.error.message)||(r&&r.message)||'geri alınamadı');
       refresh();poll()}).catch(function(){t.disabled=false;alert('istek başarısız')});
+    return;
+  }
+  if(t.dataset.unblock){
+    if(!confirm('Bu sayfanın engeli kaldırılsın mı? Sonraki tarama sayfayı yeniden alır.'))return;
+    t.disabled=true;
+    api('/api/ops/sites/'+encodeURIComponent(t.dataset.site)+'/blocked?url='+encodeURIComponent(t.dataset.unblock),{method:'DELETE'})
+      .then(function(){sel=null;refresh()}).catch(function(){t.disabled=false;alert('istek başarısız')});
     return;
   }
   if(t.dataset.hostrule){

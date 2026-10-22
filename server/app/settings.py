@@ -4,14 +4,14 @@ Stored in ``data/ops_settings.json`` (atomic tmp + ``os.replace`` write, guarded
 a thread lock plus an ``flock`` for cross-process safety)::
 
     {"sites": {"<site>": {"enabled": true, "interval_hours": 6}}, "heal_autoapply": true,
-     "tmdb_auto": true, "tmdb_types": ["movie"]}
+     "tmdb_auto": true, "tmdb_types": ["movie", "series"]}
 
 Only what an admin has saved lives in the file. Everything else falls back to the
 ``.env`` values, which are therefore just DEFAULTS:
 
 * ``INGEST_SITES`` (comma list)  -> per-site ``enabled``
 * ``INGEST_INTERVAL`` (seconds)  -> per-site ``interval_hours`` (0 disables)
-* ``SCRAPER_HEAL_AUTOAPPLY``     -> ``heal_autoapply``
+* ``SCRAPER_HEAL_AUTOAPPLY``     -> ``heal_autoapply`` (unset = on)
 * ``TMDB_ENRICH_TYPES`` (comma)  -> ``tmdb_types`` (``config.TMDB_ENRICH_TYPES``, read at call time)
 * ``tmdb_auto`` has no env twin: default on (it is inert while no TMDB key is configured)
 
@@ -68,13 +68,16 @@ def _env_interval_hours() -> Optional[float]:
 
 
 def _env_heal_autoapply() -> bool:
-    return (os.environ.get("SCRAPER_HEAL_AUTOAPPLY") or "").strip().lower() in _TRUTHY
+    """Default ON (scrapers are hand-written, the heal repairs them; its gates still decide): only an explicit falsy
+    ``SCRAPER_HEAL_AUTOAPPLY`` (0 / false / no / off / anything not truthy) turns it off."""
+    raw = (os.environ.get("SCRAPER_HEAL_AUTOAPPLY") or "").strip().lower()
+    return raw in _TRUTHY if raw else True
 
 
 def _env_tmdb_types() -> list[str]:
-    """Default TMDB types from ``TMDB_ENRICH_TYPES`` (movie when empty/garbage)."""
+    """Default TMDB types from ``TMDB_ENRICH_TYPES`` (movie,series when empty/garbage)."""
     wanted = {str(t).strip().lower() for t in (config.TMDB_ENRICH_TYPES or ())}
-    return [k for k in TMDB_KINDS if k in wanted] or ["movie"]
+    return [k for k in TMDB_KINDS if k in wanted] or list(TMDB_KINDS)
 
 
 def _clamp_interval(hours: float) -> float:

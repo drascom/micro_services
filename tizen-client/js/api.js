@@ -45,15 +45,30 @@
     fail: qsParam('fail')
   };
 
-  function baseUrl() {
-    var b = store.get(K_BASE, DEFAULT_BASE);
-    if (!b) b = DEFAULT_BASE;
-    return String(b).replace(/\/+$/, '');
-  }
-  function setBaseUrl(v) {
+  function cleanBase(v) {
     var s = String(v || '').trim().replace(/\/+$/, '');
     if (s && !/^https?:\/\//i.test(s)) s = 'http://' + s;
-    store.set(K_BASE, s || DEFAULT_BASE);
+    return s;
+  }
+  /* Kullanici ayari yokken adres: (2) config.js `window.DZ_CONFIG.baseUrl`, (3) sayfa http(s) ile sunuluyorsa ayni host +
+     `DZ_CONFIG.port` (varsayilan 8090), (4) aksi (Tizen file:// / wgt) DEFAULT_BASE. */
+  function autoBase() {
+    var c = g.DZ_CONFIG || {};
+    var fixed = cleanBase(c.baseUrl);
+    if (fixed) return fixed;
+    var port = String(c.port || '8090').replace(/[^0-9]/g, '') || '8090';
+    var loc = g.location;
+    if (loc && /^https?:$/i.test(loc.protocol || '') && loc.hostname) return loc.protocol + '//' + loc.hostname + ':' + port;
+    return DEFAULT_BASE;
+  }
+  /* (1) localStorage `dz.baseUrl` (Ayarlar'dan kullanici ayari) once; yoksa autoBase(). */
+  function baseUrl() {
+    return cleanBase(store.get(K_BASE, '')) || autoBase();
+  }
+  /* bos deger = kullanici ayarini sil (otomatik adrese don) */
+  function setBaseUrl(v) {
+    var s = cleanBase(v);
+    if (s) store.set(K_BASE, s); else store.del(K_BASE);
     return baseUrl();
   }
 
@@ -143,6 +158,7 @@
     sourceId: sourceId,
     setSourceId: function (id) { store.set('dz.source.' + baseUrl(), id || ''); },
     DEFAULT_BASE: DEFAULT_BASE,
+    defaultBase: autoBase,
     K_BASE: K_BASE,
     K_PROFILE: K_PROFILE,
     debug: debug,

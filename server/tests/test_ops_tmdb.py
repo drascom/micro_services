@@ -109,6 +109,8 @@ class Base(unittest.TestCase):
                   patch.object(settings, "SETTINGS_PATH", os.path.join(t, "data", "ops_settings.json")),
                   patch.object(sstate, "STATE_DIR", os.path.join(t, "state")),
                   patch.object(tmdb_admin, "PREVIEW_PATH", os.path.join(t, "data", "tmdb_preview.json")),
+                  # these tests were written against a movie-only env default (shipped default is movie,series)
+                  patch.object(config, "TMDB_ENRICH_TYPES", {"movie"}),
                   patch.dict(os.environ, {"TMDB_ACCESS_KEY": KEY, "TMDB_TOKEN": "", "TMDB_API_KEY": ""})):
             p.start()
             self.addCleanup(p.stop)
@@ -180,12 +182,14 @@ class Base(unittest.TestCase):
 class SettingsTests(Base):
     def test_defaults_and_env_default_for_types(self):
         self.assertEqual(settings.tmdb_settings(), {"auto": True, "types": ["movie"]})
+        with patch.object(config, "TMDB_ENRICH_TYPES", set()):
+            self.assertEqual(settings.tmdb_types(), ["movie", "series"])
         with patch.object(config, "TMDB_ENRICH_TYPES", {"movie", "series"}):
             self.assertEqual(settings.tmdb_types(), ["movie", "series"])
         with patch.object(config, "TMDB_ENRICH_TYPES", {"series"}):
             self.assertEqual(settings.tmdb_types(), ["series"])
         with patch.object(config, "TMDB_ENRICH_TYPES", {"junk"}):
-            self.assertEqual(settings.tmdb_types(), ["movie"])
+            self.assertEqual(settings.tmdb_types(), ["movie", "series"])
         self.assertFalse(os.path.exists(settings.SETTINGS_PATH))  # reading never writes
 
     def test_put_persists_and_reads_dynamically(self):
@@ -234,7 +238,9 @@ class IngestDynamicTests(Base):
         result = RunResult("yabancidizi", items=items, drift={"drift": False})
         with patch.object(ingest_module, "run_site", return_value=result), \
                 patch.object(ingest_module, "_enrich_series_catalogs"), \
-                patch.object(ingest_module, "_fetch_collection", return_value=[]):
+                patch.object(ingest_module, "_fetch_collection", return_value=[]), \
+                patch.object(ingest_module, "parses_main_list", return_value=False):
+            # the live site yaml's main-list collection filters cards (``required_fields: today``): keep the fake items on the main list
             return ingest_module.ingest_source("yabancidizi")
 
     def film(self, title="Mayday", year=2026, series=False):

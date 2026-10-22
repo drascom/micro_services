@@ -28,10 +28,15 @@ MAX_SLUG = 40
 MAX_TITLE = 60
 DEFAULT_MIN_ITEMS = 6
 MIN_ITEMS_RANGE = (1, 100)
-# The home's fixed rows in today's order (row id = slug). Titles come from ``homelayout.TITLES`` (passed to ensure_system).
-SYSTEM_DEFAULT = ("continue", "trending_series", "series", "trending_movies", "noteworthy_movies", "movies", "mylist")
+# The home's fixed rows in the default order (row id = slug; series/movie rows alternate). Titles come from
+# ``homelayout.TITLES`` (passed to ensure_system).
+SYSTEM_DEFAULT = ("continue", "new_episodes", "latest_movies", "trending_series", "trending_movies", "must_watch",
+                  "series", "movies")
 SYSTEM_SLUGS = frozenset(SYSTEM_DEFAULT)
-CATEGORY_AFTER = "trending_series"   # where the categories sit in the default order (after it, before "series")
+CATEGORY_AFTER = "must_watch"   # where the categories sit in the default order (after it, before "series")
+# skeleton rows of earlier defaults: dropped from the table by ensure_system (their row ids stay fetchable via /api/row;
+# "mylist" is its own client page now)
+RETIRED_SYSTEM = ("spotlight", "noteworthy_series", "noteworthy_movies", "mylist")
 _SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 _TR = str.maketrans({"ç": "c", "Ç": "c", "ğ": "g", "Ğ": "g", "ı": "i", "İ": "i", "I": "i", "ö": "o", "Ö": "o",
                      "ş": "s", "Ş": "s", "ü": "u", "Ü": "u"})
@@ -148,26 +153,42 @@ def ensure_system(titles: dict[str, str], order: Optional[list[str]] = None) -> 
 
     First seeding: skeleton rows in ``order`` with the existing categories (their relative order kept) after
     ``CATEGORY_AFTER`` - exactly the home as it was before this table held the skeleton. A single missing skeleton row
-    later goes right after the skeleton row that precedes it in ``order`` (or first). Returns True when it wrote."""
-    wanted = [s for s in (order or SYSTEM_DEFAULT) if s in SYSTEM_SLUGS]
-    wanted += [s for s in SYSTEM_DEFAULT if s not in wanted]
+    later goes right after the skeleton row that precedes it in ``order`` (or first). Skeleton rows that are no longer
+    in :data:`SYSTEM_SLUGS` (``RETIRED_SYSTEM``: earlier defaults) are deleted; the categories that sat behind one of
+    them move behind ``CATEGORY_AFTER`` (as on a first seeding). Returns True when it wrote."""
+    wanted = _wanted(order)
     now = int(time.time())
     with closing(db.connect()) as conn, conn:
         have = conn.execute("SELECT slug, kind FROM home_categories ORDER BY position, slug").fetchall()
-        present = {r["slug"] for r in have if r["kind"] == "system"}
+        retired = {r["slug"] for r in have if r["kind"] == "system" and r["slug"] not in SYSTEM_SLUGS}
+        orphans: list[str] = []   # categories whose preceding skeleton row is retired
+        anchor = None
+        for r in have:
+            if r["kind"] == "system":
+                anchor = r["slug"]
+            elif anchor in retired:
+                orphans.append(r["slug"])
+        if retired:
+            conn.executemany("DELETE FROM home_categories WHERE slug = ? AND kind = 'system'", [(s,) for s in retired])
+        present = {r["slug"] for r in have if r["kind"] == "system"} - retired
         missing = [s for s in wanted if s not in present]
-        if not missing:
+        if not missing and not retired:
             return False
-        cur = [r["slug"] for r in have]
+        cur = [r["slug"] for r in have if r["slug"] not in retired]
         if not present:
             skeleton = list(wanted)
             at = skeleton.index(CATEGORY_AFTER) + 1 if CATEGORY_AFTER in skeleton else len(skeleton)
             final = skeleton[:at] + cur + skeleton[at:]
         else:
-            final = list(cur)
+            final = [s for s in cur if s not in orphans]
             for slug in missing:
                 prev = [s for s in wanted[:wanted.index(slug)] if s in final]
                 final.insert(final.index(prev[-1]) + 1 if prev else 0, slug)
+            if orphans:
+                at = final.index(CATEGORY_AFTER) + 1 if CATEGORY_AFTER in final else len(final)
+                while at < len(final) and final[at] not in SYSTEM_SLUGS:   # behind the categories already there
+                    at += 1
+                final[at:at] = orphans
         for slug in missing:
             conn.execute("INSERT OR IGNORE INTO home_categories (slug, title, position, enabled, min_items, created_at, "
                          "updated_at, kind) VALUES (?,?,?,?,?,?,?, 'system')",
@@ -175,6 +196,43 @@ def ensure_system(titles: dict[str, str], order: Optional[list[str]] = None) -> 
         conn.executemany("UPDATE home_categories SET position = ? WHERE slug = ?",
                          [(pos, s) for pos, s in enumerate(final)])
     return True
+
+
+def _wanted(order: Optional[list[str]] = None) -> list[str]:
+    wanted = [s for s in dict.fromkeys(order or SYSTEM_DEFAULT) if s in SYSTEM_SLUGS]
+    return wanted + [s for s in SYSTEM_DEFAULT if s not in wanted]
+
+
+def reset_order(order: Optional[list[str]] = None) -> list[dict[str, Any]]:
+    """"Varsayılan sıraya döndür": the skeleton rows go back to ``order`` (default :data:`SYSTEM_DEFAULT`); every
+    category stays behind the skeleton row it follows now (its anchor; several keep their relative order), a category
+    with no anchor in the new skeleton (first row, or after a retired row) goes after ``CATEGORY_AFTER``. Categories
+    are not changed otherwise (title, enabled, min_items kept). Returns the full list (:func:`list_all`)."""
+    wanted = _wanted(order)
+    with closing(db.connect()) as conn, conn:
+        have = conn.execute("SELECT slug, kind FROM home_categories ORDER BY position, slug").fetchall()
+        skeleton = [s for s in wanted if any(r["slug"] == s and r["kind"] == "system" for r in have)]
+        groups: dict[Optional[str], list[str]] = {}
+        anchor = None
+        for r in have:
+            if r["kind"] == "system":
+                anchor = r["slug"]
+            else:
+                groups.setdefault(anchor if anchor in skeleton else None, []).append(r["slug"])
+        loose = groups.pop(None, [])
+        final: list[str] = []
+        for s in skeleton:
+            final.append(s)
+            final += groups.get(s, [])
+            if s == CATEGORY_AFTER:
+                final += loose
+                loose = []
+        final += loose   # no CATEGORY_AFTER in the skeleton: at the end
+        final += [r["slug"] for r in have if r["slug"] not in final]   # system rows not in the skeleton order
+        now = int(time.time())
+        conn.executemany("UPDATE home_categories SET position = ?, updated_at = ? WHERE slug = ?",
+                         [(pos, now, s) for pos, s in enumerate(final)])
+    return list_all(True, include_system=True)
 
 
 def enabled_slugs() -> list[str]:

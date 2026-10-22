@@ -67,18 +67,18 @@ class BootTests(Base):
     def test_tv_boot_shape_and_row_ids(self):
         b = self.get("/api/boot?profile=p1&layout=tv-v1")
         self.conforms(b, S.BOOT_TV)
-        self.assertEqual([r["id"] for r in b["rows"]], ["continue", "trending_series", "series", "trending_movies",
-                                                         "noteworthy_movies", "movies", "mylist"])
+        self.assertEqual([r["id"] for r in b["rows"]], ["continue", "new_episodes", "latest_movies", "trending_series",
+                                                         "trending_movies", "must_watch", "series", "movies"])
         self.assertEqual([r["title"] for r in b["rows"]],
-                         ["İzlemeye Devam Et", "Haftanın Trendleri · Diziler", "Tüm Diziler", "Haftanın Trendleri · Filmler",
-                          "Dikkate Değer Filmler", "Tüm Filmler", "Listem"])
+                         ["İzlemeye Devam Et", "Yeni Bölümler", "Yeni Filmler", "Trend Diziler", "Trend Filmler",
+                          "İzlenmesi Gereken Dizi ve Filmler", "Tüm Diziler", "Tüm Filmler"])
         self.assertTrue(all(r["loaded"] is True and r["items"] for r in b["rows"]), "tv-v1 rows arrive loaded and non-empty")
         self.assertEqual(b["catalog_total"], 14)
         self.assertEqual(b["hero"]["id"], b["heroes"][0]["id"])
         # slider: the best 3 series + 3 films WITH a backdrop, alternating series / film (not playable ones never)
-        self.assertEqual([h["type"] for h in b["heroes"]], ["series", "movie"] * 3)
+        self.assertEqual([h["type"] for h in b["heroes"]], ["movie", "series"] + ["series", "movie"] * 2)
         self.assertEqual({h["id"] for h in b["heroes"]}, {SERIES, SERIES2, SERIES3, FILM, FILM2, FILM3})
-        self.assertEqual([h["id"] for h in b["heroes"]][:2], [SERIES, FILM], "the trending titles of the source lead")
+        self.assertEqual([h["id"] for h in b["heroes"]][:2], [FILM, SERIES], "the site's featured list leads, in its order")
         self.assertTrue(all(h["has_backdrop"] and h["availability"]["state"] == "ready" for h in b["heroes"]))
         for r in b["rows"]:
             self.check_cards(r["items"], r["id"])
@@ -89,8 +89,8 @@ class BootTests(Base):
         self.assertEqual(set(rows["movies"]), {FILM, FILM2, FILM3, NOPOSTER, CLASSIC})                  # no source: not on the home
         self.assertEqual(rows["trending_series"][0], SERIES)
         self.assertEqual(rows["trending_movies"][0], FILM)
-        self.assertEqual(rows["noteworthy_movies"], [FILM2, CLASSIC], "the lists' movies, then the classics")
-        self.assertNotIn(METAONLY, rows["noteworthy_movies"], "a classic without a source is not playable")
+        self.assertEqual(rows["must_watch"], [FILM2, CLASSIC], "the lists' titles, then the classics")
+        self.assertNotIn(METAONLY, rows["must_watch"], "a classic without a source is not playable")
         self.assertNotIn(CLASSIC, rows["trending_movies"][1:2], "classics do not fill the trending row ahead of newer titles")
         # the catalogue still lists the titles the home leaves out
         everything = {i["id"] for i in self.get("/api/catalog?profile=p1&limit=50")["items"]}
@@ -148,7 +148,7 @@ class EpisodeCardTests(Base):
 
     def test_new_episodes_row_is_one_ready_newest_episode_per_series_in_source_order(self):
         row = self.rows()["new_episodes"]
-        self.assertEqual(row["title"], "Yeni Eklenen Bölümler")
+        self.assertEqual(row["title"], "Yeni Bölümler")
         cards = row["items"]
         self.assertEqual([(i["id"], i["episode_id"]) for i in cards],
                          [(SERIES, SERIES + ":s3:e1"), (ONEEP, ONEEP + ":s1:e5"), (UNAIRED, UNAIRED + ":s1:e1")])

@@ -46,7 +46,8 @@ class CatalogTests(unittest.TestCase):
         entry=item('metadata',state='unavailable')
         result=rows.tv_boot(SimpleNamespace(items=[entry],by_id={'metadata':entry}),'p',{})
         self.assertIsNone(result['hero'])
-        self.assertEqual([r['id'] for r in result['rows']],['mylist'])
+        self.assertEqual([r['id'] for r in result['rows']],[])   # Listem is a client page, no home row
+        self.assertEqual([i['id'] for i in rows.row_pool(SimpleNamespace(items=[entry],by_id={'metadata':entry}),'mylist','p',{})],['metadata'])
 
     @patch.object(rows, 'mylist_ids', return_value=[])
     def test_home_type_rows_sort_by_addition_not_year_or_availability(self, _):
@@ -61,7 +62,7 @@ class CatalogTests(unittest.TestCase):
         # without the filter: every title, "Tüm X" newest ADDED first (not by year, not by availability)
         with patch.object(config,'HOME_ONLY_READY',False):
             result=rows.tv_boot(snap,'p',{})
-            self.assertEqual([r['id'] for r in result['rows']],['trending_series','series','trending_movies','movies'])
+            self.assertEqual([r['id'] for r in result['rows']],['trending_series','trending_movies','series','movies'])
             self.assertEqual([i['id'] for i in rows.row_pool(snap,'movies','p',{})],['recent','old'])
             self.assertEqual([i['id'] for i in result['rows'][3]['items']],['recent','old'])
 
@@ -76,17 +77,18 @@ class CatalogTests(unittest.TestCase):
                     else [{'list_id':'latest_episodes_yabancidizi','canonical_id':'latest'}] if params[0]=='latest_episodes_*' else [])
         with patch.object(rows.db,'query',side_effect=query):
             result=rows.tv_boot(snap,'p',{})
-        self.assertEqual([r['id'] for r in result['rows'][:2]],['trending_series','series'])
-        self.assertEqual(result['rows'][0]['title'],'Haftanın Trendleri · Diziler')
-        self.assertEqual([i['id'] for i in result['rows'][0]['items']],['trend','latest'])   # list first, then a scored title
-        # the "new episodes" role list scores titles now; its row is no home row but still answers /api/row/new_episodes
+        self.assertEqual([r['id'] for r in result['rows'][:3]],['new_episodes','trending_series','series'])
+        self.assertEqual(result['rows'][1]['title'],'Trend Diziler')
+        self.assertEqual([i['id'] for i in result['rows'][1]['items']],['trend','latest'])   # list first, then a scored title
+        self.assertEqual([i['id'] for i in result['rows'][0]['items']],['latest'])           # "Yeni Bölümler": one card per series
+        # the "new episodes" role list also scores titles; /api/row/new_episodes answers the same row
         with patch.object(rows.db,'query',side_effect=query):
             card=rows.row_pool(snap,'new_episodes','p',{})[0]
             card=rows.item_json(card)
         self.assertEqual((card['id'],card['card_kind'],card['episode_id'],card['episode_label']),('latest','episode','latest:s1:e2','S01 B02 · İki'))
 
     @patch.object(rows, 'mylist_ids', return_value=[])
-    def test_home_places_noteworthy_movies_between_trending_and_all_movies(self, _):
+    def test_home_places_latest_movies_and_must_watch_around_trending_and_all_movies_last(self, _):
         latest=item('latest');noteworthy=item('noteworthy')
         snap=SimpleNamespace(items=[latest,noteworthy],by_id={'latest':latest,'noteworthy':noteworthy},source='library')
         def query(_sql, params):
@@ -95,10 +97,11 @@ class CatalogTests(unittest.TestCase):
         with patch.object(rows.db,'query',side_effect=query):
             result=rows.tv_boot(snap,'p',{})
         ids=[r['id'] for r in result['rows']]
-        self.assertEqual(ids,['trending_movies','noteworthy_movies','movies'])
-        self.assertEqual(result['rows'][1]['title'],'Dikkate Değer Filmler')
-        self.assertEqual([i['id'] for i in result['rows'][1]['items']],['noteworthy'])
-        self.assertEqual(sorted(i['id'] for i in result['rows'][2]['items']),['latest','noteworthy'])   # "Tüm Filmler": ALL movies
+        self.assertEqual(ids,['latest_movies','trending_movies','must_watch','movies'])
+        self.assertEqual([i['id'] for i in result['rows'][0]['items']],['latest'])
+        self.assertEqual(result['rows'][2]['title'],'İzlenmesi Gereken Dizi ve Filmler')
+        self.assertEqual([i['id'] for i in result['rows'][2]['items']],['noteworthy'])
+        self.assertEqual(sorted(i['id'] for i in result['rows'][3]['items']),['latest','noteworthy'])   # "Tüm Filmler": ALL movies
 
     @patch.object(rows, 'progress_map', return_value={})
     def test_home_row_endpoint_pages_series(self, _):

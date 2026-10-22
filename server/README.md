@@ -417,8 +417,8 @@ validated configs. Account validity (`pi auth check`) is shown in the same tab.
   are not re-queried for `TMDB_RETRY_DAYS`; matched titles are never re-queried.
   429 honours `Retry-After`. Each ingest run reports `tmdb_enrich` counters
   (matched/unmatched/review/skipped/deferred/errors/seconds).
-- Series: off by default; select **Dizi** in the admin Ayarlar TMDB card (or `TMDB_ENRICH_TYPES=movie,series`
-  as the default). Same matcher on the TV path: `search/tv` + `tv/{id}` (`external_ids,images`; alt/translated
+- Series: on by default (`TMDB_ENRICH_TYPES=movie,series`); deselect **Dizi** in the admin Ayarlar TMDB card (or
+  `TMDB_ENRICH_TYPES=movie`) to skip them. Same matcher on the TV path: `search/tv` + `tv/{id}` (`external_ids,images`; alt/translated
   titles via `alternative_titles,translations`), year = `first_air_date`, title = `name`/`original_name`, same
   poster/backdrop choice (tr, no-language, en), same thresholds/lead/no-year/numeral rules. For search and scoring
   only, `Sezon N` / `N. Sezon` / `Season N` / `(Dizi)` are stripped from the source title (the stored title is
@@ -596,15 +596,15 @@ Copy `.env.example` → `.env`. Relative paths resolve against `server/`.
 | `INGEST_REFRESH_MIN_INTERVAL` | `20` | minimum seconds between two **mid-scan** snapshot refreshes (`0` = no debounce); see "Periodic refresh" |
 | `IMG_QUALITY` / `IMG_MAX_AGE` | `82` / `86400` | JPEG quality · artwork `max-age` |
 | `ROW_LIMIT` | `20` | max items in an eagerly loaded `/api/boot` row |
-| `HOME_LAYOUT` | `continue,trending_series,series,trending_movies,noteworthy_movies,movies,mylist` | tv-v1 home rows, top to bottom (row ids; a row with an empty pool is left out) |
+| `HOME_LAYOUT` | `continue,new_episodes,latest_movies,trending_series,trending_movies,must_watch,series,movies` | tv-v1 home rows, top to bottom (row ids; a row with an empty pool is left out; `mylist` is no home row, the client opens it as a page) |
 | `HERO_SERIES` / `HERO_MOVIES` | `3` / `3` | slider size per type (best `trend_score` titles with a backdrop, alternating series/movie) |
 | `HOME_ONLY_READY` | `1` | home rows + slider list only playable (`availability.state=ready`) titles; search/catalogue unaffected |
-| `CLASSIC_MIN_RATING` / `CLASSIC_MIN_AGE_YEARS` | `7.5` / `15` | "Dikkate Değer Filmler" classics: movies rated >= / released >= N years ago (no year = not a classic) |
+| `CLASSIC_MIN_RATING` / `CLASSIC_MIN_AGE_YEARS` | `7.5` / `15` | "must_watch / noteworthy_movies classics: movies rated >= / released >= N years ago (no year = not a classic) |
 | `INGEST_SITES` | *(empty)* | **default only** (admin Ayarlar wins once saved): comma-separated sites with auto scan on; empty = off |
 | `INGEST_INTERVAL` | `21600` | **default only**: seconds between scheduled ingests (`0` = off; clamped to 15 min – 7 days) |
 | `REMOTE_IMG_HOSTS` | `sinemalar.com,cdn.sinemalar.com` | `/img` proxy allow-list (SSRF guard; `image.tmdb.org` always added) |
 | `TMDB_ACCESS_KEY` (or `TMDB_TOKEN` / `TMDB_API_KEY`) | *(empty)* | enable TMDB enrichment (v4 bearer or v3 key, auto-detected) |
-| `TMDB_ENRICH_TYPES` | `movie` | **default only** (admin Ayarlar wins once saved): `movie,series` also enriches series |
+| `TMDB_ENRICH_TYPES` | `movie,series` | **default only** (admin Ayarlar wins once saved): `movie` alone skips series |
 | `TMDB_RETRY_DAYS` | `7` | do not re-query unmatched titles within this window |
 | `TMDB_POSTER_SIZE` / `TMDB_BACKDROP_SIZE` | `w500` / `w1280` | TMDB image sizes (poster size also for season posters) |
 | `TMDB_STILL_SIZE` | `original` | TMDB episode-still size (`w92` `w185` `w300` `original`) |
@@ -620,6 +620,7 @@ Copy `.env.example` → `.env`. Relative paths resolve against `server/`.
 | `SERIES_CRAWL_MAX_PAGES` / `SERIES_CRAWL_MAX_ERRORS` | `6` / `5` | pages per series (series page + missing season pages) / consecutive failures that stop the pass |
 | `BLOCKED_RECHECK_DAYS` | `7` | content that is not public (yaml `blocked:` / `availability_gate:`, `library/gate.py`): a blocked page / series is judged again after this many days (`0` = every scan); a site that lifts the block gets its content back |
 | `GATE_BUDGET` / `GATE_RECHECK_PAGES` | `40` / `3` | pages one scan may probe before writing films / card-only series (the gate; items beyond it wait for the next scan) / old blocked episode and film pages re-judged per scan (the per-series probes of the inventory stage ride on `SERIES_CRAWL_*`) |
+| `AVAILABILITY_GATE` | `1` | `0` = kill switch: the yaml `availability_gate:` of every site is ignored by the library (`blocked:` rules and the dead-page blocks of `gate.block_dead` stay); tests run with `0` |
 | `RESOLVE_TIMEOUT` / `RESOLVE_RETRIES` / `RESOLVE_MIN_DELAY` | `6` / `2` / `0` | playback resolution only (`fetch.fetch_url`/`post_url`, shared connection pool): per-request timeout (s), tries (network/429/5xx; 0.3/0.8 s backoff), courtesy delay per host (s). The crawl transport (`fetch.fetch`: 2 s per host, 3 tries) is unchanged |
 | `RESOLVE_PARALLEL` / `RESOLVE_SOURCES_PARALLEL` | `4` / `3` | candidates of one source (e.g. 2x vidmoly + moly + OK.ru) / sources of one episode or film resolved at once |
 | `RESOLVE_CANDIDATE_TIMEOUT` / `RESOLVE_TOTAL_TIMEOUT` / `RESOLVE_GRACE` | `12` / `20` / `6` | seconds: per candidate / whole source; once one candidate has streams the others get `RESOLVE_GRACE` more seconds (slow ones are left out of that answer, with the reason in the admin trail) |
@@ -652,7 +653,8 @@ Copy `.env.example` → `.env`. Relative paths resolve against `server/`.
 | `PLAYHEAL_ISSUE_MIN_SOURCES` / `_TTL` / `_COOLDOWN` | `2` / `86400` / `21600` | playback issue ledger (`library/playissues.py`, admin Olay defteri "Oynatma sorunu"): different sources (episodes) of one site with the same issue class (`forbidden`, `not_media`, `server_blocked`, `gone`, `unreachable`, `ip_bound`, client `playback_failed` / `timeout` / `network`; never `hls_unsupported_browser`, `expired`, `unsupported`, `decode`) within the TTL start a repair run (evidence `playback` + `issue`); sources of a started repair do not count again for the cooldown |
 | `PLAYHEAL_COVERAGE_RATIO` / `PLAYHEAL_COVERAGE_MIN_SERIES` | `0.5` / `5` | share of series items without episode sources (and least number of series) that is a "no sources" signal: warning in the scan record + a repair run |
 | `SCRAPER_HEAL_TIMEOUT` | `120` | seconds to wait for the LLM |
-| `SCRAPER_HEAL_AUTOAPPLY` | `false` | **default only** (admin Ayarlar wins once saved): version + activate a sandbox-validated heal |
+| `SCRAPER_HEAL_AUTOAPPLY` | `true` (unset = on) | **default only** (admin Ayarlar wins once saved): version + activate a heal that passed its gates |
+| `ONBOARD_ENABLED` | `0` | site onboarding agent (FROZEN, to be removed): `0` = start/message/save + sandbox `discover_site`/`submit` answer 403 `onboard_disabled`, admin Siteler hides "Yeni site"/Taslaklar/Düzenle (`/api/ops/sites/manage` `onboard_enabled`); heal, heal-playback, site list, Olay defteri keep working. `1` = on |
 | `SCRAPER_HEAL_MODEL` / `SCRAPER_HEAL_PI_BIN` | — | pi model / binary override |
 | `ONBOARD_AUTO_ROUNDS` | `2` | admin "Siteler" onboarding agent: how many AUTOMATIC correction rounds the same pi session gets when it hands in a draft that fails the acceptance criteria (the server sends the failing criteria + hints + diagnostics back before the admin sees the draft); `0` = off, at most `5`. Read at call time, not at start-up. An EDIT of a registered site and a draft with a pending question never get one |
 | `ONBOARD_HARDEN` | `1` | admin "Siteler" onboarding: the hardening criteria of a NEW site (`availability_gate_defined`, `series_signal_collection`, `series_full_inventory`, `home_path_is_canonical`, `collection_poster_fill`, `detail_info_defined`; `removed_fields` warning) that stop an agent from passing with the easy yaml; `0` / `false` / `off` = kill switch (older criteria only). Never applies to repair or edit runs. Read at call time |

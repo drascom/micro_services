@@ -5,8 +5,7 @@ Usage:
     python -m tools.tmdb_enrich --seasons [--limit N] [--dry-run] [--force]   # series: season posters + episode data/stills
 
 Shares its logic with the admin "TMDB zenginleştirme" job (``app.library.enrich.backfill``).
-Honours the selected types (admin Ayarlar ``tmdb_types``; default TMDB_ENRICH_TYPES, series stay
-off unless selected), the retry window (TMDB_RETRY_DAYS) and never prints the API key. ``--verbose`` prints one line
+Honours the selected types (admin Ayarlar ``tmdb_types``; default TMDB_ENRICH_TYPES = movie,series), the retry window (TMDB_RETRY_DAYS) and never prints the API key. ``--verbose`` prints one line
 per title: source (year) -> chosen candidate (title, year, tmdb id), score and the
 decision (auto / review / unmatched) with the reason.
 """

@@ -53,6 +53,8 @@ class HomepageItem(MovieItem):
     season: Optional[int] = None
     episode: Optional[int] = None
     trend_score: Optional[int] = None
+    today: Optional[str] = None
+    """Non-empty when the card is marked as added today ("Bugün"); a collection keeps only those via ``required_fields: [today]``."""
 
 
 #: name -> pydantic model. Register new schemas here for new sites.

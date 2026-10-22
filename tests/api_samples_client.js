@@ -16,13 +16,16 @@ const DZ = window.DZ;
 const boot = sample('boot.json');
 // the server's home layout (homelayout.py): no `new_episodes` row any more; the client still draws any row id, so the
 // episode-card coverage below feeds the `/api/row/new_episodes` sample as one more boot row
-assert.deepEqual(boot.rows.map(r => r.id), ['continue', 'trending_series', 'series', 'trending_movies', 'noteworthy_movies', 'movies', 'mylist']);
-assert.deepEqual(boot.rows.map(r => r.title), ['İzlemeye Devam Et', 'Haftanın Trendleri · Diziler', 'Tüm Diziler',
-  'Haftanın Trendleri · Filmler', 'Dikkate Değer Filmler', 'Tüm Filmler', 'Listem']);
+assert.deepEqual(boot.rows.map(r => r.id), ['continue', 'new_episodes', 'latest_movies', 'trending_series', 'trending_movies', 'must_watch', 'series', 'movies']);
+assert.deepEqual(boot.rows.map(r => r.title), ['İzlemeye Devam Et', 'Yeni Bölümler', 'Yeni Filmler', 'Trend Diziler', 'Trend Filmler',
+  'İzlenmesi Gereken Dizi ve Filmler', 'Tüm Diziler', 'Tüm Filmler']);
 assert.equal(boot.heroes.length, 6, 'slider: 3 series + 3 films');
-assert.deepEqual(boot.heroes.map(h => h.type), ['series', 'movie', 'series', 'movie', 'series', 'movie']);
+// featured_<site> hero sections first (no type alternation), then filled by score series/movie alternating
+assert.deepEqual(boot.heroes.map(h => h.type), ['movie', 'series', 'series', 'movie', 'series', 'movie']);
 const epRow = sample('row-new_episodes.json');
-const homeData = Object.assign({}, boot, { rows: boot.rows.concat([{ id: epRow.id, title: epRow.title, loaded: true, items: epRow.items, total: epRow.total, offset: 0 }]) });
+// the boot carries the "Yeni Bölümler" (new_episodes) row itself now; it must hold the same cards as /api/row/new_episodes
+assert.deepEqual(boot.rows.find(r => r.id === 'new_episodes').items.map(i => i.card_key), epRow.items.map(i => i.card_key));
+const homeData = boot;
 DZ.api = { profileId: () => 'p1', cachedBoot: () => homeData, boot: () => new Promise(() => {}), saveBoot() {}, img: v => v, baseUrl: () => 'http://s' };
 DZ.navigation = { create: () => el('div') };
 DZ.skeleton = { home: () => el('div') };

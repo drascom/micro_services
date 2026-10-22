@@ -15,6 +15,7 @@ var $=function(i){return document.getElementById(i)};
 var BASE='/api/ops/onboard',SITES='/api/ops/sites';
 var ID_RE=/^od_[0-9a-f]{12}$/,SITE_RE=/^[a-z][a-z0-9_]{1,31}$/;
 var PRESETS=[[0.25,'15 dk'],[1,'1 saat'],[3,'3 saat'],[6,'6 saat'],[12,'12 saat'],[24,'24 saat']],customOpen={},sMeta={};
+var obOn=true;   /* GET /api/ops/sites/manage onboard_enabled (ONBOARD_ENABLED): false -> Yeni site / Taslaklar / Düzenle / sağlık kartı gizli */
 var built=false,H=null,hFail=false,hAt=0,drafts=null,dFail=false,sites=null,sFail=false,sLoading=false,newOpen=false,ui={edit:null,rename:null},M=null;
 var cur=null,D=null,evs=[],evN=0,sig='',yamlKey=null,fetching=false,fetchP=null,tickN=0,timer=null;
 var sidTouched=false,dnTouched=false,savedInfo=null,starting=false,estarting=false,sending=false,saving=false,openSteps={};
@@ -74,7 +75,7 @@ function stPill(s){
 var SS={pending:['pending','⏳','Bekliyor'],running:['running','◔','Çalışıyor'],ok:['ok','✓','Tamam'],warn:['warn','⚠','Dikkat'],fail:['fail','✗','Sorun var'],skipped:['skipped','–','Atlandı']};
 /* genel durum: [css, simge] */
 var OV={idle:['','⏳'],running:['run','◔'],ok:['ok','✓'],warn:['warn','⚠'],fail:['bad','✗']};
-var BUSY={scan:'tarama',heal:'düzeltme',onboard:'site ekleme',finder:'kaynak arama'};
+var BUSY={scan:'tarama',heal:'düzeltme',archive:'arşiv partisi',onboard:'site ekleme',finder:'kaynak arama'};
 var RUNST={success:['ok','Başarılı'],ok:['ok','Başarılı'],partial:['warn','Kısmi'],error:['bad','Hata'],failed:['bad','Hata'],running:['run','Çalışıyor']};
 
 /* ---- API adaptörleri (uç şekli değişirse yalnızca burası) ---- */
@@ -137,7 +138,7 @@ function build(){
         '<div class="srow"><button type="submit" class="btn primary" id="ob-start">Başlat</button><button type="button" class="btn" data-ob="newclose">Vazgeç</button><span id="ob-why" class="hint"></span></div>'+
       '</form></section>'+
     '<section><div id="ob-sites"></div></section>'+
-    '<section><h2>Taslaklar</h2><div id="ob-drafts"></div></section>'+
+    '<section id="ob-draftsec"><h2>Taslaklar</h2><div id="ob-drafts"></div></section>'+
   '</div>'+
   '<div id="ob-detv" class="hidden">'+
     '<div class="obtop" id="ob-top">'+
@@ -187,7 +188,7 @@ function renderHealth(){
   }
   if(html)html+='<div class="srow"><button class="btn" data-ob="hrefresh">Yeniden kontrol et</button></div>';
   el.innerHTML=html;
-  el.classList.toggle('hidden',!html);
+  el.classList.toggle('hidden',!html||!obOn);
   updateStart();
 }
 function startBlock(){
@@ -202,8 +203,16 @@ function updateStart(){
   if(b){b.disabled=!!why;$('ob-why').textContent=starting?'başlatılıyor…':(!H&&!hFail?'kontrol ediliyor…':'')}
   var e=$('ob-estart');if(e){e.disabled=!!why;var w=$('ob-ewhy');if(w)w.textContent=why}
 }
+/* onboarding kapalıysa (sunucu bayrağı) site ekleme/düzenleme denetimleri gizlenir; site listesi, tarama, YAML, geri al çalışır */
+function applyOnboardFlag(on){
+  obOn=!!on;if(!obOn){newOpen=false;ui.edit=null}
+  var b=$('ob-newbtn');if(b)b.classList.toggle('hidden',!obOn);
+  var ds=$('ob-draftsec');if(ds)ds.classList.toggle('hidden',!obOn);
+  if($('ob-newp'))applyNew();
+  var hl=$('ob-health');if(hl&&!obOn)hl.classList.add('hidden');
+}
 function applyNew(){
-  $('ob-newp').classList.toggle('hidden',!newOpen);
+  $('ob-newp').classList.toggle('hidden',!newOpen||!obOn);
   $('ob-newbtn').setAttribute('aria-expanded',newOpen?'true':'false');
   if(newOpen){var u=$('ob-url');if(u&&u.focus)u.focus()}
 }
@@ -258,6 +267,7 @@ function siteRow(s){
     '<dl class="obsd">'+
       '<dt>Son tarama</dt><dd>'+lastRunHtml(s.last_run)+'</dd>'+
       '<dt>İçerik</dt><dd>'+esc(countsLine(s.counts))+'</dd>'+
+      (s.archive?'<dt>Arşiv</dt><dd>'+esc(archiveLine(s.archive))+'</dd>':'')+
       ((s.providers&&s.providers.length)?'<dt>Oynatıcılar</dt><dd>'+s.providers.map(function(p){return '<span class="obchip">'+esc(p)+'</span>'}).join(' ')+'</dd>':'')+
     '</dl>';
   if(ui.edit===id){
@@ -271,12 +281,13 @@ function siteRow(s){
       '<button class="btn" data-ob="rncancel">Vazgeç</button></div></div>';
   }
   h+='<div class="obsa">'+
-    '<button class="btn" data-ob="sedit" data-site="'+esc(id)+'"'+off+'>Düzenle</button>'+
+    (obOn?'<button class="btn" data-ob="sedit" data-site="'+esc(id)+'"'+off+'>Düzenle</button>':'')+
     '<button class="btn" data-ob="syaml" data-site="'+esc(id)+'">YAML</button>'+
     '<button class="btn" data-ob="shandoff" data-site="'+esc(id)+'">Devir notu</button>'+
     '<button class="btn" data-ob="srename" data-site="'+esc(id)+'"'+off+'>Ad değiştir</button>'+
     (s.can_rollback?'<button class="btn" data-ob="srollback" data-site="'+esc(id)+'"'+off+'>Geri al</button>':'')+
     '<button class="btn" data-ob="sscan" data-site="'+esc(id)+'"'+((s.auto_scan&&s.auto_scan.running)||busy?' disabled':'')+'>Şimdi tara</button>'+
+    (s.archive?'<button class="btn" data-ob="sarchive" data-site="'+esc(id)+'"'+((s.auto_scan&&s.auto_scan.running)||busy?' disabled':'')+'>Arşivden bir parti al</button>':'')+
     '<button class="btn obdanger" data-ob="sdel" data-site="'+esc(id)+'"'+off+'>Sil</button>'+
     (busy?'<span class="hint">'+esc(why)+'</span>':'')+
   '</div></li>';
@@ -288,7 +299,7 @@ function drawSites(){
     el.innerHTML=sFail?'<div class="note bad">Site listesi alınamadı: '+esc(sFail)+' <button class="btn" data-ob="srefresh">Yeniden dene</button></div>':'<div class="empty">Yükleniyor…</div>';
     return;
   }
-  if(!sites.length){el.innerHTML='<div class="pempty">Kayıtlı site yok. “+ Yeni site” ile bir adres ekleyerek başla.</div>';return}
+  if(!sites.length){el.innerHTML='<div class="pempty">Kayıtlı site yok.'+(obOn?' “+ Yeni site” ile bir adres ekleyerek başla.':'')+'</div>';return}
   var warn=sMeta.any_enabled===false?'<div class="note warnbar" role="alert"><b>Otomatik tarama kapalı</b>Hiçbir kaynak kendiliğinden taranmıyor; yeni içerik yalnızca elle “Şimdi tara” ile gelir. Aşağıdan bir kaynağı açın.</div>':'';
   var lim=sMeta.limits;
   var hint='<div class="hint obscanh">Kontrol '+esc(sMeta.tick_seconds||60)+' sn’de bir yapılır; değişiklikler yeniden başlatma gerektirmez.'+
@@ -301,7 +312,7 @@ function scanEditing(){var a=document.activeElement,r=$('ob-sites');return !!(a&
 function renderSites(){if(ui.edit||ui.rename||scanEditing())return;drawSites()}
 function loadSites(){
   sLoading=true;
-  return call(SITES+'/manage').then(function(d){sites=(d&&d.sites)||[];sMeta={any_enabled:d&&d.any_enabled,limits:d&&d.limits,tick_seconds:d&&d.tick_seconds};sFail=false}).catch(function(e){sFail=msgOf(e)})
+  return call(SITES+'/manage').then(function(d){sites=(d&&d.sites)||[];sMeta={any_enabled:d&&d.any_enabled,limits:d&&d.limits,tick_seconds:d&&d.tick_seconds};sFail=false;applyOnboardFlag(!(d&&d.onboard_enabled===false))}).catch(function(e){sFail=msgOf(e)})
     .then(function(){sLoading=false;renderSites()});
 }
 
@@ -377,6 +388,22 @@ function patchSite(site,fields,msg){
   return call('/api/ops/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)})
     .then(function(){toast(msg||'Kaydedildi');changed()})
     .catch(function(e){toast('Kaydedilemedi: '+msgOf(e),'bad')}).then(loadSites);
+}
+/* arşiv taraması (library/archive.py): düz metin ilerleme; tasarım sonra */
+function archiveLine(a){
+  var p=[a.enabled?'otomatik açık ('+a.interval_minutes+' dk)':'otomatik kapalı'];
+  if(a.series)p.push('dizi '+a.series.processed+'/'+a.series.total+(a.series.index_at?' (dizin '+a.series.index_at+')':''));
+  if(a.movies)p.push('film '+a.movies.processed+'/'+a.movies.total+' · sayfa imleci '+a.movies.next_page+(a.movies.done?' (bitti)':''));
+  p.push('son parti '+(a.last_batch_at||'yok'));
+  if(a.last_error)p.push('son hata: '+a.last_error);
+  if(a.last_drift)p.push('sapma: '+(a.last_drift.part||'')+' ('+(a.last_drift.heal||'')+')');
+  return p.join(' · ');
+}
+function archiveNow(site,b){
+  b.disabled=true;
+  call(SITES+'/'+enc(site)+'/archive-batch',{method:'POST'}).then(function(){
+    toast(site+': arşiv partisi başladı');return loadSites();
+  }).catch(function(e){toast((e&&e.status===409?'Meşgul: ':'Başlatılamadı: ')+msgOf(e),'bad');b.disabled=false});
 }
 function scanNow(site,b){
   b.disabled=true;
@@ -966,6 +993,7 @@ function bind(){
     else if(a==='rnsave'){doRename(site)}
     else if(a==='srollback'){rollbackSite(site)}
     else if(a==='sscan'){scanNow(site,b)}
+    else if(a==='sarchive'){archiveNow(site,b)}
     else if(a==='syaml'){openYaml(site)}
     else if(a==='shandoff'){openHandoff(site)}
     else if(a==='sdel'){openDel(site)}

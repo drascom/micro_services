@@ -132,7 +132,7 @@ class ManageTest(Base):
         self.assertEqual(sorted(rows), ["alpha", "beta", "yabancidizi"])
         a = rows["alpha"]
         self.assertEqual(set(a), {"site_id", "display_name", "base_url", "version", "hand_built", "auto_scan", "last_run", "counts",
-                                  "search", "providers", "can_rollback", "busy", "heal_cooldown_until"})
+                                  "search", "providers", "can_rollback", "busy", "heal_cooldown_until", "archive"})
         self.assertEqual((a["display_name"], a["base_url"], a["version"], a["providers"]), ("Alpha Dizi", "https://alpha.example", 2, ["vidmolly"]))
         self.assertEqual(a["counts"], {"titles": 4, "series": 2, "movies": 2, "episodes": 2, "with_sources": 2})
         self.assertEqual(rows["beta"]["counts"], {"titles": 2, "series": 1, "movies": 1, "episodes": 1, "with_sources": 1})

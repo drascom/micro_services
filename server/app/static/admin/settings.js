@@ -283,12 +283,28 @@ function healHtml(){
     '</div>'+
     '<div class="card" id="llm-card">'+llmHtml()+'</div></div></section>';
 }
+function resetHtml(){
+  return '<section><h2>Bakım</h2><div class="card"><div class="sh"><span class="sname" style="font-size:16px">Kütüphaneyi sıfırla</span></div>'+
+    '<p class="hint">Deneme amaçlı: tüm dizi/film, bölüm, kaynak, kategori üyeliği, izleme ilerlemesi ve listem silinir. Ana ekran kategorileri, profiller, ayarlar ve site config’leri korunur; önce veritabanı yedeği alınır. Siteler sonraki taramada yeniden dolar.</p>'+
+    '<label class="hint" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="reset-cache"> Görsel ve altyazı önbelleğini de sil</label>'+
+    '<div class="act" style="margin-top:10px"><button class="btn obdanger" id="lib-reset">Kütüphaneyi sıfırla</button></div></div></section>';
+}
+function libReset(b){
+  if(!window.confirm('Kütüphane sıfırlansın mı?'))return;
+  var c=$('reset-cache'),body={cache:!!(c&&c.checked)};
+  b.disabled=true;
+  call('/api/ops/library/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(d){toast('Kütüphane sıfırlandı · yedek: '+d.backup+(d.cache?' · '+num(d.cache_files)+' önbellek dosyası silindi':''))})
+    .catch(function(e){toast('Sıfırlanamadı: '+(e&&e.message||e),'bad')})
+    .then(function(){b.disabled=false});
+}
 function render(){
   var root=$('set-root');if(!root)return;
   if(!D){root.innerHTML=failed?'<div class="empty">Ayarlar yüklenemedi: '+esc(failed)+'<br><button class="btn" id="set-retry">Yeniden dene</button></div>':'<div class="empty">Yükleniyor…</div>';return}
   var h='';
-  h+='<section><h2>TMDB zenginleştirme</h2><div class=”card tmdb” id=”tmdb-card”></div></section>';
+  h+='<section><h2>TMDB zenginleştirme</h2><div class="card tmdb" id="tmdb-card"></div></section>';
   h+=healHtml();
+  h+=resetHtml();
   root.innerHTML=h;
   tLast='';renderTmdb();
 }
@@ -320,6 +336,7 @@ root.addEventListener('click',function(ev){
   var b=ev.target.closest('button');if(!b)return;
   if(b.id==='llm-test'){loadLlm(true);return}
   if(b.id==='set-retry'){load();return}
+  if(b.id==='lib-reset'){libReset(b);return}
   if(b.id==='tmdb-retry'){tFail=false;tmdbLoad();return}
   if(b.id==='tmdb-preview'){tmdbStart(true);return}
   if(b.id==='tmdb-apply'){tmdbStart(false);return}

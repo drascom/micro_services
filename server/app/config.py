@@ -77,10 +77,10 @@ IMG_NEG_TTL = _int("IMG_NEG_TTL", 60)
 ROW_LIMIT = _int("ROW_LIMIT", 20)
 
 # Home screen of the tv-v1 boot (app/homelayout.py): rows top to bottom (comma-separated row ids; a row whose pool is
-# empty is left out, so `mylist` only shows when it has titles), hero carousel size per type, and whether the home screen
+# empty is left out; `mylist` is no row, the clients open it as a page), hero carousel size per type, and whether the home screen
 # (rows + hero) lists only playable titles (availability.state == "ready"; search/catalogue still list everything).
 HOME_LAYOUT = [r.strip() for r in (os.environ.get("HOME_LAYOUT")
-               or "continue,trending_series,series,trending_movies,noteworthy_movies,movies,mylist").split(",") if r.strip()]
+               or "continue,new_episodes,latest_movies,trending_series,trending_movies,must_watch,series,movies").split(",") if r.strip()]
 HERO_SERIES = max(0, _int("HERO_SERIES", 3))
 HERO_MOVIES = max(0, _int("HERO_MOVIES", 3))
 HOME_ONLY_READY = (os.environ.get("HOME_ONLY_READY", "1") or "1").strip().lower() not in ("0", "false", "no", "off")
@@ -121,7 +121,7 @@ INGEST_INTERVAL = _int("INGEST_INTERVAL", 21600)
 
 # TMDB enrichment (credentials are read lazily by app.library.tmdb from
 # TMDB_ACCESS_KEY / TMDB_TOKEN / TMDB_API_KEY; never log them).
-TMDB_ENRICH_TYPES = {t.strip().lower() for t in (os.environ.get("TMDB_ENRICH_TYPES") or "movie").split(",") if t.strip()}
+TMDB_ENRICH_TYPES = {t.strip().lower() for t in (os.environ.get("TMDB_ENRICH_TYPES") or "movie,series").split(",") if t.strip()}
 TMDB_RETRY_DAYS = float(os.environ.get("TMDB_RETRY_DAYS") or 7)
 TMDB_POSTER_SIZE = (os.environ.get("TMDB_POSTER_SIZE") or "w500").strip()
 TMDB_BACKDROP_SIZE = (os.environ.get("TMDB_BACKDROP_SIZE") or "w1280").strip()
@@ -170,6 +170,10 @@ SERIES_CRAWL_MAX_ERRORS = max(1, _int("SERIES_CRAWL_MAX_ERRORS", 5))
 BLOCKED_RECHECK_DAYS = max(0.0, _float("BLOCKED_RECHECK_DAYS", 7.0))
 GATE_BUDGET = max(0, _int("GATE_BUDGET", 40))
 GATE_RECHECK_PAGES = max(0, _int("GATE_RECHECK_PAGES", 3))
+# AVAILABILITY_GATE=0 = kill switch: the yaml ``availability_gate:`` of every site is ignored by the library (scan / inventory /
+# archive; ``blocked:`` rules and dead-page blocks still apply; the onboarding sandbox is not affected). Tests run with it off
+# (tests/_sandbox.py), the gate tests switch it on.
+AVAILABILITY_GATE = _int("AVAILABILITY_GATE", 1) != 0
 
 # Playback resolution (user-triggered: library/videos.py + scraper/fetch.fetch_url + scraper/providers). The polite
 # crawl path (fetch.fetch, MIN_DELAY 2 s per host, 3 tries) is NOT affected by any of these.
@@ -265,10 +269,12 @@ TRAILER_DEAD_TTL = max(1.0, _float("TRAILER_DEAD_TTL", 21600.0))
 ONBOARD_TOOL_TIMEOUT = max(5.0, _float("ONBOARD_TOOL_TIMEOUT", 120.0))
 ONBOARD_MAX_PAGE_BYTES = max(100_000, _int("ONBOARD_MAX_PAGE_BYTES", 3_000_000))
 ONBOARD_RETENTION_DAYS = max(1, _int("ONBOARD_RETENTION_DAYS", 7))
-# Site-onboarding job manager (scraper/onboard.py, routers/ops_onboard.py): ONBOARD_ENABLED = 0 turns the feature off,
+# Site-onboarding job manager (scraper/onboard.py, routers/ops_onboard.py): ONBOARD_ENABLED = 0 (DEFAULT, frozen: scrapers are written
+# by hand, the heal repairs them) turns the feature off: start / message / save + sandbox discover_site / submit answer 403
+# ``onboard_disabled``, the admin hides "Yeni site" / Taslaklar / Düzenle; heal / heal-playback / sites / events keep working,
 # ONBOARD_TIMEOUT = longest one pi run may take (s), ONBOARD_PI_BIN = pi binary (falls back to SCRAPER_HEAL_PI_BIN, then
 # "pi"), ONBOARD_MODEL = model of the agent ("" = the heal model, SCRAPER_HEAL_MODEL).
-ONBOARD_ENABLED = _int("ONBOARD_ENABLED", 1) != 0
+ONBOARD_ENABLED = _int("ONBOARD_ENABLED", 0) != 0
 ONBOARD_TIMEOUT = max(1.0, _float("ONBOARD_TIMEOUT", 900.0))
 ONBOARD_PI_BIN = (os.environ.get("ONBOARD_PI_BIN") or os.environ.get("SCRAPER_HEAL_PI_BIN") or "pi").strip()
 ONBOARD_MODEL = (os.environ.get("ONBOARD_MODEL") or "").strip()

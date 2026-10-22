@@ -79,6 +79,7 @@ EDIT_LAYER_DOCS = {
     "resolvers": "how the player is found on a page (`resolvers:`) and which providers the site may use",
     "provider": "a video HOST that changed or is new: its recipe lives in the provider LIBRARY (`provider_recipes`); the site yaml only names it in `providers`",
     "fetch": "how a page is fetched: plain http or the browser",
+    "archive": "the whole-catalogue pass (`archive:`): the series index / film list pages, batch sizes, on/off",
 }
 EDIT_EXTRA_LAYERS = {
     "search": (("search",), "the live search of the site (`search:`)"),

@@ -72,6 +72,9 @@ if not ROOT:
         # series_full_inventory, home_path_is_canonical) are off by default so the older onboarding suites keep exercising their own subject;
         # tests/test_onboard_harden.py switches them on
         "ONBOARD_HARDEN": "0",
+        # the yaml ``availability_gate:`` (library/gate.py) would probe episode / film pages in every scan of a real site config
+        # (yabancidizi has one): off by default; the gate tests patch ``config.AVAILABILITY_GATE`` on
+        "AVAILABILITY_GATE": "0",
     })
 
 _cfg = sys.modules.get("app.config")

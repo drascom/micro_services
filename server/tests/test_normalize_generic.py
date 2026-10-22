@@ -85,7 +85,7 @@ SINEMALAR_RAWS = [
 
 def yabancidizi_raws():
     cfg = scfg.load_site("yabancidizi")
-    real = parse.parse_list(HOME_HTML, cfg.row_selector, cfg.list_fields)  # 31 real homepage cards
+    real = parse.parse_list(HOME_HTML, cfg.row_selector, cfg.list_fields)  # 28 real latest-episode cards
     base = {"title": "Kart", "poster_url": "/uploads/series/p.jpg", "backdrop_url": "/uploads/series/cover/p.jpg", "genres": ["Dram, Gerilim", "Suç"],
             "synopsis": "Özet", "year": 2024, "rating": 7.5, "runtime": 50, "country": "ABD", "followers": 3, "cast": ["X Y"],
             "season": None, "episode": None}
@@ -496,13 +496,13 @@ class Preview(unittest.TestCase):
     def test_real_homepage_through_the_yabancidizi_rules(self):
         out = preview(YABANCIDIZI_RULES, parse.parse_list(HOME_HTML, scfg.load_site("yabancidizi").row_selector,
                                                           scfg.load_site("yabancidizi").list_fields), base_url="")
-        self.assertEqual(out["total"], 31)
-        self.assertEqual(out["ok"], 31)
-        # 31 cards are 26 titles (see test_yabancidizi), but the repeats are OTHER episodes of the same show: not duplicates
+        # v10 main list = the 28 latest-episode cards; repeats are OTHER episodes of the same show: not duplicates
+        self.assertEqual(out["total"], 28)
+        self.assertEqual(out["ok"], 28)
         self.assertEqual(out["duplicate_keys"], [])
         self.assertEqual(out["rejected"], {})
-        # playability counters: 25 series cards, 15 of them announce an episode (the rest need the series inventory)
-        self.assertEqual((out["episode_items"], out["with_video_sources"], out["series_without_sources"]), (25, 15, 10))
+        # playability counters: every card is a series episode that announces its episode
+        self.assertEqual((out["episode_items"], out["with_video_sources"], out["series_without_sources"]), (28, 28, 0))
 
 
 class ImageHosts(unittest.TestCase):

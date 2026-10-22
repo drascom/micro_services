@@ -6,7 +6,7 @@
    - karar: hydrating true -> bekle; false/undefined -> `availability.state=='unavailable'` + `reason=='no_video_source'` (izleme kaynagi YOK, hata degil)
      'no_source'; aksi halde film: 'ready'; dizi: seasons.length > 0 ? 'ready' : 'unavailable' (bolumler alinamadi = gercek getirme hatasi)
    Sonuc olayi: {id, title, result: 'ready'|'no_source'|'unavailable'|'timeout'|'error', data}. Kullanici baska ekrana gecse de surer;
-   varsayilan abone belirgin bildirim (DZ.toast.showRich) gosterir (odagi calmaz). Detay ekrani ayrica on() ile dinleyip acik detayi yeniler.
+   varsayilan abone yalniz no_source/unavailable icin bildirim (DZ.toast.showRich) gosterir (odagi calmaz; ready'de bildirim YOK). Detay ekrani ayrica on() ile dinleyip acik detayi yeniler.
    DZ.hydrate.create(opts) test icin: opts {api, profileId, timers, now, interval, maxMs, maxPolls, maxConcurrent}. */
 (function (g) {
   'use strict';
@@ -40,11 +40,10 @@
     return noSource(d) ? 'no_source' : 'unavailable';
   }
 
-  /* olay -> zengin bildirim {title, message, kind} (yok: null). Zaman asimi / hata icin bildirim yok.
-     ready: etiket zaten "Izlemeye hazir" oldugundan mesaj bos (tekrar yok); unavailable: sari-soluk 'warn'. */
+  /* olay -> zengin bildirim {title, message, kind} (yok: null). ready / zaman asimi / hata icin bildirim yok
+     (ready: detay ekrani spinner'i kaldirip yeniden cizer, ayrica "hazir" bildirimi yok); no_source/unavailable: 'warn'. */
   function noticeFor(evt) {
     if (!evt) return null;
-    if (evt.result === 'ready') return { title: evt.title || 'İçerik', message: '', kind: 'success' };
     if (evt.result === 'no_source') return { title: evt.title || 'İçerik', message: noSourceText(evt.data), kind: 'warn' };
     if (evt.result === 'unavailable') return { title: evt.title || 'İçerik', message: TEXT_UNAVAILABLE, kind: 'warn' };
     return null;
@@ -53,7 +52,6 @@
   /* olay -> duz toast metni (yok: null); yalnizca DZ.toast.showRich yoksa yedek. */
   function messageFor(evt) {
     if (!evt) return null;
-    if (evt.result === 'ready') return '«' + (evt.title || 'İçerik') + '» izlemeye hazır';
     if (evt.result === 'no_source') return noSourceText(evt.data);
     if (evt.result === 'unavailable') return TEXT_UNAVAILABLE;
     return null;

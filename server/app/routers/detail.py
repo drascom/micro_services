@@ -30,20 +30,55 @@ def _hydrate(item_id: str, series: bool) -> None:
     # Order matters: the id leaves `_inflight` (-> `hydrating=false`) only AFTER the catalogue snapshot was refreshed
     # (`cache.refresh()` publishes before it returns), so a client that sees `hydrating=false` and re-reads the detail
     # gets the new data. `finally` also clears it on any failure (the client then sees false + no data = "not fetched").
+    outcome: dict = {}
     try:
         from ..library import hydrate_item_metadata, hydrate_series_item, seasons
-        ok = hydrate_series_item(item_id) if series else hydrate_item_metadata(item_id)
+        ok = hydrate_series_item(item_id, outcome) if series else hydrate_item_metadata(item_id)
         # a title that never went through TMDB (added by a live search): poster/backdrop/year/overview (+ seasons for a series)
         ok = bool(enrich.enrich_items([item_id]).get("written")) or ok
         if series:  # the season list just arrived: fetch its TMDB posters/episode data too (auto settings)
             ok = bool(seasons.auto_enrich([item_id])["seasons"]) or ok
         if ok:
             cache.refresh()
+        if series:
+            _report_empty_series(item_id, outcome)
     except Exception as exc:  # never let a background task crash noisily
         log.warning("detail hydrate failed for %s: %s", item_id, exc)
+        if series:
+            _report_empty_series(item_id, {**outcome, "status": "error", "reason": f"{type(exc).__name__}: {exc}"})
     finally:
         with _lock:
             _inflight.discard(item_id)
+
+
+# (item id, reason) -> last time an empty hydrate was reported: a series re-opened while nothing changed is reported once per window
+_reported: dict[tuple[str, str], float] = {}
+REPORT_WINDOW = 1800.0
+
+
+def _report_empty_series(item_id: str, outcome: dict) -> None:
+    """A series hydrate after which the title still has no episodes: why (``outcome`` of ``hydrate_series_item``) goes to the log
+    and the admin Olay defteri (``kind=hydrate``) instead of the client silently getting an empty season list."""
+    try:
+        data = rows.detail(item_id, None)
+        if not data or data.get("seasons"):
+            return
+        reason = str(outcome.get("reason") or outcome.get("status") or "envanter okunmadı")[:300]
+        now = time.time()
+        with _lock:
+            last = _reported.get((item_id, reason))
+            if last is not None and now - last < REPORT_WINDOW:
+                return
+            _reported[(item_id, reason)] = now
+        log.warning("detail hydrate %s: no episodes (%s/%s %s): %s", item_id, outcome.get("source"), outcome.get("source_key"),
+                    outcome.get("status"), reason)
+        from ..scraper import state as sstate
+        sstate.record_ops_hydrate({"site": outcome.get("source") or "library", "canonical_id": item_id, "title": data.get("title"),
+                                   "source_key": outcome.get("source_key"), "url": outcome.get("url"),
+                                   "status": outcome.get("status") or "none", "reason": reason,
+                                   "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))})
+    except Exception as exc:  # pragma: no cover - diagnostics must never break the hydrate
+        log.debug("detail hydrate report %s failed: %s", item_id, exc)
 
 
 def schedule_hydrate(item_id: str, series: bool) -> bool:

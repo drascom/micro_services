@@ -55,6 +55,7 @@ change, but it records the changed keys (`changed_keys` of the draft report) and
 | `resolvers` | how the player is found on a page (`resolvers:`) and which providers the site may use | `resolvers`, `providers` |
 | `provider` | a video HOST that changed or is new: its recipe lives in the provider LIBRARY (`provider_recipes`); the site yaml only names it in `providers` | `providers` |
 | `fetch` | how a page is fetched: plain http or the browser | `fetch_mode` |
+| `archive` | the whole-catalogue pass (`archive:`): the series index / film list pages, batch sizes, on/off | `archive` |
 | `search` | the live search of the site (`search:`) | `search` |
 | `catalogue` | the main list page, how many titles a scan takes, `video` or only a trailer | `list_url`, `item_limit`, `playback` |
 | `images` | the hosts the artwork may come from | `image_hosts` |

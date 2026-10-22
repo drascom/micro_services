@@ -60,6 +60,7 @@ change only its keys. Any other touched key is rejected as `scope: touched <keys
 | `resolvers` | the player is not found on the page: no candidate (stage `discover`) | `resolvers`, `providers` |
 | `provider` | candidates found but no stream: the video HOST changed (host / type / quality; stage `player_page.*`, a provider stage) = a LIBRARY RECIPE; the site yaml may only change its `providers` names | `providers` |
 | `fetch` | the page itself cannot be fetched (stage `page` / `fetch`) | `fetch_mode` |
+| `archive` | an archive page (the series index / a film list page of `archive:`) does not parse (stage `archive.*`, evidence `archive`) | `archive` |
 
 `version`, `updated_at` and `site_id` are set by the server and never count as a change. The fields inside `list` / `detail` keep the no-field-dropping rule.
 <!-- END GENERATED repair-layers -->

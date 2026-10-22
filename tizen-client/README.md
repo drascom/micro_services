@@ -36,6 +36,8 @@ tizen-client/
 Varsayilan `http://192.168.0.61:8090`. `localStorage['dz.baseUrl']` icinde tutulur ve
 uygulama icindeki **Ayarlar** ekranindan degistirilebilir (TV klavyesi/IME ile).
 Ayarlar ekranindaki "Baglantiyi test et" `/api/health` ucunu cagirir.
+Sira: (1) Ayarlar (`dz.baseUrl`), (2) `config.js` `window.DZ_CONFIG.baseUrl`, (3) sayfa http(s) ile aciliyorsa ayni host + `DZ_CONFIG.port` (8090),
+(4) Tizen/wgt (file://) varsayilan adres. `config.js` elle duzenlenir ve wgt paketine girer; Ayarlar'da adresi silmek otomatik adrese dondurur.
 API sozlesmesi: `../API.md`.
 
 ## Kademeli yukleme

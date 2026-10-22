@@ -230,7 +230,7 @@ def activity_list() -> list[dict[str, Any]]:
     return sorted(items, key=lambda i: i["started_at"])
 
 
-_OPS_KEYS = ("runs", "heals", "tmdb", "onboard")
+_OPS_KEYS = ("runs", "heals", "tmdb", "onboard", "maintenance", "hydrate")
 
 
 def _ops_read() -> dict[str, list]:
@@ -288,7 +288,18 @@ def record_ops_onboard(entry: dict[str, Any]) -> dict[str, Any]:
     return _ops_append("onboard", entry)
 
 
+def record_ops_maintenance(entry: dict[str, Any]) -> dict[str, Any]:
+    """One admin maintenance action (event ``kind=reset``: library reset, ``library/libreset.py``)."""
+    return _ops_append("maintenance", entry)
+
+
+def record_ops_hydrate(entry: dict[str, Any]) -> dict[str, Any]:
+    """An on-demand detail hydrate that left a series without episodes (event ``kind=hydrate``): ``{site, canonical_id, title,
+    source_key, url, status, reason, at}`` (``routers/detail.py``)."""
+    return _ops_append("hydrate", entry)
+
+
 def list_ops(key: str, site: Optional[str] = None, limit: int = 50) -> list[dict[str, Any]]:
-    """Newest first. key: 'runs' | 'heals' | 'tmdb' | 'onboard'."""
+    """Newest first. key: 'runs' | 'heals' | 'tmdb' | 'onboard' | 'maintenance' | 'hydrate'."""
     rows = [r for r in _ops_read()[key] if not site or r.get("site") == site]
     return rows[::-1][:limit]

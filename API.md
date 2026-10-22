@@ -44,7 +44,7 @@ bozulmasını yakalar).
 ```
 
 ### Bölüm kartı (`card_kind: "episode"`)
-"İzlemeye Devam Et" (dizi için) ve `new_episodes` satırı (artık ana ekranda yok, `/api/row/new_episodes` ile çekilir) bölüm kartıdır: Item'ın tüm alanları (`id` = yapım
+"İzlemeye Devam Et" (dizi için) ve `new_episodes` ("Yeni Bölümler") satırı bölüm kartıdır: Item'ın tüm alanları (`id` = yapım
 kimliği, `type: "series"`) + şunlar. Bölüm kartı ayrı bir sayfa açmaz: dizinin normal sayfası (`id`) açılır,
 `episode_id` ilgili sezon/bölümü seçer.
 ```json
@@ -107,29 +107,32 @@ Bölüm kimliği `<yapım kimliği>:s<sezon>:e<bölüm>` biçimindedir; `/img/{k
 için aynen korunur.
 
 **`layout=tv-v1`** (güncel TV istemcisi ve Android). Ana ekran yukarıdan aşağı: slider (hero carousel) ->
-"İzlemeye Devam Et" -> "Haftanın Trendleri · Diziler" -> "Tüm Diziler" -> "Haftanın Trendleri · Filmler" ->
-"Dikkate Değer Filmler" -> "Tüm Filmler" -> "Listem" (yalnız doluysa):
+"İzlemeye Devam Et" -> "Yeni Bölümler" -> "Yeni Filmler" -> "Trend Diziler" -> "Trend Filmler" ->
+"İzlenmesi Gereken Dizi ve Filmler" -> admin kategorileri (`cat_<slug>`) -> "Tüm Diziler" -> "Tüm Filmler" (dizi/film satırları
+dönüşümlü; varsayılan sıra, admin Kategoriler'den değişir). "Listem" ana ekranda SATIR DEĞİLDİR (istemcide ayrı sayfa;
+`/api/row/mylist` ve `/api/mylist` aynen çalışır):
 ```json
 {
   "hero": { "...Item...", "logo_text": "Kayıp Sinyal", "tagline": "Haftanın Dizisi", "in_mylist": false },
   "heroes": [ { "...hero..." } ],           // slider: en çok 6 kart (3 dizi + 3 film, dizi/film dönüşümlü); hero == heroes[0]
   "rows": [
     {"id":"continue","title":"İzlemeye Devam Et","loaded":true,"items":[...],"total":5,"offset":0},
-    {"id":"trending_series","title":"Haftanın Trendleri · Diziler","loaded":true,"items":[...],"total":20,"offset":0},
+    {"id":"new_episodes","title":"Yeni Bölümler","loaded":true,"items":[...],"total":15,"offset":0},
+    {"id":"latest_movies","title":"Yeni Filmler","loaded":true,"items":[...],"total":24,"offset":0},
+    {"id":"trending_series","title":"Trend Diziler","loaded":true,"items":[...],"total":20,"offset":0},
+    {"id":"trending_movies","title":"Trend Filmler","loaded":true,"items":[...],"total":20,"offset":0},
+    {"id":"must_watch","title":"İzlenmesi Gereken Dizi ve Filmler","loaded":true,"items":[...],"total":45,"offset":0},
     {"id":"series","title":"Tüm Diziler","loaded":true,"items":[...],"total":84,"offset":0},
-    {"id":"trending_movies","title":"Haftanın Trendleri · Filmler","loaded":true,"items":[...],"total":20,"offset":0},
-    {"id":"noteworthy_movies","title":"Dikkate Değer Filmler","loaded":true,"items":[...],"total":37,"offset":0},
-    {"id":"movies","title":"Tüm Filmler","loaded":true,"items":[...],"total":17,"offset":0},
-    {"id":"mylist","title":"Listem","loaded":true,"items":[...],"total":3,"offset":0}
+    {"id":"movies","title":"Tüm Filmler","loaded":true,"items":[...],"total":17,"offset":0}
   ],
   "layout": "tv-v1", "catalog_total": 101, "source": ""
 }
 ```
-- Bu yerleşimde tüm satırlar `loaded:true` ve boş değil (boş satır hiç gönderilmez; `mylist` yalnız Listem doluysa, hep sonda); her
+- Bu yerleşimde tüm satırlar `loaded:true` ve boş değil (boş satır hiç gönderilmez; `continue` yalnız doluysa); her
   satırda en çok 20 item, `total` tam uzunluk. Katalog boşsa `hero:null, heroes:[], rows:[]`, `catalog_total:0`. Satır sırası ve
   listesi sunucuda tek yerde belirlenir (`homelayout.layout(profil)`, `HOME_LAYOUT` env; ileride izleme alışkanlığına göre tür
   satırları `genre_<slug>` buraya eklenecek): istemci satırları kimliğe bakmadan GENEL çizer, bilinmeyen/yeni kimlikler de çizilir;
-  yalnız `continue` (uzun basış menüsü, bölüm odağı), `series`/`movies` (sondaki "Tümü" kartı) ve `mylist` özeldir.
+  yalnız `continue` (uzun basış menüsü, bölüm odağı), `series`/`movies` (sondaki "Tümü" kartı) ve (gelirse) `mylist` özeldir.
 - **`HOME_ONLY_READY`** (varsayılan açık): ana ekran satırları ve slider YALNIZ oynatılabilir (`availability.state == "ready"`)
   başlıkları gösterir; kaynağı olmayan/şüpheli/ölü başlıklar ana ekranda yoktur ama arama, `/api/catalog` ve `/api/detail`'de
   durur. İstisna: `continue` ve `mylist` profilin kendi listeleridir, olduğu gibi gelir. `HOME_ONLY_READY=0` ile kapatılır.
@@ -140,10 +143,16 @@ için aynen korunur.
 - **Sınıflandırma:** tüm sitelerin birleşik kanonik başlıkları `type`'ına göre havuzlara ayrılır. `series` / `movies` ("Tüm
   Diziler/Filmler") = o türün TÜM başlıkları, en son eklenen (`added_at`) önce, eşitlikte `id` (site `latest_*` listeleri artık satır
   KISITLAMAZ). `trending_series` / `trending_movies` = o türün sitelerdeki `trending_<site>` listeleri (siteler arası dönüşümlü,
-  tekrarsız) + 20'den kısaysa `trend_score` ile en yüksekten doldurma (skor 0 olan eklenmez; klasikler doldurmaya girmez).
-  `noteworthy_movies` = sitelerin `noteworthy_movies` listelerindeki filmler (liste sırası, dönüşümlü) + KLASİKLER (oynatılabilir
+  tekrarsız; her sitede önce `spotlight_<site>` ("Öne Çıkan") sonra `trending_<site>` listesi) + 20'den kısaysa `trend_score` ile
+  en yüksekten doldurma (skor 0 olan eklenmez; klasikler doldurmaya girmez). `latest_movies` ("Yeni Filmler") = sitelerin
+  `latest_movies_<site>` listelerindeki filmler (liste sırası, siteler arası dönüşümlü, oynatılabilir). `must_watch` ("İzlenmesi
+  Gereken Dizi ve Filmler") = sitelerin `noteworthy_series` + `noteworthy_movies` listeleri (dizi ve film listeleri dönüşümlü,
+  tekrarsız) + `noteworthy_movies` ile aynı KLASİK dolgusu. Eski satırlar `noteworthy_movies`, `noteworthy_series`, `spotlight`
+  ana ekranda yok, `/api/row/{id}` ile aynen çalışır: `noteworthy_movies` = sitelerin `noteworthy_movies` listelerindeki filmler (liste sırası, dönüşümlü) + KLASİKLER (oynatılabilir
   film, `rating >= CLASSIC_MIN_RATING` (7.5) ve yayın yılı `<= bu yıl - CLASSIC_MIN_AGE_YEARS` (15); yılı olmayan klasik sayılmaz),
-  klasikler `rating` azalan sonra `id`, tekrarsız. Rol listeleri (`latest_*`, `featured`, `noteworthy_movies`, `trending`) ayrıca
+  klasikler `rating` azalan sonra `id`, tekrarsız. `noteworthy_series` ("Dikkate Değer Diziler") = sitelerin `noteworthy_series`
+  listelerindeki diziler, `spotlight` ("Öne Çıkan Dizi ve Filmler") = sitelerin `spotlight` listeleri (dizi+film karışık); ikisi de
+  liste sırası, siteler arası dönüşümlü, tekrarsız. Rol listeleri (`latest_*`, `featured`, `noteworthy_*`, `spotlight`, `trending`) ayrıca
   `trend_score` sinyalidir.
 - **`trend_score`** (deterministik, `homelayout.trend_score`; eksik alan 0 katkı, hata vermez): sitenin trend listesinde `50 - konum`
   (en az 5, en iyi site) + diğer rol listelerinde üyelik (liste başına 20, toplam en çok 40) + `added_at` 14 gün içinde 15 / 45 gün
@@ -151,9 +160,11 @@ için aynen korunur.
   `(rating-6)*5` (en çok 20) + takipçi (log ölçekli, en çok 10). Klasik olmak puan VERMEZ.
 - `continue`: profilin son izlemesine göre; dizide BÖLÜM kartı (`card_kind:"episode"`), film başlık kartı. `progress`
   eskisi gibi (`episode_id` dahil) kalır.
-- Ana ekranda artık GÖNDERİLMEYEN eski satırlar (`trending`, `new_series`, `new_episodes`) yine de `/api/row/{id}` ile aynen
-  çekilebilir: `new_series` (kaynakların `latest_series_<site>` dizi kartları, başlık kartı),
-  `new_episodes` (her dizinin en yeni YAYINLANMIŞ ve `ready` bölümü, BÖLÜM kartı; eski `latest_episodes` takma ad), `trending`
+- `new_episodes` ("Yeni Bölümler", ana ekranda `continue`'dan sonra): sitelerin `latest_episodes_<site>` listelerindeki her dizi için
+  TEK kart = dizinin en yeni YAYINLANMIŞ ve `ready` bölümü (en büyük sezon/bölüm), BÖLÜM kartı; `episode_label` "S02 B06 · <bölüm adı>",
+  ad yoksa "S02 B06 · Yeni bölüm". Envanteri henüz okunmamış (bölümsüz) oynatılabilir dizi başlık kartı olur. Eski `latest_episodes` takma ad.
+- Ana ekranda artık GÖNDERİLMEYEN eski satırlar (`trending`, `new_series`) yine de `/api/row/{id}` ile aynen
+  çekilebilir: `new_series` (kaynakların `latest_series_<site>` dizi kartları, başlık kartı), `trending`
   (tüm türler). `new_movies` = `movies` takma adıdır.
 - Her satır kimliği `/api/row/{id}` ile de çekilebilir (ana ekranla aynı havuz ve sıra, sayfalanır).
 
@@ -177,8 +188,8 @@ için aynen korunur.
 
 ### `GET /api/row/{row_id}?profile={pid}&offset=0&limit=20`   ← **KADEME 2**
 `{"id":"genre_drama","title":"Dram","items":[...],"offset":0,"limit":20,"total":34}`
-Satır kimlikleri: ana ekran (`tv-v1`): `continue`, `trending_series`, `series`, `trending_movies`, `noteworthy_movies`, `movies`, `mylist`;
-ana ekranda olmayan ama çalışan eskiler: `new_series` (`latest_series` takma adı), `new_episodes` (`latest_episodes` takma adı),
+Satır kimlikleri: ana ekran (`tv-v1`): `continue`, `new_episodes`, `latest_movies`, `trending_series`, `trending_movies`, `must_watch`, `cat_<slug>`, `series`, `movies`;
+ana ekranda olmayan ama çalışan eskiler: `mylist`, `spotlight`, `noteworthy_series`, `noteworthy_movies`, `new_series` (`latest_series` takma adı), `latest_episodes` (= `new_episodes`),
 `new_movies` (= `movies`), `trending`, `new`, `top10`, `yakinda`, `genre_<slug>`. Bilinmeyen kimlik → 404. `limit` 1..100.
 
 ### `GET /api/detail/{item_id}?profile={pid}`   ← **KADEME 3**
@@ -448,6 +459,13 @@ son 200 kayıt, `?site=`, `?limit=`). `/admin` tek sayfalık operasyon paneli; a
 `server/README.md` (Admin bölümü). `run_id`, `status` (`success`, `partial`, `error`),
 `collections`, `added`, `updated`, `unchanged`, `duplicates`, `rejected` alanları ingest
 sonucunda (`last_ingest`) kalır.
+
+Engelli sayfalar (admin, yalnız EKLEME): anahtar = (site, sayfa URL'si), yapım/başlık DEĞİL (aynı yapım başka siteden gelebilir).
+`GET /api/ops/sites/{site}/blocked?limit=200` -> `{site, recheck_days, pages:[{url, kind: series|movie|episode, source_key,
+status: blocked|retry, via: rule|gate|gone|empty, reason, checked_at}]}`; `DELETE /api/ops/sites/{site}/blocked?url=<sayfa>` ->
+`{ok, removed}` (yoksa 404 `not_found`; dizi/film satırıyla aynı kaynağın bölüm satırları da silinir, sonraki tarama sayfayı yeniden
+alır). `GET /api/ops/events` yeni tür `blocked_page` (dizi/film sayfaları): `{id, at, site, url, page_kind, source_key, via, reason,
+until}`. Tarama raporunda koleksiyon satırına EK `blocked` (engelli olduğu için atlanan bağlantı sayısı; `count` bunları saymaz).
 
 ### Tek katalog / sağlayıcı tabanlı oynatma
 

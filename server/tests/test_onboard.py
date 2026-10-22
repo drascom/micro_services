@@ -542,7 +542,7 @@ class RunTest(Harness):
         self.assertEqual(store.list_drafts(), [])
         with patch.object(config, "ONBOARD_ENABLED", False), self.assertRaises(onboard.OnboardError) as ctx:
             onboard.start(URL)
-        self.assertEqual((ctx.exception.status, ctx.exception.code), (403, "disabled"))
+        self.assertEqual((ctx.exception.status, ctx.exception.code), (403, "onboard_disabled"))
         self.assertEqual(sstate.activity_list(), [])
 
     def test_event_list_is_capped_at_500(self):
@@ -1310,7 +1310,10 @@ class RouterTest(Harness):
         self.assertEqual((got.status_code, got.json()["detail"]["code"]), (409, "bad_state"))
         self.assertEqual(self.c.delete(f"/api/ops/onboard/{draft['id']}").status_code, 409)
         with patch.object(config, "ONBOARD_ENABLED", False):
-            self.assertEqual(self.c.post("/api/ops/onboard", json={"url": URL}).status_code, 403)
+            got = self.c.post("/api/ops/onboard", json={"url": URL})
+            self.assertEqual((got.status_code, got.json()["detail"]["code"]), (403, "onboard_disabled"))
+            got = self.c.post(f"/api/ops/onboard/{draft['id']}/save", json={"site_id": "demo"})
+            self.assertEqual((got.status_code, got.json()["detail"]["code"]), (403, "onboard_disabled"))
 
     def test_second_start_is_a_409_and_cancel_works_over_http(self):
         proc = FakeProc([], hang=True)

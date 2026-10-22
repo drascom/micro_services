@@ -46,13 +46,13 @@ const done = extra => Object.assign({ id: 'x', type: 'series', hydrating: false,
   assert.equal(G.decide({ type: 'series', seasons: [{}] }), 'ready', 'old server (no hydrating) series with seasons = ready');
   assert.equal(G.decide({ type: 'series' }), 'unavailable');
   assert.equal(G.decide(null), 'error');
-  assert.deepEqual(G.noticeFor({ result: 'ready', title: 'Dizi' }), { title: 'Dizi', message: '', kind: 'success' }, 'plain title, label already says "İzlemeye hazır"');
-  assert.deepEqual(G.noticeFor({ result: 'ready' }), { title: 'İçerik', message: '', kind: 'success' });
+  assert.equal(G.noticeFor({ result: 'ready', title: 'Dizi' }), null, 'ready: no "details loaded" popup');
+  assert.equal(G.noticeFor({ result: 'ready' }), null);
   assert.deepEqual(G.noticeFor({ result: 'unavailable', title: 'Dizi' }), { title: 'Dizi', message: 'Bölümler şu an alınamadı, daha sonra tekrar deneyin', kind: 'warn' });
   assert.equal(G.noticeFor({ result: 'timeout', title: 'Dizi' }), null);
   assert.equal(G.noticeFor({ result: 'error', title: 'Dizi' }), null);
   assert.equal(G.noticeFor(null), null);
-  assert.equal(G.messageFor({ result: 'ready', title: 'Dizi' }), '«Dizi» izlemeye hazır');
+  assert.equal(G.messageFor({ result: 'ready', title: 'Dizi' }), null);
   assert.equal(G.messageFor({ result: 'unavailable', title: 'Dizi' }), 'Bölümler şu an alınamadı, daha sonra tekrar deneyin');
   assert.equal(G.messageFor({ result: 'timeout', title: 'Dizi' }), null);
   assert.equal(G.messageFor({ result: 'error', title: 'Dizi' }), null);
@@ -199,13 +199,12 @@ const done = extra => Object.assign({ id: 'x', type: 'series', hydrating: false,
     H.watch('r', 'Dizi Bir'); H.watch('u', 'Dizi Iki'); H.watch('e', 'Hata');
     t.advance(3000); await tick();
     assert.deepEqual(rich, [
-      { title: 'Dizi Bir', message: '', kind: 'success' },
       { title: 'Dizi Iki', message: 'Bölümler şu an alınamadı, daha sonra tekrar deneyin', kind: 'warn' }
     ]);
     assert.deepEqual(plain, [], 'the small toast is not used when showRich exists');
     H.watch('t', 'Sure');
     for (let i = 0; i < 41; i++) { t.advance(3000); await tick(20); }
-    assert.equal(rich.length, 2, 'timeout: no notice');
+    assert.equal(rich.length, 1, 'timeout: no notice');
     assert.equal(H.isWatching('t'), false);
     assert(DZ.hydrate === H);
   }
@@ -217,7 +216,7 @@ const done = extra => Object.assign({ id: 'x', type: 'series', hydrating: false,
     const { t, H } = load({ api: f.api, toast: { show: m => plain.push(m) } });
     H.watch('r', 'Dizi Bir'); H.watch('u', 'Dizi Iki');
     t.advance(3000); await tick();
-    assert.deepEqual(plain, ['«Dizi Bir» izlemeye hazır', 'Bölümler şu an alınamadı, daha sonra tekrar deneyin']);
+    assert.deepEqual(plain, ['Bölümler şu an alınamadı, daha sonra tekrar deneyin']);
   }
 
   // ---- api.js: detail(id, pid, {poll:true}) -> ?poll=1 with a short timeout; the old 2-argument call is unchanged

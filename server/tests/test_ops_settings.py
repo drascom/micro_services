@@ -67,7 +67,7 @@ class SettingsTest(Base):
         self.assertEqual(set(s["sites"]), {"alpha", "beta"})
         for v in s["sites"].values():
             self.assertEqual((v["enabled"], v["interval_hours"], v["source"]), (False, 6.0, "env"))
-        self.assertFalse(s["heal_autoapply"])
+        self.assertTrue(s["heal_autoapply"])   # default on (SCRAPER_HEAL_AUTOAPPLY unset)
         self.assertEqual(settings.enabled_sites(), [])
         self.assertFalse(os.path.exists(settings.SETTINGS_PATH))  # reading never writes
 
@@ -116,7 +116,7 @@ class SettingsTest(Base):
             with open(settings.SETTINGS_PATH, "w") as fh:
                 fh.write(junk)
             self.assertEqual(settings.site_settings("alpha"), {"enabled": True, "interval_hours": 6.0, "source": "env"}, junk)
-            self.assertFalse(settings.heal_autoapply())
+            self.assertTrue(settings.heal_autoapply())   # env default (unset = on)
         # wrong types / out-of-range entries are ignored field by field
         with open(settings.SETTINGS_PATH, "w") as fh:
             json.dump({"sites": {"alpha": {"enabled": "yes", "interval_hours": 9999}, "beta": {"interval_hours": 2},
@@ -124,7 +124,7 @@ class SettingsTest(Base):
         self.assertEqual(settings.site_settings("alpha")["enabled"], True)      # env default
         self.assertEqual(settings.site_settings("alpha")["interval_hours"], 6.0)
         self.assertEqual(settings.site_settings("beta")["interval_hours"], 2.0)
-        self.assertFalse(settings.heal_autoapply())
+        self.assertTrue(settings.heal_autoapply())   # invalid saved value -> env default (on)
         # and a write over a corrupt file repairs it
         with open(settings.SETTINGS_PATH, "w") as fh:
             fh.write("{broken")
@@ -157,6 +157,8 @@ class SettingsTest(Base):
         settings.update({"sites": {"alpha": {"interval_hours": settings.MIN_INTERVAL_HOURS}}})
 
     def test_heal_autoapply_is_dynamic(self):
+        self.assertTrue(heal._autoapply())              # unset env = on
+        os.environ["SCRAPER_HEAL_AUTOAPPLY"] = "0"
         self.assertFalse(heal._autoapply())
         os.environ["SCRAPER_HEAL_AUTOAPPLY"] = "1"
         self.assertTrue(heal._autoapply())              # env default, no restart
@@ -325,7 +327,7 @@ class ApiTest(Base):
         self.assertTrue(sites["beta"]["heal_cooldown_until"])
         self.assertTrue(d["any_enabled"])
         self.assertEqual(d["limits"], {"min_interval_hours": 0.25, "max_interval_hours": 168.0})
-        self.assertEqual(d["heal"], {"autoapply": False, "enabled": True, "provider": "pi",
+        self.assertEqual(d["heal"], {"autoapply": True, "enabled": True, "provider": "pi",
                                      "model": "openai-codex/gpt-x", "cooldown_seconds": 900})
 
     def test_any_enabled_false_and_default_pi_model(self):

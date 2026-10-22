@@ -7,6 +7,8 @@
 ``POST   /api/ops/categories {title, slug?}``  -> the new category (409 ``slug_exists``)
 ``PUT    /api/ops/categories/{slug} {title?, enabled?, min_items?}``
 ``PUT    /api/ops/categories-order {order:[slug,...]}`` (skeleton + categories; unknown slug 400 ``unknown_slug``)
+``POST   /api/ops/categories-order/reset`` -> ``{categories:[...]}``: skeleton rows back to the default order, each
+    category stays behind the skeleton row it follows (one with no such row: after ``must_watch``)
 ``DELETE /api/ops/categories/{slug}``          -> only the row; the titles' membership stays (same slug later = they return)
 
 The home screen reads the table on every request (nothing is cached), so a change shows on the next boot.
@@ -67,6 +69,12 @@ def reorder_categories(data: Any = Body(...)) -> dict[str, Any]:
         return {"categories": categories.reorder(order)}
     except categories.CategoryError as e:
         raise _fail(e) from None
+
+
+@router.post("/api/ops/categories-order/reset")
+def reset_categories_order() -> dict[str, Any]:
+    _seed()
+    return {"categories": categories.reset_order(homelayout.skeleton_order())}
 
 
 @router.put("/api/ops/categories/{slug}")

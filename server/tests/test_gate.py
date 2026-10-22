@@ -36,6 +36,16 @@ NO_PLAYER = "<html><body><p>video yok</p></body></html>"
 REAL_RESOLVE = videos.resolve_source   # tsg.Base replaces it by a tripwire (an inventory never resolves a video host)
 
 
+def setUpModule():   # tests/_sandbox.py turns the AVAILABILITY_GATE kill switch off for the other suites
+    global _GATE_ON
+    _GATE_ON = patch.object(config, "AVAILABILITY_GATE", True)
+    _GATE_ON.start()
+
+
+def tearDownModule():
+    _GATE_ON.stop()
+
+
 class GateBase(tsg.Base):
     """The generic site ``trgen`` with a ``blocked:`` rule (and an optional gate); ``self.ep`` serves the playback pages."""
 

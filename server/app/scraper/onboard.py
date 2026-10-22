@@ -716,7 +716,7 @@ def join(draft_id: str, timeout: Optional[float] = None) -> bool:
 
 def _require_enabled() -> None:
     if not config.ONBOARD_ENABLED:
-        raise OnboardError(403, "disabled", "site onboarding is switched off (ONBOARD_ENABLED=0)")
+        raise OnboardError(403, "onboard_disabled", "site onboarding is switched off (ONBOARD_ENABLED=0)")
 
 
 def _slot_holder() -> Optional[dict]:
@@ -1192,6 +1192,7 @@ def save(draft_id: str, site_id: str, display_name: Optional[str] = None, enable
     "update"`` is a NEW VERSION of a library recipe (``<name>.vN.yaml`` archive like a site's): ``recipes.update_problems`` accepts only
     the host widening ``match_providers`` proposes; on a failure it goes back to its previous version (``config.restore_recipe``)."""
     from ..routers import onboard_sandbox as sandbox
+    _require_enabled()
     site_id = (site_id or "").strip()
     if not SITE_ID_RE.match(site_id):
         raise OnboardError(422, "invalid_site_id", "site_id must match ^[a-z][a-z0-9_]{1,31}$")

@@ -348,12 +348,12 @@ class MatchingTests(unittest.TestCase):
 
 
 class PolicyTests(unittest.TestCase):
-    def test_series_disabled_by_default_and_flag_enables(self):
+    def test_series_enabled_by_default_and_flag_disables(self):
         with patch.object(tmdb, 'enabled', return_value=True):
             self.assertTrue(enrich.should_run('movie', {}))
-            self.assertFalse(enrich.should_run('series', {}))
-            with patch.object(config, 'TMDB_ENRICH_TYPES', {'movie', 'series'}):
-                self.assertTrue(enrich.should_run('series', {}))
+            self.assertTrue(enrich.should_run('series', {}))
+            with patch.object(config, 'TMDB_ENRICH_TYPES', {'movie'}):
+                self.assertFalse(enrich.should_run('series', {}))
         with patch.object(tmdb, 'enabled', return_value=False):
             self.assertFalse(enrich.should_run('movie', {}))
 
@@ -396,7 +396,7 @@ class IngestEnrichTests(unittest.TestCase):
 
     def run_ingest(self, items, get, enabled=True, **patches):
         result = RunResult('yabancidizi', items=items, drift={'drift': False})
-        with patch.object(ingest_module, 'run_site', return_value=result), \
+        with integration.pin_main_collection(), patch.object(ingest_module, 'run_site', return_value=result), \
                 patch.object(tmdb, 'enabled', return_value=enabled), \
                 patch.object(tmdb, '_get', get), \
                 patch.object(ingest_module, '_enrich_series_catalogs'), \
@@ -478,7 +478,8 @@ class IngestEnrichTests(unittest.TestCase):
 
     def test_series_skipped_while_flag_off(self):
         calls = []
-        result = self.run_ingest([{**integration.film(), 'detail_url': 'dizi/mayday'}], fake_get(calls=calls))
+        with patch.object(config, 'TMDB_ENRICH_TYPES', {'movie'}):
+            result = self.run_ingest([{**integration.film(), 'detail_url': 'dizi/mayday'}], fake_get(calls=calls))
         item_type = db.query_one('SELECT type FROM library_items')['type']
         self.assertEqual(item_type, 'series')
         self.assertEqual(calls, [])

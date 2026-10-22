@@ -1,6 +1,7 @@
 /* Kategoriler sekmesi: ana ekranda gösterilen kategorileri yapılacaklar listesi gibi yönetir
    (/api/ops/categories: ekle, sil, başlık düzenle, aç/kapat, "en az öğe", sürükleyip sırala).
    Ana ekranın sabit (iskelet) satırları da listede kilitli görünür: silinmez/gizlenmez/adı değişmez, yalnız sırası değişir.
+   "Varsayılan sıraya döndür" kilitli satırları varsayılan sıraya dizer (POST /api/ops/categories-order/reset).
    Sıra ana ekrandaki sırayla aynıdır; her değişiklik anında kaydolur, hata olursa eski hâline döner. */
 (function(){
 'use strict';
@@ -65,7 +66,7 @@ function render(){
   var keep=$('cat-new')?$('cat-new').value:'';
   var h='<section><h2>Ana ekran satırları</h2>'+
     '<p class="catlead">Burada eklediğiniz kategoriler ana ekranda bu sırayla satır olarak görünür. Sırayı değiştirmek için ⋮⋮ tutamacını sürükleyin.</p>'+
-    '<p class="catlead">Kilitli satırlar silinemez, yalnız sırası değişir.</p>'+
+    '<p class="catlead">Kilitli satırlar silinemez, yalnız sırası değişir. <button class="btn" id="cat-reset" title="Kilitli satırları varsayılan sıraya dizer; kategoriler bulundukları satırın arkasında kalır">Varsayılan sıraya döndür</button></p>'+
     '<div class="catadd"><input id="cat-new" type="text" maxlength="60" placeholder="Yeni kategori adı (örn. Kore Dizileri)" aria-label="Yeni kategori adı" autocomplete="off">'+
     '<button class="btn" id="cat-add">Kategori ekle</button></div>';
   if(failed&&!C)h+='<div class="empty">Yüklenemedi: '+esc(failed)+'</div>';
@@ -143,6 +144,12 @@ document.addEventListener('click',function(ev){
   var root=$('cat-root');if(!root||!root.contains(ev.target))return;
   var t=ev.target.closest('button');if(!t)return;
   if(t.id==='cat-add')add();
+  else if(t.id==='cat-reset'){
+    if(busy||!window.confirm('Ana ekran satırları varsayılan sıraya dönsün mü? Kategoriler korunur.'))return;
+    busy=true;
+    send('POST','/api/ops/categories-order/reset').then(function(d){C=d.categories||C;render();toast('Varsayılan sıra yüklendi')})
+      .catch(function(e){return fail(e,'Sıfırlanamadı')}).then(function(){busy=false});
+  }
   else if(t.dataset.up)move(t.dataset.up,-1);
   else if(t.dataset.down)move(t.dataset.down,1);
   else if(t.dataset.edit)editTitle(t);

@@ -10,6 +10,10 @@
 `GET    /api/ops/sites/{site}/handoff`    ``{site_id, text, bytes}``: the site's handoff note (``scraper/site_handoff.py``; Markdown, read-only; 404 for
                                           a site that is not registered; ``text`` is "" when there is none yet)
 `POST   /api/ops/sites/{site}/rename`     ``{display_name}`` -> new config version ``{version, display_name}``
+`POST   /api/ops/sites/{site}/archive-batch`  one archive batch now (``library/archive.py``; works while the scheduled pass is off):
+                                          202-style ``{started: true}``; 409 ``busy`` while the site scans / heals / runs a batch,
+                                          409 ``no_archive`` without an ``archive:`` block. The row's ``archive`` = ``archive.status``
+                                          (null without the block).
 `DELETE /api/ops/sites/{site}?purge=1`    ``{deleted, files, purged{...}, tombstone, hand_built, note?, kept_user_data, warnings?}``;
                                           409 ``busy`` while the site scans / heals / is being edited, 404 unknown site.
                                           ``purge=0`` removes only the config + settings (library records stay).
@@ -25,18 +29,20 @@ import re
 import time
 from typing import Any, Optional
 
+import threading
+
 import yaml
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-from .. import autoscan, db, settings
+from .. import autoscan, config, db, settings
 from ..errors import ApiError
-from ..library import purge
+from ..library import archive as larchive, purge
 from ..scraper import config as scfg, site_handoff, site_search, state as sstate
 
 router = APIRouter(prefix="/api/ops/sites")
 
-BUSY_ORDER = ("scan", "heal", "onboard", "finder")
+BUSY_ORDER = ("scan", "heal", "archive", "onboard", "finder")
 YAML_MAX = 200_000
 _SECRET_LINE = re.compile(r"(?im)^(\s*(?:cookie|authorization|proxy-authorization|x-api-key|api[_-]?key|token|secret|password)\s*:\s*).+$")
 
@@ -66,7 +72,7 @@ def _busy_map() -> dict[str, str]:
     kinds: dict[str, set[str]] = {}
     active = sstate.activity_list()
     for job in active:
-        if job["kind"] in ("scan", "heal"):
+        if job["kind"] in ("scan", "heal", "archive"):
             kinds.setdefault(job["site"], set()).add(job["kind"])
     for job in active:   # an onboarding run that EDITS a registered site
         if job["site"] == "_onboard" and job["kind"] == "onboard" and job.get("draft_id"):
@@ -174,6 +180,10 @@ def _row(site: str, last_runs: dict[str, dict], counts: dict, busy: dict) -> dic
     except Exception:
         pass
     row["can_rollback"] = any(v < cfg.version for v in scfg.archived_versions(site))
+    try:
+        row["archive"] = larchive.status(site, cfg)
+    except Exception:
+        row["archive"] = None
     return row
 
 
@@ -189,7 +199,7 @@ def manage() -> dict[str, Any]:
     rows = [_row(site, last_runs, counts, busy) for site in scfg.list_sites()]
     return {"sites": rows, "any_enabled": any(r["auto_scan"]["enabled"] for r in rows),
             "limits": {"min_interval_hours": settings.MIN_INTERVAL_HOURS, "max_interval_hours": settings.MAX_INTERVAL_HOURS},
-            "tick_seconds": autoscan.TICK_SECONDS}
+            "tick_seconds": autoscan.TICK_SECONDS, "onboard_enabled": bool(config.ONBOARD_ENABLED)}
 
 
 def _iso(value: Any, path: str) -> Optional[str]:
@@ -215,6 +225,29 @@ def _versions(site: str, cfg: scfg.SiteConfig) -> list[dict[str, Any]]:
         rows.append({"version": number, "updated_at": _iso(data.get("updated_at") if isinstance(data, dict) else None, path),
                      "active": False})
     return sorted(rows, key=lambda r: r["version"], reverse=True)
+
+
+def _bg_archive(site: str) -> None:
+    try:
+        result = larchive.run_batch(site, trigger="manual", owned=True)
+        if result.get("series", {}).get("taken") or result.get("movies", {}).get("taken"):
+            from .. import cache
+            cache.refresh()
+    except Exception:  # pragma: no cover - run_batch never raises
+        pass
+
+
+@router.post("/{site}/archive-batch")
+def archive_batch(site: str) -> dict[str, Any]:
+    """One archive batch of ``site`` in the background (the admin button)."""
+    cfg = _registered(site)
+    if not larchive.spec_of(cfg):
+        raise ApiError(409, "no_archive", f"{site} has no archive: block in its yaml")
+    why = larchive.begin(site, "manual")
+    if why:
+        raise ApiError(409, "busy", f"{site} is busy ({why})")
+    threading.Thread(target=_bg_archive, args=(site,), name=f"archive-{site}", daemon=True).start()
+    return {"started": True}
 
 
 @router.get("/{site}/config")

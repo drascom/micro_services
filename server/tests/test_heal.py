@@ -101,8 +101,7 @@ class HealTest(unittest.TestCase):
 
     def enable(self, autoapply=False):
         os.environ["SCRAPER_HEAL_ENABLED"] = "true"
-        if autoapply:
-            os.environ["SCRAPER_HEAL_AUTOAPPLY"] = "true"
+        os.environ["SCRAPER_HEAL_AUTOAPPLY"] = "true" if autoapply else "false"   # unset = on (default)
 
     def run_broken(self):
         self.html["v"] = BROKEN

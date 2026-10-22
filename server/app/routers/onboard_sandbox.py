@@ -202,9 +202,11 @@ MAX_EPISODE_LINKS = 5        # outline: episode-link groups listed
 EPISODE_LINK_MIN = 3          # outline: links of one shape that make a group
 # roles onboarding writes: sections of the home page / the site's "trending" and "newest" pages. ``new`` / ``catalog`` /
 # ``genre`` (whole catalogues) stay valid roles of ``scraper/collections`` but a draft gets a warning for them
-ONBOARD_ROLES = ("trending", "latest_episodes", "latest_series", "latest_movies", "noteworthy_movies", "featured", "upcoming", "category")
+ONBOARD_ROLES = ("trending", "latest_episodes", "latest_series", "latest_movies", "noteworthy_movies", "noteworthy_series", "spotlight",
+                 "featured", "upcoming", "category")
 COLLECTION_KEYS = frozenset({"id", "title", "path", "role", "row_selector", "fields", "required_fields", "excluded_fields",
-                             "sort_by", "sort_desc", "genre", "category", "method", "data"})
+                             "sort_by", "sort_desc", "genre", "category", "method", "data",
+                             "min_keep", "min_keep_relax"})
 NO_COLLECTIONS_WARNING = ("no collections: ana ekran satırları (trendler/yeni/dikkate değer) bu siteden dolmayacak; "
                           "ana sayfada ilgili bölümler varsa ekle")
 # Hardening criteria of a NEW site's onboarding (``_analyze(harden=True)``: ``test_config`` / ``submit`` / ``onboard.save`` of a new
@@ -217,7 +219,7 @@ SKIP_SERIES_INVENTORY = "series_inventory"                    # same, exempting 
 SKIP_COLLECTION_POSTER = "collection_poster"                  # same, exempting collection_poster_fill
 HARDEN_CRITERIA = ("availability_gate_defined", "series_signal_collection", "series_full_inventory", "home_path_is_canonical",
                    "collection_poster_fill", "detail_info_defined", "ingest_sample_ok")
-POSTER_ROLES = ("trending", "latest_series", "latest_movies", "noteworthy_movies", "featured", "category")   # collections whose cards need a poster
+POSTER_ROLES = ("trending", "latest_series", "latest_movies", "noteworthy_movies", "noteworthy_series", "featured", "category")   # collections whose cards need a poster
 MIN_COLLECTION_POSTER_FILL = 0.8                              # ``poster_url`` fill of every such collection (``collection_poster_fill``)
 #: the information a detail page gives a title (``detail_info_defined``): group -> the detail field names that count for it (and that an
 #: admin's "Sitede yok, atla: <name>" may name). A group is GOOD when one of its fields is defined AND filled in the sample pages.
@@ -4417,8 +4419,15 @@ async def sandbox_test_provider(body: TestProviderBody, draft_id: str = Depends(
     return result
 
 
+def _require_onboard(draft_id: str) -> None:
+    """The onboarding-only calls (``discover_site``, ``submit``) are closed while ``ONBOARD_ENABLED=0``; a repair (heal) run is never stopped."""
+    if not config.ONBOARD_ENABLED and not _is_repair(draft_id):
+        raise ApiError(403, "onboard_disabled", "site onboarding is switched off (ONBOARD_ENABLED=0)")
+
+
 @router.post("/discover_site")
 async def sandbox_discover_site(body: DiscoverSiteBody, draft_id: str = Depends(_guard)) -> dict:
+    _require_onboard(draft_id)
     if _is_repair(draft_id) or _edit_site(draft_id):
         raise ApiError(403, "forbidden", "discover_site belongs to onboarding a NEW site (a repair / edit run works on a registered site)")
     return await _bounded(_do_discover_site, body, hint="the site is slow: fetch_page its pages by hand")
@@ -4551,4 +4560,5 @@ def sandbox_submit_repair(body: SubmitRepairBody, draft_id: str = Depends(_guard
 async def sandbox_submit(body: SubmitBody, draft_id: str = Depends(_guard)) -> dict:
     if body.draft_id != draft_id:
         raise ApiError(403, "forbidden", "the token belongs to another draft")
+    _require_onboard(draft_id)
     return await _bounded(_do_submit, body)

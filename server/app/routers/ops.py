@@ -292,7 +292,8 @@ def events(site: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=20
            before: Optional[str] = Query(None)) -> dict[str, Any]:
     """Merged run + heal feed, newest first. ``before``: ISO time cursor (exclusive).
 
-    Each event: ``kind`` scan|heal|cooldown|rollback|tmdb|onboard|finder, ``at``, plus the raw record.
+    Each event: ``kind`` scan|heal|cooldown|rollback|tmdb|onboard|finder|reset, ``at``, plus the raw record.
+    ``reset`` events (site ``"library"``) are admin library resets: ``backup, cleared, kept, cache, cache_files, seconds``.
     ``finder`` events (``?site=`` matches the site a source was found on) are finished source-finder jobs: ``id, title,
     canonical_id, episode_id, season, episode, state`` (found | not_found), ``method`` (retry | search | heal), ``site``,
     ``steps`` (``[{name, ok, ms, note}]``), ``source_id, error, trigger, seconds``.
@@ -304,6 +305,9 @@ def events(site: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=20
     (a playback heal was started for it), ``episodes[{source_id, title, season, episode, locator, reports, client_code, at}]``; the
     admin button "Ajan düzeltsin" posts ``/api/ops/sites/{site}/heal-playback``; ``host_rule`` = the stream host's verified rule
     (``/api/ops/stream-host-rules``, ``library/hostrules.py``) or null.
+    ``blocked_page`` events are the series / film pages of a site that are not taken (``library/gate.py`` ``blocked_pages``, status blocked): ``id, at``
+    (checked), ``site, url, page_kind`` (series | movie | episode), ``source_key, via`` (rule | gate | gone | empty), ``reason, until``
+    (when the page is asked again); the admin removes one with ``DELETE /api/ops/sites/{site}/blocked?url=``.
     Heal events carry ``can_rollback`` (newest applied heal of the site, not yet rolled back). Heals started by playback
     failures (``trigger=="playback"``, or any heal with ``evidence``) also carry ``playback: true``, ``evidence_summary``
     (``sources, window_n, window_failed, stages, hosts, errors, ok_examples``; ``layers`` = the layer(s) the agent repair was scoped to)
@@ -333,9 +337,18 @@ def events(site: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=20
     for o in sstate.list_ops("onboard", None, 1000):
         if not site or site in (o.get("site"), o.get("site_id")):
             rows.append({**o, "kind": "onboard", "at": o.get("at")})
+    if not site or site == "library":   # admin library resets (library/libreset.py)
+        rows.extend({**m, "kind": m.get("kind") or "reset"} for m in sstate.list_ops("maintenance", None, 200))
+    for hy in sstate.list_ops("hydrate", site, 200):   # detail hydrates that read no episodes (routers/detail.py)
+        rows.append({**hy, "kind": "hydrate"})
     try:   # playback issues clients reported / the server diagnosed (library/playissues.py): one event per (site, class, stream host)
         from ..library import playissues
         rows.extend(playissues.events(60, site))
+    except Exception:  # pragma: no cover - the feed must never fail on an optional kind
+        pass
+    try:   # pages with a fresh block (library/gate.py blocked_pages: not public / dead page): one event per (site, page)
+        from ..library import gate
+        rows.extend(gate.events(200, site))
     except Exception:  # pragma: no cover - the feed must never fail on an optional kind
         pass
     try:   # source finder jobs (library/sourcefinder.py, table finder_jobs): ``?site=`` matches the site a source was found on
@@ -400,6 +413,27 @@ def _bg_heal(site: str, force: bool = False) -> None:
         sstate.activity_end(site, "heal")
     if rescan and sstate.activity_start(site, "scan", "heal"):
         _bg_scan(site)  # healed config -> pick the data up right away
+
+
+@router.get("/api/ops/sites/{site}/blocked")
+def blocked_list(site: str, limit: int = Query(200, ge=1, le=1000)) -> dict[str, Any]:
+    """The site's stored page verdicts (``blocked_pages``), newest first: ``{site, recheck_days, pages: [{url, kind, source_key, status,
+    via, reason, checked_at}]}``. A blocked page (key = site + page, never the title) is not ingested / requested until it is
+    ``recheck_days`` old, then asked again."""
+    from .. import config
+    from ..library import gate
+    return {"site": site, "recheck_days": config.BLOCKED_RECHECK_DAYS, "pages": gate.rows_of(site, limit=limit)}
+
+
+@router.delete("/api/ops/sites/{site}/blocked")
+def blocked_remove(site: str, url: str = Query(..., min_length=1)) -> dict[str, Any]:
+    """Remove the block of one page (and of the episode pages of the same source for a series / film row): the next scan that meets
+    the page takes it again. ``{ok, removed}``; 404 ``not_found`` when the page has no row."""
+    from ..library import gate
+    removed = gate.unblock(site, url)
+    if not removed:
+        raise ApiError(404, "not_found", "no blocked page with this url")
+    return {"ok": True, "removed": removed}
 
 
 @router.post("/api/ops/sites/{site}/scan")

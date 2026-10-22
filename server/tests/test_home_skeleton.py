@@ -17,7 +17,9 @@ from app.library import categories as cats
 from app.main import app
 
 NOW = 1785000000.0
-DEFAULT = ["continue", "trending_series", "series", "trending_movies", "noteworthy_movies", "movies", "mylist"]
+DEFAULT = ["continue", "new_episodes", "latest_movies", "trending_series", "trending_movies", "must_watch", "series", "movies"]
+WITH_CATS = ["continue", "new_episodes", "latest_movies", "trending_series", "trending_movies", "must_watch", "kore", "komedi",
+             "series", "movies"]
 
 
 def mk(i, kind="series"):
@@ -61,25 +63,25 @@ class Seeding(Base):
         self.assertFalse(hl.seed_skeleton())
         self.assertEqual(self.slugs(), DEFAULT)
         self.assertTrue(all(r["kind"] == "system" and r["locked"] for r in cats.ordered_rows()))
-        self.assertEqual([r["title"] for r in cats.ordered_rows()][:2], ["İzlemeye Devam Et", "Haftanın Trendleri · Diziler"])
+        self.assertEqual([r["title"] for r in cats.ordered_rows()][:3], ["İzlemeye Devam Et", "Yeni Bölümler",
+                                                                   "Yeni Filmler"])
 
-    def test_existing_categories_land_between_trending_series_and_series(self):
+    def test_existing_categories_land_between_must_watch_and_series(self):
         cats.create("Kore", "kore")
         cats.create("Komedi", "komedi")
         hl.seed_skeleton()
-        self.assertEqual(self.slugs(), ["continue", "trending_series", "kore", "komedi", "series", "trending_movies",
-                                        "noteworthy_movies", "movies", "mylist"])
+        self.assertEqual(self.slugs(), WITH_CATS)
 
     def test_seed_never_overrides_the_admin_order(self):
         hl.seed_skeleton()
-        order = ["mylist", "movies"] + [s for s in DEFAULT if s not in ("mylist", "movies")]
+        order = ["series", "movies"] + [s for s in DEFAULT if s not in ("series", "movies")]
         cats.reorder(order)
         self.assertFalse(hl.seed_skeleton())
         self.assertEqual(self.slugs(), order)
 
     def test_a_missing_skeleton_row_is_reinserted_in_its_place(self):
         hl.seed_skeleton()
-        db.execute("DELETE FROM home_categories WHERE slug = 'noteworthy_movies'")
+        db.execute("DELETE FROM home_categories WHERE slug = 'must_watch'")
         self.assertTrue(hl.seed_skeleton())
         self.assertEqual(self.slugs(), DEFAULT)
 
@@ -87,8 +89,7 @@ class Seeding(Base):
         hl.seed_skeleton()
         cats.create("Kore", "kore")
         cats.create("Komedi", "komedi")
-        self.assertEqual(self.slugs(), ["continue", "trending_series", "kore", "komedi", "series", "trending_movies",
-                                        "noteworthy_movies", "movies", "mylist"])
+        self.assertEqual(self.slugs(), WITH_CATS)
         with self.assertRaises(cats.CategoryError) as cm:   # skeleton slugs without underscore are reserved
             cats.create("Series")
         self.assertEqual(cm.exception.status, 409)
@@ -102,7 +103,7 @@ class Seeding(Base):
         db.init()
         self.assertEqual(cats.get("kore")["kind"], "category")
         hl.seed_skeleton()
-        self.assertEqual(self.slugs()[:3], ["continue", "trending_series", "kore"])
+        self.assertEqual(self.slugs()[:7], DEFAULT[:6] + ["kore"])
 
 
 class Layout(Base):
@@ -120,7 +121,8 @@ class Layout(Base):
 
     def test_reordering_the_skeleton_shows_in_layout(self):
         hl.seed_skeleton()
-        order = ["series", "continue", "movies", "trending_series", "trending_movies", "noteworthy_movies", "mylist"]
+        order = ["series", "continue", "movies", "trending_series", "trending_movies", "must_watch", "latest_movies",
+                 "new_episodes"]
         cats.reorder(order)
         self.assertEqual(hl.layout("p"), order)
 
@@ -130,10 +132,10 @@ class Layout(Base):
         self.member("kore", *["s%d" % n for n in range(1, 8)])
         self.member("komedi", *["s%d" % n for n in range(1, 8)])
         hl.seed_skeleton()
-        cats.reorder(["continue", "trending_series", "series", "kore", "trending_movies", "noteworthy_movies", "movies",
-                      "komedi", "mylist"])
+        cats.reorder(["continue", "trending_series", "series", "kore", "trending_movies", "must_watch", "movies",
+                      "komedi", "latest_movies", "new_episodes"])
         self.assertEqual(hl.layout("p"), ["continue", "trending_series", "series", "cat_kore", "trending_movies",
-                                          "noteworthy_movies", "movies", "cat_komedi", "mylist"])
+                                          "must_watch", "movies", "cat_komedi", "latest_movies", "new_episodes"])
         ids_ = self.compose_ids()
         self.assertLess(ids_.index("series"), ids_.index("cat_kore"))
         self.assertLess(ids_.index("cat_kore"), ids_.index("movies"))
@@ -141,15 +143,13 @@ class Layout(Base):
         cats.update("komedi", enabled=False)
         self.assertNotIn("cat_komedi", hl.layout("p"))
 
-    def test_continue_and_mylist_hide_when_empty_wherever_they_sit(self):
+    def test_continue_hides_when_empty_and_mylist_is_no_row(self):
         hl.seed_skeleton()
-        cats.reorder(["mylist", "continue", "series", "movies", "trending_series", "trending_movies", "noteworthy_movies"])
-        self.assertEqual(hl.layout("p")[:2], ["mylist", "continue"])
-        ids_ = self.compose_ids()
-        self.assertNotIn("mylist", ids_)
-        self.assertNotIn("continue", ids_)
-        ids_ = self.compose_ids(saved=["s1"])
-        self.assertEqual(ids_[0], "mylist")
+        cats.reorder(["series", "continue"])
+        self.assertEqual(hl.layout("p")[:2], ["series", "continue"])
+        self.assertNotIn("continue", self.compose_ids())
+        self.assertNotIn("mylist", self.compose_ids(saved=["s1"]))   # Listem is a client page, not a home row
+        self.assertEqual(self.client.get("/api/row/mylist", params={"profile": "p1"}).status_code, 200)
 
     def test_extra_home_layout_ids_and_switched_off_rows(self):
         with patch.object(config, "HOME_LAYOUT", ["series", "genre_x", "movies"]):
@@ -160,12 +160,11 @@ class Api(Base):
     def test_get_lists_the_skeleton_locked_and_without_counts(self):
         cats.create("Kore", "kore")
         got = self.client.get("/api/ops/categories").json()["categories"]
-        self.assertEqual([c["slug"] for c in got], ["continue", "trending_series", "kore", "series", "trending_movies",
-                                                    "noteworthy_movies", "movies", "mylist"])
+        self.assertEqual([c["slug"] for c in got], DEFAULT[:6] + ["kore", "series", "movies"])
         sysrow = got[0]
         self.assertEqual((sysrow["kind"], sysrow["locked"], sysrow["enabled"]), ("system", True, True))
         self.assertNotIn("titles", sysrow)
-        self.assertEqual((got[2]["kind"], "lists" in got[2], "locked" in got[2]), ("category", True, False))
+        self.assertEqual((got[6]["kind"], "lists" in got[6], "locked" in got[6]), ("category", True, False))
 
     def test_locked_rows_cannot_be_deleted_renamed_or_hidden(self):
         self.client.get("/api/ops/categories")
@@ -175,19 +174,20 @@ class Api(Base):
             r = self.client.put("/api/ops/categories/trending_series", json=body)
             self.assertEqual((r.status_code, r.json()["error"]["code"]), (409, "locked"))
         self.assertEqual(self.slugs(), DEFAULT)
-        self.assertEqual(cats.ordered_rows()[1]["title"], "Haftanın Trendleri · Diziler")
+        self.assertEqual(cats.ordered_rows()[3]["title"], "Trend Diziler")
 
     def test_order_accepts_skeleton_and_categories_and_shows_on_boot(self):
         self.client.post("/api/ops/categories", json={"title": "Kore", "slug": "kore"})
         self.member("kore", *["s%d" % n for n in range(1, 8)])
-        order = ["kore", "continue", "series", "trending_series", "movies", "trending_movies", "noteworthy_movies", "mylist"]
+        order = ["kore", "continue", "series", "trending_series", "movies", "trending_movies", "must_watch", "latest_movies",
+                 "new_episodes"]
         r = self.client.put("/api/ops/categories-order", json={"order": order})
         self.assertEqual(r.status_code, 200)
         self.assertEqual([c["slug"] for c in r.json()["categories"]], order)
         r = self.client.put("/api/ops/categories-order", json={"order": ["zzz"]})
         self.assertEqual(r.json()["error"]["code"], "unknown_slug")
-        r = self.client.put("/api/ops/categories-order", json={"order": ["mylist"]})   # the rest follow
-        self.assertEqual([c["slug"] for c in r.json()["categories"]][:2], ["mylist", "kore"])
+        r = self.client.put("/api/ops/categories-order", json={"order": ["new_episodes"]})   # the rest follow
+        self.assertEqual([c["slug"] for c in r.json()["categories"]][:2], ["new_episodes", "kore"])
         self.client.put("/api/ops/categories-order", json={"order": order})
         with patch.object(cache, "get", return_value=self.snap), patch.object(rows, "get_cache", return_value=self.snap):
             boot = self.client.get("/api/boot", params={"profile": "p1", "layout": "tv-v1"}).json()
@@ -195,6 +195,33 @@ class Api(Base):
         self.assertEqual(got[0], "cat_kore")
         self.assertLess(got.index("series"), got.index("movies"))     # (empty rows such as trending_* are left out)
         self.assertIn("heroes", boot)
+
+
+class OldTableAndReset(Base):
+    OLD = ["continue", "spotlight", "new_episodes", "trending_movies", "trending_series", "noteworthy_series", "kore",
+           "series", "noteworthy_movies", "movies", "komedi", "mylist"]
+
+    def old_table(self):
+        for pos, slug in enumerate(self.OLD):
+            kind = "category" if slug in ("kore", "komedi") else "system"
+            db.execute("INSERT INTO home_categories (slug, title, position, enabled, min_items, created_at, updated_at, kind) "
+                       "VALUES (?,?,?,1,6,0,0,?)", (slug, slug, pos, kind))
+
+    def test_old_skeleton_rows_are_dropped_and_new_ones_added_keeping_the_order(self):
+        self.old_table()
+        self.assertTrue(hl.seed_skeleton())
+        # kore sat behind noteworthy_series (retired) -> behind must_watch; komedi keeps its place behind movies
+        self.assertEqual(self.slugs(), ["continue", "new_episodes", "latest_movies", "trending_movies", "must_watch", "kore",
+                                        "trending_series", "series", "movies", "komedi"])
+        self.assertFalse(hl.seed_skeleton())
+
+    def test_reset_puts_the_skeleton_back_and_categories_behind_their_anchor(self):
+        self.old_table()
+        r = self.client.post("/api/ops/categories-order/reset")
+        self.assertEqual(r.status_code, 200)
+        # kore follows must_watch, komedi follows movies: both keep their anchor
+        self.assertEqual([c["slug"] for c in r.json()["categories"]], DEFAULT[:6] + ["kore", "series", "movies", "komedi"])
+        self.assertEqual(hl.layout("p"), DEFAULT[:6] + ["cat_kore", "series", "movies", "cat_komedi"])
 
 
 if __name__ == "__main__":

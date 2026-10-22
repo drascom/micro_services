@@ -3,7 +3,7 @@
    Oynat -> DZ.playflow (yukleme modali; siyah player ekrani yok).
    Odak: sezon/bolum satirlari nav'da tek ogeli satirlardir; yon tuslarini bu ekran yonetir
    (Sag: sezon->bolum, Sol: bolum->sezon, Yukari/Asagi liste icinde).
-   Hidrasyon: yanit `hydrating: true` ise "Detaylar yukleniyor…" yer tutucusu + DZ.hydrate izleyicisi (js/hydrate_watch.js);
+   Hidrasyon: yanit `hydrating: true` ise spinner'li "Detaylar yukleniyor…" yer tutucusu + DZ.hydrate izleyicisi (js/hydrate_watch.js);
    `ready`/`no_source`/`unavailable` gelince ayni id aciksa yeni veriyle yeniden cizilir, odak (satir + oge anahtari) korunur.
    "Kaynak yok": `availability.state=='unavailable'` + `reason=='no_video_source'` bir getirme HATASI degildir -> "Bu dizi/film icin henuz izleme
    kaynagi yok." ("Bolumler su an alinamadi" yalniz gercek getirme hatasinda: hidrasyon bitti ama sezon yok ve kaynak-yok isareti de yok).
@@ -26,6 +26,7 @@
   var HYDRATING_TEXT = 'Detaylar yükleniyor…';
   var NO_EPISODES_TEXT = 'Bu dizinin bölüm bilgileri henüz eklenmedi.';
   var FAILED_TEXT = 'Bölümler şu an alınamadı, daha sonra tekrar deneyin.';
+  var DETAIL_FAILED_TEXT = 'Detaylar şu an alınamadı.';   /* hidrasyon zaman asimi/ag hatasi (film / kismi sezon) */
   var NO_SOURCE_SERIES_TEXT = 'Bu dizi için henüz izleme kaynağı yok.';
   var NO_SOURCE_MOVIE_TEXT = 'Bu film için henüz izleme kaynağı yok.';
   var MONTHS = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
@@ -731,7 +732,65 @@
     });
   }
 
-  function build(d) {
+  /* ---------- yumusak hidrasyon gecisi (yeniden cizimde ani sicrama yok) ---------- */
+  var SOFT_MS = 350;         /* yukseklik/kayma gecisi (css .detail.dz-soft ile ayni) */
+  var SOFT_FALLBACK = 480;   /* transitionend gelmezse (TV/eski tarayici) zamanlayiciyla bitir */
+  function reducedMotion() {
+    try { return !!(g.matchMedia && g.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
+  }
+  /* yeniden cizimden ONCE: eski sayfanin olculeri (yukseklik, govde ustu, kaydirma transform'u, yuklu backdrop) */
+  function softSnapshot() {
+    var p = state && state.page;
+    if (!p) return null;
+    return {
+      pageH: p.offsetHeight || 0,
+      bodyTop: state.body ? (state.body.offsetTop || 0) : 0,
+      transform: p.style ? (p.style.transform || '') : '',
+      bgSrc: state.bgSrc || ''
+    };
+  }
+  /* yeni sayfa: kaydirma konumu korunur; yalniz opacity/transform + tek yukseklik gecisi (TV'de hafif).
+     Baslik ve butonlar (odak) aninda gorunur; meta/aciklama/ekip/sezon-bolum/benzerler fade-in; hero govdesi eski
+     yerinden kayar (FLIP), sayfa eski yuksekliginden yenisine buyur, sonra height:auto'ya birakilir. */
+  function softReveal(page, body, soft) {
+    if (soft.transform) page.style.transform = soft.transform;
+    if (reducedMotion()) return;
+    var fresh = [], i, c;
+    for (i = 0; i < body.children.length; i++) {
+      c = body.children[i];
+      if (!/(^|\s)detail-(title|actions)(\s|$)/.test(c.className || '')) fresh.push(c);
+    }
+    for (i = 0; i < page.children.length; i++) {
+      c = page.children[i];
+      if ((c.className || '').indexOf('detail-hero') < 0) fresh.push(c);
+    }
+    for (i = 0; i < fresh.length; i++) fresh[i].classList.add('dz-reveal');
+    var dy = soft.bodyTop ? soft.bodyTop - (body.offsetTop || 0) : 0;
+    if (dy) body.style.transform = 'translate3d(0,' + dy + 'px,0)';
+    var newH = page.offsetHeight || 0;
+    var grow = soft.pageH > 0 && newH > 0 && newH !== soft.pageH;
+    if (grow) { page.style.height = soft.pageH + 'px'; page.style.overflow = 'hidden'; }
+    var done = false;
+    function finish() {
+      if (done) return;
+      done = true;
+      page.classList.remove('dz-soft');
+      page.style.height = ''; page.style.overflow = '';
+      body.style.transform = '';
+      for (var k = 0; k < fresh.length; k++) { fresh[k].classList.remove('dz-reveal'); fresh[k].classList.remove('in'); }
+    }
+    g.requestAnimationFrame(function () {
+      void page.offsetHeight;   /* baslangic durumu boyansin, sonra gecis */
+      page.classList.add('dz-soft');
+      if (grow) page.style.height = newH + 'px';
+      if (dy) body.style.transform = '';
+      for (var k = 0; k < fresh.length; k++) fresh[k].classList.add('in');
+    });
+    page.addEventListener('transitionend', function (e) { if (grow && e && e.target === page) finish(); }, false);
+    setTimeout(finish, grow ? SOFT_FALLBACK : SOFT_MS + 130);
+  }
+
+  function build(d, soft) {
     clear(container);
     var page = mk('div', 'detail');
     page.id = 'page';
@@ -743,11 +802,16 @@
     var bg = mk('div', 'detail-bg');
     hero.appendChild(bg);
     var src = DZ.card.sized(d.backdrop, 1280, 720);
-    if (src) {
+    if (src && soft && soft.bgSrc === src) {
+      /* yeniden cizim: ayni backdrop zaten yuklu -> aninda goster (karartip yeniden solma yok) */
+      bg.style.backgroundImage = 'url("' + src + '")';
+      bg.classList.add('ready');
+    } else if (src) {
       var pre = new Image();
       pre.onload = function () {
         bg.style.backgroundImage = 'url("' + src + '")';
         bg.classList.add('ready');
+        if (state) state.bgSrc = src;
         /* backdrop yuklenince layout kayarsa odagi KAYBETME: hicbir odak yoksa Oynat'a geri ver */
         if (state && state.alive && !container.querySelector('.focused')) {
           DZ.nav.focusRowById('actions', 0);
@@ -764,6 +828,7 @@
     if (backBtn) hero.appendChild(backBtn);
 
     var body = mk('div', 'detail-body');
+    state.body = body;
     body.appendChild(mk('div', 'detail-title', d.title || ''));
 
     var meta = mk('div', 'detail-meta');
@@ -888,6 +953,7 @@
     }
 
     container.appendChild(page);
+    if (soft) softReveal(page, body, soft);
     /* setRoot + odak render/layout HAZIR olduktan sonra (cift rAF): TV'de erken cagride
        'Oynat' butonu 0 olcup nav disi kalabiliyor -> odak Oynat'a gitmiyordu. */
     function initNav() {
@@ -941,9 +1007,11 @@
   }
 
   /* ---------- hidrasyon (arka plan bilgi getirme) ---------- */
-  /* Yeni veriyle bastan ciz; odak (satir + oge anahtari) ve gosterilen bolum korunur. */
+  /* Yeni veriyle yeniden ciz; odak (satir + oge anahtari), gosterilen bolum, kaydirma ve yuklu backdrop korunur;
+     degisen bolumler yumusak gecisle gelir (softReveal). */
   function rerender(d, failed) {
     if (!state || !state.alive) return;
+    var soft = softSnapshot();
     var snap = DZ.nav && DZ.nav.snapshot ? DZ.nav.snapshot() : null;
     var cur = state.eps && state.epIdx >= 0 ? state.eps[state.epIdx] : null;
     if (cur && cur.id) state.initEpId = cur.id;
@@ -954,13 +1022,16 @@
     state.browser = false; state.seasons = []; state.sNodes = []; state.eps = []; state.epNodes = {};
     state.epIdx = -1; state.shown = -1;
     if (snap && DZ.nav.restoreNext) DZ.nav.restoreNext(snap);
-    build(d);
+    build(d, soft);
   }
 
-  /* zaman asimi / ag hatasi: toast yok, yalnizca yukleniyor yer tutucusu kalkar (yeniden cizim yok, odak bozulmaz) */
+  /* zaman asimi / ag hatasi: toast yok, spinner'li yer tutucu kisa metne doner (yeniden cizim yok, odak bozulmaz) */
   function endPlaceholder() {
     if (!state) return;
-    if (state.hydNote && state.hydNote.parentNode) state.hydNote.parentNode.removeChild(state.hydNote);
+    if (state.hydNote) {
+      state.hydNote.textContent = DETAIL_FAILED_TEXT;
+      state.hydNote.className = 'detail-meta';
+    }
     state.hydNote = null;
     if (state.hydEmpty) {
       state.hydEmpty.textContent = noSource(state.data) ? noSourceText(state.data) : NO_EPISODES_TEXT;
@@ -1073,7 +1144,7 @@
     epState: epState, fmtDate: fmtDate, fitScroll: fitScroll,
     actionButtons: actionButtons, trailerState: trailerState, epTag: epTag, firstPlayableEpisode: firstPlayableEpisode,
     ROW: EP_H, SEASON_ROW: SEASON_H, DEBOUNCE: SEASON_DEBOUNCE,
-    HYDRATING_TEXT: HYDRATING_TEXT, FAILED_TEXT: FAILED_TEXT, NO_EPISODES_TEXT: NO_EPISODES_TEXT,
+    HYDRATING_TEXT: HYDRATING_TEXT, FAILED_TEXT: FAILED_TEXT, DETAIL_FAILED_TEXT: DETAIL_FAILED_TEXT, NO_EPISODES_TEXT: NO_EPISODES_TEXT,
     NO_SOURCE_SERIES_TEXT: NO_SOURCE_SERIES_TEXT, NO_SOURCE_MOVIE_TEXT: NO_SOURCE_MOVIE_TEXT, noSource: noSource, noSourceText: noSourceText,
     viewMax: viewMax, computeViewH: computeViewH, viewH: function () { return state ? state.viewH : 0; }
   };

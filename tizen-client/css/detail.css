@@ -32,7 +32,9 @@
 /* "Kaynak: <site>" etiketleri (arama kartindaki .src-tag stili, home.css); odaklanmaz, uzun ad kisaltilir */
 .detail-sources{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:-6px 0 18px;font-size:20px;color:var(--fg-dim);}
 .detail-sources .src-tag{max-width:260px;font-size:20px;line-height:28px;}
-.hydrating-note{color:var(--fg-dim);font-style:italic;}   /* "Detaylar yukleniyor…" yer tutucusu (odaksiz) */
+.hydrating-note{font-size:48px;color:var(--fg-dim);font-style:italic;padding-top:56px;padding-bottom:56px;}   /* "Detaylar yukleniyor…" yer tutucusu (odaksiz) */
+.hydrating-note::before{content:'';display:inline-block;vertical-align:middle;width:56px;height:56px;margin-right:28px;
+  border:8px solid rgba(255,255,255,.2);border-top-color:var(--accent);border-radius:50%;animation:dz-spin .9s linear infinite;}   /* spinner (dz-spin: base.css) */
 .detail-actions{display:flex;margin-bottom:20px;}
 .detail-overview{
   font-size:24px;color:#e5e5e5;max-width:960px;line-height:1.35;
@@ -130,3 +132,14 @@
 /* bolum bilgisi olmayan dizi yer tutucusu */
 .episodes{padding:0 var(--safe);margin-bottom:40px;}
 .episodes h2{font-size:30px;font-weight:700;margin-bottom:12px;}
+
+/* Hidrasyon yeniden cizimi (screens/detail.js softReveal): sayfa eski yuksekliginden yenisine buyur, hero govdesi eski yerinden kayar,
+   yeni metin (meta/aciklama/ekip/sezon-bolum/benzerler) solarak gelir. Yalniz height + transform + opacity (TV'de hafif). */
+.dz-reveal{opacity:0;transition:opacity .3s ease-out;}
+.dz-reveal.in{opacity:1;}
+#page.detail.dz-soft{transition:transform .2s var(--ease),height .35s cubic-bezier(.2,.7,.3,1);}   /* #page (home.css) transform gecisi korunur */
+.detail.dz-soft .detail-body{transition:transform .35s cubic-bezier(.2,.7,.3,1);}
+@media (prefers-reduced-motion: reduce){
+  .dz-reveal{opacity:1;transition:none;}
+  #page.detail.dz-soft,.detail.dz-soft .detail-body{transition:none;}
+}
