@@ -1,6 +1,6 @@
 """Provider registry plus a safe, bounded embedded-player hand-off.
 
-``PROVIDERS`` = the code modules (``vidmolly``, ``okru``: fixed, first) followed by the data-driven recipes of
+``PROVIDERS`` = the code modules (``vidmolly``, ``okru``, ``vidstack_p2p``: fixed, first) followed by the data-driven recipes of
 ``configs/providers/`` (``recipes.py``, by name; re-read only when a recipe file changed). ``resolve(..., extra=)`` adds
 in-memory providers (the sandbox tests a draft's recipes before they exist on disk).
 """
@@ -15,7 +15,7 @@ from urllib.parse import urljoin, urlparse
 from selectolax.parser import HTMLParser
 
 from .. import fetch
-from . import okru, recipes, trace, vidmolly
+from . import okru, recipes, trace, vidmolly, vidstack_p2p
 
 
 @dataclass(frozen=True)
@@ -50,10 +50,19 @@ def _okru_resolve(url: str, *, referer: str = "") -> Optional[dict]:
     return okru.resolve(url, referer=referer)
 
 
+def _vidstack_matches(url: str) -> bool:
+    return vidstack_p2p.matches(url)
+
+
+def _vidstack_resolve(url: str, *, referer: str = "") -> Optional[dict]:
+    return vidstack_p2p.resolve(url, referer=referer)
+
+
 # Order matters: with ``allowed=None`` the first provider that matches a URL wins (code modules first, then the recipes).
 CODE_PROVIDERS: list = [
     Provider(vidmolly.NAME, _vidmolly_matches, _vidmolly_resolve, vidmolly.DESCRIPTION, tuple(vidmolly.HOSTS)),
     Provider(okru.NAME, _okru_matches, _okru_resolve, okru.DESCRIPTION, tuple(okru.HOSTS)),
+    Provider(vidstack_p2p.NAME, _vidstack_matches, _vidstack_resolve, vidstack_p2p.DESCRIPTION, tuple(vidstack_p2p.HOSTS)),
 ]
 
 

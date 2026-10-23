@@ -43,6 +43,7 @@ class StubBase(unittest.TestCase):
             self.addCleanup(p.stop)
         self.addCleanup(dmod._inflight.clear)
         self.addCleanup(dmod._seasons_checked.clear)
+        self.addCleanup(dmod._finished.clear)
         app = FastAPI()
         app.include_router(dmod.router)
         self.client = TestClient(app)
@@ -223,6 +224,92 @@ class LifecycleTests(StubBase):
             self.assertTrue(wait_until(lambda: not dmod._inflight))
         refresh.assert_not_called()
         self.assertIs(self.get("/api/detail/m1?poll=1")["hydrating"], False)
+
+
+class CooldownTests(StubBase):
+    """A finished hydrate is not restarted on the next opens (HYDRATE_COOLDOWN): `hydrating` is false, no new work."""
+
+    def test_opens_after_a_finished_hydrate_answer_false_and_start_nothing(self):
+        calls = []
+        with patch("app.library.hydrate_item_metadata", side_effect=lambda i: calls.append(i) or False):
+            self.assertIs(self.get()["hydrating"], True)              # the first open starts it
+            self.assertTrue(wait_until(lambda: not dmod._inflight))
+            for _ in range(5):                                         # still "incomplete" (no overview): plain opens
+                self.assertIs(self.get()["hydrating"], False)
+        self.assertEqual(calls, ["m1"])
+
+    def test_series_still_due_after_its_read_is_not_restarted(self):
+        calls = []
+        data = {"id": "s1", "type": "series", "overview": "x", "seasons": [{"season": 1}]}
+        with patch.object(dmod.rows, "detail", return_value=data), patch.object(dmod, "_inventory_due", return_value=True), \
+                patch("app.library.hydrate_series_item", side_effect=lambda i, o: calls.append(i) or False), \
+                patch("app.library.seasons.auto_enrich", return_value={"seasons": 0}):
+            self.assertIs(self.get("/api/detail/s1")["hydrating"], True)
+            self.assertTrue(wait_until(lambda: not dmod._inflight))
+            for _ in range(5):
+                self.assertIs(self.get("/api/detail/s1")["hydrating"], False)
+        self.assertEqual(calls, ["s1"])
+
+    def test_after_the_cooldown_it_may_run_again(self):
+        with patch("app.library.hydrate_item_metadata", return_value=False) as hyd:
+            self.get()
+            self.assertTrue(wait_until(lambda: not dmod._inflight))
+            dmod._finished["m1"] -= dmod.HYDRATE_COOLDOWN + 1
+            self.assertIs(self.get()["hydrating"], True)
+            self.assertTrue(wait_until(lambda: not dmod._inflight))
+        self.assertEqual(hyd.call_count, 2)
+
+
+class SeriesReadTests(unittest.TestCase):
+    """series_crawl / hydrate_series_item pieces behind a hydrate that never ends."""
+
+    def test_future_dated_episodes_are_unaired_and_do_not_make_the_series_due(self):
+        from app.library import series_crawl as sc
+        cfg = type("C", (), {"series_page": None, "site_id": "x", "base_url": "https://x.test"})()
+        ep = lambda n, d: {"kind": "episode", "season": 1, "episode": n, "url": "https://x.test/dizi/a/1-%d" % n, "air_date": d}
+        inv = {"video_sources": [ep(1, "2020-01-01"), ep(2, "2020-01-08"), ep(3, "2999-01-01")], "metadata": {"title": "A"},
+               "structured": True}
+        with patch.object(sc.fetch, "page", return_value="<html></html>"), \
+                patch.object(sc.site_extractors, "series_inventory", return_value=inv), \
+                patch.object(sc.gate, "series_rules", return_value=[]), patch.object(sc, "page_details", return_value={}):
+            result = sc.crawl(cfg, "https://x.test/dizi/a")
+        self.assertEqual([e["episode"] for e in result["episodes"]], [1, 2])
+        self.assertEqual(result["unaired"], [{"season": 1, "episode": 3, "air_date": "2999-01-01"}])
+        norm, now = {"type": "series"}, time.time()
+        sc.apply(norm, result, now)
+        marker = norm[sc.MARKER]
+        self.assertTrue(marker["complete"])
+        self.assertEqual(marker["next_air"], "2999-01-01")
+        for later in (60, 2 * 3600, 3 * 86400):                         # not due again (only "aired" after that date)
+            self.assertIsNone(sc.due(marker, None, now + later), later)
+
+    def test_hydrate_does_not_wait_for_the_discovery_lock_while_it_reads(self):
+        from app.library import ingest
+        row = {"source": "x", "source_key": "a", "normalized": '{"type": "series"}', "raw": "{}"}
+        held, release = threading.Event(), threading.Event()
+
+        def holder():
+            with ingest._discovery_lock:
+                held.set()
+                release.wait(5)
+
+        t = threading.Thread(target=holder, daemon=True)
+        t.start()
+        self.assertTrue(held.wait(2))
+        done = []
+        try:
+            with patch.object(ingest.series_crawl, "source_rows", return_value=[row]), \
+                    patch.object(ingest.scfg, "load_site", return_value=object()), \
+                    patch.object(ingest.series_crawl, "enabled", return_value=True), \
+                    patch.object(ingest, "_enrich_series_catalogs",
+                                 side_effect=lambda *a, **k: a[3].append({"status": "cached"})):
+                w = threading.Thread(target=lambda: done.append(ingest.hydrate_series_item("c1")), daemon=True)
+                w.start()
+                w.join(2)
+            self.assertEqual(done, [False], "an unchanged read finished while a scan held the lock")
+        finally:
+            release.set()
+            t.join(2)
 
 
 class SeededServerTests(unittest.TestCase):

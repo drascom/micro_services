@@ -56,14 +56,15 @@ def _name(url: str, kind: str) -> str:
 
 
 def rewrite(text: str, playlist_url: str, headers: dict, *, base: str, group: str, now: Optional[float] = None,
-            ttl: Optional[float] = None, max_uris: Optional[int] = None, cookie_host: Optional[str] = None) -> str:
+            ttl: Optional[float] = None, max_uris: Optional[int] = None, cookie_host: Optional[str] = None,
+            impersonate: bool = False) -> str:
     """``text`` (the playlist fetched from ``playlist_url`` with ``headers``) with every URI pointing at the proxy.
 
     ``base`` = the proxy's public address (``scheme://host/``, :func:`streamproxy.public_base`; ``""`` = unknown, relative
     ``../<token>/<name>`` URIs then resolve against ``.../<token>/index.m3u8``), ``group`` = the stream's group. Raises
     :class:`PlaylistError` past ``max_uris`` (default ``STREAM_PROXY_PLAYLIST_URIS``). A ``Cookie`` header is kept only for URIs on
     ``cookie_host`` (the host the cookie was issued for = the host of the token's own URL; default: the playlist's host, which
-    differs after a redirect to another host)."""
+    differs after a redirect to another host). ``impersonate`` (the parent token's flag) is carried into every new token."""
     limit = config.STREAM_PROXY_PLAYLIST_URIS if max_uris is None else max_uris
     own_host = (cookie_host if cookie_host is not None else urlsplit(playlist_url).hostname or "").lower()
     count = 0
@@ -81,7 +82,8 @@ def rewrite(text: str, playlist_url: str, headers: dict, *, base: str, group: st
         if count > limit:
             raise PlaylistError(f"the playlist holds more than {limit} URIs")
         sent = headers if (parts.hostname or "").lower() == own_host else {k: v for k, v in headers.items() if k != "Cookie"}
-        token = streamproxy.make_token(target, sent, now=now, ttl=ttl, kind=kind, group=group)
+        token = streamproxy.make_token(target, sent, now=now, ttl=ttl, kind=kind, group=group,
+                                     impersonate=impersonate)
         name = _name(target, kind)
         return f"{base}api/stream-proxy/{token}/{name}" if base else f"../{token}/{name}"
 

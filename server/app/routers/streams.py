@@ -22,7 +22,7 @@ def public_streams(streams: list, base_url: str, learned=frozenset(), host_rules
     goes through the server: its ``url`` becomes a signed ``<base>api/stream-proxy/<token>`` URL (HLS:
     ``.../<token>/index.m3u8``, a playlist the server rewrites; the token holds the real URL + headers, not the base;
     ``base_url`` = :func:`streamproxy.public_base`, ``""`` = unknown: nothing is proxied), ``proxied: true`` and
-    ``proxy_reason``. Embeds are never proxied. ``request_headers`` / ``stream_proxy`` are never part of the answer (header values
+    ``proxy_reason``. Embeds are never proxied. ``request_headers`` / ``stream_proxy`` / ``stream_impersonate`` are never part of the answer (header values
     stay on the server); every stream carries ``proxied`` (bool). The stored payload (resolved_payload) keeps the direct URL.
     ``learned`` may be a mapping ``{source id: headers}`` (``video_sources.proxy_headers``: the Referer the server's probe learned the stream
     host wants): the token then carries them under the stream's own ``request_headers``. ``host_rules`` = ``{stream host: rule}``
@@ -36,13 +36,14 @@ def public_streams(streams: list, base_url: str, learned=frozenset(), host_rules
         if rule and not own and stream.get("source_id") not in learned:
             extra = {**rule.get("headers", {}), **extra}
         headers = own
-        shaped = {key: value for key, value in stream.items() if key not in ("request_headers", "stream_proxy")}
+        shaped = {key: value for key, value in stream.items() if key not in ("request_headers", "stream_proxy", "stream_impersonate")}
         shaped["proxied"] = False
         reason = streamproxy.proxy_reason(stream, headers, learned=stream.get("source_id") in learned or bool(rule)) if base_url else None
         if reason:
             hls = shaped.get("type") == "hls"
             try:
-                token = streamproxy.make_token(shaped["url"], {**extra, **headers}, kind=streamproxy.PLAYLIST if hls else None)
+                token = streamproxy.make_token(shaped["url"], {**extra, **headers}, kind=streamproxy.PLAYLIST if hls else None,
+                                             impersonate=stream.get("stream_impersonate") is True)
             except ValueError:   # a URL the proxy would refuse anyway (longer than netguard's limit): left direct
                 token = ""
             if token:

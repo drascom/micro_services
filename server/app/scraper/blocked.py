@@ -10,7 +10,7 @@ yaml blocks say so (both optional; a site without them behaves exactly as before
         reason: telif engeli               # <= 80 characters (shown to the admin, stored with the verdict)
 
     availability_gate:                     # the general rule: no player on the page = not taken
-      probe: 2                             # episode pages checked per series (newest + oldest [+ middle]); a film: its page; 0 = off
+      probe: 2                             # episode pages checked per series (the first aired ones: S1E1, S1E2 [, S1E3]); a film: its page; 0 = off
       require: player                      # player = the resolvers give >= 1 candidate | stream = a stream really resolves
 
 This module only parses and judges markup; ``library/gate.py`` fetches pages, keeps the verdicts (``blocked_pages``) and applies
@@ -38,7 +38,7 @@ EVIDENCE_CAP = 120
 
 GATE_KEYS = frozenset({"probe", "require"})
 REQUIRES = ("player", "stream")
-MAX_PROBE = 3                 # newest + oldest + middle episode page of a series
+MAX_PROBE = 3                 # the first three aired episode pages of a series
 DEFAULT_PROBE = 2
 
 # what a placeholder iframe usually calls itself (used for the advice when the yaml has no rule)

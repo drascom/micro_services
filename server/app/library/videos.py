@@ -12,7 +12,7 @@ from . import streamdiag, streamlife, streamprobe, tracks
 from ..scraper import badhosts
 
 TTL=6*3600  # legacy trailer cache on source_items; resolved payloads follow config.RESOLVE_CACHE_TTL
-RESOLVER_VERSION=7  # 7: streams may carry request_headers (OK.ru mp4: the User-Agent its signed URL is bound to; /api/streams serves them through the stream proxy), cached payloads without them are re-resolved (6: candidates carry resolver_type, json_api streams skip the provider step, per-site provider allow-list (5: re-signed duplicates merged, spare copies marked (mirror_of), sub_known/site_lang_hint, no unmeasured language in labels; 4: soft subtitle tracks + per-stream variant_id/audio_lang/sub_mode/hard_lang; 3: labels carry the subtitle language))
+RESOLVER_VERSION=8  # 8: recipe streams may carry stream_impersonate (proxied with a Chrome TLS fingerprint); 7: streams may carry request_headers (OK.ru mp4: the User-Agent its signed URL is bound to; /api/streams serves them through the stream proxy), cached payloads without them are re-resolved (6: candidates carry resolver_type, json_api streams skip the provider step, per-site provider allow-list (5: re-signed duplicates merged, spare copies marked (mirror_of), sub_known/site_lang_hint, no unmeasured language in labels; 4: soft subtitle tracks + per-stream variant_id/audio_lang/sub_mode/hard_lang; 3: labels carry the subtitle language))
 BLOCKED_PREFIX='engelli: '
 
 

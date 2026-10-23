@@ -422,7 +422,8 @@ def blocked_list(site: str, limit: int = Query(200, ge=1, le=1000)) -> dict[str,
     ``recheck_days`` old, then asked again."""
     from .. import config
     from ..library import gate
-    return {"site": site, "recheck_days": config.BLOCKED_RECHECK_DAYS, "pages": gate.rows_of(site, limit=limit)}
+    return {"site": site, "recheck_days": config.BLOCKED_RECHECK_DAYS, "episode_recheck_hours": config.GATE_EPISODE_RECHECK_HOURS,
+            "pages": gate.rows_of(site, limit=limit)}
 
 
 @router.delete("/api/ops/sites/{site}/blocked")

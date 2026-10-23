@@ -5,10 +5,12 @@ User-Agent of the metadata request, so Safari / Tizen AVPlay / ExoPlayer get HTT
 ``request_headers`` (the headers the media server wants); ``/api/streams`` replaces its ``url`` by a proxy URL whose
 token holds the real URL + those headers, and the server fetches the file for the client.
 
-Token = ``base64url(JSON{u: url, h: headers, exp: epoch[, k: kind, g: group]})`` + ``.`` + ``base64url(HMAC-SHA256(secret, first
+Token = ``base64url(JSON{u: url, h: headers, exp: epoch[, k: kind, g: group][, i: 1]})`` + ``.`` + ``base64url(HMAC-SHA256(secret, first
 part))``. ``k`` (``playlist`` | ``segment`` | ``key``) marks an HLS token: the playlist is fetched and every URI in it is
 replaced by a new token of the same kind of family (routers/stream_proxy.py, app/hlsproxy.py), ``g`` = the stream group the
-per-stream connection limit counts. A progressive file token has neither. Only :func:`make_token` (``/api/streams``) and the
+per-stream connection limit counts. A progressive file token has neither. ``i: 1`` = the media host checks the TLS fingerprint
+(recipe ``stream_impersonate: true``, LuluStream): the proxy fetches it with a Chrome-impersonating ``curl_cffi`` session, every
+token derived from its playlist keeps the flag. Only :func:`make_token` (``/api/streams``) and the
 playlist rewriter (tokens derived from a playlist the server itself fetched) create one, so the proxy is never an open relay.
 :func:`proxy_reason` decides which streams ``/api/streams`` hands out as proxied. The secret is
 ``config.STREAM_PROXY_SECRET`` or, when empty, a random key generated once and kept in ``DATA_DIR/stream_proxy.key``
@@ -211,7 +213,7 @@ def group_of(url: str) -> str:
 
 
 def make_token(url: str, headers: dict, *, ttl: Optional[float] = None, now: Optional[float] = None,
-               kind: Optional[str] = None, group: Optional[str] = None) -> str:
+               kind: Optional[str] = None, group: Optional[str] = None, impersonate: bool = False) -> str:
     """The proxy token of ``url`` + ``headers`` (cleaned with :func:`clean_headers`), valid for ``ttl`` seconds (default
     ``STREAM_PROXY_TTL``). ``kind`` (``playlist`` | ``segment`` | ``key``) makes it an HLS token; its ``group`` defaults to
     :func:`group_of` the URL. A token without ``kind`` is a progressive file (the format before HLS was proxied)."""
@@ -224,6 +226,8 @@ def make_token(url: str, headers: dict, *, ttl: Optional[float] = None, now: Opt
     if kind is not None:
         data["k"] = kind
         data["g"] = group or group_of(url)
+    if impersonate:
+        data["i"] = 1
     body = json.dumps(data, separators=(",", ":"), ensure_ascii=True)
     payload = _b64e(body.encode("ascii"))
     return payload + "." + _sign(payload)
@@ -235,6 +239,7 @@ class TokenInfo(NamedTuple):
     headers: dict
     kind: Optional[str]
     group: Optional[str]
+    impersonate: bool = False   # fetch with a Chrome TLS fingerprint (curl_cffi), see the module text
 
 
 def parse_token_ex(token: str, *, now: Optional[float] = None) -> TokenInfo:
@@ -250,7 +255,7 @@ def parse_token_ex(token: str, *, now: Optional[float] = None) -> TokenInfo:
     try:
         data = json.loads(_b64d(payload).decode("utf-8"))
         url, headers, expires = data["u"], data["h"], data["exp"]
-        kind, group = data.get("k"), data.get("g")
+        kind, group, imp = data.get("k"), data.get("g"), data.get("i")
     except (ValueError, KeyError, TypeError, UnicodeDecodeError, AttributeError):
         raise TokenError(403, "bad_token", "malformed stream token") from None
     if not proxiable(url) or not isinstance(headers, dict) or isinstance(expires, bool) or not isinstance(expires, (int, float)):
@@ -261,7 +266,7 @@ def parse_token_ex(token: str, *, now: Optional[float] = None) -> TokenInfo:
         raise TokenError(403, "bad_token", "malformed stream token")
     if (time.time() if now is None else now) > expires:
         raise TokenError(410, "token_expired", "stream token expired; request /api/streams again")
-    return TokenInfo(url, clean_headers(headers), kind, group if kind is not None else None)
+    return TokenInfo(url, clean_headers(headers), kind, group if kind is not None else None, imp == 1)
 
 
 def parse_token(token: str, *, now: Optional[float] = None) -> tuple[str, dict]:
@@ -305,7 +310,8 @@ def proxy_reason(stream: dict, headers: Optional[dict] = None, *, learned: bool 
     ``None`` = not proxied. In this order:
 
     * ``ua``: a progressive file whose stream carries ``request_headers`` (OK.ru: the signed URL is bound to the resolver's UA);
-    * ``recipe``: the provider recipe asked for it (``stream_proxy: true``, marked on the stream as ``stream_proxy``);
+    * ``recipe``: the provider recipe asked for it (``stream_proxy: true`` / ``stream_impersonate: true``, marked on the stream as
+      ``stream_proxy`` / ``stream_impersonate``: a host that wants a browser TLS fingerprint is always proxied);
     * ``ip``: a URL bound to the server's IP (:func:`ip_bound`);
     * ``learned``: the source failed for a client and the server's own probe showed the proxy helps (``video_sources.proxy_required``,
       passed in as ``learned``);
@@ -323,7 +329,7 @@ def proxy_reason(stream: dict, headers: Optional[dict] = None, *, learned: bool 
         return "ua"
     if kind not in ("mp4", "hls"):
         return None
-    if stream.get("stream_proxy") is True:
+    if stream.get("stream_proxy") is True or stream.get("stream_impersonate") is True:
         return "recipe"
     if ip_bound(url):
         return "ip"

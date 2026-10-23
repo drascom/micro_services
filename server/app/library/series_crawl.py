@@ -18,7 +18,7 @@ Pieces (all network access goes through ``fetch.page``, the project's own Obscur
 * ``run_stage`` - the budgeted pass run after every ingest (and by ``tools.series_crawl``): one request at a time,
                   delays, per-run series and time budgets, per-series error isolation.
 * ``judge_series`` - content that is not public (``library/gate.py``): after the inventory is read, <= ``probe`` episode pages
-                  (newest + oldest) are checked against the yaml ``blocked:`` rules / ``availability_gate:``; a blocked series is
+                  (the first aired ones) are checked against the yaml ``blocked:`` rules / ``availability_gate:``; a blocked series is
                   not written (and removed when it already was), a blocked episode is dropped from the result.
 """
 from __future__ import annotations
@@ -34,8 +34,8 @@ from urllib.parse import urljoin, urlparse
 
 from .. import config, db
 from ..genres import canonical_labels
-from ..scraper import blocked as sblocked, config as scfg, drift, fetch, series_generic, site_extractors
-from . import gate, series_dir, tmdb, videos
+from ..scraper import blocked as sblocked, config as scfg, drift, fetch, parse, series_generic, site_extractors
+from . import gate, normalize as snormalize, series_dir, tmdb, videos
 
 log = logging.getLogger("library.series_crawl")
 
@@ -307,6 +307,14 @@ def crawl(cfg: scfg.SiteConfig, url: str) -> dict[str, Any]:
         for season_url in more:
             if season_url not in visited and season_url not in queue:
                 queue.append(season_url)
+    if first_html is not None:   # the series page IS the series' detail page: its ``detail:`` fields (overview, ...) fill gaps
+        for field, value in page_details(cfg, first_html).items():
+            metadata.setdefault(field, value)
+    # an episode row dated in the future has not aired yet (no video): it is "unaired" (``next_air`` asks again once it
+    # airs), never a written episode, so a new series' announced-but-future episodes never read as missing/unfinished
+    today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+    for key in [k for k, e in episodes.items() if isinstance(e.get("air_date"), str) and e["air_date"][:10] > today]:
+        unaired[key] = unaired.get(key) or episodes.pop(key)["air_date"][:10]
     missing = sorted(declared - seen_seasons)
     if generic_pages and queue:  # season pages the page cap kept us from reading: incomplete, not lost
         fetch_failed = True
@@ -425,6 +433,21 @@ def merge_sources(old: list, new: list) -> list:
     return [merged[k] for k in episodes + [k for k in merged if k[0] != "episode"]]
 
 
+def page_details(cfg: scfg.SiteConfig, html: str) -> dict[str, Any]:
+    """Series facts (``_DETAIL_FIELDS`` minus identity) from the yaml ``detail:`` fields parsed on the series page, mapped to
+    canonical names by the generic ``normalize.fields`` (``synopsis`` -> ``overview``). Only a module-less site without a
+    registered normalizer (a site module returns its own ``metadata``); never raises."""
+    if not cfg.detail_fields or site_extractors.has_inventory_module(cfg.site_id) or cfg.site_id in snormalize._REGISTRY:
+        return {}
+    try:
+        raw = parse.parse_detail(html, cfg.detail_fields)
+        return snormalize.canonical_fields(cfg.data.get("normalize"), raw,
+                                           [f for f in _DETAIL_FIELDS if f != "original_title"])
+    except Exception as exc:  # pragma: no cover - a bad field spec must not fail the inventory
+        log.info("series page detail fields skipped (%s): %s", cfg.site_id, exc)
+        return {}
+
+
 def reapply_detail(norm: dict, old: dict) -> None:
     """Page-derived series facts win over the home card's thinner ones (poster, overview, cast, ...)."""
     kept = old.get("_series_detail_metadata")
@@ -514,9 +537,33 @@ def _merge3(base: dict, mine: dict, current: dict) -> dict:
 
 # --- candidates + the budgeted stage -------------------------------------------------------------------
 
+# home-visibility tiers (lower first; "what the home screen shows first, the archive last"): hero, the main rows,
+# any other home collection of the site; everything else (archive, ``source_``/``genre_``/``detail_`` lists) is _TIER_REST
+_TIER_ROWS = ("latest_episodes_", "trending_", "spotlight_", "category_", "noteworthy_")
+_TIER_SKIP = ("source_", "genre_", "detail_")
+_TIER_REST = 3
+
+
+def home_priority(site: str) -> dict[str, tuple[int, int]]:
+    """``{canonical_id: (tier, position)}`` of the series on ``site``'s home lists (``library_lists`` ``*_<site>``):
+    tier 0 ``featured_*`` (hero), 1 latest episodes / trending / spotlight / category / noteworthy rows, 2 any other home
+    collection; the best tier wins, the lowest position within it. Ids on no home list are absent (tier _TIER_REST)."""
+    out: dict[str, tuple[int, int]] = {}
+    for r in db.query("SELECT list_id, canonical_id, position FROM library_lists WHERE list_id GLOB ?", ("*_" + site,)):
+        lid = r["list_id"]
+        if lid.startswith(_TIER_SKIP):
+            continue
+        tier = 0 if lid.startswith("featured_") else 1 if lid.startswith(_TIER_ROWS) else 2
+        val = (tier, int(r["position"] or 0))
+        cid = r["canonical_id"]
+        if cid not in out or val < out[cid]:
+            out[cid] = val
+    return out
+
+
 def select(site: str, cfg: scfg.SiteConfig, by_key: Optional[dict] = None, now: Optional[float] = None,
            force: bool = False, only: Optional[str] = None, stats: Optional[dict] = None) -> list[dict]:
-    """Series of ``site`` that need a crawl, most urgent first: ``[{key, cid, reason, card, at}]``. A series whose ``source_url``
+    """Series of ``site`` that need a crawl, home first (:func:`home_priority`), then most urgent: ``[{key, cid, reason, card, at}]``. A series whose ``source_url``
     is no series page and for which no series page is known (``series_dir``: ``_series_page_unknown`` for that very URL) is left out
     (``stats["skipped_unknown"]``), one still waiting out a failure backoff is counted in ``stats["backoff"]``; neither is an error."""
     now = time.time() if now is None else now
@@ -550,7 +597,13 @@ def select(site: str, cfg: scfg.SiteConfig, by_key: Optional[dict] = None, now: 
         if reason:
             out.append({"key": row["source_key"], "cid": row["canonical_id"], "reason": reason, "card": card,
                         "in_run": in_run, "at": int(inv.get("at") or 0)})
-    out.sort(key=lambda c: (_RANK.get(c["reason"], 9), 0 if c["in_run"] else 1, c["at"], c["key"]))
+    # home first (hero, main rows, other home lists; list order kept), then this scan's other cards, then the archive;
+    # within a tier: list position, then urgency (_RANK), then the oldest read
+    prio = home_priority(site) if out else {}
+    def _order(c):
+        tier, pos = prio.get(c["cid"], (2 if c["in_run"] else _TIER_REST, 0))
+        return (tier, pos, _RANK.get(c["reason"], 9), 0 if c["in_run"] else 1, c["at"], c["key"])
+    out.sort(key=_order)
     return out
 
 

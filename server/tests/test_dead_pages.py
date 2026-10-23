@@ -19,7 +19,7 @@ from app.routers import ops
 from app.scraper import config as scfg
 from app.scraper.runner import RunResult
 
-from test_series_crawl import Base, SNW_KEY, snw_card as card
+from _series_base import Base, SNW_KEY, snw_card as card
 
 FIX = Path(__file__).parent / "fixtures"
 SITE = "yabancidizi"

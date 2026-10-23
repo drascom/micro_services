@@ -155,7 +155,8 @@ def ensure_system(titles: dict[str, str], order: Optional[list[str]] = None) -> 
     ``CATEGORY_AFTER`` - exactly the home as it was before this table held the skeleton. A single missing skeleton row
     later goes right after the skeleton row that precedes it in ``order`` (or first). Skeleton rows that are no longer
     in :data:`SYSTEM_SLUGS` (``RETIRED_SYSTEM``: earlier defaults) are deleted; the categories that sat behind one of
-    them move behind ``CATEGORY_AFTER`` (as on a first seeding). Returns True when it wrote."""
+    them move behind ``CATEGORY_AFTER`` (as on a first seeding). A skeleton row whose title is its own slug (seeded
+    without a title) gets ``titles[slug]``; any other title (the admin's) is kept. Returns True when it wrote."""
     wanted = _wanted(order)
     now = int(time.time())
     with closing(db.connect()) as conn, conn:
@@ -172,8 +173,12 @@ def ensure_system(titles: dict[str, str], order: Optional[list[str]] = None) -> 
             conn.executemany("DELETE FROM home_categories WHERE slug = ? AND kind = 'system'", [(s,) for s in retired])
         present = {r["slug"] for r in have if r["kind"] == "system"} - retired
         missing = [s for s in wanted if s not in present]
+        # a skeleton row seeded without its title (title = the slug itself) gets the default title; a title the admin gave stays
+        untitled = [(titles[s], s) for s in present if titles.get(s) and titles[s] != s]
+        repaired = conn.executemany("UPDATE home_categories SET title = ?, updated_at = %d WHERE slug = ? AND kind = 'system' "
+                                    "AND title = slug" % now, untitled).rowcount if untitled else 0
         if not missing and not retired:
-            return False
+            return repaired > 0
         cur = [r["slug"] for r in have if r["slug"] not in retired]
         if not present:
             skeleton = list(wanted)

@@ -8,7 +8,21 @@ from unittest.mock import patch
 from app import db
 from app.library import ingest as ingestion
 from app.scraper.site_search import yabancidizi
-import test_crawlee_integration as integration
+import tempfile
+from pathlib import Path
+
+from app import config
+from app.scraper import state
+
+
+def _temp_db_setup(self):
+    temp = tempfile.TemporaryDirectory()
+    self.addCleanup(temp.cleanup)
+    for p in (patch.object(config, "DB_PATH", str(Path(temp.name) / "test.db")),
+              patch.object(state, "STATE_DIR", str(Path(temp.name) / "state"))):
+        p.start()
+        self.addCleanup(p.stop)
+    db.init()
 
 
 class LiveSearchAdapterTests(unittest.TestCase):
@@ -37,7 +51,7 @@ class LiveSearchAdapterTests(unittest.TestCase):
 
 
 class SearchCacheTests(unittest.TestCase):
-    setUp = integration.IngestTests.setUp
+    setUp = _temp_db_setup
 
     def test_search_hits_are_cached_but_do_not_join_home_lists(self):
         ids = ingestion.ingest_discovered_items("yabancidizi", [{

@@ -211,7 +211,7 @@ class HomeRows(Base):
 class AdminApi(Base):
     def test_endpoints_and_error_envelope(self):
         c = self.client
-        self.assertEqual([x["kind"] for x in c.get("/api/ops/categories").json()["categories"]], ["system"] * 7)   # skeleton only
+        self.assertEqual([x["kind"] for x in c.get("/api/ops/categories").json()["categories"]], ["system"] * 8)   # skeleton only
         r = c.post("/api/ops/categories", json={"title": "Kore Dizileri"})
         self.assertEqual((r.status_code, r.json()["slug"]), (200, "kore-dizileri"))
         r = c.post("/api/ops/categories", json={"title": "Kore Dizileri"})

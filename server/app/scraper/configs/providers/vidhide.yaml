@@ -1,0 +1,17 @@
+name: vidhide
+description: VidHide embed pages (/embed/<code>, many brand domains); packed JW Player script with a 'links' map, the hls2 master plays without Referer.
+version: 1
+label: VidHide
+match:
+  host_regex: (^|[.])(morencius|vidhide[a-z]*|filelions[a-z]*|smoothpre|dhcplay|movearnpre|peytonepre)[.][a-z]{2,}$
+  path_regex: ^/(embed|e|v|f)/[a-z0-9]+
+fetch: http
+referer: '{page_url}'
+extract:
+- regex: '"hls2":"(https?://[^"]+[.]m3u8[^"]*)"'
+  unpack: true
+  type: hls
+- regex: file:"(https?://[^"]+[.]m3u8[^"]*)"
+  unpack: true
+  type: hls
+cache_ttl: 3600

@@ -5,7 +5,7 @@ src="/player/telif.html">``, "telif engeli"). The user's rule is "only publicly 
 (``scraper/blocked.py``) describe it and this module applies them:
 
 * ``blocked:`` rules recognise a KNOWN placeholder on an episode / playback page (or a series page);
-* ``availability_gate:`` is the general rule: the pages checked of a series (newest + oldest episode) / a film must give a
+* ``availability_gate:`` is the general rule: the pages checked of a series (the first aired episodes) / a film must give a
   player (``require: player``: the resolvers find >= 1 candidate, one request; ``stream``: a stream really resolves).
 
 Decisions (``series_verdict`` / ``item_verdict``): every checked page of a series blocked -> the SERIES is blocked (its episodes
@@ -15,7 +15,7 @@ NOT "no player": the series is not taken now but is judged again by the next sca
 (HTTP 404 / 410) is "no player" only for the gate, never for a rule-only site (a deleted page is not a block).
 
 Verdicts are stored in ``blocked_pages`` (site, url, kind, source_key, status, via, reason, checked_at); a ``blocked`` row is
-fresh for ``BLOCKED_RECHECK_DAYS`` (ingest does not write a series / film with a fresh row; ``sync_source`` skips a blocked
+fresh for ``BLOCKED_RECHECK_DAYS`` (an episode page without a player: ``GATE_EPISODE_RECHECK_HOURS``; ingest does not write a series / film with a fresh row; ``sync_source`` skips a blocked
 episode locator) and judged again after that, so a site that lifts the block gets its content back. The marker
 ``normalized._gate = {at, state, reason, probed, blocked_episodes}`` of an item says "verified ok" (no new probe within the
 same window). Where the checks run: ``series_crawl`` (after the inventory is read: <= ``probe`` pages per series, paced with
@@ -112,6 +112,12 @@ def _now() -> int:
 
 def window() -> float:
     return config.BLOCKED_RECHECK_DAYS * 86400.0
+
+
+def episode_window() -> float:
+    """Freshness of an EPISODE page the gate found without a player (``via`` gate): short (``GATE_EPISODE_RECHECK_HOURS``),
+    a site often adds the sources of a new episode later. Never longer than ``window()``."""
+    return min(window(), config.GATE_EPISODE_RECHECK_HOURS * 3600.0)
 
 
 # --- the page verdict -------------------------------------------------------------------------------------------------
@@ -251,9 +257,10 @@ def fresh_blocked_urls(site: str, key: str, conn=None) -> dict[str, str]:
     not write them, the series verdicts do not probe them again). ``conn`` = the caller's open connection (inside a write)."""
     if window() <= 0:
         return {}
+    now = time.time()
     sql = ("SELECT url,reason FROM blocked_pages WHERE site=? AND source_key=? AND status='blocked' "
-           "AND kind IN ('episode','movie') AND checked_at>?")
-    params = (site, key, _cutoff())
+           "AND kind IN ('episode','movie') AND checked_at>(CASE WHEN kind='episode' AND via='gate' THEN ? ELSE ? END)")
+    params = (site, key, now - episode_window(), _cutoff(now))
     rows = conn.execute(sql, params).fetchall() if conn is not None else db.query(sql, params)
     return {r[0]: r[1] or "" for r in rows}
 
@@ -346,16 +353,29 @@ def make_marker(verdict: dict, now: float) -> dict:
 
 # --- series / film verdicts -------------------------------------------------------------------------------------------
 
-def pick_pages(episodes: list[dict], probe: int) -> list[dict]:
-    """The episode pages to probe out of an inventory: the newest, the oldest and (``probe`` 3) the middle one; distinct URLs."""
-    usable = sorted((e for e in episodes if isinstance(e, dict) and e.get("url") and isinstance(e.get("season"), int)
-                     and isinstance(e.get("episode"), int)), key=lambda e: (e["season"], e["episode"]))
-    if not usable or probe <= 0:
+def _usable(episodes: list[dict]) -> list[dict]:
+    return sorted((e for e in episodes if isinstance(e, dict) and e.get("url") and isinstance(e.get("season"), int)
+                   and isinstance(e.get("episode"), int)), key=lambda e: (e["season"], e["episode"]))
+
+
+def _future(entry: dict, today: str) -> bool:
+    """The entry carries an air date (ISO ``YYYY-MM-DD...``) after today: not aired yet, so its page has no player yet."""
+    date = entry.get("air_date")
+    return isinstance(date, str) and len(date) >= 10 and date[:10] > today
+
+
+def pick_pages(episodes: list[dict], probe: int, today: Optional[str] = None) -> list[dict]:
+    """The episode pages to probe out of an inventory: the FIRST ``probe`` episodes (S1E1, S1E2, ...: the ones that surely aired;
+    the newest is often not out / has no source yet). An episode whose air date is in the future is skipped (the next one is
+    taken). Distinct URLs."""
+    if probe <= 0:
         return []
-    order = [usable[-1], usable[0], usable[len(usable) // 2]]
+    today = today or time.strftime("%Y-%m-%d", time.gmtime())
     out: list[dict] = []
-    for entry in order:
-        if entry["url"] not in {p["url"] for p in out} and len(out) < probe:
+    for entry in _usable(episodes):
+        if len(out) >= probe:
+            break
+        if not _future(entry, today) and entry["url"] not in {p["url"] for p in out}:
             out.append(entry)
     return out
 
@@ -375,7 +395,11 @@ def series_verdict(cfg, episodes: list[dict], *, known: Optional[dict[str, str]]
     pacer = pacer or Pacer()
     picks = pick_pages(episodes, probe)
     out: dict[str, Any] = {"state": OK, "reason": "", "via": "", "probed": 0, "pages": [], "blocked": [], "retry": []}
-    if not picks or not (require or episode_rules(cfg)):
+    if not (require or episode_rules(cfg)):
+        return out
+    if not picks:
+        if probe > 0 and _usable(episodes):   # every episode airs later: nothing to judge yet, asked again by the next scan
+            out["state"], out["reason"] = RETRY, "yayınlanmış bölüm yok"
         return out
     for entry in picks:
         url = entry["url"]
@@ -591,8 +615,10 @@ def recheck(cfg, site: str, *, limit: Optional[int] = None, now: Optional[float]
     if limit <= 0 or not configured(cfg):
         return out
     try:
-        rows = db.query("SELECT * FROM blocked_pages WHERE site=? AND status='blocked' AND kind IN ('episode','movie') AND checked_at<=? "
-                        "ORDER BY checked_at LIMIT ?", (site, _cutoff(now), limit))
+        t = time.time() if now is None else now
+        rows = db.query("SELECT * FROM blocked_pages WHERE site=? AND status='blocked' AND kind IN ('episode','movie') "
+                        "AND checked_at<=(CASE WHEN kind='episode' AND via='gate' THEN ? ELSE ? END) "
+                        "ORDER BY checked_at LIMIT ?", (site, t - episode_window(), _cutoff(now), limit))
     except Exception as exc:
         log.warning("gate %s: recheck skipped: %s", site, exc)
         return out

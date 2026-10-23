@@ -861,12 +861,14 @@
     } else if (status.state === 'check_required') body.appendChild(mk('p', 'detail-meta', 'Kaynakta sorun bildirildi · Yeniden deneyebilirsiniz'));
 
     /* HIDRASYON: sunucu arka planda bolum/ozet bilgisini getiriyor. Bos sezon/bolum alani yerine yer tutucu (odaksiz);
-       bos dizi icin asagidaki "Bolumler" blogunda, diger durumlarda (film / kismi sezon) burada tek satir. */
+       bos dizi icin asagidaki "Bolumler" blogunda, diger durumlarda burada tek satir - YALNIZ ozet (overview) eksikse.
+       Ozet + bolumler zaten varken (or. bolum envanteri tazeleme) hidrasyon sessiz: spinner yok, izleyici yine bekler,
+       bitince yeni bolumler yumusak yeniden cizimle (softReveal) gelir. */
     var hydrating = d.hydrating === true;
     var emptySeries = d.type === 'series' && !(d.seasons && d.seasons.length);
     state.hydNote = null;
     state.hydEmpty = null;
-    if (hydrating && !emptySeries) {
+    if (hydrating && !emptySeries && !d.overview) {
       state.hydNote = mk('p', 'detail-meta hydrating-note', HYDRATING_TEXT);
       body.appendChild(state.hydNote);
     }

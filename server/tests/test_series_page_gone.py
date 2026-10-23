@@ -17,7 +17,7 @@ from app.routers import detail as detail_router
 from app.scraper import config as scfg
 from app.scraper.fetch import FetchError
 
-from test_series_crawl import Base
+from _series_base import Base
 
 SLUG = "the-blacklist-izle-10"
 KEY = "dizi/" + SLUG

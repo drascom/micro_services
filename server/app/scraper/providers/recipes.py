@@ -22,6 +22,8 @@ data, the engine is :func:`app.scraper.resolvers.player_page.resolve_player`.
     cache_ttl: 3600                    # optional, 60..86400 s: how long the server may reuse the resolved streams
     stream_proxy: true                 # optional bool: /api/streams serves this recipe's streams (mp4 AND hls) through the
                                        # server's signed stream proxy (the media host is bound to the server's IP / session)
+    stream_impersonate: true           # optional bool: the media host checks the TLS fingerprint (plain clients get 403); the
+                                       # streams are proxied AND the proxy fetches them with a Chrome curl_cffi session
     verify: false
     label: "Trdizi"                    # optional provider name shown for the streams (default: the name)
 
@@ -42,21 +44,21 @@ from urllib.parse import urlparse
 import yaml
 
 from .. import config as scfg
-from . import okru, vidmolly
+from . import okru, vidmolly, vidstack_p2p
 # ``resolvers`` / ``resolvers.player_page`` are imported inside the functions: the resolver types import ``providers.trace``,
 # which imports the registry, which imports this module (a top-level import here would be circular)
 
 log = logging.getLogger("scraper.recipes")
 
 NAME_RE = scfg.RECIPE_NAME_RE
-CODE_NAMES = (vidmolly.NAME, okru.NAME)         # a recipe can never take a code provider's name
+CODE_NAMES = (vidmolly.NAME, okru.NAME, vidstack_p2p.NAME)       # a recipe can never take a code provider's name
 MAX_RECIPE_BYTES = 20_000
 MAX_DESCRIPTION = 300
 MAX_LABEL = 40
 MAX_MATCH_REGEX = 200
 #: top-level keys a recipe may carry (``updated_at`` is written by ``config.save_recipe``)
 RECIPE_KEYS = frozenset({"name", "description", "version", "label", "match", "fetch", "referer", "headers", "warm_session",
-                         "wait_for", "follow", "extract", "stream_headers", "verify", "cache_ttl", "stream_proxy", "updated_at"})
+                         "wait_for", "follow", "extract", "stream_headers", "verify", "cache_ttl", "stream_proxy", "stream_impersonate", "updated_at"})
 #: the keys that are parameters of the ``player_page`` engine
 PLAYER_KEYS = ("fetch", "referer", "headers", "warm_session", "wait_for", "follow", "extract", "stream_headers", "verify",
                "cache_ttl")
@@ -150,6 +152,8 @@ def validate_recipe(data: Any) -> list[str]:
         errors.append("fetch: must be 'http' or 'browser'")
     if data.get("stream_proxy") is not None and not isinstance(data["stream_proxy"], bool):
         errors.append("stream_proxy: must be true or false")
+    if data.get("stream_impersonate") is not None and not isinstance(data["stream_impersonate"], bool):
+        errors.append("stream_impersonate: must be true or false")
     from .. import resolvers
     item = {"type": "player_page", "selector": "iframe[src]", **{k: data[k] for k in PLAYER_KEYS if data.get(k) is not None}}
     for problem in resolvers.validate([item]):
@@ -228,6 +232,7 @@ class RecipeProvider:
         self.version: int = int(data.get("version") or 1)
         self.label: str = (data.get("label") or self.name).strip()
         self.stream_proxy: bool = data.get("stream_proxy") is True   # the streams go through the server's proxy (not an engine parameter)
+        self.stream_impersonate: bool = data.get("stream_impersonate") is True   # ... fetched with a Chrome TLS fingerprint
         match = data["match"]
         self.host_regex: str = match["host_regex"]
         self.path_regex: str = match.get("path_regex") or ""
@@ -263,14 +268,17 @@ class RecipeProvider:
         if api is None:
             from .. import fetch as api
         result = player_page.resolve_player(url, self.params(), referer=referer or "", fetch_api=api)
-        if result and self.stream_proxy:   # marker read by routers/streams.py (``streamproxy.proxy_reason``: "recipe"), never sent to a client
-            result = {**result, "streams": [{**stream, "stream_proxy": True} for stream in result.get("streams") or []]}
+        marks = {**({"stream_proxy": True} if self.stream_proxy else {}),
+                 **({"stream_impersonate": True} if self.stream_impersonate else {})}
+        if result and marks:   # markers read by routers/streams.py (``streamproxy.proxy_reason``: "recipe"), never sent to a client
+            result = {**result, "streams": [{**stream, **marks} for stream in result.get("streams") or []]}
         return result
 
     def catalog_entry(self) -> dict:
         return {"name": self.name, "description": self.description, "hosts": list(self.hosts), "kind": "recipe",
                 "version": self.version, "fetch": self.data.get("fetch") or "http",
-                **({"stream_proxy": True} if self.stream_proxy else {})}
+                **({"stream_proxy": True} if self.stream_proxy else {}),
+                **({"stream_impersonate": True} if self.stream_impersonate else {})}
 
 
 def from_text(text: str, *, fetch_api: Any = None) -> tuple[Optional[RecipeProvider], list[str]]:

@@ -199,14 +199,53 @@ def _head(response, limit: int, *, safe: bool = False) -> bytes:
     return head[:limit]
 
 
-def probe(url: str, headers: dict, kind: str, now: Optional[float] = None) -> dict:
+def _probe_impersonated(url: str, headers: dict, kind: str, started: float) -> dict:
+    """:func:`probe` through a Chrome-impersonating ``curl_cffi`` request (what the stream proxy does for a token with the
+    ``impersonate`` flag): the media host checks the TLS fingerprint, an httpx probe would always read 403."""
+    from ..scraper import fetch
+    send = dict(headers)
+    if kind != "hls":
+        send["Range"] = "bytes=0-1023"
+
+    def allow(target: str) -> bool:
+        try:
+            netguard.check_url(target)
+            return True
+        except ValueError:
+            return False
+    try:
+        page = fetch.impersonated_get(url, headers=send, timeout=config.STREAM_DIAG_TIMEOUT, max_bytes=2_000_000, allow=allow)
+    except fetch.FetchError as exc:
+        status = getattr(exc, "status", None)
+        if status == 206 and kind != "hls":
+            return _result("reachable", started, 206)
+        if status in (401, 403):
+            return _result("forbidden", started, status)
+        if status in (404, 410):
+            return _result("gone", started, status)
+        text = str(exc)
+        if "timeout" in text:
+            return _result("timeout", started)
+        return _result("unreachable", started, status, why=(f"HTTP {status}" if status else text[:60]))
+    except Exception as exc:   # a probe never takes anything down
+        return _result("unreachable", started, why=type(exc).__name__)
+    head = page.text[:_HEAD_BYTES].encode("utf-8", "replace")
+    if _not_media(head, "", kind):
+        return _result("not_media", started, page.status, body=head[:200])
+    return _result("reachable", started, page.status)
+
+
+def probe(url: str, headers: dict, kind: str, now: Optional[float] = None, *, impersonate: bool = False) -> dict:
     """One server-side request for ``url`` with ``headers``: a ranged GET (first KB) for a file, the playlist for HLS.
-    Returns ``{code, http, ct, ms, why}``; never raises. SSRF-checked on every hop (:func:`netguard.check_url`)."""
+    Returns ``{code, http, ct, ms, why}``; never raises. SSRF-checked on every hop (:func:`netguard.check_url`).
+    ``impersonate``: the request goes out with a Chrome TLS fingerprint (:func:`_probe_impersonated`)."""
     started = time.monotonic()
     clock = time.time() if now is None else now
     expiry = streamlife.stream_expiry(url, clock)
     if expiry is not None and expiry <= clock:
         return _result("expired", started)
+    if impersonate:
+        return _probe_impersonated(url, streamproxy.clean_headers(headers), kind, started)
     send = {"Accept": "*/*", "Accept-Encoding": "identity", **streamproxy.clean_headers(headers)}
     if kind != "hls":
         send["Range"] = "bytes=0-1023"
@@ -293,8 +332,8 @@ def diagnose(job: dict, *, now: Optional[float] = None) -> Optional[dict]:
         sent = {**(rule["headers"] if rule else {}), **extra, **headers}     # what the proxy sends: host rule < learned Referer < the stream's own headers
         proxied = streamproxy.proxy_reason(stream, headers, learned=learned or bool(rule)) is not None
         learn, found = False, None
-        if proxied:   # what the proxy does: the stream's own headers (and the learned ones)
-            result = probe(url, sent, kind, now)
+        if proxied:   # what the proxy does: the stream's own headers (and the learned ones), a browser TLS fingerprint if flagged
+            result = probe(url, sent, kind, now, impersonate=stream.get("stream_impersonate") is True)
             if result["code"] in BLOCKED:
                 result["code"] = "server_blocked"
         else:         # what a plain player would see
@@ -544,7 +583,8 @@ def build_job(source: Any, streams: list, code: str, engine: str, detail: str, b
     if code in SKIP_CODES:
         return None
     kept = [{"url": s.get("url"), "type": s.get("type"), "request_headers": streamproxy.clean_headers(s.get("request_headers")),
-             "stream_proxy": s.get("stream_proxy") is True, "provider": _clip(s.get("provider"), 60)}
+             "stream_proxy": s.get("stream_proxy") is True, "stream_impersonate": s.get("stream_impersonate") is True,
+             "provider": _clip(s.get("provider"), 60)}
             for s in streams if s.get("url") and s.get("type") != "embed"]
     if not kept:
         return None

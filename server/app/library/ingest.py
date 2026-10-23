@@ -19,7 +19,7 @@ import time
 import unicodedata
 from typing import Any, Callable, Optional
 
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from .. import config, db
 from ..scraper import run_site
@@ -137,6 +137,12 @@ def merge_canonical(conn, canonical_id: str) -> None:
                     continue   # "no picture" file: counts as empty (TMDB fills it / the client draws its own placeholder)
                 merged[f] = norm[f]
                 provenance[f] = source
+
+    # Genres: TMDB first (``enrich.fill_norm`` keeps them in ``_tmdb_genres``), the site's only without TMDB genres.
+    tmdb_genres = next((n["_tmdb_genres"] for _, _, n in sources if _filled(n.get("_tmdb_genres"))), None)
+    if tmdb_genres:
+        merged["genres"] = tmdb_genres
+        provenance["genres"] = "tmdb"
 
     # Description ownership is independent of general metadata precedence:
     # Sinemalar first; otherwise retain the earliest discoverer's nonempty text.
@@ -261,13 +267,21 @@ def _keep_window(conn, memberships: list[tuple[str, str, int]], windows: dict[st
 def _fetch_collection(cfg: scfg.SiteConfig, collection: dict, limit: int, topup: Optional[list] = None) -> list[dict]:
     """Fetch one list page with optional collection-specific parse rules (``topup``: gets the ``min_keep`` top-up cards)."""
     path = collection["path"]
-    row_selector = collection.get("row_selector") or cfg.row_selector
-    fields = collection.get("fields") or cfg.list_fields
     method, form = scollections.request_of(collection)
     post = {"method": method, "data": form} if method == "POST" else {}   # yaml ``method: POST``; GET calls stay exactly as they were
-    html = fetch.page(cfg, urljoin(cfg.base_url, path), wait_for=row_selector, **post)
-    raw = parse.parse_list(html, row_selector, fields)
-    valid, metrics = schema.validate_items(cfg.schema, raw)
+    if scollections.format_of(collection) == scollections.JSON_FORMAT:   # yaml ``format: json``: cards from embedded / API JSON
+        url = urljoin(cfg.base_url, path)
+        if not _own_host(cfg.base_url, url):
+            raise ValueError(f"invalid collection {path}: a json path must be on the site's host or a sub-domain of it")
+        raw = scollections.json_rows(fetch.page(cfg, url, **post), collection)
+    else:
+        row_selector = collection.get("row_selector") or cfg.row_selector
+        fields = collection.get("fields") or cfg.list_fields
+        html = fetch.page(cfg, urljoin(cfg.base_url, path), wait_for=row_selector, **post)
+        raw = parse.parse_list(html, row_selector, fields)
+    # optional ``schema: <name>`` on the collection (e.g. HomepageItem: keeps season / episode / today of episode cards)
+    model = collection.get("schema") if collection.get("schema") in schema.SCHEMAS else cfg.schema
+    valid, metrics = schema.validate_items(model, raw)
     # baseline ``collections: {<id>: {min_items, min_fill_ratio, critical_field_fill}}`` = that collection's own thresholds (a
     # section without images, ...); else only the site's ``min_fill_ratio``
     base = cfg.baseline()
@@ -283,11 +297,22 @@ def _fetch_collection(cfg: scfg.SiteConfig, collection: dict, limit: int, topup:
     return _collection_items(valid, collection, limit)
 
 
+def _own_host(base_url: str, url: str) -> bool:
+    """``url`` is on the host of ``base_url`` or one of its sub-domains (``www.`` ignored): where a json collection may read."""
+    def host(u: str) -> str:
+        h = (urlparse(u).hostname or "").lower().rstrip(".")
+        return h[4:] if h.startswith("www.") else h
+    base, target = host(base_url), host(url)
+    return bool(base) and (target == base or target.endswith("." + base))
+
+
 def parses_main_list(cfg: scfg.SiteConfig, collection: dict) -> bool:
     """True when ``collection`` reads the MAIN list page (``list_url``) with the main parse rules: its items are then
     filtered out of the already-fetched main result (no second fetch). A collection on that same path with its own
     ``row_selector`` or ``fields`` (different from the main ones) needs a parse of its own (``_fetch_collection``)."""
     if scollections.method_of(collection) == "POST":   # a POSTed page is never the main (GET) list page
+        return False
+    if scollections.format_of(collection) == scollections.JSON_FORMAT:   # json cards never come from the main CSS rows
         return False
     if urljoin(cfg.base_url, collection["path"]) != urljoin(cfg.base_url, cfg.list_url):
         return False
@@ -616,40 +641,48 @@ def hydrate_series_item(item_id: str, outcome: Optional[dict] = None) -> bool:
     ``{"status", "reason", "source", "source_key", "url"}`` of this attempt, for the caller's diagnostics (a hydrate that
     read nothing must say why)."""
     outcome = outcome if outcome is not None else {}
+    # the first source of the title (``series_crawl.source_rows`` order: sites with an inventory module, then by name)
+    # that is a series AND has the inventory stage enabled: a title with several sources must not look at a source that
+    # has none (the same row ``series_crawl.inventory_due`` decided on)
+    found = None
+    for row in series_crawl.source_rows(item_id):
+        try:
+            cfg = scfg.load_site(row["source"])
+            norm = json.loads(row["normalized"] or "{}")
+            raw = json.loads(row["raw"] or "{}")
+        except (FileNotFoundError, TypeError, ValueError):
+            continue
+        if norm.get("type") == "series" and series_crawl.enabled(cfg):
+            found = (row, cfg, norm, raw)
+            break
+    if found is None:
+        outcome.update(status="no_source", reason="dizi envanteri açık bir kaynak yok (series_crawl kapalı ya da tür dizi değil)")
+        return False
+    row, cfg, norm, raw = found
+    before = json.dumps(norm, sort_keys=True)
+    reports: list[dict] = []
+    errors: list[dict] = []
+    key = row["source_key"]
+    # the page reads run OUTSIDE the discovery lock (like the scan's ``series_crawl._crawl_persist``): a hydrate must never
+    # wait behind a running scan's network work, nor hold every other writer while it fetches (``hydrating`` stuck true)
+    _enrich_series_catalogs(cfg, {key: norm}, {key: raw}, reports, errors)
+    report = reports[-1] if reports else {}
+    outcome.update(source=row["source"], source_key=key, url=report.get("url") or norm.get("source_url"),
+                   status=report.get("status") or "none", reason=_hydrate_reason(report, norm))
+    if json.dumps(norm, sort_keys=True) == before:
+        return False
     with _discovery_lock:
-        # the first source of the title (``series_crawl.source_rows`` order: sites with an inventory module, then by name)
-        # that is a series AND has the inventory stage enabled: a title with several sources must not look at a source that
-        # has none (the same row ``series_crawl.inventory_due`` decided on)
-        found = None
-        for row in series_crawl.source_rows(item_id):
-            try:
-                cfg = scfg.load_site(row["source"])
-                norm = json.loads(row["normalized"] or "{}")
-                raw = json.loads(row["raw"] or "{}")
-            except (FileNotFoundError, TypeError, ValueError):
-                continue
-            if norm.get("type") == "series" and series_crawl.enabled(cfg):
-                found = (row, cfg, norm, raw)
-                break
-        if found is None:
-            outcome.update(status="no_source", reason="dizi envanteri açık bir kaynak yok (series_crawl kapalı ya da tür dizi değil)")
-            return False
-        row, cfg, norm, raw = found
-        before = json.dumps(norm, sort_keys=True)
-        reports: list[dict] = []
-        errors: list[dict] = []
-        key = row["source_key"]
-        _enrich_series_catalogs(cfg, {key: norm}, {key: raw}, reports, errors)
-        report = reports[-1] if reports else {}
-        outcome.update(source=row["source"], source_key=key, url=report.get("url") or norm.get("source_url"),
-                       status=report.get("status") or "none", reason=_hydrate_reason(report, norm))
-        if json.dumps(norm, sort_keys=True) == before:
-            return False
         if series_crawl.gate_removes(norm):   # opened a series that turned out not to be public: it leaves the library
             gate.remove_items(row["source"], [key])
             return True
         conn = db.connect()
         try:
+            current = conn.execute("SELECT normalized FROM source_items WHERE source=? AND source_key=?",
+                                   (row["source"], key)).fetchone()
+            if current is None:   # removed meanwhile
+                return False
+            if current["normalized"] != row["normalized"]:   # written meanwhile (a scan): re-apply only what this read changed
+                norm = series_crawl._merge3(json.loads(row["normalized"] or "{}"), norm, json.loads(current["normalized"] or "{}"))
             conn.execute(
                 "UPDATE source_items SET normalized=?,fetched_at=?,trailer_url=COALESCE(?,trailer_url),source_url=COALESCE(?,source_url) "
                 "WHERE source=? AND source_key=?",
@@ -660,7 +693,7 @@ def hydrate_series_item(item_id: str, outcome: Optional[dict] = None) -> bool:
             conn.commit()
         finally:
             conn.close()
-        return not errors
+    return not errors
 
 
 COVERAGE_SAMPLES = 5

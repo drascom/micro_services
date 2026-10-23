@@ -194,6 +194,19 @@ const inNavRow = (node) => { for (let n = node; n; n = n.parentNode) if (n.getAt
     assert.equal(w.H.count(), 0, 'detail already complete: stale watcher dropped (no duplicate toast)');
   }
 
+  // ---- T) details already there (overview + seasons): background hydrate (inventory refresh) is silent; new episodes still arrive
+  {
+    const w = await open(series({ hydrating: true, overview: 'Var olan özet', seasons: [season(1, [ep(1, 1)])] }),
+      [series({ hydrating: false, overview: 'Var olan özet', seasons: [season(1, [ep(1, 1), ep(1, 2)])] })]);
+    assert(!w.has('Detaylar yükleniyor…'), 'no spinner while details are shown');
+    assert.equal(findAll(w.container, 'hydrating-note').length, 0);
+    assert.equal(w.H.isWatching('d'), true, 'still watched for the silent refresh');
+    await w.advance(3000);
+    assert(w.has('Bölüm 2'), 'new episode arrives with the soft redraw');
+    assert.deepEqual(w.log.toasts, []);
+    assert.equal(w.H.count(), 0);
+  }
+
   // ---- S) soft redraw: scroll transform kept, title/buttons visible at once, new sections fade in, cleanup after the timer
   {
     const w = await open(series({ hydrating: true }), [series({ hydrating: false, overview: 'Uzun özet', seasons: [season(1, [ep(1, 1)])] })]);

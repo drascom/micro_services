@@ -170,6 +170,9 @@ SERIES_CRAWL_MAX_ERRORS = max(1, _int("SERIES_CRAWL_MAX_ERRORS", 5))
 BLOCKED_RECHECK_DAYS = max(0.0, _float("BLOCKED_RECHECK_DAYS", 7.0))
 GATE_BUDGET = max(0, _int("GATE_BUDGET", 40))
 GATE_RECHECK_PAGES = max(0, _int("GATE_RECHECK_PAGES", 3))
+# GATE_EPISODE_RECHECK_HOURS = an EPISODE page the gate found without a player is fresh this long only (the site adds the
+# sources of a new episode later); series / film rows keep BLOCKED_RECHECK_DAYS.
+GATE_EPISODE_RECHECK_HOURS = max(0.0, _float("GATE_EPISODE_RECHECK_HOURS", 12.0))
 # AVAILABILITY_GATE=0 = kill switch: the yaml ``availability_gate:`` of every site is ignored by the library (scan / inventory /
 # archive; ``blocked:`` rules and dead-page blocks still apply; the onboarding sandbox is not affected). Tests run with it off
 # (tests/_sandbox.py), the gate tests switch it on.

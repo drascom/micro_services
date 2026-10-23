@@ -1,0 +1,15 @@
+name: lulustream
+description: LuluStream embed pages (/e/<code>); packed JW Player setup with an AES-128 HLS master. The media host checks the TLS fingerprint (Chrome passes, plain httpx gets 403), so the streams go through the stream proxy with a Chrome TLS fingerprint.
+version: 1
+label: LuluStream
+match:
+  host_regex: (^|[.])(lulustream|luluvdo|luluvid|luluvido|luluvdoo)[.]com$|(^|[.])lulu[.]st$
+  path_regex: ^/(e|d)/[a-z0-9]+
+fetch: http
+referer: '{page_url}'
+extract:
+- regex: sources:\[\{file:"(https?://[^"]+[.]m3u8[^"]*)"
+  unpack: true
+  type: hls
+cache_ttl: 3600
+stream_impersonate: true

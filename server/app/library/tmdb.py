@@ -379,12 +379,18 @@ def details(tmdb_id, media_type='movie'):
     images = d.get('images') or {}
     poster = _pick_image(images.get('posters'), d.get('poster_path'))
     backdrop = _pick_image(images.get('backdrops'), d.get('backdrop_path'))
+    overview = (d.get('overview') or '').strip()
+    if not overview:   # untranslated: one en-US request (it only fills a gap: the site's own text still wins)
+        try:
+            overview = (_get('/%s/%s' % (kind, tmdb_id), language='en-US').get('overview') or '').strip()
+        except TmdbError as exc:
+            log.info('tmdb en-US overview fallback skipped: %s', exc)
     runtime = (d.get('runtime') or ((d.get('episode_run_time') or [None])[0])
                or (d.get('last_episode_to_air') or {}).get('runtime'))  # TMDB dropped episode_run_time for many series
     return {
         'tmdb_id': d['id'],
         'imdb_id': d.get('imdb_id') or (d.get('external_ids') or {}).get('imdb_id') or None,
-        'overview': d.get('overview') or None,
+        'overview': overview or None,
         'original_title': d.get('original_title') or d.get('original_name'),
         'genres': [g['name'] for g in d.get('genres', []) if g.get('name')],
         'rating': d.get('vote_average') if d.get('vote_count') else None,

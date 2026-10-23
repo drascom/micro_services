@@ -1,0 +1,426 @@
+[
+ {
+  "id": "8586308c-8dce-4be9-b4cc-638a008a92d3",
+  "content_id": "0a407b5c-f68b-4d7e-8325-1c48579637f8",
+  "days": [
+   "SATURDAY",
+   "SUNDAY"
+  ],
+  "active": true,
+  "starts_on": "2026-09-12",
+  "ends_on": "2026-10-25",
+  "updated_at": "2026-09-12T16:13:41.273Z",
+  "created_at": "2026-09-12T16:11:09.231Z",
+  "status": "LIVE",
+  "effectiveDays": [
+   "SATURDAY",
+   "SUNDAY"
+  ],
+  "content": {
+   "id": "0a407b5c-f68b-4d7e-8325-1c48579637f8",
+   "title": "A Love Other than Yours",
+   "slug": "a-love-other-than-yours",
+   "type": "SERIES",
+   "cover_image": "https://api.diziasya.com/v2/images/posters/62d6bf5f41a4e3544865.webp",
+   "tag_keys": [],
+   "total_chapter": 14,
+   "latest_chapter": {
+    "number": 10,
+    "season_number": 1,
+    "publishment_date": "2026-10-18T16:01:41.923Z"
+   }
+  }
+ },
+ {
+  "id": "65c4d1d6-4ea4-48c8-b885-38a074f18caa",
+  "content_id": "b48be1c0-558c-4550-9b04-cbc7bbd84688",
+  "days": [
+   "MONDAY",
+   "TUESDAY"
+  ],
+  "active": true,
+  "starts_on": "2026-10-05",
+  "ends_on": "2026-11-10",
+  "updated_at": "2026-09-14T08:15:00.146Z",
+  "created_at": "2026-09-14T08:15:00.146Z",
+  "status": "LIVE",
+  "effectiveDays": [
+   "MONDAY",
+   "TUESDAY"
+  ],
+  "content": {
+   "id": "b48be1c0-558c-4550-9b04-cbc7bbd84688",
+   "title": "Between Steps",
+   "slug": "between-steps",
+   "type": "SERIES",
+   "cover_image": "https://api.diziasya.com/v2/images/posters/99f76ce30f10b96d0e4b.webp",
+   "tag_keys": [],
+   "total_chapter": 12,
+   "latest_chapter": {
+    "number": 6,
+    "season_number": 1,
+    "publishment_date": "2026-10-20T18:13:21.563Z"
+   }
+  }
+ },
+ {
+  "id": "36c11d57-cc4e-457f-a9ec-92b14567a85f",
+  "content_id": "2f9d2ad3-ae15-4937-92ad-d9fd0f74b0f8",
+  "days": [
+   "SATURDAY",
+   "SUNDAY"
+  ],
+  "active": true,
+  "starts_on": "2026-10-10",
+  "ends_on": "2026-11-29",
+  "updated_at": "2026-09-14T08:17:28.730Z",
+  "created_at": "2026-09-14T08:17:28.730Z",
+  "status": "LIVE",
+  "effectiveDays": [
+   "SATURDAY",
+   "SUNDAY"
+  ],
+  "content": {
+   "id": "2f9d2ad3-ae15-4937-92ad-d9fd0f74b0f8",
+   "title": "100 Days of Deception",
+   "slug": "100-days-of-deception",
+   "type": "SERIES",
+   "cover_image": "https://api.diziasya.com/v2/images/posters/769a8831af799121d0d9.webp",
+   "tag_keys": [],
+   "total_chapter": 16,
+   "latest_chapter": {
+    "number": 4,
+    "season_number": 1,
+    "publishment_date": "2026-10-18T15:55:03.630Z"
+   }
+  }
+ },
+ {
+  "id": "2a291e2a-923b-4ee3-a527-ca5012f9d0c4",
+  "content_id": "41c23e94-f915-4c57-8919-7539985b8d7c",
+  "days": [
+   "FRIDAY",
+   "SATURDAY"
+  ],
+  "active": true,
+  "starts_on": "2026-10-09",
+  "ends_on": "2026-11-14",
+  "updated_at": "2026-09-14T08:18:26.402Z",
+  "created_at": "2026-09-14T08:18:26.402Z",
+  "status": "LIVE",
+  "effectiveDays": [
+   "FRIDAY",
+   "SATURDAY"
+  ],
+  "content": {
+   "id": "41c23e94-f915-4c57-8919-7539985b8d7c",
+   "title": "Doctor X: Mafia in White",
+   "slug": "doctor-x",
+   "type": "SERIES",
+   "cover_image": "https://api.diziasya.com/v2/images/posters/7bce9ba706ff87d71b73.webp",
+   "tag_keys": [],
+   "total_chapter": 12,
+   "latest_chapter": {
+    "number": 4,
+    "season_number": 1,
+    "publishment_date": "2026-10-17T16:05:33.314Z"
+   }
+  }
+ },
+ {
+  "id": "e00bfe6c-59e1-488a-8fe6-1794f2690e7a",
+  "content_id": "a72ca3ae-8e7f-4d15-8499-5e300ce91b6f",
+  "days": [
+   "SATURDAY",
+   "SUNDAY"
+  ],
+  "active": true,
+  "starts_on": "2026-09-26",
+  "ends_on": "2026-11-01",
+  "updated_at": "2026-09-21T13:15:31.690Z",
+  "created_at": "2026-09-21T13:15:31.690Z",
+  "status": "LIVE",
+  "effectiveDays": [
+   "SATURDAY",
+   "SUNDAY"
+  ],
+  "content": {
+   "id": "a72ca3ae-8e7f-4d15-8499-5e300ce91b6f",
+   "title": "Dive into You",
+   "slug": "dive-into-you",
+   "type": "SERIES",
+   "cover_image": "https://api.diziasya.com/v2/images/posters/92287420d6bc62846cd8.webp",
+   "tag_keys": [],
+   "total_chapter": 12,
+   "latest_chapter": {
+    "number": 8,
+    "season_number": 1,
+    "publishment_date": "2026-10-18T16:17:18.946Z"
+   }
+  }
+ },
+ {
+  "id": "a4c37411-ee63-41ec-9dd8-c0fb804dbe80",
+  "content_id": "196b2740-8ef9-4d63-80a9-6d57f132a342",
+  "days": [
+   "WEDNESDAY"
+  ],
+  "active": true,
+  "starts_on": "2026-10-07",
+  "ends_on": "2026-12-09",
+  "updated_at": "2026-10-07T15:38:34.448Z",
+  "created_at": "2026-10-07T15:38:34.448Z",
+  "status": "LIVE",
+  "effectiveDays": [
+   "WEDNESDAY"
+  ],
+  "content": {
+   "id": "196b2740-8ef9-4d63-80a9-6d57f132a342",
+   "title": "Merry Berry Love",
+   "slug": "merry-berry-love",
+   "type": "SERIES",
+   "cover_image": "https://api.diziasya.com/v2/images/posters/6664967a00472e61c2c9.webp",
+   "tag_keys": [],
+   "total_chapter": 10,
+   "latest_chapter": {
+    "number": 3,
+    "season_number": 1,
+    "publishment_date": "2026-10-21T16:59:41.052Z"
+   }
+  }
+ },
+ {
+  "id": "0f6cc021-51f6-4131-bcaf-937e47d489c2",
+  "content_id": "a6158c96-18e4-4fc9-9064-db67d118e55b",
+  "days": [
+   "FRIDAY"
+  ],
+  "active": true,
+  "starts_on": "2026-10-09",
+  "ends_on": "2026-12-11",
+  "updated_at": "2026-10-09T06:39:29.805Z",
+  "created_at": "2026-10-09T06:39:29.805Z",
+  "status": "LIVE",
+  "effectiveDays": [
+   "FRIDAY"
+  ],
+  "content": {
+   "id": "a6158c96-18e4-4fc9-9064-db67d118e55b",
+   "title": "Welcome Back, First Love.",
+   "slug": "welcome-back-first-love",
+   "type": "SERIES",
+   "cover_image": "https://api.diziasya.com/v2/images/posters/72dffaf04703cef1481b.webp",
+   "tag_keys": [],
+   "total_chapter": 10,
+   "latest_chapter": {
+    "number": 3,
+    "season_number": 1,
+    "publishment_date": "2026-10-22T21:31:56.670Z"
+   }
+  }
+ },
+ {
+  "id": "82193663-4328-4128-90aa-19a37bb9c645",
+  "content_id": "3fb4af28-ef6a-4a62-ab1c-d4bec1e2e527",
+  "days": [
+   "MONDAY",
+   "TUESDAY",
+   "WEDNESDAY",
+   "THURSDAY",
+   "FRIDAY",
+   "SATURDAY",
+   "SUNDAY"
+  ],
+  "active": true,
+  "starts_on": "2026-10-12",
+  "ends_on": "2026-11-18",
+  "updated_at": "2026-10-12T09:35:58.309Z",
+  "created_at": "2026-10-12T09:35:58.309Z",
+  "status": "LIVE",
+  "effectiveDays": [
+   "MONDAY",
+   "TUESDAY",
+   "WEDNESDAY",
+   "THURSDAY",
+   "FRIDAY",
+   "SATURDAY",
+   "SUNDAY"
+  ],
+  "content": {
+   "id": "3fb4af28-ef6a-4a62-ab1c-d4bec1e2e527",
+   "title": "The Lament of Autumn",
+   "slug": "the-lament-of-autumn",
+   "type": "SERIES",
+   "cover_image": "https://api.diziasya.com/v2/images/ab8px34fjpg-2026-10-12-09-30-25.webp",
+   "tag_keys": [],
+   "total_chapter": 40,
+   "latest_chapter": {
+    "number": 18,
+    "season_number": 1,
+    "publishment_date": "2026-10-21T06:26:21.322Z"
+   }
+  }
+ },
+ {
+  "id": "85fca8dc-e74f-4abc-a7a3-c7af4637e1ca",
+  "content_id": "d1d6995a-2970-4473-abea-29b20e31d0c5",
+  "days": [
+   "MONDAY",
+   "TUESDAY",
+   "WEDNESDAY",
+   "THURSDAY",
+   "FRIDAY",
+   "SATURDAY",
+   "SUNDAY"
+  ],
+  "active": true,
+  "starts_on": "2026-10-16",
+  "ends_on": "2026-11-17",
+  "updated_at": "2026-10-12T18:04:00.541Z",
+  "created_at": "2026-10-12T18:04:00.541Z",
+  "status": "LIVE",
+  "effectiveDays": [
+   "MONDAY",
+   "TUESDAY",
+   "WEDNESDAY",
+   "THURSDAY",
+   "FRIDAY",
+   "SATURDAY",
+   "SUNDAY"
+  ],
+  "content": {
+   "id": "d1d6995a-2970-4473-abea-29b20e31d0c5",
+   "title": "Where the Mask Ends",
+   "slug": "where-the-mask-ends",
+   "type": "SERIES",
+   "cover_image": "https://api.diziasya.com/v2/images/jjbnpp4fjpg-2026-10-12-18-03-00.webp",
+   "tag_keys": [],
+   "total_chapter": 33,
+   "latest_chapter": {
+    "number": 15,
+    "season_number": 1,
+    "publishment_date": "2026-10-22T06:28:27.335Z"
+   }
+  }
+ },
+ {
+  "id": "c92ac032-c8ff-41dc-a592-73005d942629",
+  "content_id": "2e177a91-49cb-479e-9c77-76d7eda06514",
+  "days": [
+   "THURSDAY"
+  ],
+  "active": true,
+  "starts_on": "2026-10-12",
+  "ends_on": "2026-11-05",
+  "updated_at": "2026-10-12T18:07:45.824Z",
+  "created_at": "2026-10-12T18:07:45.824Z",
+  "status": "LIVE",
+  "effectiveDays": [
+   "THURSDAY"
+  ],
+  "content": {
+   "id": "2e177a91-49cb-479e-9c77-76d7eda06514",
+   "title": "Make Me Tingle",
+   "slug": "make-me-tingle",
+   "type": "SERIES",
+   "cover_image": "https://api.diziasya.com/v2/images/posters/ebd66c916e5b63c73534.webp",
+   "tag_keys": [],
+   "total_chapter": 10,
+   "latest_chapter": {
+    "number": 6,
+    "season_number": 1,
+    "publishment_date": "2026-10-22T15:12:43.401Z"
+   }
+  }
+ },
+ {
+  "id": "6e45d79f-b0d3-4011-b6cd-cdcc5009b313",
+  "content_id": "ebd6b71a-2bab-4072-ab5f-5b98d23a9125",
+  "days": [
+   "MONDAY"
+  ],
+  "active": true,
+  "starts_on": "2026-10-19",
+  "ends_on": "2026-12-21",
+  "updated_at": "2026-10-18T12:37:36.017Z",
+  "created_at": "2026-10-18T12:37:36.017Z",
+  "status": "LIVE",
+  "effectiveDays": [
+   "MONDAY"
+  ],
+  "content": {
+   "id": "ebd6b71a-2bab-4072-ab5f-5b98d23a9125",
+   "title": "Extraordinary Attorney Minami",
+   "slug": "extraordinary-attorney-minami",
+   "type": "SERIES",
+   "cover_image": "https://api.diziasya.com/v2/images/posters/fb7c04165b9fd4d8c3fd.webp",
+   "tag_keys": [],
+   "total_chapter": 10,
+   "latest_chapter": {
+    "number": 1,
+    "season_number": 1,
+    "publishment_date": "2026-10-19T18:54:39.040Z"
+   }
+  }
+ },
+ {
+  "id": "6bd2fa27-5f72-46ca-a796-3f1d8ecea6ea",
+  "content_id": "1e031f9d-d647-4468-8607-1372e1dbfda0",
+  "days": [
+   "MONDAY",
+   "TUESDAY"
+  ],
+  "active": true,
+  "starts_on": "2026-10-19",
+  "ends_on": "2026-11-24",
+  "updated_at": "2026-10-19T11:53:29.009Z",
+  "created_at": "2026-10-19T11:53:29.009Z",
+  "status": "LIVE",
+  "effectiveDays": [
+   "MONDAY",
+   "TUESDAY"
+  ],
+  "content": {
+   "id": "1e031f9d-d647-4468-8607-1372e1dbfda0",
+   "title": "Love in Disguise",
+   "slug": "love-in-disguise",
+   "type": "SERIES",
+   "cover_image": "https://api.diziasya.com/v2/images/posters/d894f009d3d30eac26d9.webp",
+   "tag_keys": [],
+   "total_chapter": 12,
+   "latest_chapter": {
+    "number": 2,
+    "season_number": 1,
+    "publishment_date": "2026-10-20T17:56:40.813Z"
+   }
+  }
+ },
+ {
+  "id": "c024848f-1833-4a6b-b1c0-84d1a43aba12",
+  "content_id": "cc9faddf-4452-441b-944b-751ed6e2c7f0",
+  "days": [
+   "SATURDAY",
+   "SUNDAY"
+  ],
+  "active": true,
+  "starts_on": "2026-10-24",
+  "ends_on": "2026-11-29",
+  "updated_at": "2026-10-19T11:54:23.712Z",
+  "created_at": "2026-10-19T11:54:23.712Z",
+  "status": "UPCOMING",
+  "effectiveDays": [
+   "SATURDAY",
+   "SUNDAY"
+  ],
+  "content": {
+   "id": "cc9faddf-4452-441b-944b-751ed6e2c7f0",
+   "title": "Final Table",
+   "slug": "final-table",
+   "type": "SERIES",
+   "cover_image": "https://api.diziasya.com/v2/images/posters/f8d3677c8a559925945f.webp",
+   "tag_keys": [],
+   "total_chapter": 12,
+   "latest_chapter": null
+  }
+ }
+]

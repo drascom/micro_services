@@ -148,10 +148,14 @@ def fill_norm(norm: dict, data: dict) -> None:
     """Apply TMDB identity + gap-filling to a normalized source item (in place).
 
     Never touches poster_url/backdrop_url of the source and never overwrites a
-    field the source already provides."""
+    field the source already provides, except ``genres``: TMDB's genres win (kept in ``_tmdb_genres``, which
+    ``ingest.merge_canonical`` prefers over any site genres; no TMDB genres = the site's)."""
     norm["tmdb_id"] = data.get("tmdb_id")
     if data.get("imdb_id"):
         norm["imdb_id"] = data["imdb_id"]
+    if _filled(data.get("genres")):
+        norm["genres"] = list(data["genres"])
+        norm["_tmdb_genres"] = list(data["genres"])
     for k in FILL_FIELDS:
         if not _filled(norm.get(k)) and _filled(data.get(k)):
             norm[k] = data[k]

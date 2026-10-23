@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 import yaml
 
-import test_series_generic as tsg
+import _series_generic_base as tsg
 from app import config, db
 from app.library import gate, ingest as ingest_module, purge, series_crawl, sourcefinder, videos
 from app.scraper import config as scfg, fetch, playheal, state
@@ -28,7 +28,7 @@ PLAYER = (FIXTURES / "trdiziizle_episode_player.html").read_text(encoding="utf-8
 RULE = {"on": "episode_page", "iframe_src_regex": "/player/telif", "reason": "telif engeli"}
 RESOLVERS = [{"type": "iframe", "selector": "iframe#player", "attr": "src"}]
 SERIES_CARD = {"title": "Kara Mavi", "detail_url": "/diziler/kara-mavi-izle/", "poster_url": f"{BASE}/p.jpg"}
-NEWEST = BASE + tsg.ep_url("kara-mavi", 2, 2)    # MAIN lists s1e1 s1e2 s2e1 s2e2
+SECOND = BASE + tsg.ep_url("kara-mavi", 1, 2)    # MAIN lists s1e1 s1e2 s2e1 s2e2; the gate probes the first two
 OLDEST = BASE + tsg.ep_url("kara-mavi", 1, 1)
 MIDDLE = BASE + tsg.ep_url("kara-mavi", 2, 1)
 UNAVAILABLE = fetch.FetchError("crawlee-http http: http_503 for page", 503)
@@ -98,7 +98,7 @@ class SeriesVerdictTests(GateBase):
     def test_every_probed_page_blocked_blocks_the_series(self):
         v = self.verdict({1: TELIF, 2: TELIF, 3: TELIF})
         self.assertEqual((v["state"], v["reason"], v["via"], v["probed"]), ("blocked", "telif engeli", "rule", 2))
-        self.assertEqual([p["url"] for p in v["pages"]], [f"{BASE}/e3", f"{BASE}/e1"])   # the newest + the oldest
+        self.assertEqual([p["url"] for p in v["pages"]], [f"{BASE}/e1", f"{BASE}/e2"])   # the first two (surely aired)
         self.assertEqual(self.gate_sleeps, [config.SERIES_CRAWL_DELAY])   # polite between the two fetches
 
     def test_a_partly_blocked_series_is_taken_and_only_the_blocked_pages_are_listed(self):
@@ -145,11 +145,37 @@ class SeriesVerdictTests(GateBase):
 
     def test_pick_pages(self):
         eps = self.episodes(*range(1, 8))
-        self.assertEqual([p["episode"] for p in gate.pick_pages(eps, 2)], [7, 1])
-        self.assertEqual([p["episode"] for p in gate.pick_pages(eps, 3)], [7, 1, 4])
+        self.assertEqual([p["episode"] for p in gate.pick_pages(eps, 2)], [1, 2])
+        self.assertEqual([p["episode"] for p in gate.pick_pages(eps, 3)], [1, 2, 3])
         self.assertEqual([p["episode"] for p in gate.pick_pages(eps[:1], 3)], [1])
         self.assertEqual(gate.pick_pages([], 2), [])
         self.assertEqual(gate.pick_pages(eps, 0), [])
+        eps[0]["air_date"], eps[2]["air_date"] = "2026-10-24", "2026-10-26T16:58:00Z"   # not aired yet: skipped, the next taken
+        self.assertEqual([p["episode"] for p in gate.pick_pages(eps, 2, today="2026-10-23")], [2, 4])
+        self.assertEqual([p["episode"] for p in gate.pick_pages(eps, 2, today="2026-10-24")], [1, 2])
+
+
+    def test_a_series_that_has_not_aired_yet_is_judged_again_not_blocked(self):
+        self.gate_cfg = {"probe": 2, "require": "player"}
+        self.write_config()
+        eps = [dict(e, air_date="2999-01-01") for e in self.episodes(1, 2)]
+        v = gate.series_verdict(self.cfg(), eps)
+        self.assertEqual((v["state"], v["probed"], v["reason"]), ("retry", 0, "yayınlanmış bölüm yok"))
+        self.assertEqual(self.bundle_calls, [])
+
+    def test_an_episode_without_a_player_is_fresh_for_hours_a_rule_block_for_days(self):
+        now = time.time()
+        old = int(now - (config.GATE_EPISODE_RECHECK_HOURS + 1) * 3600)
+        gate.record(SITE, f"{BASE}/e1", "blocked", "sayfada oynatıcı bulunamadı", "gate", kind="episode", key="k", now=old)
+        gate.record(SITE, f"{BASE}/e2", "blocked", "telif engeli", "rule", kind="episode", key="k", now=old)
+        gate.record(SITE, f"{BASE}/m", "blocked", "sayfada oynatıcı bulunamadı", "gate", kind="movie", key="k", now=old)
+        self.assertEqual(set(gate.fresh_blocked_urls(SITE, "k")), {f"{BASE}/e2", f"{BASE}/m"})
+        self.gate_cfg = {"probe": 2, "require": "player"}
+        self.write_config()
+        self.ep[f"{BASE}/e1"] = PLAYER   # the site added the sources: the recheck reopens it
+        out = gate.recheck(self.cfg(), SITE, limit=5)
+        self.assertEqual((out["checked"], out["reopened"]), (1, 1))
+        self.assertEqual(self.bundle_calls, [f"{BASE}/e1"])
 
 
 class InventoryStageTests(GateBase):
@@ -157,7 +183,7 @@ class InventoryStageTests(GateBase):
         return series_crawl.run_stage(self.cfg(), SITE, **kw)
 
     def test_a_blocked_series_is_not_written_and_leaves_the_library(self):
-        self.ep.update({NEWEST: TELIF, OLDEST: TELIF})
+        self.ep.update({SECOND: TELIF, OLDEST: TELIF})
         self.seed()
         self.assertEqual(len(self.library_ids()), 1)   # the card is in the library before the inventory is read
         stats = self.crawl()
@@ -171,7 +197,7 @@ class InventoryStageTests(GateBase):
         self.assertEqual(len(self.blocked_rows(kind="episode", status="blocked")), 2)
 
     def test_the_viewers_data_stays_when_a_series_is_removed(self):
-        self.ep.update({NEWEST: TELIF, OLDEST: TELIF})
+        self.ep.update({SECOND: TELIF, OLDEST: TELIF})
         cid = self.seed()[0]
         db.execute("INSERT INTO mylist(profile_id,item_id,added_at) VALUES ('p1',?,?)", (cid, 1))
         db.execute("INSERT INTO progress(profile_id,item_id,episode_id,position,duration,watched,updated_at) VALUES ('p1',?,?,10,100,0,1)",
@@ -182,7 +208,7 @@ class InventoryStageTests(GateBase):
         self.assertEqual(len(db.query("SELECT 1 FROM progress WHERE item_id=?", (cid,))), 1)
 
     def test_a_partly_blocked_series_is_taken_without_its_blocked_episodes(self):
-        self.ep.update({NEWEST: PLAYER, OLDEST: TELIF})
+        self.ep.update({SECOND: PLAYER, OLDEST: TELIF})
         self.seed()
         stats = self.crawl()
         self.assertEqual((stats["series"], stats["episodes"], stats["blocked"]["series"], stats["blocked"]["episodes"]), (1, 3, 0, 1))
@@ -193,7 +219,7 @@ class InventoryStageTests(GateBase):
         self.assertNotIn(OLDEST, [e["url"] for e in self.norm()["video_sources"]])   # nor in the stored inventory
 
     def test_a_verified_series_is_not_probed_again_inside_the_window(self):
-        self.ep.update({NEWEST: PLAYER, OLDEST: PLAYER})
+        self.ep.update({SECOND: PLAYER, OLDEST: PLAYER})
         self.seed()
         self.crawl()
         self.assertEqual(len(self.bundle_calls), 2)
@@ -204,25 +230,25 @@ class InventoryStageTests(GateBase):
         self.assertEqual(len(self.bundle_calls), 4)   # a stale marker: judged again
 
     def test_a_transient_failure_does_not_take_an_unverified_series_and_it_is_judged_again(self):
-        self.ep.update({NEWEST: UNAVAILABLE, OLDEST: UNAVAILABLE})
+        self.ep.update({SECOND: UNAVAILABLE, OLDEST: UNAVAILABLE})
         self.seed()
         stats = self.crawl()
         self.assertEqual((stats["series"], stats["blocked"]["retry"], stats["blocked"]["series"], stats["blocked"]["removed"]), (0, 1, 0, 1))
         self.assertEqual((self.episode_rows(), self.library_ids()), ([], []))
         self.assertEqual([(r["kind"], r["status"]) for r in self.blocked_rows() if r["kind"] == "series"], [("series", "retry")])
         # the next scan: the card comes again, the pages answer now -> taken
-        self.ep.update({NEWEST: PLAYER, OLDEST: PLAYER})
+        self.ep.update({SECOND: PLAYER, OLDEST: PLAYER})
         result = self.ingest([SERIES_CARD])
         self.assertEqual(len(self.episode_rows()), 4)
         self.assertEqual(self.blocked_rows(kind="series"), [])   # an ok series clears its old row
         self.assertEqual(result["series_crawl"]["series"], 1)
 
     def test_a_transient_failure_never_takes_a_verified_series_away(self):
-        self.ep.update({NEWEST: PLAYER, OLDEST: PLAYER})
+        self.ep.update({SECOND: PLAYER, OLDEST: PLAYER})
         self.seed()
         self.crawl()
         db.execute("UPDATE source_items SET normalized=json_set(normalized,'$._gate.at',1)")
-        self.ep.update({NEWEST: UNAVAILABLE, OLDEST: UNAVAILABLE})
+        self.ep.update({SECOND: UNAVAILABLE, OLDEST: UNAVAILABLE})
         stats = self.crawl(force=True)
         self.assertEqual((stats["blocked"]["retry"], stats["blocked"]["removed"]), (1, 0))
         self.assertEqual(len(self.episode_rows()), 4)
@@ -238,7 +264,7 @@ class InventoryStageTests(GateBase):
         self.assertEqual(self.library_ids(), [])
 
     def test_ingest_does_not_write_a_series_with_a_fresh_blocked_row_until_the_recheck_window_is_over(self):
-        self.ep.update({NEWEST: TELIF, OLDEST: TELIF})
+        self.ep.update({SECOND: TELIF, OLDEST: TELIF})
         first = self.ingest([SERIES_CARD])
         self.assertEqual(first["blocked"]["series"], 1)
         self.assertEqual((self.source_rows(), self.library_ids()), ([], []))
@@ -248,13 +274,13 @@ class InventoryStageTests(GateBase):
         self.assertEqual(len(self.bundle_calls), calls)
         self.assertEqual(second["status"], "success")
         db.execute("UPDATE blocked_pages SET checked_at=1")   # the verdict is old now
-        self.ep.update({NEWEST: PLAYER, OLDEST: PLAYER})      # and the site lifted the block
+        self.ep.update({SECOND: PLAYER, OLDEST: PLAYER})      # and the site lifted the block
         third = self.ingest([SERIES_CARD])
         self.assertEqual(len(self.episode_rows()), 4)
         self.assertEqual((third["series_crawl"]["series"], self.blocked_rows(kind="series")), (1, []))
 
     def test_opening_a_series_that_was_never_judged_hides_it(self):
-        self.ep.update({NEWEST: TELIF, OLDEST: TELIF})
+        self.ep.update({SECOND: TELIF, OLDEST: TELIF})
         cid = self.seed()[0]   # a live-search card: not judged
         self.assertEqual(self.library_ids(), [cid])
         self.assertTrue(ingest_module.hydrate_series_item(cid))
@@ -262,7 +288,7 @@ class InventoryStageTests(GateBase):
         self.assertEqual(len(self.blocked_rows(kind="series")), 1)
 
     def test_a_search_card_of_a_blocked_series_is_not_cached_again(self):
-        self.ep.update({NEWEST: TELIF, OLDEST: TELIF})
+        self.ep.update({SECOND: TELIF, OLDEST: TELIF})
         self.seed()
         self.crawl()
         self.assertEqual(self.seed(), [])
@@ -279,7 +305,7 @@ class InventoryStageTests(GateBase):
         self.assertNotIn("_gate", self.norm())
 
     def test_removed_when_the_site_is_deleted(self):
-        self.ep.update({NEWEST: TELIF, OLDEST: TELIF})
+        self.ep.update({SECOND: TELIF, OLDEST: TELIF})
         self.seed()
         self.crawl()
         self.assertTrue(self.blocked_rows())
@@ -364,7 +390,7 @@ class PlaybackTests(GateBase):
         resolve = patch.object(videos, "resolve_source", REAL_RESOLVE)
         resolve.start()
         self.addCleanup(resolve.stop)
-        self.ep.update({NEWEST: PLAYER, OLDEST: PLAYER})
+        self.ep.update({SECOND: PLAYER, OLDEST: PLAYER})
         self.seed()
         series_crawl.run_stage(self.cfg(), SITE)
         self.cid = self.library_ids()[0]

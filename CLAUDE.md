@@ -22,11 +22,11 @@ Deploy'u yalnız kullanıcı "deploy et" dediğinde yapılır (kendiliğinden ya
 
 ## Test stratejisi
 
-2000+ test küçük uygulama için fazla: yalnız **smoke set** (hedef 150-300 test, <20 sn) + tek komutluk sözdizimi kontrolü (`compileall`, `import app.main`, `node --check`, yaml/json ayrıştırma) koşturulur; tam takım YOK (worker'lar token harcamasın). Elenen testler silinmez, `server/tests_archive/`'e taşınır. Kullanıcı bölümleri manuel test edip hata bildirir; hata için yalnız tekrarı önemliyse tek hedefli test ekle. Test modülü `import _sandbox` (`tests/_sandbox.py`) ile başlar (geçici `DATA_DIR`/`DB_PATH`/`IMG_CACHE_DIR`, boş TMDB anahtarı, gerçek `data/`'ya dokunma kıyası: değişirse `SANDBOX VIOLATION` + çıkış kodu 3); yeni test dosyası da aynı satırla başlar. pi skill boyut bütçesi: `server/tests/test_pi_size_budget.py` (tavanı yükseltme, önce kısalt). `tools.gen_onboard_refs --check` (`cd server`) temiz kalmalı.
+Yalnız **smoke set** (≤ 350 test, < 20 sn; `cd server/tests && ../venv/bin/python -m unittest discover`) + sözdizimi kontrolü (`compileall`, `import app.main`, `node --check`, yaml/json ayrıştırma); ek/tam takım YOK (token). Elenen/eskiyen test SİLİNİR (arşiv yok, git geçmişi saklar); donmuş onboarding'in testi yok. Kullanıcı manuel test edip hata bildirir; yalnız tekrarı önemliyse tek hedefli test ekle. Test modülü `import _sandbox` (`tests/_sandbox.py`) ile başlar (geçici `DATA_DIR`/`DB_PATH`/`IMG_CACHE_DIR`, boş TMDB anahtarı; gerçek `data/` değişirse `SANDBOX VIOLATION` + çıkış 3). Ortak yardımcılar `tests/_*.py`.
 
 ## Git kuralı
 
-Repo `github.com/drascom/micro_services` (PUBLIC). Yalnız `diziflix` dalına commit/push; `main`'e dokunma/merge etme. Yalnız ilgili dosyaları `git add <yol>` ile ekle (ilgisiz yerel farklara dokunma, ASLA `git add -A`/`commit -a`). Testler (`server/tests/`, `tests_archive/`, `tests/*.js`) git'te İZLENİR (kullanıcı kararı). Site config'leri (`providers/` hariç), `.env`, data, build, `deploy-backups`, `HANDOFF*.md` git dışı (`.gitignore`). Commit sonuna sistemin verdiği `Co-Authored-By` satırı.
+Repo `github.com/drascom/micro_services` (PUBLIC). Yalnız `diziflix` dalına commit/push; `main`'e dokunma/merge etme. Yalnız ilgili dosyaları `git add <yol>` ile ekle (ilgisiz yerel farklara dokunma, ASLA `git add -A`/`commit -a`). Testler (`server/tests/`, `tests/*.js`) git'te İZLENİR (kullanıcı kararı). Site config'leri (`providers/` hariç), `.env`, data, build, `deploy-backups`, `HANDOFF*.md` git dışı (`.gitignore`). Commit sonuna sistemin verdiği `Co-Authored-By` satırı.
 
 ## Yapı
 
@@ -82,12 +82,12 @@ Her satır: ne yapar, ana dosya -> ayrıntı için doc.
 
 ## TMDB (kısa)
 
-Anahtar `TMDB_ACCESS_KEY` (v4 Bearer ya da v3; `TMDB_TOKEN`/`TMDB_API_KEY` de geçerli), asla loglama. TMDB varsa poster/backdrop TMDB'den (`tmdb_*` kolonları), diğer alanlar yalnız boşluk doldurur; sezon/bölüm görselleri `library/seasons.py`. Ayarlar admin Ayarlar sekmesinden (`tmdb_auto`, `tmdb_types`). Env listesi, backfill, önizleme: `docs/arch/library-ingest.md`.
+Anahtar `TMDB_ACCESS_KEY` (v4 Bearer ya da v3; `TMDB_TOKEN`/`TMDB_API_KEY` de geçerli), asla loglama. TMDB varsa poster/backdrop TMDB'den (`tmdb_*` kolonları), genres da TMDB öncelikli (`_tmdb_genres`), diğer alanlar yalnız boşluk doldurur (overview: site > TMDB tr > TMDB en); sezon/bölüm görselleri `library/seasons.py`. Ayarlar admin Ayarlar sekmesinden (`tmdb_auto`, `tmdb_types`). Env listesi, backfill, önizleme: `docs/arch/library-ingest.md`.
 
 ## Notlar / tuzaklar
 
 - Yeni scraper sitesi: yaml + gerekirse `normalize.py` fonksiyonu/`site_extractors/`; yeni video host'u: provider kütüphanesine tarif (`scraper/configs/providers/<ad>.yaml`) ya da `scraper/providers/` modülü; yeni host'un afişi için `REMOTE_IMG_HOSTS`.
 - Kart kimliği kuralı: `id` = yapım id'si, bölüm kartı `card_kind=episode` + `episode_id` + `card_key`. İstemci sözleşme koruması: `server/tests/test_client_contract.py` + `docs/api-samples/*.json` (`venv/bin/python -m tools.gen_api_samples`) + `node tests/api_samples_client.js`.
-- İstemci HLS/motor kararı `streams[].type`'a göre (URL uzantısına değil); cache-bust şu an `responsive-v39` (`index.html`). UI cilası: `tizen-client/README.md`.
+- İstemci HLS/motor kararı `streams[].type`'a göre (URL uzantısına değil); cache-bust şu an `responsive-v41` (`index.html`). UI cilası: `tizen-client/README.md`.
 - `server/pi/` deploy ile gider; skill referans blokları üretilir (`tools.gen_onboard_refs`), elle dokunma.
 - Bekleyen istemci işleri (oynatıcı akış değişikliği, sezon/bölüm görselleri, altyazı paneli vb.) kullanıcı istemci turunu başlatınca topluca yapılır (hafıza: diziflix-client-batch).

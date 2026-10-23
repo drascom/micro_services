@@ -2647,7 +2647,7 @@ def _series_stage(cfg, items: list, spec_errors: list, deadline: float, warnings
     ``ingest_sample`` = ``{items, judged, ok, read, resolved, unknown, reasons{}, samples[]}`` (``_ingest_sample_block``).
 
     ``gate`` (the draft has ``blocked:`` rules / an ``availability_gate:``): each series is judged like production does (a
-    ``series_page`` rule on its page; the newest + oldest episode pages against the ``episode_page`` rules / the gate): a BLOCKED
+    ``series_page`` rule on its page; the first aired episode pages against the ``episode_page`` rules / the gate): a BLOCKED
     series is left out (``blocked: true`` + ``reason`` on its sample, not counted in ``checked``), and up to SERIES_SPARES more
     series pages are read to replace them."""
     candidates = _series_candidates(cfg, list(items) + list(extra_rows or []), directory)

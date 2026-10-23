@@ -541,6 +541,24 @@ def clean_title(title, *, series: bool = True, site_names=()) -> str:
     return cur or text
 
 
+def canonical_fields(rules, raw: dict, names) -> dict:
+    """Raw parsed fields (e.g. the yaml ``detail:`` block) -> canonical names via ``normalize.fields`` (default
+    ``_DEFAULT_FIELDS``: ``synopsis`` -> ``overview``); only ``names``, only filled values (strings trimmed)."""
+    fields = {**_DEFAULT_FIELDS, **((rules or {}).get("fields") or {} if isinstance(rules, dict) else {})}
+    out: dict = {}
+    for name in names:
+        spec = fields.get(name)
+        if spec is None:
+            continue
+        srcs = [spec] if isinstance(spec, str) else list(spec)
+        value = next((raw[s] for s in srcs if _filled(raw.get(s))), None)
+        if isinstance(value, str):
+            value = " ".join(value.split()) if name != "overview" else value.strip()
+        if _filled(value):
+            out[name] = value
+    return out
+
+
 def _run(rules, raw: dict, base_url: str, notes: Optional[dict] = None) -> tuple[Optional[dict], Optional[str]]:
     """Apply VALIDATED ``rules``: (normalized | None, reject reason | None). ``notes`` (a dict, optional) receives what the safety net
     changed: ``key`` = (key regex result, cleaned key), ``title`` = (listing title, cleaned title)."""

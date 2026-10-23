@@ -13,6 +13,10 @@ chunk. ``<name>`` (``index.m3u8``, ``seg-1.ts``) is only a hint for players that
   bytes), every URI in it is replaced by a new token (app/hlsproxy.py) and it is answered as ``application/vnd.apple.mpegurl``;
   segments and keys are streamed like a file. A player asks for many segments at once, so the limit is per stream group
   (``STREAM_PROXY_HLS_MAX`` connections; a request over it queues up to ``STREAM_PROXY_QUEUE_WAIT`` seconds, then 503).
+
+A token with the ``impersonate`` flag (recipe ``stream_impersonate: true``: the media host refuses a non-browser TLS fingerprint)
+goes upstream through a shared ``curl_cffi`` ``AsyncSession`` with a Chrome fingerprint (:class:`_CurlUpstream` gives it the
+httpx response shape the rest of this module uses); same redirects, SSRF checks, headers and limits.
 """
 from __future__ import annotations
 
@@ -42,6 +46,65 @@ _CLIENT_FORWARD = (("range", "Range"), ("if-range", "If-Range"))
 _active = 0                                   # progressive-file connections open right now (event-loop thread only)
 _client_state: dict = {"loop": None, "client": None}
 _group_state: dict = {"loop": None, "groups": {}}   # HLS: stream group -> [semaphore, users] (bound to the running loop)
+
+
+_curl_state: dict = {"loop": None, "session": None}
+IMPERSONATE = "chrome"
+
+
+def _curl_session():
+    """The shared Chrome-impersonating ``curl_cffi`` session (bound to the running loop like :func:`_client`; no cookie jar:
+    the cookies a token may carry are sent as its ``Cookie`` header only)."""
+    from curl_cffi.requests import AsyncSession
+    loop = asyncio.get_running_loop()
+    session = _curl_state["session"]
+    if session is None or _curl_state["loop"] is not loop:
+        session = _curl_state["session"] = AsyncSession(impersonate=IMPERSONATE, max_clients=max(16, config.STREAM_PROXY_HLS_MAX * 2))
+        _curl_state["loop"] = loop
+    return session
+
+
+def _curl_error(exc: Exception) -> httpx.HTTPError:
+    """A ``curl_cffi`` failure as the httpx error the callers already handle (28 = timeout)."""
+    if getattr(exc, "code", None) == 28 or "timed out" in str(exc).lower():
+        return httpx.ReadTimeout(str(exc)[:120])
+    return httpx.ReadError(str(exc)[:120])
+
+
+class _CurlUpstream:
+    """A streamed ``curl_cffi`` response in the shape of an ``httpx.Response`` (``status_code``, ``headers``, ``url``,
+    ``aiter_raw`` / ``aiter_bytes``, ``aclose``)."""
+
+    def __init__(self, response) -> None:
+        self._response = response
+        self.status_code = int(response.status_code)
+        self.headers = httpx.Headers(list(response.headers.items()))
+        self.url = str(response.url)
+
+    async def aiter_raw(self):
+        try:
+            async for chunk in self._response.aiter_content():
+                if chunk:
+                    yield chunk
+        except Exception as exc:
+            raise _curl_error(exc) from None
+
+    aiter_bytes = aiter_raw
+
+    async def aclose(self) -> None:
+        try:
+            await self._response.aclose()
+        except Exception:
+            pass
+
+
+async def _send_impersonated(method: str, url: str, headers: dict) -> _CurlUpstream:
+    try:
+        response = await _curl_session().request(method, url, headers=headers, stream=True, allow_redirects=False,
+                                                 timeout=(10.0, 30.0), accept_encoding="identity", discard_cookies=True)
+    except Exception as exc:
+        raise _curl_error(exc) from None
+    return _CurlUpstream(response)
 
 
 def _client() -> httpx.AsyncClient:
@@ -169,16 +232,17 @@ class _Relay:
             self._slot.release()
 
 
-async def _open(method: str, url: str, token_headers: dict, request: Request, *, forward_range: bool = True) -> httpx.Response:
+async def _open(method: str, url: str, token_headers: dict, request: Request, *, forward_range: bool = True,
+                impersonate: bool = False) -> httpx.Response:
     """The upstream response (headers read, body not) after at most :data:`MAX_REDIRECTS` hand-followed redirects, each
     hop SSRF-checked. Raises :class:`ApiError`. ``forward_range`` False (a playlist is read whole) leaves the player's
-    ``Range`` / ``If-Range`` out."""
+    ``Range`` / ``If-Range`` out. ``impersonate``: through the Chrome ``curl_cffi`` session (:class:`_CurlUpstream`)."""
     headers = {"Accept": "*/*", "Accept-Encoding": "identity", **token_headers}   # identity: the length we pass on stays true
     for lower, canon in (_CLIENT_FORWARD if forward_range else ()):
         value = request.headers.get(lower)
         if value and len(value) <= 256:
             headers[canon] = value
-    client = _client()
+    client = None if impersonate else _client()
     current, upstream_method, hops = url, method, 0
     while True:
         try:
@@ -186,7 +250,10 @@ async def _open(method: str, url: str, token_headers: dict, request: Request, *,
         except ValueError as exc:
             raise ApiError(403, "forbidden_target", "the stream target is not allowed: " + str(exc)[:120]) from None
         try:
-            response = await client.send(client.build_request(upstream_method, current, headers=headers), stream=True)
+            if client is None:
+                response = await _send_impersonated(upstream_method, current, headers)
+            else:
+                response = await client.send(client.build_request(upstream_method, current, headers=headers), stream=True)
         except httpx.TimeoutException:
             raise ApiError(504, "upstream_timeout", "the media server did not answer in time") from None
         except httpx.HTTPError as exc:
@@ -249,7 +316,7 @@ async def _playlist_response(upstream: httpx.Response, info: streamproxy.TokenIn
     try:
         body = await run_in_threadpool(hlsproxy.rewrite, text, str(upstream.url), info.headers, base=base,
                                        group=info.group or streamproxy.group_of(info.url),
-                                       cookie_host=urlparse(info.url).hostname or "")
+                                       cookie_host=urlparse(info.url).hostname or "", impersonate=info.impersonate)
     except hlsproxy.PlaylistError as exc:
         raise ApiError(502, "upstream_error", str(exc)) from None
     headers = {"Content-Type": "application/vnd.apple.mpegurl", "Cache-Control": "no-store",
@@ -284,7 +351,7 @@ async def stream_proxy(token: str, request: Request) -> Response:
     slot = _acquire()
     handed_over = False
     try:
-        upstream = await _open(request.method, info.url, info.headers, request)
+        upstream = await _open(request.method, info.url, info.headers, request, impersonate=info.impersonate)
         try:
             response = await _serve_file(upstream, request, slot)
             handed_over = isinstance(response, StreamingResponse)
@@ -306,7 +373,8 @@ async def _serve_hls(info: streamproxy.TokenInfo, request: Request) -> Response:
     try:
         playlist = info.kind == streamproxy.PLAYLIST
         # a HEAD of a playlist still reads the playlist (the length of the REWRITTEN text is what the answer announces)
-        upstream = await _open("GET" if playlist else request.method, info.url, info.headers, request, forward_range=not playlist)
+        upstream = await _open("GET" if playlist else request.method, info.url, info.headers, request, forward_range=not playlist,
+                               impersonate=info.impersonate)
         try:
             if playlist or (request.method == "GET" and upstream.status_code == 200
                             and hlsproxy.is_playlist_type(upstream.headers.get("content-type"))):

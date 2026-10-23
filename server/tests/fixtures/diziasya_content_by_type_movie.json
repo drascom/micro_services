@@ -1,0 +1,158 @@
+{
+"data": [
+{
+"id": "1fbedcf5-39c3-4aef-8b3a-b1ed9c9ea9e8",
+"type": "MOVIE",
+"title": "Hope",
+"original_title": "호프 ‧",
+"cover_image": "https://api.diziasya.com/v2/images/hopewebp-2026-10-13-09-23-42.webp",
+"slider_image": "",
+"slug": "hope",
+"publish_year": "2026",
+"rate": "7.3",
+"plot": "“Hope”, ücra bir liman kasabası olan Hopo Limanı’nın sakinlerini konu alıyor. Kasabanın dış kesimlerinde yapılan gizemli"
+},
+{
+"id": "946cd1c0-71a6-4817-979c-8f17637e597b",
+"type": "MOVIE",
+"title": "Windstruck",
+"original_title": "내 여자친구를 소개합니다",
+"cover_image": "https://api.diziasya.com/v2/images/posters/6ba8334d4c87b01be83d.webp",
+"slider_image": "",
+"slug": "windstruck",
+"publish_year": "2004",
+"rate": "8",
+"plot": "Polis memuru Kyung Jin, izin gününde olmasına rağmen bir kapkaççının peşine düşünce kendini yeniden görevin başında bulu"
+},
+{
+"id": "b97da122-2094-4375-88e4-eb09d0eb1dfc",
+"type": "MOVIE",
+"title": "Love Barista",
+"original_title": "러브 바리스타",
+"cover_image": "https://api.diziasya.com/v2/images/ndzjqr3fjpg-2026-09-15-14-49-46.webp",
+"slider_image": "",
+"slug": "love-barista",
+"publish_year": "2025",
+"rate": "7.6",
+"plot": "Kore’nin en ünlü yıldız oyuncusu ile saf ve sıradan bir Vietnamlı kadının heyecan verici ve öngörülemez aşk hikâyesini k"
+},
+{
+"id": "c6696e36-4062-4e70-8469-a47fc8199401",
+"type": "MOVIE",
+"title": "Another Child",
+"original_title": "미성년",
+"cover_image": "https://api.diziasya.com/v2/images/posters/f3cfbc0c9ff74c15b1fd.webp",
+"slider_image": "",
+"slug": "another-child",
+"publish_year": "2019",
+"rate": "7.2",
+"plot": "Joo Ri ve Yoon Ah, lise ikinci sınıf öğrencisidir. Bir gün okulun çatısında karşılaşırlar. Joo Ri ve Yoon Ah kısa süre ö"
+},
+{
+"id": "ed7d2188-314c-456b-90e4-f9971466cf74",
+"type": "MOVIE",
+"title": "Salmokji: Whispering Water",
+"original_title": "살목지",
+"cover_image": "https://api.diziasya.com/v2/images/posters/7d688f46e1df07665a9e.webp",
+"slider_image": "",
+"slug": "salmokji-whispering-water",
+"publish_year": "2026",
+"rate": "7.2",
+"plot": "Rezervuarın altında pusuda bekleyen şey, içeri girmeye cesaret edenleri bekliyor.\n\nUzak ve ıssız bir bölgede bulunan Sal"
+},
+{
+"id": "cbf54166-d8b2-4e87-8301-417a0058fb17",
+"type": "MOVIE",
+"title": "The Grotesque Mansion",
+"original_title": "괴기맨숀",
+"cover_image": "https://api.diziasya.com/v2/images/posters/a13ac214dc073a3bddbd.webp",
+"slider_image": "",
+"slug": "the-grotesque-mansion",
+"publish_year": "2021",
+"rate": "7.3",
+"plot": "İlham arayışındaki, kariyerinde zor günler geçiren webtoon sanatçısı Jung Ji Woo (Sung Joon), hakkında hayalet söylentil"
+},
+{
+"id": "cfb2ecbd-82cc-4486-8e5b-aa0bc54de3ea",
+"type": "MOVIE",
+"title": "Husbands in Action",
+"original_title": "남편들",
+"cover_image": "https://api.diziasya.com/v2/images/posters/462d33a4ac314d219dcb.webp",
+"slider_image": "",
+"slug": "husbands-in-action",
+"publish_year": "2026",
+"rate": "8",
+"plot": "Hwang Chung Sik, hayatını işine adamış, kararlı bir narkotik polisidir. Neredeyse karakolun dışına adım atmaz. Yıllar sü"
+},
+{
+"id": "62bdda80-b99f-46f1-92b1-9dae380711e6",
+"type": "MOVIE",
+"title": "The Neighbors",
+"original_title": "이웃사람",
+"cover_image": "https://api.diziasya.com/v2/images/posters/7ce4650252f2223a9dac.webp",
+"slider_image": "",
+"slug": "the-neighbors",
+"publish_year": "2012",
+"rate": "7.5",
+"plot": "Ortaokul öğrencisi bir kızın kaybolmasından 10 gün sonra, başı kesilmiş cesedi kırmızı bir bavulun içinde bulunur. Bunda"
+},
+{
+"id": "4ddc755c-47d5-408b-9790-4330cfc84fa4",
+"type": "MOVIE",
+"title": "Wild Sing",
+"original_title": "와일드씽",
+"cover_image": "https://api.diziasya.com/v2/images/posters/eadca55e1a71a9fe3fd1.webp",
+"slider_image": "",
+"slug": "wild-sing",
+"publish_year": "2026",
+"rate": "7.2",
+"plot": "Bir zamanlar müzik dünyasına damgasını vuran üç üyeli karma K-pop grubu \"Triangle\", beklenmedik bir skandala karışmasını"
+},
+{
+"id": "f3093ce0-4416-43da-b858-e8eae4598588",
+"type": "MOVIE",
+"title": "Second Sister",
+"original_title": "망내인: 얼굴 없는 살인자들",
+"cover_image": "https://api.diziasya.com/v2/images/posters/ecbe6637ebf1a882449c.webp",
+"slider_image": "",
+"slug": "second-sister",
+"publish_year": "2025",
+"rate": "10",
+"plot": "Lise öğrencisi \"Ji Eun\", işlenen suçun kurbanıdır. Ancak çarpıtılmış çevrim içi paylaşımlar ve kötü niyetli yorumlar, on"
+},
+{
+"id": "76ec4caa-5515-4d54-9b86-a4ba4340c92f",
+"type": "MOVIE",
+"title": "Colony",
+"original_title": "군체",
+"cover_image": "https://api.diziasya.com/v2/images/posters/7d0cdc3c5c50033d523c.webp",
+"slider_image": "",
+"slug": "colony",
+"publish_year": "2026",
+"rate": "8",
+"plot": "Biyoteknoloji profesörü Se Jeong, katıldığı bir biyoteknoloji konferansında hızla mutasyona uğrayan bir virüsün serbest "
+},
+{
+"id": "d1241f9a-fe5f-45fc-8515-a8b415c7640d",
+"type": "MOVIE",
+"title": "The King’s Warden",
+"original_title": "왕과 사는 남자",
+"cover_image": "https://api.diziasya.com/v2/images/posters/f6495e3235642f30f24f.webp",
+"slider_image": "",
+"slug": "the-kings-warden",
+"publish_year": "2026",
+"rate": "8.2",
+"plot": "15. yüzyıl Joseon döneminde, ücra bir dağ köyünün mütevazı muhtarı Heung-do, sürgüne gönderilmiş bir soyluyu ağırlayan h"
+}
+],
+"meta": {
+"total": 88,
+"lastPage": 8,
+"currentPage": 1,
+"take": 12,
+"prev": null,
+"next": 2,
+"hasMore": true,
+"hasLess": false
+}
+}

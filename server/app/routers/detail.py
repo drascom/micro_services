@@ -18,6 +18,11 @@ router = APIRouter(tags=["detail"])
 # item ids with a hydrate currently running (in-flight de-dup; also what `hydrating` in the response reports).
 _inflight: set[str] = set()
 _lock = threading.Lock()
+# item id -> monotonic time its last hydrate finished: the same item is not hydrated again within HYDRATE_COOLDOWN seconds
+# (a title that stays "incomplete" after a read, e.g. a new series whose next episodes are not out yet, would otherwise
+# start a fresh hydrate - and answer `hydrating=true` - on every open)
+_finished: dict[str, float] = {}
+HYDRATE_COOLDOWN = 600.0
 
 
 def is_hydrating(item_id: str) -> bool:
@@ -49,6 +54,11 @@ def _hydrate(item_id: str, series: bool) -> None:
     finally:
         with _lock:
             _inflight.discard(item_id)
+            now = time.monotonic()
+            if len(_finished) > 512:
+                for stale in [k for k, v in _finished.items() if now - v >= HYDRATE_COOLDOWN]:
+                    del _finished[stale]
+            _finished[item_id] = now
 
 
 # (item id, reason) -> last time an empty hydrate was reported: a series re-opened while nothing changed is reported once per window
@@ -82,9 +92,12 @@ def _report_empty_series(item_id: str, outcome: dict) -> None:
 
 
 def schedule_hydrate(item_id: str, series: bool) -> bool:
-    """Start a background hydrate unless one is already running for this id."""
+    """Start a background hydrate unless one is already running for this id or one finished within HYDRATE_COOLDOWN."""
     with _lock:
         if item_id in _inflight:
+            return False
+        last = _finished.get(item_id)
+        if last is not None and time.monotonic() - last < HYDRATE_COOLDOWN:
             return False
         _inflight.add(item_id)
     threading.Thread(target=_hydrate, args=(item_id, series), daemon=True,

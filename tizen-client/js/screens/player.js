@@ -79,6 +79,19 @@
     try { return !!(video && video.canPlayType && video.canPlayType('application/vnd.apple.mpegurl')); } catch (e) { return false; }
   }
 
+  /* Masaustu Chrome (14x+) / Edge canPlayType('application/vnd.apple.mpegurl') icin artik "maybe" der ama dogal HLS'i
+     sinirli: AES-128 sifreli (LuluStream) ve bazi TS akislarinda DEMUXER_ERROR_COULD_NOT_PARSE. MSE varsa ve tarayici
+     Apple Safari / TV (Tizen, webOS) degilse dogal destek olsa da hls.js tercih edilir. */
+  function preferHlsJs() {
+    try {
+      if (!g.MediaSource) return false;
+      var ua = (g.navigator && g.navigator.userAgent) || '';
+      if (/Tizen|Web0S|webOS|SMART-TV/i.test(ua)) return false;
+      if (/Safari\//.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS|Android/.test(ua)) return false;
+      return true;
+    } catch (e) { return false; }
+  }
+
   /* tembel <script>: bir kez; ayni anda gelen istekler tek yuklemeyi paylasir; hata olursa bir sonraki denemede yeniden denenir */
   function loadHlsJs(done) {
     if (g.Hls) { done(null); return; }
@@ -301,7 +314,7 @@
       var seq = ++loadSeq;
       stopHls();
       eng.hlsjs = false;
-      if (isHlsStream(type, url) && !nativeHls(v)) {
+      if (isHlsStream(type, url) && (preferHlsJs() || !nativeHls(v))) {
         loadHlsJs(function (err) {
           if (seq !== loadSeq) return;
           if (err) { call('error', err, 'playback_failed', 'hls.js:load'); return; }
