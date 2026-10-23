@@ -118,3 +118,18 @@ class ImpersonatedProxyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BlockedHostsTests(unittest.TestCase):
+    def test_candidates_on_blocked_hosts_are_dropped(self):
+        from app.library import videos
+        from app.scraper.config import SiteConfig
+        cfg = SiteConfig("demo", {"blocked_hosts": ["abyssplayer.com", "4meplayer.live.", 3]}, "")
+        self.assertEqual(cfg.blocked_hosts, ["abyssplayer.com", "4meplayer.live"])
+        candidates = [{"url": "https://abyssplayer.com/e/x", "label": "Abyss"},
+                      {"url": "https://cdn7.4meplayer.live/v/y", "label": "4Me"},
+                      {"url": "https://ok.ru/videoembed/1", "label": "Okru"},
+                      {"url": "https://notabyssplayer.com/e/x", "label": "Other"}]
+        kept = videos.drop_blocked(candidates, cfg, PAGE)
+        self.assertEqual([c["label"] for c in kept], ["Okru", "Other"])
+        self.assertIs(videos.drop_blocked(candidates, SiteConfig("demo", {}, ""), PAGE), candidates)

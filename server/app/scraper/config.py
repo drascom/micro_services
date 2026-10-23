@@ -202,6 +202,21 @@ class SiteConfig:
         return names or None
 
     @property
+    def blocked_hosts(self) -> list[str]:
+        """Video host names never tried for this site (yaml ``blocked_hosts:``, subdomains included): a candidate player
+        URL on such a host is dropped before resolution, so it is neither tried nor listed. ``[]`` when absent/invalid."""
+        raw = self.data.get("blocked_hosts")
+        if raw is None:
+            return []
+        if not isinstance(raw, list):
+            _warn_once(self.site_id, "blocked_hosts", "must be a list of host names, ignored")
+            return []
+        hosts = [x.strip().lower().strip(".") for x in raw if isinstance(x, str) and x.strip().strip(".")]
+        if len(hosts) != len(raw):
+            _warn_once(self.site_id, "blocked_hosts", "non-string or empty entries ignored")
+        return hosts
+
+    @property
     def use_site_module(self) -> bool:
         """Keep the site's own ``site_extractors/<site>.py`` candidates next to the ``resolvers:`` list."""
         return self.data.get("use_site_module") is True

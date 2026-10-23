@@ -4,7 +4,7 @@
                                           ``site_id, display_name, base_url, version, hand_built, heal_cooldown_until,
                                           auto_scan{enabled, interval_hours, next_scan_at, source, running, last_run_at}, last_run{at, status, scraped,
                                           ingested}|null, counts{titles, series, movies, episodes, with_sources}, search,
-                                          providers[], can_rollback, busy`` (``busy`` = scan | heal | onboard | finder | null)
+                                          providers[], providers_all, can_rollback, busy`` (``busy`` = scan | heal | onboard | finder | null)
 `GET    /api/ops/sites/{site}/config`     ``{site_id, version, yaml_text, versions[{version, updated_at, active}], baseline}``
                                           (secret-looking values masked; 404 for a site that is not registered)
 `GET    /api/ops/sites/{site}/handoff`    ``{site_id, text, bytes}``: the site's handoff note (``scraper/site_handoff.py``; Markdown, read-only; 404 for
@@ -176,7 +176,9 @@ def _row(site: str, last_runs: dict[str, dict], counts: dict, busy: dict) -> dic
     row["base_url"] = cfg.base_url
     row["version"] = cfg.version
     try:
-        row["providers"] = list(cfg.providers or [])
+        provs = cfg.providers
+        row["providers"] = list(provs or [])
+        row["providers_all"] = provs is None   # yaml has no usable ``providers:`` list = every provider allowed
     except Exception:
         pass
     row["can_rollback"] = any(v < cfg.version for v in scfg.archived_versions(site))

@@ -147,12 +147,13 @@ def tick(now: Optional[float] = None, *, ingest: Optional[Callable[..., Any]] = 
                 sleep(pause)
             _run_one(site, run)
             ran.append(site)
-        # the archive pass (library/archive.py): after the home scans (home content first), only for sites whose yaml says
-        # ``archive.enabled: true`` and whose batch interval is up; off = not a single request
+        # the archive pass (library/archive.py): after the home scans (home content first), only for sites whose auto scan
+        # switch is on and whose batch interval (= the scan interval) is up; off = not a single request. A site scanned in
+        # this tick gets its batch at the next tick (scan and batch are also serialised by ``ingest_lock`` + busy check)
         if archive is not False:
             try:
                 from .library import archive as larchive
-                ran += [f"{site}#archive" for site in larchive.tick(ts, run=archive or None)]
+                ran += [f"{site}#archive" for site in larchive.tick(ts, run=archive or None, skip=set(ran))]
             except Exception:
                 log.exception("archive tick failed")
         return ran

@@ -49,7 +49,7 @@ class Base(unittest.TestCase):
         real = scfg.load_site("yabancidizi")
         self.cfg = real
         self.data = copy.deepcopy(real.data)
-        self.data["archive"]["enabled"] = True
+        self.sched = {"enabled": True, "interval_hours": 10 / 60.0}   # the site's admin auto scan switch + interval
         self.data.pop("availability_gate", None)
         self.data.pop("blocked", None)
         real.data = self.data
@@ -58,6 +58,7 @@ class Base(unittest.TestCase):
         self.crawled = []
         for p in (patch.object(scfg, "load_site", lambda site: self.cfg),
                   patch.object(scfg, "list_sites", lambda: ["yabancidizi"]),
+                  patch.object(archive.settings, "site_settings", lambda site: {**self.sched, "source": "admin"}),
                   patch.object(fetch, "page", self.fake_page),
                   patch.object(ingest, "_enrich_series_catalogs", self.fake_crawl),
                   patch.object(archive, "rules_of", lambda cfg, part: LOOSE),
@@ -115,7 +116,7 @@ class ParseTests(Base):
         spec = archive.spec_of(cfg)
         self.assertTrue(archive.parse_part(cfg, "series_index", spec["series_index"], INDEX)[2]["drift"])
         self.assertFalse(archive.parse_part(cfg, "movie_pages", spec["movie_pages"], MOVIES1)[2]["drift"])
-        self.assertFalse(spec["enabled"])   # shipped OFF
+        self.assertNotIn("enabled", spec)   # yaml archive.enabled / interval_minutes: old keys, ignored
 
 
 class BatchTests(Base):
@@ -206,7 +207,8 @@ class DriftTests(Base):
 
 class SwitchTests(Base):
     def test_off_means_no_request(self):
-        self.data["archive"]["enabled"] = False
+        self.sched["enabled"] = False   # the site's auto scan switch is off
+        self.data["archive"]["enabled"] = True   # old yaml key: ignored
         self.assertEqual(archive.tick(NOW), [])
         with patch.object(autoscan, "due_sites", lambda now: []):
             self.assertEqual(autoscan.tick(NOW), [])
@@ -216,7 +218,29 @@ class SwitchTests(Base):
         calls = []
         self.assertEqual(archive.tick(NOW, run=lambda site, **kw: calls.append(site)), ["yabancidizi"])
         archive.run_batch("yabancidizi", now=NOW)
-        self.assertEqual(archive.tick(NOW + 60, run=lambda site, **kw: calls.append(site)), [])   # interval_minutes: 10
+        self.assertEqual(archive.tick(NOW + 60, run=lambda site, **kw: calls.append(site)), [])   # scan interval: 10 min
+
+    def test_interval_is_the_scan_interval(self):
+        self.sched["interval_hours"] = 2.0
+        self.data["archive"]["interval_minutes"] = 1   # old yaml key: ignored
+        archive.run_batch("yabancidizi", now=NOW)
+        self.assertFalse(archive.due("yabancidizi", self.cfg, NOW + 3600))
+        self.assertTrue(archive.due("yabancidizi", self.cfg, NOW + 7200))
+        st = archive.status("yabancidizi", self.cfg, now=NOW)
+        self.assertEqual((st["enabled"], st["interval_minutes"]), (True, 120.0))
+        self.assertEqual(st["next_batch_at"], archive._iso(NOW + 7200))
+
+    def test_yaml_off_but_switch_on_runs(self):
+        self.data["archive"]["enabled"] = False   # old yaml key: ignored, the switch decides
+        self.assertTrue(archive.due("yabancidizi", self.cfg, NOW))
+        self.assertEqual(archive.tick(NOW, run=lambda site, **kw: None), ["yabancidizi"])
+
+    def test_scan_first_batch_next_tick(self):
+        with patch.object(autoscan, "due_sites", lambda now: ["yabancidizi"]):
+            ran = autoscan.tick(NOW, ingest=lambda site, **kw: {}, archive=lambda site, **kw: None, gap=0)
+        self.assertEqual(ran, ["yabancidizi"])   # scanned in this tick: the archive batch waits
+        with patch.object(autoscan, "due_sites", lambda now: []):
+            self.assertEqual(autoscan.tick(NOW + 60, archive=lambda site, **kw: None), ["yabancidizi#archive"])
 
     def test_archive_series_not_reread_unless_home(self):
         norm = {"type": "series", "_archive": {"at": 1}, series_crawl.MARKER: {"fails": 0, "ok_at": 1, "complete": True}}

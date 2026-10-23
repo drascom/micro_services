@@ -12,7 +12,7 @@ from . import streamdiag, streamlife, streamprobe, tracks
 from ..scraper import badhosts
 
 TTL=6*3600  # legacy trailer cache on source_items; resolved payloads follow config.RESOLVE_CACHE_TTL
-RESOLVER_VERSION=8  # 8: recipe streams may carry stream_impersonate (proxied with a Chrome TLS fingerprint); 7: streams may carry request_headers (OK.ru mp4: the User-Agent its signed URL is bound to; /api/streams serves them through the stream proxy), cached payloads without them are re-resolved (6: candidates carry resolver_type, json_api streams skip the provider step, per-site provider allow-list (5: re-signed duplicates merged, spare copies marked (mirror_of), sub_known/site_lang_hint, no unmeasured language in labels; 4: soft subtitle tracks + per-stream variant_id/audio_lang/sub_mode/hard_lang; 3: labels carry the subtitle language))
+RESOLVER_VERSION=9  # 9: per-site blocked_hosts (candidates on those hosts dropped, cached payloads re-resolved); 8: recipe streams may carry stream_impersonate (proxied with a Chrome TLS fingerprint); 7: streams may carry request_headers (OK.ru mp4: the User-Agent its signed URL is bound to; /api/streams serves them through the stream proxy), cached payloads without them are re-resolved (6: candidates carry resolver_type, json_api streams skip the provider step, per-site provider allow-list (5: re-signed duplicates merged, spare copies marked (mirror_of), sub_known/site_lang_hint, no unmeasured language in labels; 4: soft subtitle tracks + per-stream variant_id/audio_lang/sub_mode/hard_lang; 3: labels carry the subtitle language))
 BLOCKED_PREFIX='engelli: '
 
 
@@ -195,6 +195,7 @@ def _resolve_candidate(row,cfg,raw,locator,frame_pages,load_cookies,use_neg):
         if not candidate: raise ValueError('sağlayıcı yönlendirmesi çözülemedi')
         candidate_url=urljoin(locator,candidate.get('url') or '')
         if not _url(candidate_url): raise ValueError('geçersiz sağlayıcı adresi')
+        if badhosts.blocked_host(candidate_url,getattr(cfg,'blocked_hosts',None)): raise ValueError('engelli sağlayıcı adresi (blocked_hosts)')
         out['resolver_type']=out['resolver_type'] or candidate.get('resolver_type') or ''
         if isinstance(candidate.get('stream'),dict) and candidate['stream']:
             resolved=candidate['stream']   # json_api resolver: the type already produced the media, no provider step
@@ -373,6 +374,13 @@ def _check_blocked(row,cfg,html,rendered,started,page_ms):
     raise Blocked(BLOCKED_PREFIX+hit['reason'])
 
 
+def drop_blocked(candidates,cfg,locator):
+    """``candidates`` without the ones whose player URL is on a host of the site's ``blocked_hosts:`` (never tried or listed)."""
+    hosts=getattr(cfg,'blocked_hosts',None) or []
+    if not hosts: return candidates
+    return [c for c in candidates if not badhosts.blocked_host(urljoin(locator,c.get('url') or ''),hosts)]
+
+
 def _resolve_page(row,force):
     from ..scraper import config,fetch,parse,site_extractors
     locator=row['locator']
@@ -411,6 +419,7 @@ def _resolve_page(row,force):
             candidates=[{'url':candidate,**_json_api_stamp(cfg)}] if candidate else []
     else:
         candidates=[{'url':media,**_json_api_stamp(cfg)}]
+    candidates=drop_blocked(candidates,cfg,locator)
     if not candidates:
         _record(row,[],started,page_ms,'Sayfada video sağlayıcısı bulunamadı')
         raise ValueError('Sayfada video sağlayıcısı bulunamadı')

@@ -94,6 +94,28 @@ class DiziasyaHomeTests(unittest.TestCase):
         self.assertFalse(ingest_module._own_host("https://diziasya.com", "https://notdiziasya.com/a"))
 
 
+class DiziasyaListCardFormatsTests(unittest.TestCase):
+    """/diziler cards came in two markups and heal flip-flopped between them; list + latest_series must read both."""
+    A = ('<a class="bg-muted block duration-300 group" href="/dizi/a-{i}"><img src="/p/a{i}.webp" alt="A {i}">'
+         '<h3 class="text-xs font-semibold leading-tight">A {i}</h3></a>')
+    B = ('<a class="group block rounded-md w-full" href="/dizi/b-{i}"><div class="bg-muted"><img src="/p/b{i}.webp" alt="B {i}"></div>'
+         '<h3 class="mt-1.5 line-clamp-2 text-xs font-medium leading-tight">B {i}</h3></a>')
+    CHROME = '<nav><a class="block" href="/diziler">Diziler</a><a href="/dizi/x">x</a></nav>'
+
+    def test_both_formats(self):
+        from app.scraper import parse
+        cfg = config.load_site("diziasya")
+        coll = next(c for c in cfg.collections if c["id"] == "latest_series_diziasya")
+        for spec in ({"row_selector": cfg.row_selector, "fields": cfg.list_fields}, coll):
+            for tpl, tag in ((self.A, "A"), (self.B, "B")):
+                html = "<html><body>" + self.CHROME + "".join(tpl.format(i=i) for i in range(18)) + "</body></html>"
+                rows = parse.parse_list(html, spec["row_selector"], spec["fields"])
+                self.assertEqual(len(rows), 18, tag)
+                self.assertEqual(rows[3]["title"], f"{tag} 3")
+                self.assertEqual(rows[3]["detail_url"], f"/dizi/{tag.lower()}-3")
+                self.assertTrue(all(r["poster_url"] for r in rows), tag)
+
+
 class DiziasyaNewEpisodesTests(unittest.TestCase):
     """"Bugün Yayınlananlar" -> Yeni Bölümler: calendar API rows whose latest chapter came out today (Istanbul) = "Eklendi";
     the "Bekleniyor" rows (latest chapter from an earlier day, or none) are only first-scan window top-up / dropped."""
@@ -333,7 +355,7 @@ class DiziasyaArchiveTests(unittest.TestCase):
         from app.library import archive
         cfg = config.load_site("diziasya")
         spec = archive.spec_of(cfg)
-        self.assertFalse(spec["enabled"])
+        self.assertNotIn("enabled", spec)   # schedule = the site's auto scan switch, not the yaml
         self.assertEqual([n for n, _ in spec["series_indexes"]], ["series_index[0]", "series_index[1]"])
         for name, tab, kind in (("series_index[0]", "SERIES", "series"), ("series_index[1]", "ANIME", "series"),
                                 ("movie_pages", "MOVIE", "movie")):

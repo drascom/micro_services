@@ -268,7 +268,8 @@ function siteRow(s){
       '<dt>Son tarama</dt><dd>'+lastRunHtml(s.last_run)+'</dd>'+
       '<dt>İçerik</dt><dd>'+esc(countsLine(s.counts))+'</dd>'+
       (s.archive?'<dt>Arşiv</dt><dd>'+esc(archiveLine(s.archive))+'</dd>':'')+
-      ((s.providers&&s.providers.length)?'<dt>Oynatıcılar</dt><dd>'+s.providers.map(function(p){return '<span class="obchip">'+esc(p)+'</span>'}).join(' ')+'</dd>':'')+
+      ((s.providers&&s.providers.length)?'<dt>Oynatıcılar</dt><dd>'+s.providers.map(function(p){return '<span class="obchip">'+esc(p)+'</span>'}).join(' ')+'</dd>':
+        s.providers_all?'<dt>Oynatıcılar</dt><dd><span class="obchip dim" title="yaml’da providers: listesi yok; tüm oynatıcılara izin verilir">Tümü</span></dd>':'')+
     '</dl>';
   if(ui.edit===id){
     h+='<div class="obsf"><label class="obfl">Ne değişsin?<textarea id="ob-ehint" rows="2" maxlength="500" placeholder="örn. afişler yanlış geliyor; film listesi /filmler sayfasında"></textarea></label>'+
@@ -391,7 +392,9 @@ function patchSite(site,fields,msg){
 }
 /* arşiv taraması (library/archive.py): düz metin ilerleme; tasarım sonra */
 function archiveLine(a){
-  var p=[a.enabled?'otomatik açık ('+a.interval_minutes+' dk)':'otomatik kapalı'];
+  // zamanlama = sitenin "Otomatik tarama" düğmesi + "Aralık" (ayrı arşiv düğmesi yok)
+  var m=+a.interval_minutes||0,iv=m>=60?(Math.round(m/6)/10)+' sa':m+' dk';
+  var p=[a.enabled?'otomatik tarama ile açık (her '+iv+(a.next_batch_at?', sonraki '+a.next_batch_at:'')+')':'otomatik tarama kapalı'];
   if(a.series)p.push('dizi '+a.series.processed+'/'+a.series.total+(a.series.index_at?' (dizin '+a.series.index_at+')':''));
   if(a.movies)p.push('film '+a.movies.processed+'/'+a.movies.total+' · sayfa imleci '+a.movies.next_page+(a.movies.done?' (bitti)':''));
   p.push('son parti '+(a.last_batch_at||'yok'));

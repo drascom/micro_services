@@ -48,6 +48,15 @@ def bad_stream_host(url) -> Optional[str]:
     return None
 
 
+def blocked_host(url, hosts) -> Optional[str]:
+    """The entry of ``hosts`` (site yaml ``blocked_hosts:``) that ``url``'s host is or is a subdomain of, else None."""
+    host = _host(url)
+    for bad in hosts or ():
+        if host and (host == bad or host.endswith("." + bad)):
+            return bad
+    return None
+
+
 def own_domain(url) -> str:
     """The last two labels of ``url``'s host (``cdn.example.com`` -> ``example.com``): a cheap "same site" key (no public-suffix list)."""
     labels = _host(url).split(".")

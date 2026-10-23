@@ -1,4 +1,8 @@
-"""Archive pass: the site's WHOLE catalogue, a little at a time (yaml ``archive:``; OFF unless ``archive.enabled: true``).
+"""Archive pass: the site's WHOLE catalogue, a little at a time (yaml ``archive:``).
+
+Schedule: the site's ONE admin "Otomatik tarama" switch + "Aralık" (``settings.site_settings``, the same setting the home
+scan uses) drive this pass too: switch off = not a single scheduled request; on = one batch per scan interval. The old yaml
+keys ``archive.enabled`` / ``archive.interval_minutes`` are ignored. The manual batch (admin button) works either way.
 
 The home scan (``ingest_source``) only sees what the home page shows. This pass walks the site's full lists in small, polite
 batches and feeds every title through the normal library paths (normalize -> gate -> identity -> merge -> TMDB auto):
@@ -13,7 +17,7 @@ batches and feeds every title through the normal library paths (normalize -> gat
   404, an empty page or a page that repeats the previous one (= archive done); after that only pages 1..``batch.movie_pages``
   are read again, once per ``refresh_hours``, for new films.
 * ``batch`` - per batch at most ``series`` NEW series (series page + seasons + availability gate: ``series_crawl`` / ``gate``)
-  and ``movie_pages`` film list pages (their films gate-screened like a scan's films). ``interval_minutes`` between two
+  and ``movie_pages`` film list pages (their films gate-screened like a scan's films). The site's scan interval between two
   scheduled batches (the autoscan tick, ``autoscan.tick``); ``max_attempts`` transient failures per title, then it is given up.
 
 A page that was processed once is never fetched again: a title already in the library (written by the home scan or an earlier
@@ -34,7 +38,7 @@ import time
 from typing import Any, Callable, Optional
 from urllib.parse import urljoin
 
-from .. import config, db
+from .. import config, db, settings
 from ..scraper import collections as scollections, config as scfg, drift, fetch, parse, schema, state as sstate
 from . import enrich, gate, identity, seasons, series_crawl, videos
 from .normalize import normalize
@@ -42,7 +46,6 @@ from .normalize import normalize
 log = logging.getLogger("library.archive")
 
 KIND = "archive"                 # activity kind (admin "busy") and heal evidence kind
-DEFAULT_INTERVAL_MINUTES = 10
 DEFAULT_REFRESH_HOURS = 24
 DEFAULT_SERIES = 10
 DEFAULT_MOVIE_PAGES = 2
@@ -77,8 +80,6 @@ def spec_of(cfg: scfg.SiteConfig) -> Optional[dict[str, Any]]:
         return None
     batch = raw.get("batch") if isinstance(raw.get("batch"), dict) else {}
     out: dict[str, Any] = {
-        "enabled": raw.get("enabled") is True,
-        "interval_minutes": _num(raw.get("interval_minutes"), DEFAULT_INTERVAL_MINUTES, 1, 24 * 60),
         "max_attempts": int(_num(raw.get("max_attempts"), DEFAULT_ATTEMPTS, 1, 10)),
         "batch": {"series": int(_num(batch.get("series"), DEFAULT_SERIES, 0, 100)),
                   "movie_pages": int(_num(batch.get("movie_pages"), DEFAULT_MOVIE_PAGES, 0, 20))},
@@ -116,9 +117,20 @@ def part_of(spec: Optional[dict], name: str) -> Optional[dict]:
     return dict(spec.get("series_indexes") or []).get(name)
 
 
+def schedule(site: str) -> tuple[bool, Optional[float]]:
+    """``(enabled, interval_minutes)`` of the scheduled pass = the site's auto scan switch + interval (admin Siteler)."""
+    try:
+        s = settings.site_settings(site)
+        minutes = float(s["interval_hours"]) * 60.0
+    except Exception:
+        return False, None
+    if minutes <= 0:
+        return False, None
+    return bool(s["enabled"]), round(minutes, 2)
+
+
 def enabled(cfg: scfg.SiteConfig) -> bool:
-    spec = spec_of(cfg)
-    return bool(spec and spec["enabled"])
+    return bool(spec_of(cfg) and schedule(cfg.site_id)[0])
 
 
 def page_url(cfg: scfg.SiteConfig, part: dict, n: int) -> str:
@@ -240,8 +252,9 @@ def status(site: str, cfg: Optional[scfg.SiteConfig] = None, now: Optional[float
     s_items, m_items = st["series"]["items"], st["movies"]["items"]
     s_tally, m_tally = _tally(s_items), _tally(m_items)
     last = _ts(st.get("last_batch_at"))
+    on, minutes = schedule(site)
     return {
-        "enabled": spec["enabled"], "interval_minutes": spec["interval_minutes"], "batch": spec["batch"],
+        "enabled": on, "interval_minutes": minutes, "batch": spec["batch"],
         "running": running(site),
         "series": {"total": len(s_items), "processed": len(s_items) - sum(s_tally.get(k, 0) for k in OPEN_STATES),
                    "states": s_tally, "index_at": _iso(_ts(st["series"].get("index_at"))),
@@ -251,8 +264,8 @@ def status(site: str, cfg: Optional[scfg.SiteConfig] = None, now: Optional[float
                    "pages": st["movies"].get("pages") or 0} if spec["movie_pages"] else None,
         "last_batch_at": _iso(last), "last_batch": st.get("last_batch"), "last_error": st.get("last_error"),
         "last_drift": st.get("last_drift"),
-        "next_batch_at": _iso(max(time.time() if now is None else now, (last or 0) + spec["interval_minutes"] * 60))
-        if spec["enabled"] else None,
+        "next_batch_at": _iso(max(time.time() if now is None else now, (last or 0) + minutes * 60))
+        if on and minutes else None,
     }
 
 
@@ -736,19 +749,24 @@ def _read_indexes(cfg: scfg.SiteConfig, site: str, indexes: list[tuple[str, dict
 # --- scheduling (called from autoscan.tick) --------------------------------------------------------------------------
 
 def due(site: str, cfg: scfg.SiteConfig, now: float) -> bool:
-    """Is a scheduled batch of ``site`` due? False whenever ``archive.enabled`` is not true (no request at all then)."""
-    spec = spec_of(cfg)
-    if not spec or not spec["enabled"]:
+    """Is a scheduled batch of ``site`` due? False whenever the site's auto scan is off (no request at all then)."""
+    if not spec_of(cfg):
+        return False
+    on, minutes = schedule(site)
+    if not on or not minutes:
         return False
     last = _ts(load_state(site).get("last_batch_at"))
-    return last is None or now - last >= spec["interval_minutes"] * 60.0
+    return last is None or now - last >= minutes * 60.0
 
 
-def tick(now: Optional[float] = None, *, run: Optional[Callable[..., Any]] = None) -> list[str]:
-    """Run one batch for every site whose archive pass is enabled and due (one at a time). Returns the sites batched."""
+def tick(now: Optional[float] = None, *, run: Optional[Callable[..., Any]] = None, skip: Any = ()) -> list[str]:
+    """Run one batch for every site whose auto scan is on and whose batch is due (one at a time). Returns the sites batched.
+    ``skip`` = sites that scanned in this tick: their batch waits for the next tick (scan first, never back to back)."""
     now = time.time() if now is None else now
     ran = []
     for site in scfg.list_sites():
+        if site in skip:
+            continue
         try:
             cfg = scfg.load_site(site)
         except Exception:
