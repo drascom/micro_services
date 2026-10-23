@@ -695,8 +695,47 @@ class SectionTests(Base):
         self.assertEqual([r["id"] for r in feat["rows"]],
                          [r["id"] for r in boot["rows"] if r["id"] not in ("continue", "series", "movies")])
         self.assertTrue({"series", "movies"} <= {r["id"] for r in boot["rows"]}, "the boot keeps Tüm Diziler/Filmler")
-        self.assertEqual(feat["heroes"], boot["heroes"])
+        menu = {x["id"]: x["heroes"] for x in self.get("/api/sections?profile=p1")["sections"]}
+        self.assertEqual(feat["heroes"], menu["featured"], "a section page shows the menu's vitrin")
+        self.assertEqual(len({h["id"] for h in feat["heroes"]}), len(feat["heroes"]))
         self.assertEqual(boot, self.get("/api/boot?profile=p1&layout=tv-v1"), "the boot is unchanged by the sections")
+
+    def _vitrins(self, featured, n_extra):
+        """Vitrins of a fake library: ``featured`` = one site's featured list (ids), plus ``n_extra`` titles per kind."""
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from app import homelayout as hl
+
+        def it(cid, kind, rating):
+            return {"id": cid, "type": "movie" if kind == "movie" else "series", "rating": rating,
+                    "backdrop_url": "/img/b", "availability": {"state": "ready"}}
+        kinds = {"s": "series", "m": "movie", "a": "anime"}
+        items = [it(c, kinds[c[0]], 9.0 - k * 0.1) for k, c in enumerate(featured)]
+        items += [it("%sx%d" % (p, k), kinds[p], 5.0 - k * 0.1) for p in kinds for k in range(n_extra)]
+        items = list({i["id"]: i for i in items}.values())
+        snap = SimpleNamespace(source="library", items=items, by_id={i["id"]: i for i in items})
+        anime = [i for i in items if i["id"][0] == "a"]
+        lists = {"featured": {"featured_x": [snap.by_id[c] for c in featured]}}
+        with patch.object(hl.rows, "_role_by_list", lambda _s, role: lists.get(role, {})), \
+                patch.object(hl.categories, "member_lists", lambda _s, slug: [anime] if slug == "animeler" else []), \
+                patch.object(hl, "_hero_card", lambda _c, item, _p=None: {"id": item["id"], "type": item["type"]}):
+            return {k: [h["id"] for h in v] for k, v in hl._vitrins(hl.Context(snap)).items()}
+
+    def test_featured_vitrin_cycles_series_movie_anime(self):
+        """Öne Çıkanlar: dizi, film, anime, ... each from the sites' featured first (site order), then by score."""
+        v = self._vitrins(["s1", "s2", "s3", "a1", "m1"], 8)
+        self.assertEqual(v["featured"], ["s1", "m1", "a1", "s2", "mx0", "ax0"])
+
+    def test_section_vitrins_skip_the_featured_vitrin_and_never_run_empty(self):
+        v = self._vitrins(["s1", "s2", "s3", "a1", "m1"], 8)
+        for sid, p in (("series", "s"), ("movies", "m"), ("anime", "a")):
+            self.assertEqual(len(v[sid]), 6, sid)
+            self.assertTrue(all(c[0] == p for c in v[sid]), sid)
+            self.assertFalse(set(v[sid]) & set(v["featured"]), sid)
+        self.assertEqual(v["series"][0], "s3", "featured first, minus the Öne Çıkanlar ones")
+        v = self._vitrins(["s1", "m1", "a1"], 1)   # too few: repeats instead of an empty vitrin
+        self.assertEqual(sorted(v["series"]), ["s1", "sx0"])
+        self.assertTrue(v["movies"] and v["anime"])
 
     def test_anime_category_row_is_the_lists_then_best_rated_library_anime(self):
         """``cat_animeler``: the sites' ``category_animeler_*`` lists first (list order), then the other anime series

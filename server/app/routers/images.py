@@ -17,6 +17,9 @@ def _headers(tag: str) -> dict:
         "ETag": tag,
         "Cache-Control": f"public, max-age={config.IMG_MAX_AGE}",
         "Access-Control-Expose-Headers": "ETag",
+        # always (not only when the request has Origin): a cached no-cors copy must stay usable for crossOrigin
+        # loads (ui-proto canvas pre-blur); otherwise the browser cache replays it without ACAO -> CORS error
+        "Access-Control-Allow-Origin": "*",
     }
 
 

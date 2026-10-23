@@ -509,31 +509,106 @@ def section_rows(section_id: str, profile_id: str = "") -> list[str]:
     return list(SECTION_ROWS.get(section_id, ()))
 
 
-def _section_heroes(ctx: Context, section_id: str, slider: Optional[list] = None) -> list[dict]:
-    """The vitrin of a section: ``featured`` = the home slider; ``series``/``movies`` = the type's own hero-section
-    titles, then the slider's titles of that type; ``anime`` = the anime row; at most ``SECTION_HEROES`` cards with a
-    backdrop; ``[]`` for a "soon" section."""
+VITRIN_KINDS = ("series", "movie", "anime")   # the Öne Çıkanlar vitrin cycles these: dizi, film, anime, dizi, ...
+VITRIN_SECTIONS = (("series", "series"), ("movies", "movie"), ("anime", "anime"))   # (section, kind), decided in order
+
+
+def _vitrins(ctx: Context) -> dict[str, list[dict]]:
+    """The vitrin (heroes) of every ready section, decided together so they do not repeat each other.
+
+    A title's kind is ``anime`` when it is in the anime pool (``ctx.pool("anime")``), else its type. Per kind the
+    candidates are (backdrop + ``ctx.show`` only): ``featured`` = the sites' ``featured_<site>`` lists of that kind
+    (round-robin over the sites, each site's order kept), ``new`` = the sites' latest lists (series: ``latest_series``
+    + ``latest_episodes``; movie: ``latest_movies``; anime: the anime pool), ``scored`` = the best-scoring titles
+    (:func:`score_parts`; ties: rating, then id; a classic only with a trending score, as in :func:`heroes`).
+
+    * ``featured`` (Öne Çıkanlar): dizi, film, anime, dizi, ... each from that kind's featured, then scored candidates;
+      a kind with no candidate left is skipped (the others fill); no title twice; at most ``SECTION_HEROES``.
+    * ``series`` / ``movies`` / ``anime`` (in that order): the kind's featured, new, scored candidates minus every title
+      already in the Öne Çıkanlar vitrin or an earlier section's vitrin; short of ``SECTION_HEROES`` the skipped ones
+      come back (a repeat rather than an empty vitrin); Diziler takes anime series only when it has no series at all."""
+    anime_ids = {i["id"] for i in ctx.pool("anime")}
+    parts_of: dict[str, dict] = {}
+
+    def ok(item: dict) -> bool:
+        return bool(item.get("backdrop_url")) and ctx.show(item)
+
+    def kind_of(item: dict) -> str:
+        return "anime" if item["id"] in anime_ids else ("series" if item["type"] == "series" else "movie")
+
+    def of_kind(items, kind: str) -> list[dict]:
+        return [i for i in items if ok(i) and kind_of(i) == kind]
+
+    site_featured = list(rows._role_by_list(ctx.snap, "featured").values())
+    featured = {k: rows._round_robin([of_kind(items, k) for items in site_featured]) for k in VITRIN_KINDS}
+    new = {"series": rows._round_robin([of_kind(items, "series") for items in ctx._site_lists("latest_series", "latest_episodes")]),
+           "movie": of_kind(ctx.pool("latest_movies"), "movie"),
+           "anime": of_kind(ctx.pool("anime"), "anime")}
+    ranked = []
+    for item in ctx.snap.items:
+        if ok(item):
+            parts = score_parts(item, ctx.signals, ctx.now)
+            parts_of[item["id"]] = parts
+            if parts["trending"] <= 0 and is_classic(item, ctx.now):
+                continue
+            ranked.append((-sum(parts.values()), -_num(item.get("rating")), item["id"], item))
+    ranked.sort(key=lambda t: t[:3])
+    scored = {k: [t[3] for t in ranked if kind_of(t[3]) == k] for k in VITRIN_KINDS}
+
+    def card(item: dict) -> dict:
+        return _hero_card(ctx, item, parts_of.get(item["id"]))
+
+    used: set = set()
+    queues = {k: featured[k] + scored[k] for k in VITRIN_KINDS}
+    pos = dict.fromkeys(VITRIN_KINDS, 0)
+    top: list[dict] = []
+    while len(top) < SECTION_HEROES:
+        moved = False
+        for kind in VITRIN_KINDS:
+            if len(top) >= SECTION_HEROES:
+                break
+            queue = queues[kind]
+            while pos[kind] < len(queue) and queue[pos[kind]]["id"] in used:
+                pos[kind] += 1
+            if pos[kind] < len(queue):
+                used.add(queue[pos[kind]]["id"])
+                top.append(queue[pos[kind]])
+                moved = True
+        if not moved:
+            break
+    out = {"featured": [card(i) for i in top]}
+    for sid, kind in VITRIN_SECTIONS:
+        own = list({i["id"]: i for i in featured[kind] + new[kind] + scored[kind]}.values())
+        tiers = [[i for i in own if i["id"] not in used], [i for i in own if i["id"] in used]]
+        if kind == "series" and not own:   # anime series are series too, but they belong to the Animeler vitrin
+            tiers.append([i for i in featured["anime"] + new["anime"] + scored["anime"]])
+        picked, have = [], set()
+        for tier in tiers:
+            for item in tier:
+                if len(picked) >= SECTION_HEROES:
+                    break
+                if item["id"] not in have:
+                    have.add(item["id"])
+                    picked.append(item)
+        used |= have
+        out[sid] = [card(i) for i in picked]
+    return out
+
+
+def _section_heroes(ctx: Context, section_id: str, vitrins: Optional[dict] = None) -> list[dict]:
+    """The vitrin of a section (:func:`_vitrins`); ``[]`` for a "soon" or unknown section."""
     if section_id in SOON_SECTIONS or section_id not in dict(SECTIONS):
         return []
-    slider = heroes(ctx) if slider is None else slider
-    if section_id == "featured":
-        return slider
-    if section_id == "anime":
-        return [_hero_card(ctx, i) for i in ctx.pool("anime") if i.get("backdrop_url")][:SECTION_HEROES]
-    kind = "series" if section_id == "series" else "movie"
-    out = [_hero_card(ctx, i) for i in ctx.pool("featured_" + ("series" if kind == "series" else "movies"))
-           if i.get("backdrop_url")][:SECTION_HEROES]
-    have = {c["id"] for c in out}
-    out += [c for c in slider if c["type"] == kind and c["id"] not in have]
-    return out[:SECTION_HEROES]
+    vitrins = _vitrins(ctx) if vitrins is None else vitrins
+    return vitrins.get(section_id, [])
 
 
 def sections(snap, profile_id: str, pmap: dict, now: Optional[float] = None) -> dict:
     """``{"sections": [{id, title, status: ready|soon, heroes}]}``: the menu of the new home, in menu order."""
     ctx = Context(snap, profile_id, pmap, now)
-    slider = heroes(ctx)
+    vitrins = _vitrins(ctx)
     return {"sections": [{"id": sid, "title": stitle, "status": "soon" if sid in SOON_SECTIONS else "ready",
-                          "heroes": _section_heroes(ctx, sid, slider)} for sid, stitle in SECTIONS]}
+                          "heroes": _section_heroes(ctx, sid, vitrins)} for sid, stitle in SECTIONS]}
 
 
 def section(snap, section_id: str, profile_id: str, pmap: dict, now: Optional[float] = None) -> Optional[dict]:

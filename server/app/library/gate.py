@@ -380,6 +380,27 @@ def pick_pages(episodes: list[dict], probe: int, today: Optional[str] = None) ->
     return out
 
 
+SPARE_PAGES = 2   # every first page blocked: up to this many more pages (the middle / the last aired) before the series is blocked
+
+
+def spare_pages(episodes: list[dict], picked: list[dict], today: Optional[str] = None) -> list[dict]:
+    """More pages to probe when every first page is blocked (a series often has a few removed / broken episodes, the rest
+    playable): the middle and the last AIRED episode not probed yet (distinct URLs, <= ``SPARE_PAGES``)."""
+    today = today or time.strftime("%Y-%m-%d", time.gmtime())
+    seen = {p["url"] for p in picked}
+    rest: list[dict] = []
+    for entry in _usable(episodes):
+        if not _future(entry, today) and entry["url"] not in seen:
+            seen.add(entry["url"])
+            rest.append(entry)
+    if not rest:
+        return []
+    out = [rest[len(rest) // 2]]
+    if rest[-1]["url"] != out[0]["url"]:
+        out.append(rest[-1])
+    return out[:SPARE_PAGES]
+
+
 def series_verdict(cfg, episodes: list[dict], *, known: Optional[dict[str, str]] = None, probe: Optional[int] = None,
                    require: Optional[str] = None, pacer: Optional[Pacer] = None, fetcher: Optional[Callable] = None,
                    module_site: Optional[str] = None, judge: Optional[Callable[[str], dict]] = None) -> dict:
@@ -388,7 +409,8 @@ def series_verdict(cfg, episodes: list[dict], *, known: Optional[dict[str, str]]
 
     ``{state, reason, via, probed, pages: [{url, season, episode, state, reason, via, cached?}], blocked: [url], retry: [url]}``:
     ``ok`` when at least one page is fine (the blocked ones are listed in ``blocked``: only those episodes are dropped),
-    ``blocked`` when every probed page is blocked, ``retry`` when none is fine and a failure was transient."""
+    ``blocked`` when every probed page is blocked (the first ones and, when those all are, up to ``SPARE_PAGES`` more: the middle
+    and the last aired episode), ``retry`` when none is fine and a failure was transient."""
     if require is None:
         require = gate_of(cfg).get("require")
     probe = probe_count(cfg) if probe is None else probe
@@ -401,7 +423,10 @@ def series_verdict(cfg, episodes: list[dict], *, known: Optional[dict[str, str]]
         if probe > 0 and _usable(episodes):   # every episode airs later: nothing to judge yet, asked again by the next scan
             out["state"], out["reason"] = RETRY, "yayınlanmış bölüm yok"
         return out
-    for entry in picks:
+    queue = list(picks)
+    spares_added = False
+    while queue:
+        entry = queue.pop(0)
         url = entry["url"]
         if known and url in known:
             verdict = _verdict(BLOCKED, known[url] or sblocked.DEFAULT_REASON, "rule", cached=True)
@@ -417,6 +442,9 @@ def series_verdict(cfg, episodes: list[dict], *, known: Optional[dict[str, str]]
             out["blocked"].append(url)
         elif verdict["state"] == RETRY:
             out["retry"].append(url)
+        if not queue and not spares_added and all(p["state"] == BLOCKED for p in out["pages"]):
+            spares_added = True   # one / a few removed episodes never block a series that has playable ones
+            queue = spare_pages(episodes, picks)
     states = [p["state"] for p in out["pages"]]
     if OK in states:
         out["state"] = OK

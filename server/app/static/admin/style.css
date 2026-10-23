@@ -452,3 +452,11 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .catnote{font-size:12.5px;color:var(--muted);padding:0 4px}
 .catmin{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;white-space:nowrap}
 .catmin input{width:56px;font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)}
+
+/* Arka planlar sekmesi */
+.bggrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.bgcard{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface);display:flex;flex-direction:column}
+.bgcard a{display:block;aspect-ratio:16/9;background:var(--surface2)}
+.bgcard img{width:100%;height:100%;object-fit:cover;display:block}
+.bgcard .bgmeta{color:var(--muted);font-size:12px;padding:6px 10px 0}
+.bgcard .btn{margin:6px 10px 10px;align-self:flex-start}

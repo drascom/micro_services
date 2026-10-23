@@ -44,8 +44,8 @@ function diagPills(v){
 }
 
 /* ---- sekmeler ---- */
-var TABS=['events','library','categories','settings','onboard'];
-var TITLES={events:'Olay Defteri',library:'Kütüphane',categories:'Kategoriler',settings:'Ayarlar',onboard:'Siteler'};
+var TABS=['events','library','categories','settings','backgrounds','onboard'];
+var TITLES={events:'Olay Defteri',library:'Kütüphane',categories:'Kategoriler',settings:'Ayarlar',backgrounds:'Arka planlar',onboard:'Siteler'};
 function showTab(name){
   TABS.forEach(function(n){
     $('tab-'+n).classList.toggle('hidden',n!==name);
@@ -306,6 +306,7 @@ $('lview').addEventListener('click',function(ev){
   if(location.hash==='#library')showTab('library');
   else if(location.hash==='#categories')showTab('categories');
   else if(location.hash==='#settings')showTab('settings');
+  else if(location.hash==='#backgrounds')showTab('backgrounds');
   else if(/^#onboard(\/|$)/.test(location.hash))showTab('onboard');
 })();
 window.addEventListener('hashchange',function(){ // Olay defteri/banner "Taslağı aç" bağlantıları (#onboard/<id>)

@@ -18,6 +18,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from . import cache, config, db
 from .http_cache import ETagMiddleware
 from .routers import (
+    backgrounds,
     catalog,
     boot,
     detail,
@@ -154,6 +155,7 @@ for module in (
     notifications,
     search,
     images,
+    backgrounds,
     ops,
     ops_categories,
     ops_library,

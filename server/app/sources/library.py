@@ -79,6 +79,13 @@ def _to_item(row) -> dict[str, Any]:
     }
 
 
+
+def _all_blocked(video) -> bool:
+    """``video`` (``video_sources`` rows) has playback sources and every one of them is ``status='blocked'`` (a copyright /
+    access placeholder seen at play time): nothing public is left to show."""
+    full = [v for v in video if v["kind"] != "trailer"]
+    return bool(full) and all(v["status"] == "blocked" for v in full)
+
 class LibrarySource(SourceAdapter):
     name = "library"
 
@@ -148,6 +155,8 @@ class LibrarySource(SourceAdapter):
             from ..catalog import availability, trailer_dead
             item = _to_item(row)
             video = providers.get(row["id"], [])
+            if _all_blocked(video):
+                continue   # every video source is a not-public page (yaml ``blocked:``, library/gate.py): hidden from the clients
             # a trailer whose YouTube video was verified dead (trailer_check) does not make the title "trailer only"
             usable = [v for v in video if not trailer_dead(v)]
             item.update({"sources": links.get(row["id"], []), "tmdb_id": row["tmdb_id"], "imdb_id": row["imdb_id"],
@@ -156,6 +165,7 @@ class LibrarySource(SourceAdapter):
             seasons = {}
             for v in video:
                 if v["kind"] != "episode": continue
+                if _all_blocked([p for p in video if p["episode_id"] == v["episode_id"]]): continue   # only this episode is hidden
                 eps = seasons.setdefault(v["season"], {})
                 eps[v["episode"]] = {"id": v["episode_id"], "season": v["season"], "episode": v["episode"],
                     "title": v["episode_title"] or str(v["episode"]) + ". Bölüm",

@@ -192,8 +192,14 @@ dönüşümlü; varsayılan sıra, admin Kategoriler'den değişir). "Listem" an
 ### `GET /api/sections?profile={pid}` · `GET /api/section/{id}?profile={pid}`   ← yeni ana ekran menüsü (ui-proto; yalnız EKLEME)
 `/api/sections` → `{"sections":[{"id","title","status":"ready"|"soon","heroes":[Hero...]}]}`, menü sırası:
 `featured` Öne Çıkanlar · `series` Diziler · `movies` Filmler · `live_tv` Canlı TV · `anime` Animeler · `dvr` DVR
-(`soon` = henüz kaynak yok: `heroes` ve `rows` boş, menüde görünür). `heroes` = o bölümün vitrini (en çok 6, backdrop'lu;
-`featured` = boot `heroes`).
+(`soon` = henüz kaynak yok: `heroes` ve `rows` boş, menüde görünür). `heroes` = o bölümün vitrini (en çok 6, backdrop'lu,
+oynatılabilir; tek yer `homelayout._vitrins`, boot `heroes`'tan bağımsız). Tür: anime havuzundaki (`anime` satırı) dizi = anime, diğerleri
+`type`. Her tür için adaylar: sitelerin `featured` listelerindeki o türden yapımlar (siteler arası sırayla, site sırası korunur), sonra
+`score_parts` puanına göre en iyiler (klasik film yalnız trend puanıyla). `featured` (Öne Çıkanlar) vitrini karışık: dizi · film ·
+anime · dizi … (adayı biten tür atlanır, diğerleri doldurur). `series`/`movies`/`anime` vitrinleri (bu sırayla) kendi türünden
+featured → yeni (`latest_series`+`latest_episodes` / `latest_movies` / anime havuzu) → puan adaylarından Öne Çıkanlar'da ve önceki
+bölümlerde gösterilenleri ATLAR; 6'ya yetmezse atlananlar geri gelir (vitrin boş kalmaz). Diziler anime diziyi yalnız hiç dizi yoksa alır.
+`/api/section/{id}` `heroes` = `/api/sections`'taki aynı bölümün vitrini.
 `/api/section/{id}` → `{"id","title","status","heroes":[...],"rows":[...]}` (satırlar boot `tv-v1` satır biçiminde, ilk 20 kart; boş satır
 gönderilmez; bilinmeyen id → 404). Satırlar (sıra; tek yer `homelayout.section_rows`):
 - `featured`: boot `tv-v1` satırları, `continue`, `series` (Tüm Diziler) ve `movies` (Tüm Filmler) HARİÇ (yeni ana ekran "Devam Et"i menü ekranında `/api/row/continue` ile gösterir; tüm diziler/filmler Diziler/Filmler bölümlerinde).
@@ -443,6 +449,16 @@ sezon/bölüm kataloğunu o anda getirir ve sonraki açılışlar için önbelle
 Boyut whitelist dışıysa en yakın izinli boyuta yuvarla.
 `item_id` bir yapım, bir bölüm (`{yapım}:s1:e3`, gerçek görsel `still`'de) ya da bir sezon (`{yapım}:s1`, gerçek görsel
 `portrait`'te; sezon posteri yoksa dizinin afişi) olabilir. Gerçek görsel yoksa ya da indirilemezse üretilmiş yer tutucu döner.
+
+### Arka planlar (yalnız EKLEME) ← gün-gece sahnesinin yerine kullanıcının yüklediği görseller
+- `GET /api/backgrounds` → `{"items":[{"id":"3f9a1c0d2b7e4a51","url":"/api/backgrounds/3f9a1c0d2b7e4a51.jpg","blur_url":"/api/backgrounds/3f9a1c0d2b7e4a51/blur.jpg","width":1920,"height":1080,"added_at":"2026-10-23T09:12:44Z"}]}`
+  (en yeni önce; ETag + `Cache-Control: no-cache`, `If-None-Match` → 304). Liste boşsa istemci kendi varsayılanını kullanır.
+- `GET /api/backgrounds/{id}.jpg` görsel (JPEG, ≤ 1920×1080, büyütülmez) · `GET /api/backgrounds/{id}/blur.jpg` 320×180 hafif
+  bulanık kopya (cam paneller / ilk boyama). `id` içerik hash'idir, dosya değişmez: ETag + `Cache-Control: public, max-age=31536000, immutable`.
+- `POST /api/backgrounds` multipart alan `file` (ya da ham görsel gövdesi) → eklenen öğe (aynı dosya tekrar yüklenirse aynı öğe).
+  jpg/png/webp, ≤ 15 MB; EXIF yönü uygulanır. Hata: `415 unsupported_media` (görsel değil/desteklenmeyen biçim), `413 too_large`.
+- `DELETE /api/backgrounds/{id}` → `{"ok":true}` (yoksa 404). Yazma uçları `/api/ops/*` ile aynı erişim kuralında (LAN, auth yok).
+- Depolama: `DATA_DIR/backgrounds/` (`<id>.jpg`, `<id>.blur.jpg`). Admin: "Arka planlar" sekmesi.
 
 ### Hatalar
 Her hata `{"error":{"code","message"}}` zarfıdır: `400 bad_request` (eksik/bilinmeyen `profile`, bilinmeyen `source`, geçersiz
