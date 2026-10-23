@@ -326,5 +326,39 @@ class TmdbFallbackTests(unittest.TestCase):
         self.assertEqual(got, {"gen-test-g": ["Dram", "Komedi"], "gen-test-h": ["Yemek"]})
 
 
+class DiziasyaArchiveTests(unittest.TestCase):
+    """v13 archive: /diziler + /animeler (series_index list) and /filmler (movie_pages) = the site's content-by-type API."""
+
+    def test_archive_parts(self):
+        from app.library import archive
+        cfg = config.load_site("diziasya")
+        spec = archive.spec_of(cfg)
+        self.assertFalse(spec["enabled"])
+        self.assertEqual([n for n, _ in spec["series_indexes"]], ["series_index[0]", "series_index[1]"])
+        for name, tab, kind in (("series_index[0]", "SERIES", "series"), ("series_index[1]", "ANIME", "series"),
+                                ("movie_pages", "MOVIE", "movie")):
+            part = archive.part_of(spec, name)
+            self.assertEqual(archive.page_url(cfg, part, 2), f"{API}{tab}&take=100&page=2")
+            rows, _m, verdict = archive.parse_part(cfg, name, part, TABS[tab])
+            self.assertFalse(verdict["drift"], name)
+            self.assertEqual(len(rows), 12)
+            self.assertEqual({normalize("diziasya", r)["type"] for r in rows}, {kind})
+
+    def test_paged_indexes_stop_at_empty_page(self):
+        from app.library import archive
+        cfg = config.load_site("diziasya")
+        spec = archive.spec_of(cfg)
+        empty = '{"data":[],"meta":{"total":12}}'
+        seen = []
+
+        def fake(cfg, part, url):
+            seen.append(url)
+            return TABS[url[len(API):].split("&")[0]] if url.endswith("page=1") else empty
+        with patch.object(archive, "fetch_part", side_effect=fake), patch.object(archive.config, "SERIES_CRAWL_DELAY", 0):
+            rows = archive._read_indexes(cfg, "diziasya", spec["series_indexes"])
+        self.assertEqual(len(rows), 24)
+        self.assertEqual(seen, [f"{API}{t}&take=100&page={n}" for t in ("SERIES", "ANIME") for n in (1, 2)])
+
+
 if __name__ == "__main__":
     unittest.main()

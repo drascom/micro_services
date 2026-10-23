@@ -4,7 +4,11 @@ The home scan (``ingest_source``) only sees what the home page shows. This pass 
 batches and feeds every title through the normal library paths (normalize -> gate -> identity -> merge -> TMDB auto):
 
 * ``series_index`` - one page listing every series (``path``, ``row_selector``, ``fields``), read at most once per
-  ``refresh_hours``; only slugs seen there for the FIRST time join the queue.
+  ``refresh_hours``; only slugs seen there for the FIRST time join the queue. It may be a LIST of such blocks (several series
+  lists, e.g. dramas + anime; part names ``series_index[i]``), and a block with ``page_path`` (``{n}``) is paged: pages 1..
+  ``max_pages`` (default 50) are read until a 404, an empty page or a repeated page.
+* any part may say ``format: json`` (+ ``json_path``, ``json_source``, json ``fields``: the ``collections`` JSON syntax) instead of
+  ``row_selector``: rows from a site API answer (site host or a sub-domain) or the page's embedded JSON.
 * ``movie_pages`` - paged film lists (``path`` = page 1, ``page_path`` with ``{n}`` = page n); the cursor walks forward until a
   404, an empty page or a page that repeats the previous one (= archive done); after that only pages 1..``batch.movie_pages``
   are read again, once per ``refresh_hours``, for new films.
@@ -31,7 +35,7 @@ from typing import Any, Callable, Optional
 from urllib.parse import urljoin
 
 from .. import config, db
-from ..scraper import config as scfg, drift, fetch, parse, schema, state as sstate
+from ..scraper import collections as scollections, config as scfg, drift, fetch, parse, schema, state as sstate
 from . import enrich, gate, identity, seasons, series_crawl, videos
 from .normalize import normalize
 
@@ -43,6 +47,7 @@ DEFAULT_REFRESH_HOURS = 24
 DEFAULT_SERIES = 10
 DEFAULT_MOVIE_PAGES = 2
 DEFAULT_ATTEMPTS = 3
+DEFAULT_INDEX_PAGES = 50         # a paged series index (``page_path``) is read up to this many pages
 RETRY_HOURS = (1, 6, 24)         # wait after the 1st, 2nd, 3rd failed attempt of one title
 PENDING, RETRY = "pending", "retry"
 OPEN_STATES = (PENDING, RETRY)
@@ -79,13 +84,36 @@ def spec_of(cfg: scfg.SiteConfig) -> Optional[dict[str, Any]]:
                   "movie_pages": int(_num(batch.get("movie_pages"), DEFAULT_MOVIE_PAGES, 0, 20))},
         "series_index": None, "movie_pages": None,
     }
-    for part in ("series_index", "movie_pages"):
-        block = raw.get(part)
-        if isinstance(block, dict) and block.get("path") and block.get("row_selector") and isinstance(block.get("fields"), dict):
-            out[part] = {**block, "refresh_hours": _num(block.get("refresh_hours"), DEFAULT_REFRESH_HOURS, 1, 24 * 30)}
+    def usable(block: Any) -> Optional[dict]:
+        if not (isinstance(block, dict) and block.get("path") and isinstance(block.get("fields"), dict)):
+            return None
+        if not (block.get("row_selector") or scollections.format_of(block) == scollections.JSON_FORMAT):
+            return None
+        return {**block, "refresh_hours": _num(block.get("refresh_hours"), DEFAULT_REFRESH_HOURS, 1, 24 * 30)}
+
+    sidx = raw.get("series_index")
+    if isinstance(sidx, list):   # several series lists: part names series_index[i] (the index of the yaml list)
+        out["series_indexes"] = [(f"series_index[{i}]", b) for i, b in enumerate(map(usable, sidx)) if b]
+    else:
+        one = usable(sidx)
+        out["series_indexes"] = [("series_index", one)] if one else []
+    for _name, block in out["series_indexes"]:
+        if "{n}" in str(block.get("page_path") or ""):
+            block["max_pages"] = int(_num(block.get("max_pages"), DEFAULT_INDEX_PAGES, 1, 200))
+    out["series_index"] = out["series_indexes"][0][1] if out["series_indexes"] else None
+    out["movie_pages"] = usable(raw.get("movie_pages"))
     if out["movie_pages"] and "{n}" not in str(out["movie_pages"].get("page_path") or ""):
         out["movie_pages"]["page_path"] = str(out["movie_pages"]["path"]).rstrip("/") + "/{n}"
     return out if (out["series_index"] or out["movie_pages"]) else None
+
+
+def part_of(spec: Optional[dict], name: str) -> Optional[dict]:
+    """The archive part called ``name`` (``series_index``, ``series_index[i]``, ``movie_pages``) of a ``spec_of`` result."""
+    if not spec:
+        return None
+    if name == "movie_pages":
+        return spec.get("movie_pages")
+    return dict(spec.get("series_indexes") or []).get(name)
 
 
 def enabled(cfg: scfg.SiteConfig) -> bool:
@@ -95,12 +123,22 @@ def enabled(cfg: scfg.SiteConfig) -> bool:
 
 def page_url(cfg: scfg.SiteConfig, part: dict, n: int) -> str:
     path = part["path"] if n <= 1 else str(part["page_path"]).replace("{n}", str(n))
-    return urljoin(cfg.base_url, path)
+    url = urljoin(cfg.base_url, path)
+    if scollections.format_of(part) == scollections.JSON_FORMAT:
+        from .ingest import _own_host
+        if not _own_host(cfg.base_url, url):
+            raise ValueError(f"archive json page {url}: must be on the site's host or a sub-domain of it")
+    return url
+
+
+def fetch_part(cfg: scfg.SiteConfig, part: dict, url: str) -> str:
+    return fetch.page(cfg, url, wait_for="" if scollections.format_of(part) == scollections.JSON_FORMAT else part["row_selector"])
 
 
 def rules_of(cfg: scfg.SiteConfig, part: str) -> dict[str, Any]:
     """Drift thresholds of one archive part: baseline ``archive.<part>``, else the site's fill floor + title/detail_url."""
     base = cfg.baseline()
+    part = part.split("[", 1)[0]   # series_index[i] shares the series_index thresholds
     own = (base.get("archive") or {}).get(part) if isinstance(base.get("archive"), dict) else None
     if isinstance(own, dict) and own:
         return own
@@ -110,7 +148,13 @@ def rules_of(cfg: scfg.SiteConfig, part: str) -> dict[str, Any]:
 
 def parse_part(cfg: scfg.SiteConfig, part_name: str, part: dict, html: str) -> tuple[list[dict], dict, dict]:
     """``(valid rows, metrics, drift verdict)`` of one archive page."""
-    raw = parse.parse_list(html, part["row_selector"], part["fields"])
+    if scollections.format_of(part) == scollections.JSON_FORMAT:
+        try:
+            raw = scollections.json_rows(html, part)
+        except ValueError:   # not JSON / the path is gone: zero rows = drift
+            raw = []
+    else:
+        raw = parse.parse_list(html, part["row_selector"], part["fields"])
     valid, metrics = schema.validate_items(cfg.schema, raw)
     verdict = drift.detect(metrics, rules_of(cfg, part_name)) if raw else {"drift": True, "reasons": ["zero rows parsed"]}
     metrics["raw_count"] = len(raw)
@@ -321,12 +365,12 @@ def verify_proposal(cfg: scfg.SiteConfig, evidence: dict, fetcher: Optional[Call
     """Heal gate of an ``archive`` repair: the failing page parses without drift with the proposed yaml (``cfg``). None = ok."""
     info = evidence.get("archive") if isinstance(evidence.get("archive"), dict) else {}
     part_name, url = str(info.get("part") or ""), str(info.get("url") or "")
-    spec = spec_of(cfg)
-    part = (spec or {}).get(part_name)
+    part = part_of(spec_of(cfg), part_name)
     if not part or not url:
         return f"the proposal has no archive.{part_name or '?'} block"
     try:
-        html = (fetcher or fetch.page)(cfg, url, wait_for=part["row_selector"])
+        wait = "" if scollections.format_of(part) == scollections.JSON_FORMAT else part["row_selector"]
+        html = (fetcher or fetch.page)(cfg, url, wait_for=wait)
     except Exception as exc:
         return f"archive page not fetched: {type(exc).__name__}: {str(exc)[:120]}"
     _valid, metrics, verdict = parse_part(cfg, part_name, part, html)
@@ -486,7 +530,7 @@ def _movie_pages(cfg: scfg.SiteConfig, site: str, spec: dict, st: dict, now: flo
         if index and config.SERIES_CRAWL_DELAY > 0:
             _sleep(config.SERIES_CRAWL_DELAY)
         try:
-            html = fetch.page(cfg, url, wait_for=part["row_selector"])
+            html = fetch_part(cfg, part, url)
         except fetch.FetchError as exc:
             if getattr(exc, "status", None) == 404 and n > 1:
                 _finish_movies(mv, n, now)
@@ -633,15 +677,11 @@ def _batch(cfg: scfg.SiteConfig, site: str, spec: dict, st: dict, now: float, ou
     # 1. series index (at most once per refresh_hours): only slugs seen for the first time join the queue
     sidx = spec["series_index"]
     if sidx and spec["batch"]["series"] > 0 and _due(st["series"].get("index_at"), sidx["refresh_hours"], now):
-        url = urljoin(cfg.base_url, sidx["path"])
-        html = fetch.page(cfg, url, wait_for=sidx["row_selector"])
-        valid, metrics, verdict = parse_part(cfg, "series_index", sidx, html)
-        if verdict["drift"]:
-            raise ArchiveDrift("series_index", url, verdict["reasons"])
-        out["series"]["index"] = len(valid)
-        out["series"]["queued"] = _add_rows(site, st["series"]["items"], valid, "series")
+        rows = _read_indexes(cfg, site, spec["series_indexes"])
+        out["series"]["index"] = len(rows)
+        out["series"]["queued"] = _add_rows(site, st["series"]["items"], rows, "series")
         st["series"]["index_at"] = int(now)
-        st["series"]["index_count"] = len(valid)
+        st["series"]["index_count"] = len(rows)
     # 2. series of this batch
     taken: list[tuple] = []
     if sidx and spec["batch"]["series"] > 0:
@@ -659,6 +699,38 @@ def _batch(cfg: scfg.SiteConfig, site: str, spec: dict, st: dict, now: float, ou
             seasons.auto_enrich(series_ids, budget=config.TMDB_BUDGET_SECONDS, locked=True)
         except Exception as exc:
             log.warning("archive %s: tmdb season enrichment skipped: %s", site, exc)
+
+
+def _read_indexes(cfg: scfg.SiteConfig, site: str, indexes: list[tuple[str, dict]]) -> list[dict]:
+    """Rows of every series index (in yaml order). A paged index (``page_path``) is read from page 1 until a 404 / empty /
+    repeated page or ``max_pages``. A drifting page raises :class:`ArchiveDrift` (nothing of this refresh is queued then)."""
+    rows: list[dict] = []
+    fetched = 0
+    for name, part in indexes:
+        pages = int(part.get("max_pages") or 1) if "{n}" in str(part.get("page_path") or "") else 1
+        last_keys: list[str] = []
+        for n in range(1, pages + 1):
+            url = page_url(cfg, part, n)
+            if fetched and config.SERIES_CRAWL_DELAY > 0:
+                _sleep(config.SERIES_CRAWL_DELAY)
+            fetched += 1
+            try:
+                html = fetch_part(cfg, part, url)
+            except fetch.FetchError as exc:
+                if getattr(exc, "status", None) == 404 and n > 1:
+                    break
+                raise
+            valid, metrics, verdict = parse_part(cfg, name, part, html)
+            if metrics.get("raw_count", 0) == 0 and n > 1:   # past the last page
+                break
+            if verdict["drift"]:
+                raise ArchiveDrift(name, url, verdict["reasons"])
+            keys = [k for k in (((normalize(site, r) or {}).get("source_key")) for r in valid) if k]
+            if n > 1 and keys and keys == last_keys:   # the site repeats its last page
+                break
+            last_keys = keys
+            rows += valid
+    return rows
 
 
 # --- scheduling (called from autoscan.tick) --------------------------------------------------------------------------
