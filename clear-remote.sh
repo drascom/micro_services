@@ -3,8 +3,8 @@
 #
 # Kullanım (ikisi de çalışır):
 #   ./clear-remote.sh [--cache] [--no-backup] [--keep N] [--wipe-categories] [--yes]   # yerelden: ssh ile sunucuda çalıştırır, önce onay ister
-#   ssh root@192.168.0.61 'bash -s' < clear-remote.sh                  # eski yol: doğrudan sunucuda, onaysız, varsayılan ayarlarla
-#   ssh root@192.168.0.61 'bash -s -- --cache' < clear-remote.sh       # bayraklı hali
+#   ssh <host> "DZ_DEST=/yol/server bash -s" < clear-remote.sh            # eski yol: doğrudan sunucuda, onaysız
+#   ssh <host> "DZ_DEST=/yol/server bash -s -- --cache" < clear-remote.sh # bayraklı hali
 #
 # Yaptığı (sunucuda):
 #   1. `diziflix` servisini durdurur.
@@ -23,20 +23,27 @@
 #
 # DOKUNMAZ: .env, configs/, data/scraper_state/ (heal/tarama kayıtları; deploy.sh config kararında bunlara bakar),
 #   data/ops_settings.json, data/_ops.json, data/fixture.json, diğer yedekler.
-# Ortam: DZ_HOST (root@192.168.0.61), DZ_DEST (/root/micro_services/diziflix/server), DZ_SERVICE (diziflix), DZ_PORT (8090)
+# Ayar: git dışı ./deploy.env (deploy.sh ile ortak; örnek deploy.env.example): DZ_HOST, DZ_DEST, DZ_SERVICE (diziflix),
+#   DZ_PORT (8090). Ortam değişkenleri dosyayı ezer.
 set -euo pipefail
 
-DZ_HOST=${DZ_HOST:-root@192.168.0.61}
-DZ_DEST=${DZ_DEST:-/root/micro_services/diziflix/server}
-DZ_SERVICE=${DZ_SERVICE:-diziflix}
-DZ_PORT=${DZ_PORT:-8090}
+_E_HOST=${DZ_HOST:-}; _E_DEST=${DZ_DEST:-}; _E_SERVICE=${DZ_SERVICE:-}; _E_PORT=${DZ_PORT:-}
+if [ -f "$0" ]; then
+  DEPLOY_ENV=${DZ_DEPLOY_ENV:-$(cd "$(dirname "$0")" && pwd)/deploy.env}
+  # shellcheck disable=SC1090
+  if [ -f "$DEPLOY_ENV" ]; then . "$DEPLOY_ENV"; fi
+fi
+DZ_HOST=${_E_HOST:-${DZ_HOST:-}}
+DZ_DEST=${_E_DEST:-${DZ_DEST:-}}
+DZ_SERVICE=${_E_SERVICE:-${DZ_SERVICE:-diziflix}}
+DZ_PORT=${_E_PORT:-${DZ_PORT:-8090}}
 # Sıfırlamada satırları KORUNAN tablolar (virgülle). Kategoriye ihtiyaç duyan başka tablo çıkarsa yalnız burayı güncelle.
 KEEP_TABLES=${KEEP_TABLES:-home_categories}
 
 die() { echo "HATA: $*" >&2; exit 1; }
 
 valid() { [[ "$1" =~ $2 ]] || die "geçersiz $3: $1"; }
-valid "$DZ_HOST" '^[A-Za-z0-9][A-Za-z0-9._@:-]*$' DZ_HOST
+[ -n "$DZ_DEST" ] || die "sunucu ayarı yok: deploy.env bulunamadı ya da DZ_DEST boş (cp deploy.env.example deploy.env ve düzenleyin; sunucuda: DZ_DEST=... bash -s)"
 valid "$DZ_DEST" '^/[A-Za-z0-9._/-]+$' DZ_DEST
 valid "$DZ_SERVICE" '^[A-Za-z0-9][A-Za-z0-9._@-]*$' DZ_SERVICE
 valid "$DZ_PORT" '^[0-9]{1,5}$' DZ_PORT
@@ -133,6 +140,8 @@ if [ -d "$DZ_DEST" ]; then
   exit $?
 fi
 [ -f "$0" ] || die "sunucuda $DZ_DEST bulunamadı"
+[ -n "$DZ_HOST" ] || die "sunucu ayarı yok: deploy.env bulunamadı ya da DZ_HOST boş (cp deploy.env.example deploy.env ve düzenleyin)"
+valid "$DZ_HOST" '^[A-Za-z0-9][A-Za-z0-9._@:-]*$' DZ_HOST
 if [ "$YES" != 1 ]; then
   printf '%s\n   -> %s veritabanı SIFIRLANACAK (yedek: %s, önbellek temizliği: %s, kategoriler: %s). Devam için "evet" yaz: ' \
     "SUNUCU: $DZ_HOST" "$DZ_DEST/data" "$([ "$BACKUP" = 1 ] && echo var || echo YOK)" "$([ "$CACHE" = 1 ] && echo evet || echo hayır)" "$([ "$WIPECAT" = 1 ] && echo SİLİNECEK || echo korunur)"

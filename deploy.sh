@@ -6,18 +6,25 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LOCAL_SERVER="$SCRIPT_DIR/server"
 
-DEF_HOST="root@192.168.0.61"
-DEF_DEST="/root/micro_services/diziflix/server"
-DEF_SERVICE="diziflix"
-DEF_PORT="8090"
-DEF_BACKUP_DIR="/root"
+# Sunucu adresi repoda TUTULMAZ: git dışı yerel dosya (varsayılan ./deploy.env; örnek: deploy.env.example).
+# Ortam değişkenleri (DZ_HOST vb.) dosyadaki değerleri ezer.
+DEPLOY_ENV=${DZ_DEPLOY_ENV:-$SCRIPT_DIR/deploy.env}
+_E_HOST=${DZ_HOST:-}; _E_DEST=${DZ_DEST:-}; _E_SERVICE=${DZ_SERVICE:-}; _E_PORT=${DZ_PORT:-}; _E_BACKUP_DIR=${DZ_BACKUP_DIR:-}
+DZ_HOST=""; DZ_DEST=""; DZ_SERVICE=""; DZ_PORT=""; DZ_BACKUP_DIR=""
+# shellcheck disable=SC1090
+if [ -f "$DEPLOY_ENV" ]; then . "$DEPLOY_ENV"; fi
+DEF_HOST=${DZ_HOST:-}
+DEF_DEST=${DZ_DEST:-}
+DEF_SERVICE=${DZ_SERVICE:-diziflix}
+DEF_PORT=${DZ_PORT:-8090}
+DEF_BACKUP_DIR=${DZ_BACKUP_DIR:-/root}
 DEF_KEEP="3"
 
-DZ_HOST=${DZ_HOST:-$DEF_HOST}
-DZ_DEST=${DZ_DEST:-$DEF_DEST}
-DZ_SERVICE=${DZ_SERVICE:-$DEF_SERVICE}
-DZ_PORT=${DZ_PORT:-$DEF_PORT}
-DZ_BACKUP_DIR=${DZ_BACKUP_DIR:-$DEF_BACKUP_DIR}   # yedeklerin durduğu sunucu dizini
+DZ_HOST=${_E_HOST:-$DEF_HOST}
+DZ_DEST=${_E_DEST:-$DEF_DEST}
+DZ_SERVICE=${_E_SERVICE:-$DEF_SERVICE}
+DZ_PORT=${_E_PORT:-$DEF_PORT}
+DZ_BACKUP_DIR=${_E_BACKUP_DIR:-$DEF_BACKUP_DIR}   # yedeklerin durduğu sunucu dizini
 
 # ---------------------------------------------------------------- çıktı ----
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then
@@ -63,8 +70,9 @@ Seçenekler:
   -v, --verbose         --dry-run'da dosya listesinin tamamını yaz
   -h, --help            bu yardım
 
-Ortam değişkenleri (varsayılan):
-  DZ_HOST=$DEF_HOST  DZ_DEST=$DEF_DEST
+Sunucu ayarı: git dışı $DEPLOY_ENV (yoksa: cp deploy.env.example deploy.env ve düzenleyin).
+Ortam değişkenleri dosyayı ezer (şu anki değer):
+  DZ_HOST=${DEF_HOST:-<deploy.env>}  DZ_DEST=${DEF_DEST:-<deploy.env>}
   DZ_SERVICE=$DEF_SERVICE  DZ_PORT=$DEF_PORT  DZ_BACKUP_DIR=$DEF_BACKUP_DIR  DZ_KEEP_BACKUPS=$DEF_KEEP  NO_COLOR=1 (renksiz)
 
 Örnekler:
@@ -167,6 +175,13 @@ done
 valid() { # valid DEĞER REGEX ADI
   if ! printf '%s' "$1" | grep -Eq "$2"; then die "$3 geçersiz: '$1'"; fi
 }
+if [ -z "$DZ_HOST" ] || [ -z "$DZ_DEST" ]; then
+  if [ "${BASH_SOURCE[0]}" != "$0" ]; then   # test betiği fonksiyonları yüklüyor: sunucuya bağlanılmaz
+    DZ_HOST=${DZ_HOST:-test@localhost}; DZ_DEST=${DZ_DEST:-/tmp/diziflix/server}
+  else
+    die "sunucu ayarı yok: $DEPLOY_ENV bulunamadı ya da DZ_HOST/DZ_DEST boş. Oluşturun: cp deploy.env.example deploy.env (git dışı) ve kendi sunucunuzu yazın."
+  fi
+fi
 while [ "${DZ_DEST%/}" != "$DZ_DEST" ]; do DZ_DEST=${DZ_DEST%/}; done
 while [ "${DZ_BACKUP_DIR%/}" != "$DZ_BACKUP_DIR" ]; do DZ_BACKUP_DIR=${DZ_BACKUP_DIR%/}; done
 valid "$DZ_HOST" '^[A-Za-z0-9][A-Za-z0-9._@:-]*$' DZ_HOST

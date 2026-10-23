@@ -82,6 +82,7 @@ function world(opts) {
   const ctx = vm.createContext({ window, document, console: { log() {} }, setTimeout: T.setTimeout, clearTimeout: T.clearTimeout, Promise, Object, Math, Number, String, Array, tizen: undefined });
   ['nav.js', 'ui/navigation.js', 'screens/catalog.js', 'app.js'].forEach(f => vm.runInContext(read(f), ctx));
   ready();
+  DZ.app.go('home', { profile: 'p1' }, true);   // cold start mounts the profile picker; the test picks p1
   const realGo = DZ.app.go;
   DZ.app.go = function () { log.go.push(Array.prototype.slice.call(arguments)); return realGo.apply(DZ.app, arguments); };
 

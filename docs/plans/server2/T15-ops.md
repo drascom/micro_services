@@ -21,7 +21,7 @@ Bu görev deploy YAPMAZ; yalnız betiği yazar ve `--dry-run` ile sınar.
    `GET /api/control/llm/health`, `POST /api/control/llm/health`.
 2. **systemd**: `install.sh`'a Linux'ta `diziflix2` servisi (uvicorn `app.main:app --host $HOST --port $PORT`, `--reload` YOK,
    `Restart=on-failure`, `KillSignal=SIGTERM`, `TimeoutStopSec=30`: kapanışta drain'e süre). Servis adı eski `diziflix` ile çakışmaz.
-3. **`server2/deploy.sh`** (yeni, küçük; eski `deploy.sh`'a dokunulmaz). Hedef: `root@192.168.0.61:/root/micro_services/diziflix/server2`.
+3. **`server2/deploy.sh`** (yeni, küçük; eski `deploy.sh`'a dokunulmaz). Hedef: `root@your-server:/root/diziflix/server2`.
    Adımlar: [0] ön kontrol (yerelde `./check.sh` yeşil değilse dur) -> [1] sunucuda yedek (`server2` kodu, `data/` hariç; son 5 yedek tutulur)
    -> [2] fark özeti -> [3] kopyala (`rsync --delete`, dışlananlar `.env`, `data/`, `venv/`, `__pycache__`: **silinen dosyalar sunucuda da silinir**)
    -> [4] sunucuda `import app.main` -> [5] **drain**: `POST /api/control/drain {"on": true}`, `GET /api/control/jobs/active` boşalana kadar

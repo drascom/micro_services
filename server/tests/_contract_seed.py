@@ -195,6 +195,8 @@ SAMPLE_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__fil
 
 SAMPLES = {
     "boot.json": "/api/boot?profile=p1&layout=tv-v1",
+    "sections.json": "/api/sections?profile=p1",
+    "section-series.json": "/api/section/series?profile=p1",
     "row-new_episodes.json": "/api/row/new_episodes?profile=p1&offset=0&limit=20",
     "detail-movie.json": "/api/detail/%s?profile=p1" % FILM,
     "detail-movie-no-source.json": "/api/detail/%s?profile=p1" % METAONLY,

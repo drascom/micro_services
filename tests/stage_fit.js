@@ -153,6 +153,7 @@ function load(w, file, globals) {
   load(w, 'js/stage.js');
   vm.runInNewContext(read('js/app.js'), { window: w.window, document: w.window.document, console: w.window.console, setTimeout: w.T.setTimeout, tizen: undefined });
   w.T.advance(1);   // app.js defers start()
+  DZ.app.go('home', { profile: 'p1' }, true);   // cold start mounts the profile picker; the test picks p1
   assert.equal(log.enter, 1, 'home mounted');
   assert(w.handlers.resize, 'app.js installs the stage resize listener');
   w.window.innerWidth = 1280; w.window.innerHeight = 1024;

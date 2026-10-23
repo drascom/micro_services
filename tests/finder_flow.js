@@ -207,12 +207,12 @@ const epOpts = extra => opts(Object.assign({ itemId: 'd1', episodeId: 'd1:s1:e3'
 
   // ---- G) `proxied` is ignored by the client: the stream url is played as given (the server already made it a proxy URL)
   {
-    const proxied = S('p', { url: 'http://192.168.0.61:8090/api/stream-proxy/abc.def', proxied: true });
+    const proxied = S('p', { url: 'http://192.168.1.10:8090/api/stream-proxy/abc.def', proxied: true });
     const h = harness(() => ({ streams: [proxied, S('direct', { proxied: false })] }), () => ({ state: 'idle' }));
     h.flow.start(opts());
     await tick();
-    assert.equal(h.log.engines[0].url, 'http://192.168.0.61:8090/api/stream-proxy/abc.def', 'proxy URL handed to the engine unchanged');
-    assert.equal(h.log.go[0].params.prepared.streams[0].url, 'http://192.168.0.61:8090/api/stream-proxy/abc.def');
+    assert.equal(h.log.engines[0].url, 'http://192.168.1.10:8090/api/stream-proxy/abc.def', 'proxy URL handed to the engine unchanged');
+    assert.equal(h.log.go[0].params.prepared.streams[0].url, 'http://192.168.1.10:8090/api/stream-proxy/abc.def');
   }
 
   // ---- H) finder.messageFor / titleFor

@@ -7,7 +7,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from .. import db, images
-from ..errors import bad_request, not_found
+from ..errors import ApiError, bad_request, not_found
 
 router = APIRouter(prefix="/api/profiles", tags=["profiles"])
 
@@ -32,12 +32,18 @@ def _json(row) -> dict:
         "avatar_seed": seed,
         "avatar": f"/img/avatar/{seed}?w=200&h=200",
         "is_kids": bool(row["is_kids"]),
+        "guest": db.is_guest(row["id"]),
     }
+
+
+def _guard_guest(profile_id: str) -> None:
+    if db.is_guest(profile_id):
+        raise ApiError(403, "guest_profile", "guest profile cannot be changed or deleted")
 
 
 @router.get("")
 def list_profiles() -> dict:
-    rows = db.query("SELECT * FROM profiles ORDER BY created_at ASC, id ASC")
+    rows = db.query("SELECT * FROM profiles ORDER BY (id = ?) ASC, created_at ASC, id ASC", (db.GUEST_ID,))
     return {"profiles": [_json(r) for r in rows]}
 
 
@@ -67,6 +73,7 @@ def create_profile(body: ProfileIn) -> dict:
 
 @router.put("/{profile_id}")
 def update_profile(profile_id: str, body: ProfileUpdate) -> dict:
+    _guard_guest(profile_id)
     row = db.query_one("SELECT * FROM profiles WHERE id = ?", (profile_id,))
     if not row:
         raise not_found("profile")
@@ -96,6 +103,7 @@ def update_profile(profile_id: str, body: ProfileUpdate) -> dict:
 
 @router.delete("/{profile_id}")
 def delete_profile(profile_id: str) -> dict:
+    _guard_guest(profile_id)
     if not db.query_one("SELECT 1 FROM profiles WHERE id = ?", (profile_id,)):
         raise not_found("profile")
     db.execute("DELETE FROM progress WHERE profile_id = ?", (profile_id,))

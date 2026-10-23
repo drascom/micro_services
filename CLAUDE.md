@@ -18,7 +18,7 @@ Bu dosya KISA tutulur (her ajan turunda bağlama girer). Ayrıntı `docs/arch/` 
 
 ## Deploy kuralı
 
-Deploy'u yalnız kullanıcı "deploy et" dediğinde yapılır (kendiliğinden yapma). Host `root@192.168.0.61:/root/micro_services/diziflix/server`, servis `diziflix` (uvicorn, --reload YOK). **Her deploy restart + uç doğrulaması (`/admin`, `/api/health`, `/api/*`) içerir** (restart'sız deploy eski kodu çalıştırır). Önce `./deploy.sh --dry-run`; `.env`, `data/`, `venv/` korunur; `.env`'deki `TMDB_ACCESS_KEY`'i asla yazdırma. Sunucu DB'sini SIFIRLAMA (`./clear-remote.sh`) yalnız kullanıcı isterse. Bayraklar, config karar tablosu (v7 → v8), geri alma, yedek budama, REMOTEONLY/`--pull-configs`: `docs/arch/ops-deploy.md`.
+Deploy'u yalnız kullanıcı "deploy et" dediğinde yapılır (kendiliğinden yapma). Host/hedef/servis git dışı `deploy.env`'den (`DZ_HOST`, `DZ_DEST`, `DZ_SERVICE`, `DZ_PORT`; örnek `deploy.env.example`; yoksa script durur), servis varsayılanı `diziflix` (uvicorn, --reload YOK). **Her deploy restart + uç doğrulaması (`/admin`, `/api/health`, `/api/*`) içerir** (restart'sız deploy eski kodu çalıştırır). Önce `./deploy.sh --dry-run`; `.env`, `data/`, `venv/` korunur; `.env`'deki `TMDB_ACCESS_KEY`'i asla yazdırma. Sunucu DB'sini SIFIRLAMA (`./clear-remote.sh`) yalnız kullanıcı isterse. Bayraklar, config karar tablosu (v7 → v8), geri alma, yedek budama, REMOTEONLY/`--pull-configs`: `docs/arch/ops-deploy.md`.
 
 ## Test stratejisi
 
@@ -31,7 +31,7 @@ Repo `github.com/drascom/micro_services` (PUBLIC). Yalnız `diziflix` dalına co
 ## Yapı
 
 - `server/` - FastAPI + SQLite + Pillow, `0.0.0.0:8090` (ana kod). Giriş: `server/app/main.py` (`app.main:app`)
-- `tizen-client/` - vanilla HTML/CSS/JS istemci (build adımı yok; `build-wgt.sh` -> `dist/diziflix.wgt`). Sunucu adresi varsayılan `http://192.168.0.61:8090`
+- `tizen-client/` - vanilla HTML/CSS/JS istemci (build adımı yok; `build-wgt.sh` -> `dist/diziflix.wgt`). Gömülü sunucu adresi YOK: ilk açılışta "Sunucu adresi" ekranı (`screens/server_setup.js`; sayfa sunucunun kendisinden 8090'dan açılırsa o origin), soğuk açılışta her seferinde profil seçimi, sunucunun kalıcı misafir profili (`guest`)
 - `API.md` - istemci-sunucu wire sözleşmesi (kaynak gerçek budur). Sözleşme değişirse `API.md` ve `tizen-client/js/api.js` birlikte güncellenir; yalnızca ALAN EKLENİR
 - `docs/DATA-CONTRACT-V1.md`, `server/CANONICAL.md` - scraper -> katalog -> TV sözleşmesi, kimlik birleştirme, oynatma sağlığı
 - `docs/arch/` - ayrıntılı mimari notlar (aşağıdaki liste); `docs/plans/site-onboarding/` - onboarding planı/faz görevleri
@@ -78,6 +78,7 @@ Her satır: ne yapar, ana dosya -> ayrıntı için doc.
 - Akış çözümleme, `valid_until` yük önbelleği, akış vekili (`STREAM_PROXY*`) + HLS vekili, `streamdiag` tanısı, ses/altyazı izleri: oynatma/akış hatası işinde -> `docs/arch/streams.md`
 - Ana ekran düzeni (`homelayout.py`), cache/ayarlar/routers/db, admin paneli, API sözleşme koruması: ana ekran/API/admin işinde -> `docs/arch/home-and-api.md`
 - İstemci turu (finder/bildirim/kaynak yok), UI cilası, HLS/motor seçimi, Android: istemci işinde (şu an ertelenmiş) -> `docs/arch/clients.md`
+- Web istemcisine eklenen ve Android'e de eklenecek özellikler listesi (her yeni istemci özelliğinde bir satır ekle): -> `docs/arch/android-parity.md`
 - `deploy.sh` ayrıntısı, config karar tablosu, geri alma, yedek budama, `--pull-configs`, `clear-remote.sh`, config referansı kuralının tam metni: deploy işinde -> `docs/arch/ops-deploy.md`
 
 ## TMDB (kısa)
@@ -88,6 +89,6 @@ Anahtar `TMDB_ACCESS_KEY` (v4 Bearer ya da v3; `TMDB_TOKEN`/`TMDB_API_KEY` de ge
 
 - Yeni scraper sitesi: yaml + gerekirse `normalize.py` fonksiyonu/`site_extractors/`; yeni video host'u: provider kütüphanesine tarif (`scraper/configs/providers/<ad>.yaml`) ya da `scraper/providers/` modülü; yeni host'un afişi için `REMOTE_IMG_HOSTS`.
 - Kart kimliği kuralı: `id` = yapım id'si, bölüm kartı `card_kind=episode` + `episode_id` + `card_key`. İstemci sözleşme koruması: `server/tests/test_client_contract.py` + `docs/api-samples/*.json` (`venv/bin/python -m tools.gen_api_samples`) + `node tests/api_samples_client.js`.
-- İstemci HLS/motor kararı `streams[].type`'a göre (URL uzantısına değil); cache-bust şu an `responsive-v41` (`index.html`). UI cilası: `tizen-client/README.md`.
+- İstemci HLS/motor kararı `streams[].type`'a göre (URL uzantısına değil); cache-bust şu an `responsive-v42` (`index.html`). UI cilası: `tizen-client/README.md`.
 - `server/pi/` deploy ile gider; skill referans blokları üretilir (`tools.gen_onboard_refs`), elle dokunma.
 - Bekleyen istemci işleri (oynatıcı akış değişikliği, sezon/bölüm görselleri, altyazı paneli vb.) kullanıcı istemci turunu başlatınca topluca yapılır (hafıza: diziflix-client-batch).

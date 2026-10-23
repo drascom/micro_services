@@ -78,6 +78,9 @@ ROW = {"id": "str", "title": "str", "loaded": "bool", "items": lst(ITEM)}
 BOOT_TV = {"hero": opt(HERO), "heroes": lst(HERO), "rows": lst(ROW), "catalog_total": "int", "layout": enum("tv-v1")}
 LAZY_ROW = {"id": "str", "title": "str", "loaded": "bool"}          # legacy boot: loaded:false rows carry ``count``
 BOOT_LEGACY = {"hero": opt(LEGACY_HERO), "rows": lst(LAZY_ROW), "source": "str", "sources": lst({"id": "str", "name": "str"})}
+SECTION_ENTRY = {"id": "str", "title": "str", "status": enum("ready", "soon"), "heroes": lst(HERO)}
+SECTIONS = {"sections": lst(SECTION_ENTRY)}                     # GET /api/sections
+SECTION = dict(SECTION_ENTRY, rows=lst(ROW))                    # GET /api/section/{id}
 ROW_PAGE = {"id": "str", "title": "str", "items": lst(ITEM), "offset": "int", "limit": "int", "total": "int"}
 
 EPISODE = {"id": "str", "season": "int", "episode": "int", "title": "str", "overview": "str", "runtime": "int",
@@ -103,7 +106,8 @@ STREAM = {"url": "str", "type": enum("hls", "mp4", "embed"), "quality": "str", "
 PROXY_REASON = enum("ua", "ip", "recipe", "learned", "env")
 STREAMS = {"streams": lst(STREAM), "subtitles": lst("dict"), "resume_position": "int", "duration": "int"}
 
-PROFILE = {"id": "str", "name": "str", "avatar_seed": "str", "avatar": "str", "is_kids": "bool"}
+# guest: the permanent guest profile (always listed last; cannot be edited/deleted; progress/my-list not stored); additive
+PROFILE = {"id": "str", "name": "str", "avatar_seed": "str", "avatar": "str", "is_kids": "bool", "guest": "bool"}
 PROFILES = {"profiles": lst(PROFILE)}
 AVATARS = {"avatars": lst({"seed": "str", "url": "str"})}
 HEALTH = {"status": enum("ok"), "source": "str", "items": "int", "cache_age": "int"}

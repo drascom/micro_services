@@ -130,7 +130,7 @@
     input.setAttribute('data-focus-key', 'url-input');
     input.setAttribute('aria-label', 'Sunucu adresi');
     input.value = DZ.api.baseUrl();
-    input.placeholder = DZ.api.defaultBase ? DZ.api.defaultBase() : DZ.api.DEFAULT_BASE;
+    input.placeholder = (DZ.api.defaultBase && DZ.api.defaultBase()) || '192.168.1.10';
     /* cerceve vurgusu: kutu sarmalayicisinda (girdi odaklaninca); :focus-within eski Tizen motorlarinda yok */
     input.addEventListener('focus', function () { field.classList.add('is-focus'); }, false);
     input.addEventListener('blur', function () { field.classList.remove('is-focus'); }, false);
@@ -145,7 +145,7 @@
     function setStatus(text) { status.textContent = text || ''; }
     function refreshInfo() {
       info.build.textContent = 'Sürüm: build ' + (g.DZ_BUILD || 'dev') + '   ·   Motor: ' + engineName();
-      info.addr.textContent = 'Sunucu adresi: ' + DZ.api.baseUrl() + '   ·   Varsayılan: ' + (DZ.api.defaultBase ? DZ.api.defaultBase() : DZ.api.DEFAULT_BASE);
+      info.addr.textContent = 'Sunucu adresi: ' + DZ.api.baseUrl() + '   ·   Varsayılan: ' + ((DZ.api.defaultBase && DZ.api.defaultBase()) || 'yok');
     }
 
     /* /api/health -> durum satiri + sunucu bilgisi. Gecici adres denendiyse ve basarisizsa ESKI adrese donulur. */

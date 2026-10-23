@@ -8,7 +8,7 @@ Faz 2c'den önce, sunucudaki pi'nin (0.99.1) bizim kullanacağımız biçimde ç
 doğrulamak ve kesin komut satırını, extension API'sini ve olay biçimini belgelemek. Ürün kodu YAZILMAZ.
 
 ## Ortam
-- Sunucu: `ssh root@192.168.0.61` (anahtarla, parolasız).
+- Sunucu: `ssh root@your-server` (anahtarla, parolasız).
 - pi: `/usr/local/bin/pi`, sürüm 0.99.1, paket `@earendil-works/pi-coding-agent`.
 - Dokümantasyon (OKU): `/usr/local/lib/nodejs/node-v22.23.1-linux-x64/lib/node_modules/@earendil-works/pi-coding-agent/`
   - `docs/extensions.md` (`pi.registerTool`, TypeBox parametreleri, `execute()`)

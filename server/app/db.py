@@ -392,6 +392,17 @@ def _migrate(conn: sqlite3.Connection) -> None:
                      "('unsupported','decode','autoplay','aborted','offline')")
 
 
+# Kalıcı misafir profili: her kurulumda var, silinemez/düzenlenemez; izleme ilerlemesi ve Listem YAZILMAZ
+# (routers/progress.py, routers/mylist.py no-op). Profil listesinde en sonda, `guest: true`.
+GUEST_ID = "guest"
+GUEST_NAME = "Misafir"
+GUEST_SEED = "a16"
+
+
+def is_guest(profile_id: Optional[str]) -> bool:
+    return profile_id == GUEST_ID
+
+
 def init() -> None:
     os.makedirs(os.path.dirname(config.DB_PATH), exist_ok=True)
     with _lock:
@@ -407,11 +418,16 @@ def init() -> None:
                 conn.executemany(
                     "INSERT INTO profiles (id,name,is_kids,avatar_seed,created_at) VALUES (?,?,?,?,?)",
                     [
-                        ("p1", "İsmet", 0, "a1", now),
+                        ("p1", "Profil 1", 0, "a1", now),
                         ("p2", "Çocuk", 1, "a2", now),
                     ],
                 )
                 conn.commit()
+            conn.execute(
+                "INSERT OR IGNORE INTO profiles (id,name,is_kids,avatar_seed,created_at) VALUES (?,?,0,?,?)",
+                (GUEST_ID, GUEST_NAME, GUEST_SEED, int(time.time())),
+            )
+            conn.commit()
         finally:
             conn.close()
 

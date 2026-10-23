@@ -36,7 +36,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from . import config, rows
+from . import config, db, rows
 from .library import categories
 
 # ---- rows ---------------------------------------------------------------------------------------------------------
@@ -56,6 +56,25 @@ LEGACY_IDS = ("spotlight", "noteworthy_series", "noteworthy_movies")
 # `mylist` ("Listem") is no home row either: the clients open it as its own page; `/api/row/mylist` still answers
 # ids `rows.row_pool` hands to :func:`pool`
 POOL_IDS = ("latest_movies", "trending_series", "trending_movies", "must_watch", "series", "movies") + LEGACY_IDS
+
+# ---- sections (the menu of the new home, ui-proto: `/api/sections`, `/api/section/<id>`) -------------------------------
+# (id, title) in menu order; a "soon" section has no source yet (no rows, no heroes) but is listed
+SECTIONS = (("featured", "Öne Çıkanlar"), ("series", "Diziler"), ("movies", "Filmler"), ("live_tv", "Canlı TV"),
+            ("anime", "Animeler"), ("dvr", "DVR"))
+SOON_SECTIONS = ("live_tv", "dvr")
+# rows of a section (``featured`` = the home rows of :func:`layout` minus ``continue``: the new home shows "Devam Et" on
+# the menu screen itself, from ``/api/row/continue``)
+SECTION_ROWS = {"series": ("featured_series", "new_episodes", "trending_series", "series"),
+                "movies": ("featured_movies", "latest_movies", "trending_movies", "movies"),
+                "anime": ("anime",)}
+# rows only the sections use (fetchable via `/api/row/<id>` too); NOT skeleton rows, so not in TITLES
+SECTION_ROW_TITLES = {"featured_series": "Öne Çıkan Diziler", "featured_movies": "Öne Çıkan Filmler", "anime": "Animeler"}
+SECTION_HEROES = 6      # heroes per section (the vitrin of a menu entry)
+ANIME_CATEGORY = "animeler"        # the admin category of the sites' anime lists (diziasya ``category_animeler_*``)
+ANIME_URL_LIKE = "%/anime/%"       # a series whose source page lives under /anime/ (diziasya ``kind: anime``)
+FILLED_CATEGORIES = (ANIME_CATEGORY,)   # category rows topped up to TREND_TARGET from the library (best rated first)
+FEATURED_SKIP = ("continue", "series", "movies")   # home rows the `featured` section leaves out (the boot keeps them)
+POOL_IDS += tuple(SECTION_ROW_TITLES)
 ROW_ITEMS = 20          # cards per row in the boot (`/api/row/<id>` pages through the rest)
 TREND_TARGET = 20       # a trending row is filled with scored titles up to this many
 
@@ -281,6 +300,11 @@ class Context:
             return [i for i in rows._role_lists(self.snap, "latest_movies", kind="movie") if self.show(i)]
         if row_id == "must_watch":
             return self._must_watch()
+        if row_id in ("featured_series", "featured_movies"):   # the sites' hero sections, one type
+            kind = "series" if row_id == "featured_series" else "movie"
+            return [i for i in rows._role_lists(self.snap, "featured", kind=kind) if self.show(i)]
+        if row_id == "anime":
+            return self._anime()
         if row_id == "noteworthy_movies":
             return self._noteworthy()
         if row_id in ("noteworthy_series", "spotlight"):   # the sites' own section lists (round-robin over sites, list order)
@@ -322,12 +346,37 @@ class Context:
     def _category(self, slug: str) -> list[dict]:
         """A category row: the ``category_<slug>_*`` lists of every site (round-robin, no repeats, list order), playable
         only per ``HOME_ONLY_READY``. ``[]`` (row hidden) when the category is gone or off, or has fewer playable titles
-        than its ``min_items``."""
+        than its ``min_items``. A ``FILLED_CATEGORIES`` row (animeler) shorter than ``TREND_TARGET`` is topped up with
+        the library's other anime series (:meth:`_anime_extra`) best rated first (ties: id); ``min_items`` counts the
+        filled row."""
         cat = categories.get(slug)
         if not cat or not cat["enabled"]:
             return []
         pool = [i for i in rows._round_robin(categories.member_lists(self.snap, slug)) if self.show(i)]
+        if slug in FILLED_CATEGORIES and len(pool) < TREND_TARGET:
+            more = [i for i in self._anime_extra({i["id"] for i in pool}) if self.show(i)]
+            more.sort(key=lambda i: (-_num(i.get("rating")), i["id"]))
+            pool += more[:TREND_TARGET - len(pool)]
         return pool if sum(1 for i in pool if is_ready(i)) >= cat["min_items"] else []
+
+    def _anime(self) -> list[dict]:
+        """``anime`` ("Animeler"): the sites' ``category_animeler_*`` lists (round-robin, list order; whether the admin
+        switched the category row on or not), then every other series whose source page is an anime page (source URL
+        under ``/anime/``), newest added first; playable per ``HOME_ONLY_READY``, no repeats. The library keeps no anime
+        flag of its own: the source URL is the only mark (diziasya); other sites add nothing here."""
+        pool = rows._round_robin(categories.member_lists(self.snap, ANIME_CATEGORY))
+        more = self._anime_extra({i["id"] for i in pool})
+        more.sort(key=lambda i: (-(i.get("added_at") or 0), i["id"]))
+        return [i for i in pool + more if self.show(i)]
+
+    def _anime_extra(self, taken: set) -> list[dict]:
+        """Library series (not in ``taken``) with a source page under ``/anime/``, unordered; ``[]`` off the library."""
+        if getattr(self.snap, "source", "") != "library":
+            return []
+        ids = {r["canonical_id"] for r in db.query(
+            "SELECT DISTINCT canonical_id FROM source_items WHERE source_url LIKE ?", (ANIME_URL_LIKE,))}
+        return [self.snap.by_id[i] for i in ids
+                if i in self.snap.by_id and i not in taken and self.snap.by_id[i]["type"] == "series"]
 
     def _must_watch(self) -> list[dict]:
         """``must_watch`` ("İzlenmesi Gereken Dizi ve Filmler"): the sites' ``noteworthy_series`` + ``noteworthy_movies``
@@ -370,7 +419,7 @@ def pool(snap, row_id: str, profile_id: str = "", pmap: Optional[dict] = None, n
 
 
 def title(snap, row_id: str) -> str:
-    return TITLES.get(row_id) or rows.row_title(snap, row_id)
+    return TITLES.get(row_id) or SECTION_ROW_TITLES.get(row_id) or rows.row_title(snap, row_id)
 
 
 # ---- hero -----------------------------------------------------------------------------------------------------------------
@@ -422,23 +471,76 @@ def heroes(ctx: Context) -> list[dict]:
     spare = want_s + want_m - n_s - n_m
     n_m += min(len(movies) - n_m, spare)
     picked += [(t[3], t[4]) for t in _interleave(series[:n_s], movies[:n_m])]
-    saved = set(ctx.saved)
-    out = []
-    for item, parts in picked:
-        card = rows.item_json(item, ctx.pmap.get(item["id"]))
-        card.update(logo_text=item["title"], tagline=hero_tagline(item, parts), in_mylist=item["id"] in saved)
-        out.append(card)
-    return out
+    return [_hero_card(ctx, item, parts) for item, parts in picked]
+
+
+def _hero_card(ctx: Context, item: dict, parts: Optional[dict] = None) -> dict:
+    """A slider card: the item card + ``logo_text``, ``tagline``, ``in_mylist``."""
+    parts = parts if parts is not None else score_parts(item, ctx.signals, ctx.now)
+    card = rows.item_json(item, ctx.pmap.get(item["id"]))
+    card.update(logo_text=item["title"], tagline=hero_tagline(item, parts), in_mylist=item["id"] in set(ctx.saved))
+    return card
 
 
 def compose(snap, profile_id: str, pmap: dict, now: Optional[float] = None) -> dict:
     """``{"heroes": [...], "rows": [...]}`` of the tv-v1 home for a profile: rows in :func:`layout` order, each
     ``{id, title, loaded: true, items (first ROW_ITEMS cards), total, offset: 0}``; rows with an empty pool are left out."""
     ctx = Context(snap, profile_id, pmap, now)
-    out_rows = []
-    for row_id in layout(ctx.profile_id):
+    return {"heroes": heroes(ctx), "rows": _rows_json(ctx, layout(ctx.profile_id))}
+
+
+def _rows_json(ctx: Context, row_ids) -> list[dict]:
+    """Boot-style rows (``{id, title, loaded, items, total, offset}``) of ``row_ids``; empty pools left out."""
+    out = []
+    for row_id in row_ids:
         items = ctx.pool(row_id)
         if items:
-            out_rows.append({"id": row_id, "title": title(snap, row_id), "loaded": True,
-                             "items": rows.items_json(items, ctx.pmap, ROW_ITEMS), "total": len(items), "offset": 0})
-    return {"heroes": heroes(ctx), "rows": out_rows}
+            out.append({"id": row_id, "title": title(ctx.snap, row_id), "loaded": True,
+                        "items": rows.items_json(items, ctx.pmap, ROW_ITEMS), "total": len(items), "offset": 0})
+    return out
+
+
+# ---- sections -------------------------------------------------------------------------------------------------------------
+def section_rows(section_id: str, profile_id: str = "") -> list[str]:
+    """Row ids of a section (the one place that decides them); ``featured`` = :func:`layout` without ``FEATURED_SKIP``
+    (``continue``, and "Tüm Diziler"/"Tüm Filmler": those live in the Diziler/Filmler sections)."""
+    if section_id == "featured":
+        return [r for r in layout(profile_id) if r not in FEATURED_SKIP]
+    return list(SECTION_ROWS.get(section_id, ()))
+
+
+def _section_heroes(ctx: Context, section_id: str, slider: Optional[list] = None) -> list[dict]:
+    """The vitrin of a section: ``featured`` = the home slider; ``series``/``movies`` = the type's own hero-section
+    titles, then the slider's titles of that type; ``anime`` = the anime row; at most ``SECTION_HEROES`` cards with a
+    backdrop; ``[]`` for a "soon" section."""
+    if section_id in SOON_SECTIONS or section_id not in dict(SECTIONS):
+        return []
+    slider = heroes(ctx) if slider is None else slider
+    if section_id == "featured":
+        return slider
+    if section_id == "anime":
+        return [_hero_card(ctx, i) for i in ctx.pool("anime") if i.get("backdrop_url")][:SECTION_HEROES]
+    kind = "series" if section_id == "series" else "movie"
+    out = [_hero_card(ctx, i) for i in ctx.pool("featured_" + ("series" if kind == "series" else "movies"))
+           if i.get("backdrop_url")][:SECTION_HEROES]
+    have = {c["id"] for c in out}
+    out += [c for c in slider if c["type"] == kind and c["id"] not in have]
+    return out[:SECTION_HEROES]
+
+
+def sections(snap, profile_id: str, pmap: dict, now: Optional[float] = None) -> dict:
+    """``{"sections": [{id, title, status: ready|soon, heroes}]}``: the menu of the new home, in menu order."""
+    ctx = Context(snap, profile_id, pmap, now)
+    slider = heroes(ctx)
+    return {"sections": [{"id": sid, "title": stitle, "status": "soon" if sid in SOON_SECTIONS else "ready",
+                          "heroes": _section_heroes(ctx, sid, slider)} for sid, stitle in SECTIONS]}
+
+
+def section(snap, section_id: str, profile_id: str, pmap: dict, now: Optional[float] = None) -> Optional[dict]:
+    """``{id, title, status, heroes, rows}`` of one section (rows as in the boot); ``None`` for an unknown id."""
+    names = dict(SECTIONS)
+    if section_id not in names:
+        return None
+    ctx = Context(snap, profile_id, pmap, now)
+    return {"id": section_id, "title": names[section_id], "status": "soon" if section_id in SOON_SECTIONS else "ready",
+            "heroes": _section_heroes(ctx, section_id), "rows": _rows_json(ctx, section_rows(section_id, ctx.profile_id))}

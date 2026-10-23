@@ -33,11 +33,16 @@ tizen-client/
 
 ## Sunucu adresi
 
-Varsayilan `http://192.168.0.61:8090`. `localStorage['dz.baseUrl']` icinde tutulur ve
-uygulama icindeki **Ayarlar** ekranindan degistirilebilir (TV klavyesi/IME ile).
-Ayarlar ekranindaki "Baglantiyi test et" `/api/health` ucunu cagirir.
-Sira: (1) Ayarlar (`dz.baseUrl`), (2) `config.js` `window.DZ_CONFIG.baseUrl`, (3) sayfa http(s) ile aciliyorsa ayni host + `DZ_CONFIG.port` (8090),
-(4) Tizen/wgt (file://) varsayilan adres. `config.js` elle duzenlenir ve wgt paketine girer; Ayarlar'da adresi silmek otomatik adrese dondurur.
+Gomulu varsayilan adres YOK (herkes kendi sunucusunu kurar). Adres yoksa ilk acilista tam ekran **Sunucu adresi** ekrani
+(`js/screens/server_setup.js`): IP ya da URL girilir (`192.168.1.10` -> `http://192.168.1.10:8090`, `https://...` aynen),
+"Baglan" `/api/health` dener, basariliysa `localStorage['dz.baseUrl']`e kaydeder. Adres sonra **Ayarlar**'dan degisir
+("Baglantiyi test et" `/api/health`). Sira: (1) `dz.baseUrl`, (2) `config.js` `window.DZ_CONFIG.baseUrl`, (3) sayfa sunucunun
+KENDISINDEN (http(s), port = `DZ_CONFIG.port`, 8090) aciliyorsa o origin, (4) yok -> ilk acilis ekrani. `config.js` elle duzenlenir
+ve wgt paketine girer.
+
+Soguk acilista (uygulama kapatilip acilinca) HER SEFERINDE profil secimi gelir (odak son secilen profilde); arka plana atilip
+donunce sayfa yeniden yuklenmez, profil devam eder. Sunucunun kalici misafir profili (`guest: true`) kart degil "Misafir"
+dugmesidir; ilerleme/Listem sunucuda tutulmaz.
 API sozlesmesi: `../API.md`.
 
 ## Kademeli yukleme

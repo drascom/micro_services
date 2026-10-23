@@ -32,6 +32,8 @@ def add_mylist(body: MyListIn) -> dict:
     if body.item_id not in cache.get().by_id:
         raise not_found("item")
     body.item_id = cache.get().by_id[body.item_id]["id"]
+    if db.is_guest(body.profile):   # misafir: Listem kaydı tutulmaz
+        return {"ok": True, "in_mylist": False}
     db.execute(
         "INSERT INTO mylist (profile_id,item_id,added_at) VALUES (?,?,?) "
         "ON CONFLICT(profile_id, item_id) DO NOTHING",

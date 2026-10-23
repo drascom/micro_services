@@ -37,7 +37,7 @@ Girdi belgeleri (okuma sırası): bu README -> ilgili `Txx` -> görevin "Oku" li
 5. **Yeni ortam değişkeni yok** (§6'daki liste dışında). Çalışma zamanı ayarları `settings` tablosunda, admin'den yönetilir.
 6. **Güvenlik:** kullanıcıdan/LLM'den gelen her adres `core.fetch` içinde `netguard` denetiminden geçer (çağırana bırakılmaz). Sırlar
    (`TMDB_ACCESS_KEY`, pi kimlikleri) loglanmaz, yanıtta dönmez, LLM prompt'una girmez.
-7. **Yapma:** deploy, sunucuya (192.168.0.61) bağlanma, `git commit/push`, uygulamayı açıp görsel test, testte gerçek ağ/LLM çağrısı,
+7. **Yapma:** deploy, sunucuya (192.168.1.10) bağlanma, `git commit/push`, uygulamayı açıp görsel test, testte gerçek ağ/LLM çağrısı,
    eski `server/data` ya da `server/.env` okuma.
 8. **Dil:** kod, tanımlayıcı ve kod yorumu İngilizce (eski kodla aynı); admin arayüz metni ve raporlar Türkçe.
 9. **Test:** her test dosyası `import _sandbox` ile başlar (geçici `DATA_DIR`/`DB_PATH`, boş TMDB anahtarı, sahte LLM çağırıcı, ağ kapalı).

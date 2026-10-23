@@ -641,6 +641,19 @@ class Fresh(unittest.TestCase):
         e = self.call("get", "/api/boot?profile=%s&layout=tv-v1" % p["id"], 400)
         self.assertEqual(S.problems(e, S.ERROR), [])
 
+    def test_guest_profile_is_permanent_and_stores_nothing(self):
+        ps = self.call("get", "/api/profiles")["profiles"]
+        self.assertEqual((ps[-1]["id"], ps[-1]["guest"]), ("guest", True), "guest listed last")
+        self.assertFalse(any(p["guest"] for p in ps[:-1]))
+        self.assertEqual(S.problems(self.call("put", "/api/profiles/guest", 403, json={"name": "x"}), S.ERROR), [])
+        self.call("delete", "/api/profiles/guest", 403)
+        r = self.call("post", "/api/progress", json={"profile": "guest", "item_id": FILM, "position": 600, "duration": 6000})
+        self.assertEqual((r["ok"], r["next_episode"]), (True, None))
+        self.assertIsNone(self.call("get", "/api/detail/%s?profile=guest" % FILM)["progress"])
+        m = self.call("post", "/api/mylist", 201, json={"profile": "guest", "item_id": FILM})
+        self.assertEqual((m["ok"], m["in_mylist"]), (True, False))
+        self.assertEqual(self.call("get", "/api/mylist?profile=guest")["items"], [])
+
     def test_playback_report_accepts_everything_the_tv_client_sends(self):
         s = self.call("get", "/api/streams/%s?profile=p1&kind=video" % FILM)
         token = s["streams"][0]["attempt_token"]
@@ -652,6 +665,66 @@ class Fresh(unittest.TestCase):
         self.call("post", "/api/playback-report", 400, json={"attempt_token": "0" * 32, "event": "success", "code": "", "engine": ""})
         self.call("post", "/api/playback-report", 422, json={"attempt_token": token, "event": "success", "code": "bogus"})
         self.call("post", "/api/playback-report", 422, json={"attempt_token": "short", "event": "success"})
+
+
+class SectionTests(Base):
+    """The new home's menu (`/api/sections`) and section pages (`/api/section/<id>`); the boot stays as it was."""
+
+    def test_menu_order_and_soon_sections(self):
+        b = self.get("/api/sections?profile=p1")
+        self.conforms(b, S.SECTIONS)
+        self.assertEqual([x["id"] for x in b["sections"]], ["featured", "series", "movies", "live_tv", "anime", "dvr"])
+        soon = {x["id"]: x for x in b["sections"] if x["status"] == "soon"}
+        self.assertEqual(sorted(soon), ["dvr", "live_tv"])
+        self.assertTrue(all(not x["heroes"] for x in soon.values()))
+        self.get("/api/section/no_such?profile=p1", 404)
+
+    def test_section_rows_are_filtered_by_type_and_page_through_the_row_endpoint(self):
+        boot = self.get("/api/boot?profile=p1&layout=tv-v1")
+        for sid, kind, ids in (("series", "series", ["featured_series", "new_episodes", "trending_series", "series"]),
+                               ("movies", "movie", ["featured_movies", "latest_movies", "trending_movies", "movies"])):
+            sec = self.get("/api/section/%s?profile=p1" % sid)
+            self.conforms(sec, S.SECTION, sid)
+            self.assertEqual([r["id"] for r in sec["rows"]], ids)
+            for r in sec["rows"]:
+                self.assertEqual({i["type"] for i in r["items"]}, {kind}, sid + ":" + r["id"])
+                self.assertEqual([i["card_key"] for i in self.get("/api/row/%s?profile=p1&limit=100" % r["id"])["items"]],
+                                 [i["card_key"] for i in r["items"]])
+            self.assertTrue(sec["heroes"] and all(h["type"] == kind for h in sec["heroes"]))
+        feat = self.get("/api/section/featured?profile=p1")
+        self.assertEqual([r["id"] for r in feat["rows"]],
+                         [r["id"] for r in boot["rows"] if r["id"] not in ("continue", "series", "movies")])
+        self.assertTrue({"series", "movies"} <= {r["id"] for r in boot["rows"]}, "the boot keeps Tüm Diziler/Filmler")
+        self.assertEqual(feat["heroes"], boot["heroes"])
+        self.assertEqual(boot, self.get("/api/boot?profile=p1&layout=tv-v1"), "the boot is unchanged by the sections")
+
+    def test_anime_category_row_is_the_lists_then_best_rated_library_anime(self):
+        """``cat_animeler``: the sites' ``category_animeler_*`` lists first (list order), then the other anime series
+        of the library best rated first up to TREND_TARGET; no repeats, unplayable left out, min_items on the filled row."""
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from app import homelayout as hl
+
+        def it(cid, rating, state="ready", kind="series"):
+            return {"id": cid, "type": kind, "rating": rating, "availability": {"state": state}}
+        listed = [it("l1", 1.0), it("l2", 9.9)]
+        extra = [it("x1", 5.0), it("x2", 8.0), it("x3", 7.0), it("bad", 9.5, "broken"), it("mv", 9.8, kind="movie")]
+        everything = listed + extra + [it("x%d" % k, 1.0) for k in range(4, 40)]
+        snap = SimpleNamespace(source="library", items=everything, by_id={i["id"]: i for i in everything})
+        anime_ids = [{"canonical_id": i["id"]} for i in everything]
+        with patch.object(hl.categories, "get", lambda slug: {"enabled": True, "min_items": 3}), \
+                patch.object(hl.categories, "member_lists", lambda _s, slug: [listed] if slug == "animeler" else []), \
+                patch.object(hl.db, "query", lambda *_a, **_k: anime_ids):
+            got = [i["id"] for i in hl.Context(snap)._category("animeler")]
+            self.assertEqual(got[:5], ["l1", "l2", "x2", "x3", "x1"])
+            self.assertEqual(len(got), hl.TREND_TARGET)
+            self.assertEqual(len(got), len(set(got)))
+            self.assertFalse({"bad", "mv"} & set(got))
+            self.assertEqual([i["id"] for i in hl.Context(snap)._category("drama")], [], "other categories: no fill")
+            snap = SimpleNamespace(source="library", items=listed + extra[:1],
+                                   by_id={i["id"]: i for i in listed + extra[:1]})
+            self.assertEqual([i["id"] for i in hl.Context(snap)._category("animeler")], ["l1", "l2", "x1"],
+                             "min_items (3) is met by the filled row")
 
 
 class SampleFileTests(Base):
@@ -679,7 +752,8 @@ class SampleFileTests(Base):
                  "streams-trailer.json": S.STREAMS, "streams-episode.json": S.STREAMS, "profiles.json": S.PROFILES,
                  "avatars.json": S.AVATARS, "catalog.json": S.CATALOG, "search.json": S.SEARCH,
                  "mylist.json": S.MYLIST, "error-not-found.json": S.ERROR,
-                 "notifications.json": S.NOTIFICATIONS, "source-finder.json": S.SOURCE_FINDER}
+                 "notifications.json": S.NOTIFICATIONS, "source-finder.json": S.SOURCE_FINDER,
+                 "sections.json": S.SECTIONS, "section-series.json": S.SECTION}
         self.assertEqual(sorted(specs), sorted(seed.SAMPLES), "every sample has a schema")
         for name, spec in specs.items():
             path = os.path.join(seed.SAMPLE_DIR, name)

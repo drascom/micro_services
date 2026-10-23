@@ -36,6 +36,9 @@ __pycache__/
 /server/data/*
 !/server/data/fixture.json
 
+# --- local deploy target (real host; example: deploy.env.example) ---
+/deploy.env
+
 # --- deploy backups / local removals ---
 /deploy-backups/
 

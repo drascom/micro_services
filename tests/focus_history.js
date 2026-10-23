@@ -35,6 +35,7 @@ const window = {
 const context = vm.createContext({ window, document, console, setTimeout, tizen: undefined });
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../tizen-client/js/app.js'), 'utf8'), context);
 ready();
+window.DZ.app.go('home', { profile: 'p1' }, true);   // cold start mounts the profile picker; the test picks p1
 
 const homeFocus = { rowId: 'movies', col: 7, itemKey: 'data-item-id:movie-7' };
 focus = homeFocus;

@@ -1,6 +1,6 @@
 # diziflix — API sözleşmesi (v1)
 
-Server: `http://192.168.0.61:8090`  ·  Tüm yanıtlar JSON, `Access-Control-Allow-Origin: *`
+Server: `http://<sunucu>:8090` (örn. `http://192.168.1.10:8090`; istemcide gömülü adres yok, ilk açılışta sorulur)  ·  Tüm yanıtlar JSON, `Access-Control-Allow-Origin: *`
 Hata: `{"error": {"code": "...", "message": "..."}}` + uygun HTTP status.
 
 ## Ortak şemalar
@@ -82,8 +82,11 @@ Bölüm kimliği `<yapım kimliği>:s<sezon>:e<bölüm>` biçimindedir; `/img/{k
 `{"status":"ok","source":"mock","items":120,"cache_age":12}`
 
 ### `GET /api/profiles`
-`{"profiles":[{"id":"p1","name":"İsmet","avatar_seed":"a3","avatar":"/img/avatar/a3?w=200&h=200","is_kids":false}]}`
+`{"profiles":[{"id":"p1","name":"Profil 1","avatar_seed":"a3","avatar":"/img/avatar/a3?w=200&h=200","is_kids":false}]}`
 - `avatar_seed`: profilin seçili avatarının kimliği (avatar kataloğundan). `avatar` url'i bu seed ile üretilir.
+- `guest` (ek alan, bool): sunucunun kalıcı misafir profili (`id:"guest"`, `name:"Misafir"`; her kurulumda açılışta oluşur, listede EN SONDA).
+  Misafir düzenlenemez/silinemez (`PUT`/`DELETE` → 403 `guest_profile`); izleme ilerlemesi, "İzlemeye Devam Et" ve Listem
+  sunucuda TUTULMAZ (`POST /api/progress` → `{"ok":true,...,"next_episode":null}` yazmadan, `POST /api/mylist` → `{"ok":true,"in_mylist":false}`).
 
 ### `GET /api/avatars`   ← seçilebilir avatar kataloğu (profil düzenleme ekranı için)
 ```json
@@ -186,11 +189,25 @@ dönüşümlü; varsayılan sıra, admin Kategoriler'den değişir). "Listem" an
 - `continue` boşsa satır hiç gönderilmez. Genel `new` satırı eski istemciler için uyumluluk takma adıdır
   (`new_movies` / `new_episodes` DATA-CONTRACT-V1 adlarıdır).
 
+### `GET /api/sections?profile={pid}` · `GET /api/section/{id}?profile={pid}`   ← yeni ana ekran menüsü (ui-proto; yalnız EKLEME)
+`/api/sections` → `{"sections":[{"id","title","status":"ready"|"soon","heroes":[Hero...]}]}`, menü sırası:
+`featured` Öne Çıkanlar · `series` Diziler · `movies` Filmler · `live_tv` Canlı TV · `anime` Animeler · `dvr` DVR
+(`soon` = henüz kaynak yok: `heroes` ve `rows` boş, menüde görünür). `heroes` = o bölümün vitrini (en çok 6, backdrop'lu;
+`featured` = boot `heroes`).
+`/api/section/{id}` → `{"id","title","status","heroes":[...],"rows":[...]}` (satırlar boot `tv-v1` satır biçiminde, ilk 20 kart; boş satır
+gönderilmez; bilinmeyen id → 404). Satırlar (sıra; tek yer `homelayout.section_rows`):
+- `featured`: boot `tv-v1` satırları, `continue`, `series` (Tüm Diziler) ve `movies` (Tüm Filmler) HARİÇ (yeni ana ekran "Devam Et"i menü ekranında `/api/row/continue` ile gösterir; tüm diziler/filmler Diziler/Filmler bölümlerinde).
+- `series`: `featured_series` (Öne Çıkan Diziler: sitelerin `featured` listelerindeki diziler), `new_episodes`, `trending_series`, `series`.
+- `movies`: `featured_movies` (Öne Çıkan Filmler), `latest_movies`, `trending_movies`, `movies`.
+- Kategori satırı `cat_animeler` (ana ekran/featured): sitelerin `category_animeler_*` listeleri (liste sırası), 20'den (`TREND_TARGET`) kısaysa kütüphanedeki diğer animelerle (kaynak adresi `/anime/` altında diziler) `rating` azalan (eşitlikte `id`) 20'ye tamamlanır; `min_items` tamamlanmış satıra bakar. Diğer kategori satırları tamamlanmaz.
+- `anime`: `anime` (Animeler: sitelerin `category_animeler_*` listeleri + kaynak adresi `/anime/` altında olan diğer diziler, yeni eklenen önce).
+Yeni satır kimlikleri `featured_series`, `featured_movies`, `anime` de `/api/row/{id}` ile sayfalanır. `/api/boot` değişmedi.
+
 ### `GET /api/row/{row_id}?profile={pid}&offset=0&limit=20`   ← **KADEME 2**
 `{"id":"genre_drama","title":"Dram","items":[...],"offset":0,"limit":20,"total":34}`
 Satır kimlikleri: ana ekran (`tv-v1`): `continue`, `new_episodes`, `latest_movies`, `trending_series`, `trending_movies`, `must_watch`, `cat_<slug>`, `series`, `movies`;
 ana ekranda olmayan ama çalışan eskiler: `mylist`, `spotlight`, `noteworthy_series`, `noteworthy_movies`, `new_series` (`latest_series` takma adı), `latest_episodes` (= `new_episodes`),
-`new_movies` (= `movies`), `trending`, `new`, `top10`, `yakinda`, `genre_<slug>`. Bilinmeyen kimlik → 404. `limit` 1..100.
+`new_movies` (= `movies`), `trending`, `new`, `top10`, `yakinda`, `genre_<slug>`; bölüm satırları: `featured_series`, `featured_movies`, `anime`. Bilinmeyen kimlik → 404. `limit` 1..100.
 
 ### `GET /api/detail/{item_id}?profile={pid}`   ← **KADEME 3**
 ```json

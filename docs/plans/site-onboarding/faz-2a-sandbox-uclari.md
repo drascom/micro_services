@@ -95,7 +95,7 @@ resolver dener ve sonunda taslağı teslim eder.
 - Gerekirse `scraper/transport.py`'de yalnızca son URL'yi döndürmek için küçük bir ekleme. Davranış değişmemeli.
 
 ## Testler (`server/tests/test_onboard_sandbox.py`, yeni)
-- `netguard`: `http://127.0.0.1`, `http://10.0.0.5`, `http://192.168.0.61:8090`, `file:///etc/passwd`,
+- `netguard`: `http://127.0.0.1`, `http://10.0.0.5`, `http://192.168.1.10:8090`, `file:///etc/passwd`,
   `http://user:p@x.com`, private IP'ye çözülen host (DNS mock) reddedilir; public host kabul edilir.
 - Erişim: localhost dışı istemci 403; token yok veya yanlış 403. TestClient'ta client host'u ayarla ya da kontrol
   fonksiyonunu patch'le.

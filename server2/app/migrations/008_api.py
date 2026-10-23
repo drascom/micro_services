@@ -8,5 +8,5 @@ def up(conn):
         return
     import time
     now = int(time.time())
-    for row in (("p1", "İsmet", 0, "a1", now), ("p2", "Çocuk", 1, "a2", now)):
+    for row in (("p1", "Profil 1", 0, "a1", now), ("p2", "Çocuk", 1, "a2", now)):
         conn.execute("INSERT INTO profiles (id,name,is_kids,avatar_seed,created_at) VALUES (?,?,?,?,?)", row)

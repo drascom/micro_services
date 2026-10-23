@@ -77,7 +77,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["ETag"],
+    expose_headers=["ETag", "Date"],
 )
 # Order (last added = outermost): gzip wraps ETag so the tag hashes the raw body.
 app.add_middleware(ETagMiddleware)

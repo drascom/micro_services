@@ -46,6 +46,8 @@ def post_progress(body: ProgressIn) -> dict:
     duration = int(body.duration)
     now = int(time.time())
     watched = 1 if duration > 0 and (position / duration) > WATCHED_THRESHOLD else 0
+    if db.is_guest(body.profile):   # misafir: ilerleme/devam et kaydı tutulmaz
+        return {"ok": True, "watched": bool(watched), "next_episode": None}
 
     db.execute(
         "INSERT INTO progress (profile_id,item_id,episode_id,position,duration,watched,updated_at) "

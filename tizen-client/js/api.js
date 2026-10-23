@@ -3,7 +3,9 @@
   'use strict';
   var DZ = g.DZ = g.DZ || {};
 
-  var DEFAULT_BASE = 'http://192.168.0.61:8090';
+  /* Gomulu varsayilan sunucu adresi YOK (acik kaynak: herkes kendi sunucusunu kurar). Adres yoksa ilk acilista
+     screens/server_setup.js sorar ve /api/health basariliysa dz.baseUrl'e yazar. */
+  var DEFAULT_PORT = '8090';
   var K_BASE = 'dz.baseUrl';
   var K_PROFILE = 'dz.profile';
   var K_BOOT = 'dz.boot.featured-hero-v3.';
@@ -50,24 +52,48 @@
     if (s && !/^https?:\/\//i.test(s)) s = 'http://' + s;
     return s;
   }
-  /* Kullanici ayari yokken adres: (2) config.js `window.DZ_CONFIG.baseUrl`, (3) sayfa http(s) ile sunuluyorsa ayni host +
-     `DZ_CONFIG.port` (varsayilan 8090), (4) aksi (Tizen file:// / wgt) DEFAULT_BASE. */
+  function serverPort() {
+    var c = g.DZ_CONFIG || {};
+    return String(c.port || DEFAULT_PORT).replace(/[^0-9]/g, '') || DEFAULT_PORT;
+  }
+  /* Kullanicinin yazdigi adres: semasiz ve portsuz `192.168.1.10` / `tv.lan` -> `http://<host>:8090`; sema verilmisse
+     (`https://diziflix.ornek.com`, `http://host`) aynen (yalniz sondaki / atilir). */
+  function normalizeServer(v) {
+    var s = String(v || '').trim().replace(/\/+$/, '');
+    if (!s) return '';
+    if (/^https?:\/\//i.test(s)) return s;
+    var hostPart = s.split('/')[0];
+    if (!/:\d+$/.test(hostPart)) s = hostPart + ':' + serverPort() + s.slice(hostPart.length);
+    return 'http://' + s;
+  }
+  /* Kullanici ayari yokken adres: (2) config.js `window.DZ_CONFIG.baseUrl`, (3) sayfa sunucunun KENDISINDEN (http(s), port =
+     `DZ_CONFIG.port`, varsayilan 8090) aciliyorsa o origin, (4) aksi '' (adres yok -> ilk acilis "Sunucu adresi" ekrani). */
   function autoBase() {
     var c = g.DZ_CONFIG || {};
     var fixed = cleanBase(c.baseUrl);
     if (fixed) return fixed;
-    var port = String(c.port || '8090').replace(/[^0-9]/g, '') || '8090';
     var loc = g.location;
-    if (loc && /^https?:$/i.test(loc.protocol || '') && loc.hostname) return loc.protocol + '//' + loc.hostname + ':' + port;
-    return DEFAULT_BASE;
+    if (loc && /^https?:$/i.test(loc.protocol || '') && loc.hostname && String(loc.port || '') === serverPort()) {
+      return loc.protocol + '//' + loc.hostname + ':' + loc.port;
+    }
+    return '';
   }
-  /* (1) localStorage `dz.baseUrl` (Ayarlar'dan kullanici ayari) once; yoksa autoBase(). */
+  /* ilk acilis ekraninin oneri degeri: sayfa http(s) ile aciliyorsa ayni host + sunucu portu, aksi '' */
+  function suggestBase() {
+    var loc = g.location;
+    if (!loc || !loc.hostname) return '';
+    if (/^https:$/i.test(loc.protocol || '')) return 'https://' + loc.host;   /* ters vekil arkasi: ayni origin */
+    if (/^http:$/i.test(loc.protocol || '')) return 'http://' + loc.hostname + ':' + serverPort();
+    return '';
+  }
+  /* (1) localStorage `dz.baseUrl` (ilk acilis / Ayarlar'dan kullanici ayari) once; yoksa autoBase(); hicbiri yoksa ''. */
   function baseUrl() {
     return cleanBase(store.get(K_BASE, '')) || autoBase();
   }
+  function hasBase() { return !!baseUrl(); }
   /* bos deger = kullanici ayarini sil (otomatik adrese don) */
   function setBaseUrl(v) {
-    var s = cleanBase(v);
+    var s = cleanBase(normalizeServer(v));
     if (s) store.set(K_BASE, s); else store.del(K_BASE);
     return baseUrl();
   }
@@ -82,7 +108,7 @@
     return out;
   }
 
-  function url(path) { return baseUrl() + path; }
+  function url(path, base) { return (base || baseUrl()) + path; }
 
   /* Gorsel URL'i: server yolu ise base ekle, mutlaksa aynen birak */
   function img(path) {
@@ -119,7 +145,7 @@
 
   function request(path, opts) {
     var o = opts || {};
-    var full = url(addDebug(path));
+    var full = url(addDebug(path), o.base);
     var init = { method: o.method || 'GET', mode: 'cors', cache: 'no-cache' };
     if (o.signal) init.signal = o.signal;   /* AbortController (yazarken arama: bayat istegi iptal) */
     if (o.body !== undefined && o.body !== null) {
@@ -143,7 +169,7 @@
         return data;
       });
     }, function () {
-      throw new ApiError('network', 'Sunucuya ulasilamiyor: ' + baseUrl(), 0);
+      throw new ApiError('network', 'Sunucuya ulasilamiyor: ' + (o.base || baseUrl() || '(adres yok)'), 0);
     });
     return withTimeout(p, o.timeout || TIMEOUT);
   }
@@ -157,8 +183,10 @@
   var api = {
     sourceId: sourceId,
     setSourceId: function (id) { store.set('dz.source.' + baseUrl(), id || ''); },
-    DEFAULT_BASE: DEFAULT_BASE,
     defaultBase: autoBase,
+    suggestBase: suggestBase,
+    normalizeServer: normalizeServer,
+    hasBase: hasBase,
     K_BASE: K_BASE,
     K_PROFILE: K_PROFILE,
     debug: debug,
@@ -169,7 +197,7 @@
     request: request,
     ApiError: ApiError,
 
-    /* profil secimi */
+    /* profil secimi (son secim saklanir; soguk acilista profil ekrani yine gelir, kart odagi bu profilde baslar) */
     profileId: function () { return store.get(K_PROFILE, null); },
     setProfileId: function (id) { if (id) store.set(K_PROFILE, id); else store.del(K_PROFILE); },
 
@@ -179,6 +207,13 @@
     },
     /* uclar */
     health: function () { return request('/api/health', { timeout: 6000 }); },
+    /* kaydetmeden aday adresi dene (ilk acilis "Baglan"): {status:'ok'} degilse reddeder */
+    probe: function (base) {
+      return request('/api/health', { timeout: 6000, base: base }).then(function (res) {
+        if (!res || res.status !== 'ok') throw new ApiError('bad_server', 'Bu adres bir diziflix sunucusu degil', 0);
+        return res;
+      });
+    },
     profiles: function () { return request('/api/profiles'); },
     createProfile: function (name, isKids, avatarSeed) {
       var body = { name: name, is_kids: !!isKids };

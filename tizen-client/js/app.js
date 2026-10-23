@@ -192,18 +192,15 @@
     DZ.keys.onKey(handleKey);
     if (DZ.toast && DZ.toast.watchOnline) DZ.toast.watchOnline();   /* cevrimdisi uyarisi (sol alt) */
 
-    console.log('[app] base url: ' + DZ.api.baseUrl() +
+    console.log('[app] base url: ' + (DZ.api.baseUrl() || '(yok)') +
       (DZ.api.debug.delay ? ('  debug delay=' + DZ.api.debug.delay) : '') +
       (DZ.api.debug.fail ? '  debug fail=1' : ''));
 
-    var pid = DZ.api.profileId();
-    if (pid) {
-      stack = [{ name: 'home', params: { profile: pid } }];
-      mount(stack[0], false);
-    } else {
-      stack = [{ name: 'profiles', params: null }];
-      mount(stack[0], false);
-    }
+    /* Soguk acilis (sayfa/uygulama yuklendi): sunucu adresi yoksa ilk acilis ekrani, varsa HER SEFERINDE profil secimi.
+       Arka plana atilip donunce (Tizen visibilitychange/hidden) sayfa yeniden yuklenmez -> start() calismaz, profil devam eder. */
+    if (DZ.api.hasBase && !DZ.api.hasBase()) stack = [{ name: 'server_setup', params: null }];
+    else stack = [{ name: 'profiles', params: null }];
+    mount(stack[0], false);
   }
 
   DZ.app = {

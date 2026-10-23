@@ -48,7 +48,7 @@ class ResetKeepCategories(unittest.TestCase):
             self.assertEqual(c.execute("PRAGMA integrity_check").fetchone()[0], "ok")
             self.assertEqual(c.execute("SELECT kind FROM home_categories WHERE slug='aksiyon'").fetchone()[0], "category")
         db.init()  # the service reopens the same file: schema still there, profiles reseeded
-        self.assertEqual(_count(self.path, "profiles"), 2)
+        self.assertEqual(_count(self.path, "profiles"), 3)  # p1, p2 + the permanent guest profile
         self.assertEqual(_count(self.path, "home_categories"), self.rows)
 
     def test_wipe_categories_flag(self):

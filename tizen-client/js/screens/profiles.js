@@ -1,4 +1,6 @@
-/* screens/profiles.js - profil secme ekrani (acilis). Secim localStorage'a yazilir. */
+/* screens/profiles.js - profil secme ekrani (her soguk acilista; js/app.js start). Secim localStorage'a yazilir, sonraki
+   acilista odak o kartta baslar. Sunucunun kalici misafir profili (`guest: true`) kart olarak DEGIL, alttaki "Misafir"
+   dugmesiyle secilir; duzenlenemez/silinemez, ilerleme/Listem sunucuda tutulmaz. */
 (function (g) {
   'use strict';
   var DZ = g.DZ = g.DZ || {};
@@ -81,10 +83,14 @@
     var strip = document.createElement('div');
     strip.className = 'profile-strip';
     strip.setAttribute('data-nav-row', 'profiles');
+    var guest = null, shown = 0, focusCol = -1, lastPid = DZ.api.profileId();
     for (var i = 0; i < profiles.length; i++) {
+      if (profiles[i].guest) { guest = guest || profiles[i]; continue; }
+      if (profiles[i].id === lastPid) focusCol = shown;
       strip.appendChild(profileNode(profiles[i], state));
+      shown++;
     }
-    if (!profiles.length) {
+    if (!shown) {
       var empty = document.createElement('div');
       empty.className = 'nm';
       empty.textContent = 'Henuz profil yok. "Profil Ekle" ile baslayin.';
@@ -103,6 +109,15 @@
     add.addEventListener('click', state.onAdd, false);
     foot.appendChild(add);
 
+    if (guest && !state.manage) {
+      var gb = document.createElement('div');
+      gb.className = 'btn guest';
+      gb.setAttribute('data-nav', '1');
+      gb.textContent = 'Misafir';
+      gb.addEventListener('click', function () { state.onSelect(guest); }, false);
+      foot.appendChild(gb);
+    }
+
     var mng = document.createElement('div');
     mng.className = 'btn' + (state.manage ? ' primary' : '');
     mng.setAttribute('data-nav', '1');
@@ -110,7 +125,7 @@
     mng.addEventListener('click', function () {
       state.manage = !state.manage;
       build(container, state.list, state);
-      DZ.nav.focusRowById('profiles-foot', 1);
+      DZ.nav.focusRowById('profiles-foot', state.manage || !guest ? 1 : 2);
     }, false);
     foot.appendChild(mng);
 
@@ -134,6 +149,7 @@
     container.appendChild(root);
     el = root;
     DZ.nav.setRoot(container, null);
+    if (focusCol > 0 && !state.manage) DZ.nav.focusRowById('profiles', focusCol);   /* son secilen profil */
   }
 
   function showError(container, err, retry) {
@@ -199,14 +215,14 @@
     key: function (ev) {
       if (ev.name === 'green') {
         var g2 = DZ.nav.currentEl();
-        if (g2 && g2.dzProfile) {
+        if (g2 && g2.dzProfile && !g2.dzProfile.guest) {
           DZ.app.go('profile_edit', { id: g2.dzProfile.id, profile: g2.dzProfile });
         }
         return true;
       }
       if (ev.name === 'yellow') {
         var cur = DZ.nav.currentEl();
-        if (cur && cur.dzProfile) {
+        if (cur && cur.dzProfile && !cur.dzProfile.guest) {
           var p = cur.dzProfile;
           DZ.modal.confirm('Profili sil', '"' + p.name + '" silinsin mi?', function () {
             DZ.api.deleteProfile(p.id).then(function () {

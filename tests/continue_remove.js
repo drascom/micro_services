@@ -84,6 +84,7 @@ function env(opts) {
   const realOpen = DZ.modal.open;
   DZ.modal.open = function (cfg) { opens++; return realOpen(cfg); };
   (docL.DOMContentLoaded || []).forEach(f => f());   // app.start()
+  DZ.app.go('home', { profile: 'p1' }, true);   // cold start mounts the profile picker; the test picks p1
 
   const fire = (type, code, extra) => {
     const e = Object.assign({ keyCode: code, target: { tagName: 'DIV' }, preventDefault() {} }, extra);
@@ -481,7 +482,7 @@ function toContinue(x) {
   // ---------------------------------------------------------------- 8) api.removeFromContinue request
   {
     const seen = [];
-    const store = { 'dz.profile': 'p9' };
+    const store = { 'dz.profile': 'p9', 'dz.baseUrl': 'http://192.168.1.10:8090' };
     const window = {
       DZ: {}, location: { search: '' }, setTimeout, clearTimeout,
       localStorage: { getItem: k => (k in store ? store[k] : null), setItem(k, v) { store[k] = String(v); }, removeItem(k) { delete store[k]; } }
@@ -494,11 +495,11 @@ function toContinue(x) {
     const api = window.DZ.api;
     const r = await api.removeFromContinue('dizi-A');
     assert.deepEqual(r, { ok: true, removed: true });
-    assert.equal(seen[0].u, 'http://192.168.0.61:8090/api/continue/dizi-A?profile=p9', 'default profile, production id in the path');
+    assert.equal(seen[0].u, 'http://192.168.1.10:8090/api/continue/dizi-A?profile=p9', 'default profile, production id in the path');
     assert.equal(seen[0].init.method, 'DELETE');
     assert.equal(seen[0].init.cache, 'no-cache');
     await api.removeFromContinue('a b/c', 'p1');
-    assert.equal(seen[1].u, 'http://192.168.0.61:8090/api/continue/a%20b%2Fc?profile=p1', 'id and profile are URL-encoded');
+    assert.equal(seen[1].u, 'http://192.168.1.10:8090/api/continue/a%20b%2Fc?profile=p1', 'id and profile are URL-encoded');
     status = 404; body = '{"error":{"code":"not_found","message":"yok"}}';
     await assert.rejects(() => api.removeFromContinue('x'), e => e.status === 404 && e.code === 'not_found');
     status = 0;

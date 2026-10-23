@@ -289,6 +289,8 @@ def row_title(snap: Snapshot, row_id: str) -> str:
     row_id = "movies" if row_id == "new_movies" else row_id   # DATA-CONTRACT-V1 name of the "movies" row
     if row_id in homelayout.TITLES:
         return homelayout.TITLES[row_id]
+    if row_id in homelayout.SECTION_ROW_TITLES:
+        return homelayout.SECTION_ROW_TITLES[row_id]
     if row_id.startswith("cat_"):   # admin category row: its (editable) title
         from .library import categories
         slug = categories.slug_of_row(row_id)

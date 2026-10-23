@@ -4,7 +4,7 @@
 
 ## Deploy ve config kararı
 
-Deploy: host `61`'e tar-over-ssh (`--exclude "._*"`); `.env`, `data/`, `venv/` korunur. Servis: `systemctl restart diziflix` (`.env` değişince).
+Deploy: git dışı `deploy.env`'deki (`DZ_HOST`, `DZ_DEST`, `DZ_SERVICE`, `DZ_PORT`, ops. `DZ_BACKUP_DIR`; örnek `deploy.env.example`, yoksa `deploy.sh`/`clear-remote.sh` anlaşılır hatayla durur; ortam değişkenleri dosyayı ezer) host'a tar-over-ssh (`--exclude "._*"`); `.env`, `data/`, `venv/` korunur. Servis: `systemctl restart diziflix` (`.env` değişince).
 
 Otomatik deploy (proje kökünden): `./deploy.sh` = sunucuda yedek + requirements/configs fark kontrolü + tar-over-ssh + `import app.main` + restart + `/admin`,`/api/*` doğrulama; önce `./deploy.sh --dry-run` (yazmaz). Scraper `configs/` site bazında akıllı karar (yaml+baseline birlikte, tabloyla): sunucu sürümü < yerel VE sunucuda uygulanmış heal kaydı (`data/_ops.json`, `scraper_state/<site>.json`) / yeni arşiv (`<site>.vN.yaml`) yoksa otomatik EZER ("v7 → v8"); sunucu sürümü ≥ yerel, heal izi var ya da sürüm/heal okunamadıysa KORUR (yalnız o dosyalar `--exclude`; `--overwrite-configs` ezer, onay ister; `--keep-configs` hiç ezmez); sunucu configs'i her durumda önce `deploy-backups/`e iner
 
@@ -26,7 +26,7 @@ Sunucuda (admin "Site ekle" ile) eklenen yeni siteler `REMOTEONLY` sınıfıdır
 
 ## Sunucu veritabanını sıfırlama
 
-Test için sunucu veritabanını SIFIRLAMA: `./clear-remote.sh [--cache] [--no-backup] [--keep N] [--wipe-categories] [--yes]` (ya da `ssh root@192.168.0.61 'bash -s' < clear-remote.sh`): servisi durdurur, `data/diziflix.db*` -> `data/diziflix.db.bak.<ts>` yedekler, DOSYAYI SİLMEZ: `server/tools/reset_db_keep.py` (sunucuda deploy edilmiş olmalı) tek işlemde `KEEP_TABLES` (varsayılan `home_categories`: admin kategorileri + sistem iskelet satırları) dışındaki tüm tabloları boşaltır, VACUUM yapar; servisi başlatıp `/api/health` bekler. Kategoriler KORUNUR, `--wipe-categories` onları da siler; kategori üyeliği (`library_lists` category_*) silinir, scraper bir sonraki taramada yazar. Profiller/ilerleme/listem de gider. `.env`, `configs/`, `data/scraper_state/`, `ops_settings.json` DOKUNULMAZ (deploy.sh heal izine bakar). Yalnızca kullanıcı isterse çalıştırılır
+Test için sunucu veritabanını SIFIRLAMA: `./clear-remote.sh [--cache] [--no-backup] [--keep N] [--wipe-categories] [--yes]` (ya da `ssh <host> "DZ_DEST=/yol/server bash -s" < clear-remote.sh`): servisi durdurur, `data/diziflix.db*` -> `data/diziflix.db.bak.<ts>` yedekler, DOSYAYI SİLMEZ: `server/tools/reset_db_keep.py` (sunucuda deploy edilmiş olmalı) tek işlemde `KEEP_TABLES` (varsayılan `home_categories`: admin kategorileri + sistem iskelet satırları) dışındaki tüm tabloları boşaltır, VACUUM yapar; servisi başlatıp `/api/health` bekler. Kategoriler KORUNUR, `--wipe-categories` onları da siler; kategori üyeliği (`library_lists` category_*) silinir, scraper bir sonraki taramada yazar. Profiller/ilerleme/listem de gider. `.env`, `configs/`, `data/scraper_state/`, `ops_settings.json` DOKUNULMAZ (deploy.sh heal izine bakar). Yalnızca kullanıcı isterse çalıştırılır
 
 
 ## Yerel test
