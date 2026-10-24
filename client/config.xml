@@ -2,7 +2,7 @@
 <widget xmlns="http://www.w3.org/ns/widgets"
         xmlns:tizen="http://tizen.org/ns/widgets"
         id="http://diziflix.local/DiziFlix"
-        version="2.2.0"
+        version="2.2.1"
         viewmodes="maximized">
   <tizen:application id="dzfLX00001.DiziFlix"
                      package="dzfLX00001"
