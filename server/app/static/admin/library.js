@@ -1,10 +1,11 @@
-/* Kütüphane sekmesi: /api/ops/library (sunucu tarafı süzgeç + sayfalama) ve
+/* Kütüphane görünümü (artık Siteler › site › Kütüphane alt sekmesinde; dzLib.mount) + üst sekme geçişi: /api/ops/library (sunucu tarafı süzgeç + sayfalama) ve
    /api/ops/library/{id}/videos. K/T = kırık / toplam video kaynağı; ?N = şüpheli (K'ya dahil değil). */
 (function(){
 'use strict';
 var $=function(i){return document.getElementById(i)};
 var PAGE=50;
-var S={sites:[],broken:'',kind:'',tmdb:'',q:'',sort:'recent',view:'grid'};
+var S={sites:[],broken:'',kind:'',tmdb:'',q:'',id:'',sort:'recent',view:'grid'};
+var fixedSite=null,autoOpen=false;
 var items=[],total=0,libTotal=0,facets=null,mode='',hasMore=false,loaded=false,failed=false;
 var seq=0,busy=false,selId=null,loadedAt=0,vcache={},vseq=0,qTimer=null;
 
@@ -44,21 +45,37 @@ function diagPills(v){
 }
 
 /* ---- sekmeler ---- */
-var TABS=['events','library','categories','settings','backgrounds','onboard'];
-var TITLES={events:'Olay Defteri',library:'Kütüphane',categories:'Kategoriler',settings:'Ayarlar',backgrounds:'Arka planlar',onboard:'Siteler'};
+var TABS=['onboard','errors','categories','settings','backgrounds'];
+var TITLES={onboard:'Siteler',errors:'Hatalar',categories:'Kategoriler',settings:'Ayarlar',backgrounds:'Arka planlar'};
 function showTab(name){
+  if(TABS.indexOf(name)<0)name='onboard';
   TABS.forEach(function(n){
     $('tab-'+n).classList.toggle('hidden',n!==name);
     $('tab-btn-'+n).setAttribute('aria-selected',String(n===name));
   });
-  $('ttl').textContent=TITLES[name]||TITLES.events;
-  try{history.replaceState(null,'',name==='events'?location.pathname+location.search:(name==='onboard'&&/^#onboard\//.test(location.hash))?location.hash:'#'+name)}catch(e){}
-  if(name==='library'&&(!loaded||Date.now()-loadedAt>30000))load(true);
+  $('ttl').textContent=TITLES[name];
+  try{history.replaceState(null,'',name==='onboard'?location.pathname+location.search:'#'+name)}catch(e){}
   var hooks=window.dzTabHooks||{};if(hooks[name])hooks[name]();
 }
 document.querySelector('.tabs').addEventListener('click',function(ev){
   var b=ev.target.closest('button[data-tab]');if(b)showTab(b.getAttribute('data-tab'));
 });
+
+/* ---- yerleştirme: Siteler akordiyonu görünümü bir panele taşır (site = sabit süzgeç; null = tüm siteler) ---- */
+function mount(container,site,opt){
+  opt=opt||{};
+  var node=$('lib-layout');if(!node||!container)return;
+  if(node.parentNode!==container)container.appendChild(node);
+  var same=fixedSite===(site||null)&&!opt.id&&!opt.q&&loaded&&!S.id;
+  fixedSite=site||null;
+  if(same&&Date.now()-loadedAt<30000)return;
+  S.sites=fixedSite?[fixedSite]:[];S.broken=S.kind=S.tmdb='';
+  S.id=opt.id||'';S.q=opt.id?'':(opt.q||'');$('lq').value=S.q;autoOpen=!!(opt.id||opt.q);selId=null;
+  renderDetail();
+  load(true);
+}
+function park(){var node=$('lib-layout'),p=$('lib-park');if(node&&p&&node.parentNode!==p)p.appendChild(node)}
+window.dzLib={mount:mount,park:park};
 
 /* ---- sorgu ---- */
 function enc(v){return encodeURIComponent(v)}
@@ -69,11 +86,12 @@ function qs(offset,withFacets){
   if(S.kind)p.push('kind='+S.kind);
   if(S.tmdb)p.push('tmdb='+S.tmdb);
   if(S.q)p.push('q='+enc(S.q));
+  if(S.id)p.push('id='+enc(S.id));
   p.push('sort='+S.sort,'limit='+PAGE,'offset='+offset);
   if(!withFacets)p.push('facets=0');
   return p.join('&');
 }
-function dirty(){return !!(S.sites.length||S.broken||S.kind||S.tmdb||S.q)}
+function dirty(){return !!((!fixedSite&&S.sites.length)||S.broken||S.kind||S.tmdb||S.q||S.id)}
 function load(reset){
   var my=++seq;
   if(reset){items=[];hasMore=false;vcache={};loaded=false;failed=false;renderItems(false);renderMeta()}
@@ -85,7 +103,8 @@ function load(reset){
     total=d.total;libTotal=d.library_total;mode=d.source_mode;hasMore=!!d.has_more;
     if(d.facets)facets=d.facets;
     var list=d.items||[];
-    if(reset){items=list;renderFilters();renderItems(false)}
+    if(reset){items=list;renderFilters();renderItems(false);
+      if(autoOpen&&items.length===1)openItem(items[0].id);autoOpen=false}
     else{
       var seen={};items.forEach(function(x){seen[x.id]=1});
       list=list.filter(function(x){return !seen[x.id]});
@@ -106,7 +125,7 @@ function group(label,body){return '<div class="fg"><span class="fl">'+esc(label)
 function renderFilters(){
   if(!facets){$('lfilters').innerHTML='';return}
   var f=facets;
-  var sites=(f.sites||[]).map(function(s){return chip('data-site',s.site,s.site,s.count,S.sites.indexOf(s.site)>=0)}).join('');
+  var sites=fixedSite?'':(f.sites||[]).map(function(s){return chip('data-site',s.site,s.site,s.count,S.sites.indexOf(s.site)>=0)}).join('');
   var b=BROKEN.map(function(x){return chip('data-broken',x[0],x[1],f.broken[x[2]],S.broken===x[0])}).join('');
   var k=KIND.map(function(x){return chip('data-kind',x[0],x[1],x[2]?f.kind[x[2]]:null,S.kind===x[0])}).join('');
   var t=TMDB.map(function(x){return chip('data-tmdb',x[0],x[1],x[2]?f.tmdb[x[2]]:null,S.tmdb===x[0])}).join('');
@@ -149,7 +168,7 @@ function renderItems(append,list){
   if(!loaded){el.innerHTML='<div class="empty" style="grid-column:1/-1">Yükleniyor…</div>';return}
   if(failed){el.innerHTML='<div class="empty err" style="grid-column:1/-1">Yüklenemedi: '+esc(failed)+'</div>';return}
   if(!items.length){
-    var msg=libTotal===0?'Henüz veri yok.':'Bu süzgeçle eşleşen öğe yok.';
+    var msg=libTotal===0?'Henüz veri yok.':fixedSite&&!dirty()?'Bu siteden yapım yok.':'Bu süzgeçle eşleşen öğe yok.';
     var hint=libTotal===0?(mode!=='library'?'<br><small>Kaynak modu: <b>'+esc(mode)+'</b>. Kütüphane için <span class="mono">SOURCE=library</span> ve en az bir tarama gerekir.</small>':'<br><small>İlk taramadan sonra öğeler burada görünür.</small>'):'';
     el.innerHTML='<div class="empty" style="grid-column:1/-1">'+msg+hint+'</div>';return;
   }
@@ -160,7 +179,7 @@ function renderMeta(){
   if(!loaded){m.innerHTML='';$('lmorew').style.display='none';return}
   var h='';
   if(!failed){
-    h='<span><b>'+num(total)+'</b> öğe'+(dirty()&&libTotal?' <span>(kütüphanede toplam '+num(libTotal)+')</span>':'')+'</span>';
+    h=(S.id?'<span class="tag">tek yapım: <span class="mono">'+esc(S.id)+'</span></span>':'')+'<span><b>'+num(total)+'</b> öğe'+(dirty()&&libTotal?' <span>(kütüphanede toplam '+num(libTotal)+')</span>':'')+'</span>';
     if(items.length&&items.length<total)h+='<span>'+num(items.length)+' gösteriliyor</span>';
     if(dirty())h+='<button class="link" id="lreset">Süzgeçleri temizle</button>';
     if(libTotal&&mode!=='library')h+='<span>Kaynak modu: '+esc(mode)+' (görseller yer tutucu olabilir)</span>';
@@ -281,12 +300,12 @@ $('ldetail').addEventListener('click',function(ev){
 $('lmore').addEventListener('click',function(){if(!busy&&hasMore)load(false)});
 $('lmeta').addEventListener('click',function(ev){
   if(ev.target.id!=='lreset')return;
-  S.sites=[];S.broken=S.kind=S.tmdb=S.q='';$('lq').value='';renderFilters();load(true);
+  S.sites=fixedSite?[fixedSite]:[];S.broken=S.kind=S.tmdb=S.q=S.id='';$('lq').value='';renderFilters();load(true);
 });
 $('lreload').addEventListener('click',function(){load(true)});
 $('lq').addEventListener('input',function(){
   clearTimeout(qTimer);
-  qTimer=setTimeout(function(){var v=$('lq').value.trim();if(v!==S.q){S.q=v;load(true)}},250);
+  qTimer=setTimeout(function(){var v=$('lq').value.trim();if(v!==S.q||S.id){S.q=v;S.id='';load(true)}},250);
 });
 $('lsort').addEventListener('change',function(){S.sort=$('lsort').value;load(true)});
 $('lview').addEventListener('click',function(ev){
@@ -303,13 +322,7 @@ $('lview').addEventListener('click',function(ev){
     document.querySelectorAll('#lview button').forEach(function(x){x.setAttribute('aria-pressed',String(x.getAttribute('data-view')===v))});
   }
   renderDetail();
-  if(location.hash==='#library')showTab('library');
-  else if(location.hash==='#categories')showTab('categories');
-  else if(location.hash==='#settings')showTab('settings');
-  else if(location.hash==='#backgrounds')showTab('backgrounds');
-  else if(/^#onboard(\/|$)/.test(location.hash))showTab('onboard');
+  var h=location.hash.replace(/^#/,'');
+  showTab(/^(errors|categories|settings|backgrounds)$/.test(h)?h:'onboard');   /* #events / #library / #onboard (eski) -> Siteler */
 })();
-window.addEventListener('hashchange',function(){ // Olay defteri/banner "Taslağı aç" bağlantıları (#onboard/<id>)
-  if(/^#onboard(\/|$)/.test(location.hash))showTab('onboard');
-});
 })();

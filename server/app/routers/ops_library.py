@@ -99,8 +99,8 @@ def _like(text: str) -> str:
 
 
 class _Filters:
-    def __init__(self, sites: list[str], broken: str, kind: str, tmdb: str, q: str) -> None:
-        self.sites, self.broken, self.kind, self.tmdb = sites, broken, kind, tmdb
+    def __init__(self, sites: list[str], broken: str, kind: str, tmdb: str, q: str, item_id: str = "") -> None:
+        self.sites, self.broken, self.kind, self.tmdb, self.item_id = sites, broken, kind, tmdb, (item_id.strip() if isinstance(item_id, str) else "")
         self.tokens = [fold(t) for t in (q or "").split() if t]
         self.q = (q or "").strip()
 
@@ -121,6 +121,9 @@ class _Filters:
         if self.tmdb and skip != "tmdb":
             clauses.append("tmdb_state = ?")
             params.append(self.tmdb)
+        if self.item_id:  # tek yapım (admin olay bağlantısı openMedia)
+            clauses.append("id = ?")
+            params.append(self.item_id)
         for token in self.tokens:  # her sözcük başlıkta ya da özgün başlıkta geçmeli
             clauses.append("fold(title || ' ' || COALESCE(original_title, '') || ' ' || COALESCE(year, '')) LIKE ? ESCAPE '\\'")
             params.append("%" + _like(token) + "%")
@@ -239,13 +242,14 @@ def library(
     kind: str = Query("", pattern="^(|movie|series)$"),
     tmdb: str = Query("", pattern="^(|matched|review|unmatched)$"),
     q: str = Query("", max_length=200),
+    id: str = Query("", max_length=200, description="tek yapım id'si (admin olay bağlantısı)"),
     sort: str = Query("recent", pattern="^(recent|title|broken)$"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     facets: bool = Query(True, description="0: facet sayılarını atla ('daha fazla' isteklerinde)"),
 ) -> dict[str, Any]:
     sites = _split_sites(site)
-    f = _Filters(sites, broken, kind, tmdb, q)
+    f = _Filters(sites, broken, kind, tmdb, q, id)
     try:
         with closing(db.connect()) as conn:
             _materialize(conn)

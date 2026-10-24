@@ -25,6 +25,7 @@ router = APIRouter()
 
 ADMIN_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "admin")
 _ASSETS = {"app.js": "text/javascript", "library.js": "text/javascript", "settings.js": "text/javascript",
+           "errors.js": "text/javascript",
            "categories.js": "text/javascript", "backgrounds.js": "text/javascript",
            "sites.js": "text/javascript", "style.css": "text/css"}
 
@@ -295,7 +296,7 @@ def _playback_view(h: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/api/ops/events")
 def events(site: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=200),
-           before: Optional[str] = Query(None)) -> dict[str, Any]:
+           before: Optional[str] = Query(None), system: bool = Query(False)) -> dict[str, Any]:
     """Merged run + heal feed, newest first. ``before``: ISO time cursor (exclusive).
 
     Each event: ``kind`` scan|heal|cooldown|rollback|tmdb|finder|reset, ``at``, plus the raw record.
@@ -319,7 +320,59 @@ def events(site: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=20
     (``sources, window_n, window_failed, stages, hosts, errors, ok_examples``; ``layers`` = the layer(s) the agent repair was scoped to)
     and, when an agent ran, ``agent_summary`` (``events, turns, tools, tests, errors, last_say``); the raw record also carries
     ``layers``, ``touched_keys`` / ``touched_paths`` (what the proposal changed) of an agent repair.
+    ``system=1``: only the events of no scraper site and no live TV source (TMDB, library reset, finder without a site).
     """
+    rows = _collect_events(site)
+    if system is True:   # direct (test) calls pass the Query default
+        rows = [e for e in rows if _event_source(e) == "system"]
+    rows = [e for e in rows if not before or e["at"] < before]
+    page = rows[:limit]
+    return {"events": page, "next_before": page[-1]["at"] if len(rows) > limit else None}
+
+
+def _event_source(e: dict[str, Any]) -> str:
+    """Where an event comes from for the admin: the scraper site id, ``"live"`` (live TV) or ``"system"``."""
+    if e.get("kind") == "live":
+        return "live"
+    site = e.get("site") or ""
+    return site if site and site in scfg.list_sites() else "system"
+
+
+def _is_error(e: dict[str, Any]) -> bool:
+    """Failed / problem events only (admin "Hatalar"): failed or partial scans, failed heals, cooldowns, finder misses,
+    playback issues, unreadable series pages, failed live / TMDB jobs. Blocked pages are a decision, not an error."""
+    k = e.get("kind")
+    if k in ("scan", "tmdb"):
+        return e.get("status") in ("error", "partial")
+    if k == "live":
+        return e.get("status") == "error"
+    if k == "heal":
+        return e.get("outcome") in ("failed", "not_applied")
+    if k == "finder":
+        return e.get("state") == "not_found"
+    return k in ("cooldown", "playback_issue", "hydrate")
+
+
+@router.get("/api/ops/errors")
+def errors(source: Optional[str] = Query(None, description="site id | live | system"),
+           since: Optional[str] = Query(None, description="ISO time (inclusive)"),
+           limit: int = Query(200, ge=1, le=500)) -> dict[str, Any]:
+    """Problem events of all sources (the ``/api/ops/events`` records, no new storage), newest first. Each event also
+    carries ``source`` (site id | ``live`` | ``system``). ``{events, total, sources}`` (``sources`` = the sources with errors)."""
+    rows = []
+    for e in _collect_events(None):
+        if not _is_error(e) or (since and e["at"] < since):
+            continue
+        src = _event_source(e)
+        rows.append({**e, "source": src})
+    srcs = sorted({e["source"] for e in rows})
+    if source:
+        rows = [e for e in rows if e["source"] == source]
+    return {"events": rows[:limit], "total": len(rows), "sources": srcs}
+
+
+def _collect_events(site: Optional[str]) -> list[dict[str, Any]]:
+    """All feed events (of ``site`` when given), newest first."""
     heals_all = sstate.list_ops("heals", None, 1000)  # newest first
     revertable: set[str] = set()
     for s in {h.get("site") for h in heals_all}:
@@ -361,10 +414,9 @@ def events(site: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=20
         rows.extend(f for f in sourcefinder.events(200) if not site or f.get("site") == site)
     except Exception:  # pragma: no cover - the feed must never fail on an optional kind
         pass
-    rows = [e for e in rows if e.get("at") and (not before or e["at"] < before)]
+    rows = [e for e in rows if e.get("at")]
     rows.sort(key=lambda e: e["at"], reverse=True)
-    page = rows[:limit]
-    return {"events": page, "next_before": page[-1]["at"] if len(rows) > limit else None}
+    return rows
 
 
 # --- trigger (background) ---------------------------------------------------

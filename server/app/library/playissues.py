@@ -374,7 +374,7 @@ def _host_rule(host: str):
 def events(limit: int = FEED_GROUPS, site: Optional[str] = None) -> list[dict]:
     """The issues as admin events (``kind: playback_issue``), newest first: one per (site, class, stream host) =
     ``{id, kind, at, first_at, site, code, label, host, provider, stream_type, note, http, sources, reports, heal_class, triggered_at,
-    episodes: [{source_id, title, season, episode, episode_id, locator, reports, client_code, at}]}``."""
+    episodes: [{source_id, canonical_id, title, season, episode, episode_id, locator, reports, client_code, at}]}``."""
     try:
         where, args = "WHERE i.last_at>=?", [_now() - KEEP_SECONDS]
         if site:
@@ -401,7 +401,7 @@ def events(limit: int = FEED_GROUPS, site: Optional[str] = None) -> list[dict]:
         if r["triggered_at"] and (not g["triggered_at"] or _iso(r["triggered_at"]) > g["triggered_at"]):
             g["triggered_at"] = _iso(r["triggered_at"])
         if len(g["episodes"]) < SAMPLES:
-            g["episodes"].append({"source_id": r["source_id"], "title": r["title"] or r["canonical_id"], "season": r["season"], "episode": r["episode"],
+            g["episodes"].append({"source_id": r["source_id"], "canonical_id": r["canonical_id"], "title": r["title"] or r["canonical_id"], "season": r["season"], "episode": r["episode"],
                                   "episode_id": r["episode_id"], "locator": r["locator"], "reports": r["reports"], "client_code": r["client_code"],
                                   "at": _iso(r["last_at"])})
     out = sorted(groups.values(), key=lambda g: g["at"], reverse=True)
