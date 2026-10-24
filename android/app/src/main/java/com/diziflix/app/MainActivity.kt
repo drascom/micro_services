@@ -300,7 +300,9 @@ class MainActivity : Activity() {
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD to ("MediaFastForward" to 417),
             KeyEvent.KEYCODE_MEDIA_REWIND to ("MediaRewind" to 412),
             KeyEvent.KEYCODE_PROG_RED to ("ColorF0Red" to 403),
+            KeyEvent.KEYCODE_PROG_GREEN to ("ColorF1Green" to 404),
             KeyEvent.KEYCODE_PROG_YELLOW to ("ColorF2Yellow" to 405),
+            KeyEvent.KEYCODE_PROG_BLUE to ("ColorF3Blue" to 406),
             KeyEvent.KEYCODE_CAPTIONS to ("ColorF2Yellow" to 405),
         )
     }

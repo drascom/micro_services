@@ -206,6 +206,10 @@ Yeni satır kimlikleri `featured_series`, `featured_movies`, `anime` de `/api/ro
   "card":"","portrait":"","backdrop":"","has_backdrop":false,"genres":["Haber"],"year":null,"progress":null,...}`.
   `channel_no` = `live_all` sırasında 1..N (ada göre kararlı); kategori satırlarında da aynı numara. Kanal detayı YOK (OK = oynatıcı).
   Akışı hiç çalışmayan VE YouTube'u olmayan kanal listelenmez.
+- Admin M3U kaynakları (`server/app/library/m3u.py`) da aynı kanal akışına girer, ek alanlar: kartta `logo` (tvg-logo URL'si ya da
+  `null`; famelack kanalında hep `null`), `sources:["m3u"]` (famelack: `["famelack"]`), `genres` = group-title; kategori satırı
+  `live_<group-title slug'ı>` (bilinen adlar famelack kategorisine eşlenir: Haber → `live_news`). Akışta `source:"m3u"`;
+  `#EXTVLCOPT` Referer/User-Agent'lı kanal akışı her zaman vekilden geçer (`proxy_reason:"recipe"`).
 - `GET /api/streams/ch_<nanoid>` → mevcut yanıt şekli + `"live":true`, `"channel":{"id","title","channel_no"}`; `resume_position:0`,
   `duration:null`, `subtitles`/`audio` boş. `streams[]` sırası: çalışan m3u8'ler (`type:"hls"`, `label:"<host> · canlı"`), sonra
   YouTube (`type:"embed"`, `https://www.youtube-nocookie.com/embed/<id>?autoplay=1`, `label:"YouTube · canlı"`), en sonda sağlıksız

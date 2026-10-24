@@ -9,19 +9,19 @@
   /* ---------- sabitler (tasarimdan birebir) ---------- */
   var W = 1920, H = 1080;
   var PE = 140;                 /* sol kenar bosluk */
-  var BRAND_W = 107;            /* Dock: sol ustteki marka isareti (83px) + bosluk; saat/selamlama bu kadar saga */
+  var BRAND_W = 107;            /* sol ustteki marka isareti (83px) + bosluk; saat + selam satiri bu kadar saga */
   var LIST_TOP = 236, ROW_H = 128, VIS = 6;
   var DOCK = { left: 208, top: 856, width: 1504, height: 152, pad: 16, visible: 6 };   /* dock: kucuk, alt kenarda (856..1008) */
   var GRID = { left: 140, cols: 5, w: 300, h: 244, gap: 28 };
   var GRID_STRIDE = GRID.h + GRID.gap;
   /* bolum sayfasi: yatay satirlar (kart = izgara karti) */
   var SEC = { top: 268, stride: 330, cw: 300, gap: 28, vis: 5 };
-  /* ana ekran "Devam Et" seridi: List = vitrin altinda (kontrollerin solu), Dock = dock'un ustunde */
-  /* List sag sutunu x=920 (menu odak kutusu en fazla ~840'a kadar; >=80px bosluk), seridin sagi kontrollerin solunda (1600) */
+  /* ana ekran "Devam Et" seridi: List = vitrin altinda, Dock = dock'un ustunde */
+  /* List sag sutunu x=920 (menu odak kutusu en fazla ~840'a kadar; >=80px bosluk), seridin sagi 1600'de */
   var CONT_L = { left: 912, top: 768, w: 208, h: 117, gap: 16, width: 688, labelW: 0 };
   /* Dock: baslik seridin USTUNDE (612), kartlar 300x169 (16:9) 658..827, dock 856'da */
   var CONT_D = { left: 200, top: 612, w: 300, h: 169, gap: 20, width: 1512, labelW: 0, big: 1 };
-  var HERO_D_TOP = 224;   /* dock vitrini: selamlama (138..172) ile arasinda ~52px */
+  var HERO_D_TOP = 224;   /* dock vitrini (saat + selam satiri 72..136 ustte) */
   var CONT_ENTRY = { id: 'continue', title: 'İzlemeye Devam Et' };
   var SOON_TEXT = { dvr: 'Kaydedilen yayınlar burada listelenecek.' };
   /* Canli TV kanal kartlari (card_kind:"channel"; gorsel/logo yok): kategoriye gore sabit ton + bas harf + kanal no */
@@ -32,8 +32,10 @@
   var CH_TONE = { news: 200, 'top-news': 200, sports: 140, kids: 32, animation: 32, music: 290, religious: 44, documentary: 172,
     movies: 228, series: 252, entertainment: 330, general: 210, business: 190, culture: 18, education: 160 };
   /* kontrol menusu: Ara (kutuphane + canli site aramasi) · Listem · Ayarlar · profil (avatar + ad; OK = hizli profil degistirici).
-     List: Ara/Listem/Ayarlar sag alt sutunda, profil en ustte saatin solunda; Dock: ustte tek sira, profil en sagda */
-  var CTRLS = [{ id: 'search', label: 'Ara' }, { id: 'mylist', label: 'Listem' }, { id: 'settings', label: 'Ayarlar' }, { id: 'profile', label: '' }];
+     Iki duzende sag ustte tek sira Ara · Listem · Ayarlar · Profil (sol ustte marka isareti · saat · selam) */
+  /* key = kumanda renk tusu kisayolu (oynatici disinda): Kirmizi Ara, Yesil Listem, Mavi Ayarlar; hapin basinda renkli nokta */
+  var CTRLS = [{ id: 'search', label: 'Ara', key: 'red' }, { id: 'mylist', label: 'Listem', key: 'green' },
+    { id: 'settings', label: 'Ayarlar', key: 'blue' }, { id: 'profile', label: '' }];
   var PF = 3;   /* CTRLS icinde profil */
   var SEARCH_SVG = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>';
   function ctrlIdx(id) { for (var i = 0; i < CTRLS.length; i++) if (CTRLS[i].id === id) return i; return 0; }
@@ -43,7 +45,7 @@
   var SHADE_CENTER = 'radial-gradient(ellipse 1100px 620px at 960px 560px, rgba(8,8,10,.34), rgba(8,8,10,.10) 70%, rgba(8,8,10,0)), linear-gradient(0deg, rgba(8,8,10,.26), rgba(8,8,10,0) 34%)';
   var CENTER_SCREENS = { server: 1, profiles: 1 };
   var K_LOOK = 'dzproto.look', K_PROFILE = 'dzproto.profile';
-  var MANUAL_FADE_MS = 520;
+  var MANUAL_FADE_MS = 260;
 
   /* ---------- yardimcilar ---------- */
   function el(tag, cls, txt) {
@@ -141,6 +143,18 @@
     setT(stage, 'translate(' + Math.round((vw - W * s) / 2) + 'px,' + Math.round((vh - H * s) / 2) + 'px) scale(' + s + ')');
   }
 
+  /* Sahne sabit 1920x1080 ve transform ile olcekli: tarayici girdiye odakta / TV ekran klavyesi acilinca odakli girdiyi
+     "gorunur yapmak" icin #viewport/#stage'i yatay kaydirabiliyor (overflow:hidden programatik kayar) -> sol kenardaki
+     ipucu cubugu, geri dugmesi kirpilir. Odak kaydirmasiz; yatay kayma her zaman 0'a doner (girdinin ic kaymasi haric). */
+  function focusNoScroll(inp) { try { inp.focus({ preventScroll: true }); } catch (e) { inp.focus(); } }
+  function lockScrollX(ev) {
+    var t = ev.target;
+    if (t === doc) t = doc.scrollingElement || doc.documentElement;
+    if (!t || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA') return;
+    if (t.scrollLeft) t.scrollLeft = 0;
+  }
+  doc.addEventListener('scroll', lockScrollX, true);
+
   function applyClasses() {
     var L = S.look, b = curBg();
     var c = ['m-' + L.material, 'f-' + L.focus, 'l-' + L.layout];
@@ -200,20 +214,32 @@
     }
     layer.style.transition = 'none';
     layer.style.opacity = 0;
+    layer.style.willChange = 'opacity';
     bgLayers.appendChild(layer);          /* en uste al: yeni gorsel eskinin USTUNDE belirir (ortada karanlik cukur yok) */
-    var im = new Image();
-    im.onload = im.onerror = function () {
+    loadDecoded((F.slots[F.cur] || {}).src || '', function () {
       if (S.bgKey !== key) return;
       void layer.offsetWidth;
       layer.style.transition = 'opacity ' + MANUAL_FADE_MS + 'ms cubic-bezier(.2,.8,.2,1)';
       layer.style.opacity = 1;
       if (fadeTimer) g.clearTimeout(fadeTimer);
       fadeTimer = g.setTimeout(function () {
+        layer.style.willChange = '';
         for (var j in layerEls) if (j !== key) { layerEls[j].style.transition = 'none'; layerEls[j].style.opacity = 0; }
         teardown(key);
       }, MANUAL_FADE_MS + 60);
+    });
+  }
+  /* gorsel yuklenip COZULDUKTEN sonra cb (decode() varsa): gecis ilk karede takilmaz */
+  function loadDecoded(src, cb, onErr) {
+    var im = new Image(), done = false;
+    function ok() { if (!done) { done = true; cb(im); } }
+    im.onload = function () {
+      if (im.decode) { try { im.decode().then(ok, ok); return; } catch (e) {} }
+      ok();
     };
-    im.src = (F.slots[F.cur] || {}).src || '';
+    im.onerror = function () { if (!done) { done = true; (onErr || cb)(im); } };
+    im.src = src;
+    return im;
   }
   /* etkin olmayan katmanlari kaldir */
   function teardown(keep) {
@@ -242,7 +268,12 @@
     top.style.transition = 'none';
     if (ms) { top.style.opacity = 0; void top.offsetWidth; }
     if (top.fdU !== tu) { top.style.backgroundImage = tu ? 'url("' + tu + '")' : 'none'; top.fdU = tu; }
-    if (ms) { void top.offsetWidth; top.style.transition = 'opacity ' + ms + 'ms linear'; }
+    if (ms) {
+      top.style.willChange = 'opacity';      /* katman yalniz gecis boyunca (TV GPU bellegi) */
+      if (top.wcT) g.clearTimeout(top.wcT);
+      top.wcT = g.setTimeout(function () { top.wcT = null; top.style.willChange = ''; }, ms + 80);
+      void top.offsetWidth; top.style.transition = 'opacity ' + ms + 'ms linear';
+    }
     top.style.opacity = 1;
   }
   /* fader'a yeni gorsel: ust kare degisir, arka plan + cam paneller crossfade */
@@ -258,7 +289,7 @@
 
   /* ---------- Gorsellerim: sunucuya yuklenen gorseller, karisik sira, ~60 sn'de bir crossfade ---------- */
   var MB = { slots: [null, null], cur: 0, layer: null, frs: null, order: [], pos: 0, last: -1, timer: null };
-  var MINE_ROTATE_MS = 60000, MINE_FADE_MS = 2000;
+  var MINE_ROTATE_MS = 60000, MINE_FADE_MS = 1200;
   function mineNextItem() {
     var n = DZP.BG_LIST.length;
     if (!n) return null;
@@ -278,9 +309,9 @@
   function mineStop() { if (MB.timer) { g.clearInterval(MB.timer); MB.timer = null; } }
   function mineRotate() {
     if (S.screen === 'player' || S.bgKind !== 'mine' || DZP.BG_LIST.length < 2) return;   /* oynaticida durur */
-    var it = mineNextItem(), im = new Image();
-    im.onload = function () { if (S.bgKind === 'mine' && MB.frs && S.screen !== 'player') fdShow(MB, it, MINE_FADE_MS); };
-    im.src = it.src;
+    if (stage.className.indexOf('is-dim') >= 0) return;   /* karartilmis ekranda (detay/bolum) gorunmez: calismaz */
+    var it = mineNextItem();
+    loadDecoded(it.src, function () { if (S.bgKind === 'mine' && MB.frs && S.screen !== 'player') fdShow(MB, it, MINE_FADE_MS); }, function () {});
   }
   /* liste yenilendi (acilis, sunucu degisti, yukleme): sira sifirlanir, mod yeniden degerlendirilir */
   function reloadBackgrounds(cb) {
@@ -301,7 +332,7 @@
      yuklenen gorsel bir kez canvas'ta kucultulup buyutulur (64x36 -> 320x180 JPEG dataURL = on-bulanik kopya); canvas
      kullanilamazsa cam yalniz ton. Icerik/gorsel yoksa (Canli TV, DVR) Gorsellerim'e, o da yoksa koyu gradyana donulur. */
   var PB = { want: '', src: '', slots: [null, null], cur: 0, layer: null, frs: null };
-  var POSTER_FADE_MS = 1000, SECTION_FADE_MS = 400;
+  var POSTER_FADE_MS = 700, SECTION_FADE_MS = 240;   /* TV: odak gecisi kisa; vitrin dongusu yumusak */
   function posterMode() { return S.look.bg === 'posters'; }
   function preblur(im) {
     try {
@@ -501,7 +532,7 @@
     }
   }
   function makeMat(cls, x, y) {
-    var m = el('div', 'mat ' + (cls || ''));
+    var m = el('div', 'mat rclip ' + (cls || ''));
     var img = el('div', 'mat-img');
     var F = activeFader();
     if (F) matFade(img, F, 0);
@@ -519,7 +550,7 @@
     if (S.loading) return S.opening ? 'Açılıyor…' : 'Yükleniyor…';
     var h = hourNow();
     var w = h >= 5 && h < 12 ? 'Günaydın' : h >= 12 && h < 18 ? 'İyi günler' : h >= 18 && h < 22 ? 'İyi akşamlar' : 'İyi geceler';
-    return S.pname ? w + ', ' + S.pname : w;
+    return w;   /* saatin yaninda yalniz selam (ad profil hapinda) */
   }
 
   /* ---------- kart metinleri ---------- */
@@ -583,16 +614,12 @@
     var n = S.entries.length, v = { names: [], tiles: [], ctrls: [], widths: [], list: list, preview: preview };
 
     var ck = el('div', 'clock', clockText());
-    var gr = el('div', 'greet' + (S.error ? ' warn' : ''), preview ? '' : greetText());
-    var top = null;   /* List: sag ust sira = profil hapi + saat (dikey ortali) */
-    if (list) {
-      top = el('div', 'top-r'); top.style.right = '144px'; top.style.top = '72px';
-      ck.style.position = 'relative'; ck.style.top = '0';
-      top.appendChild(ck); root.appendChild(top);
-      gr.style.right = '144px'; gr.style.textAlign = 'right';
-    } else { ck.style.left = (PE + BRAND_W) + 'px'; gr.style.left = (PE + BRAND_W) + 'px'; root.appendChild(ck); }
-    root.appendChild(gr);
-    /* kucuk marka isareti: sol ust (List: menunun ustu; Dock: saatin solu, saat/selamlama BRAND_W kadar saga) */
+    var gr = el('div', 'greet' + (S.error ? ' warn' : ''), greetText());
+    /* sol ust tek satir (iki duzende) = marka isareti · saat · selam (saatle dikey hizali) */
+    var tl = el('div', 'top-r top-l'); tl.style.left = (PE + BRAND_W) + 'px'; tl.style.top = '72px';
+    ck.style.position = gr.style.position = 'relative'; ck.style.top = gr.style.top = '0';
+    tl.appendChild(ck); tl.appendChild(gr); root.appendChild(tl);
+    /* kucuk marka isareti: sol ust, saatin solu (saat + selam BRAND_W kadar saga) */
     root.appendChild(brandImg('brand-mark', 'img/mascot-sm.png', 'DiziFlix'));
     /* acilis/yukleme: ortada kare logo (yukleme bitince renderHome yeniden kurar, kaybolur) */
     if (!preview && S.loading && !S.error) root.appendChild(brandImg('boot-logo', 'img/logo-square.png', 'DiziFlix'));
@@ -620,7 +647,7 @@
       v.nt = nt;
       root.appendChild(el('div', 'dock-scrim'));   /* afis ne kadar parlak olursa olsun dock okunur */
       var dock = makeMat('dock', DOCK.left, DOCK.top);
-      var clip = el('div', 'dock-clip'), din = el('div', 'dock-in');
+      var clip = el('div', 'dock-clip rclip'), din = el('div', 'dock-in');
       var dpl = el('div', 'dock-plate');
       dpl.style.width = nt + 'px';
       din.appendChild(dpl);
@@ -651,16 +678,13 @@
       v.cont = { box: cs, clip: cclip, inner: cin, tiles: {}, C: C };
     }
 
+    /* kontroller: sag ustte tek sira Ara · Listem · Ayarlar · Profil (iki duzende) */
     var cw = el('div', 'ctrls');
-    if (list) { cw.style.right = '122px'; cw.style.top = '744px'; cw.style.webkitFlexDirection = cw.style.flexDirection = 'column';
-      cw.style.webkitAlignItems = cw.style.alignItems = 'flex-end'; }
-    else { cw.style.right = '122px'; cw.style.top = '72px'; }
+    cw.style.right = '122px'; cw.style.top = '72px';
     for (var c = 0; c < CTRLS.length; c++) {
       var b = el('div', 'ctrl');
-      var inTop = list && CTRLS[c].id === 'profile';
-      if (!list && c) b.style.marginLeft = '8px';
-      if (inTop) b.style.marginRight = '28px';
-      b.style.webkitTransformOrigin = b.style.transformOrigin = list ? 'right center' : 'center';
+      if (c) b.style.marginLeft = '8px';
+      b.style.webkitTransformOrigin = b.style.transformOrigin = 'center';
       b.appendChild(makeMat(''));
       if (CTRLS[c].id === 'profile') {
         var cp = curProfile(), guest = !cp || cp.guest, nm2 = guest ? 'Misafir' : (cp.name || '—');
@@ -674,11 +698,12 @@
         b.appendChild(av);
         b.appendChild(el('span', 'ctrl-name', nm2));
       } else {
+        if (CTRLS[c].key) b.appendChild(el('span', 'ctrl-dot k-' + CTRLS[c].key));
         if (CTRLS[c].id === 'search') { var si = el('span', 'ctrl-ic'); si.innerHTML = SEARCH_SVG; b.appendChild(si); }
         b.appendChild(el('span', '', CTRLS[c].label));
       }
       bindPointer(b, 'controls', c);
-      if (inTop) { top.insertBefore(b, ck); v.pf = b; v.top = top; } else cw.appendChild(b);
+      cw.appendChild(b);
       v.ctrls.push(b);
     }
     root.appendChild(cw);
@@ -699,7 +724,7 @@
     if (!preview) bindPointer(pBtn, 'hplay', 0);
     tx.appendChild(pBtn);
     if (list) {
-      /* konum/boyut CSS'te (.l-list .peek*): yazi selamlama ile Devam Et arasinda dikey ortali (kart yok) */
+      /* konum/boyut CSS'te (.l-list .peek*): yazi ust sira ile Devam Et arasinda dikey ortali (kart yok) */
     } else {
       pk.style.left = DOCK.left + 'px'; pk.style.top = HERO_D_TOP + 'px';
       tx.style.left = '680px'; tx.style.top = '20px'; tx.style.width = '824px';
@@ -739,7 +764,7 @@
     if (!c) return;
     var C = c.C, items = S.cont.items, n = items.length, i = S.cont.idx, step = C.w + C.gap, k;
     var vis = Math.max(1, Math.floor(C.width / step));
-    var off = clamp(i - (vis - 1), 0, Math.max(0, n - vis)), more = n - off > vis;
+    var off = c.off = keepOff(c.off, i, vis, clamp(i - (vis - 1), 0, Math.max(0, n - vis))), more = n - off > vis;
     setT(c.inner, 'translateX(' + (-off * step) + 'px)');
     setMask(c.clip, 'linear-gradient(90deg, ' + (off > 0 ? 'rgba(0,0,0,.3) 0px, #000 40px' : '#000 0px') + ', #000 ' +
       (C.width - (more ? 90 : 0)) + 'px, ' + (more ? 'rgba(0,0,0,.2)' : '#000') + ' ' + C.width + 'px)');
@@ -856,7 +881,7 @@
   function updateHome(v, zone, idx, ctrl, peekMode) {
     var L = S.look, glass = L.focus === 'glass', photo = !!S.bgKind, n = S.entries.length, i;
     if (v.list) {
-      var off = clamp(idx - (VIS - 2), 0, Math.max(0, n - VIS));
+      var off = v.lOff = keepOff(v.lOff, idx, VIS - 1, clamp(idx - (VIS - 2), 0, Math.max(0, n - VIS)));
       setT(v.inner, 'translateY(' + (-off * ROW_H) + 'px)');
       setMask(v.wrap, 'linear-gradient(180deg, ' + (off > 0 ? 'rgba(0,0,0,.28) 0px, #000 84px' : '#000 0px') + ', #000 ' +
         ((VIS - 1) * ROW_H - 8) + 'px, rgba(0,0,0,.22) ' + (VIS * ROW_H - 12) + 'px, rgba(0,0,0,0) ' + (VIS * ROW_H + 40) + 'px)');
@@ -872,10 +897,10 @@
         setT(v.plate, tr(x, y));
         setT(v.plate.img, tr(-x, -y));
         v.plate.style.width = ((v.widths[idx] || 400) + 72) + 'px';
-        v.plate.className = 'mat plate' + (zone === 'list' && n ? ' on' : '');
+        v.plate.className = 'mat rclip plate' + (zone === 'list' && n ? ' on' : '');
       }
     } else {
-      var nt = v.nt, doff = clamp(idx - (DOCK.visible - 2), 0, Math.max(0, n - DOCK.visible)), more = n - doff > DOCK.visible;
+      var nt = v.nt, doff = v.dOff = keepOff(v.dOff, idx, DOCK.visible, clamp(idx - (DOCK.visible - 2), 0, Math.max(0, n - DOCK.visible))), more = n - doff > DOCK.visible;
       setT(v.dockIn, 'translateX(' + (-doff * nt) + 'px)');
       setMask(v.dockClip, 'linear-gradient(90deg, ' + (doff > 0 ? 'rgba(0,0,0,.3) 0px, #000 120px' : '#000 0px') + ', #000 ' +
         (DOCK.width - (more ? 200 : 0)) + 'px, ' + (more ? 'rgba(0,0,0,.25)' : '#000') + ' ' + DOCK.width + 'px)');
@@ -890,9 +915,62 @@
     peekFor(v, zone, idx, peekMode !== 'fade');
   }
 
-  function renderHome() {
+  /* Ana ekran DOM onbellegi (TV akiciligi): bolum/Listem/detaydan donuste ana ekran yeniden KURULMAZ; ayni veri + gorunumse
+     onceki kok dugum geri takilir, yalniz odak/vitrin guncellenir (tam DOM + afis yeniden yukleme/decode yok). Veri/gorunum
+     degisince (profil, menu, Ayarlar, yukleme) yeniden kurulur. Devam Et seridi degisirse yalniz serit yenilenir. */
+  var HC = null;
+  function homeSig() {
+    var cp = curProfile(), L = S.look;
+    return [S.gen, S.pid, cp ? (cp.name || '') + '/' + (cp.avatar || '') + (cp.guest ? '/g' : '') : '', S.loading ? 1 : 0, S.error || '',
+      L.layout, L.focus, L.material, L.bg, S.cont.items.length ? 1 : 0].join('|');
+  }
+  function contKey(c) {
+    var a = [], it, i;
+    for (i = 0; i < c.items.length; i++) { it = c.items[i]; a.push((it.card_key || it.id) + ':' + ((it.progress && it.progress.pct) || 0)); }
+    return a.join(',');
+  }
+  /* Devam Et verisi degisti: serit (ve gerekirse ekran) guncellenir */
+  function homeContChanged() {
+    if (S.screen !== 'home' || !HV) return;        /* ekran degisimi suruyor: donuste HC.cont farki fark edilir */
+    if (!HC || HC.v !== HV) return renderHome();
+    homeContSync();
+    updateHome(HV, S.zone, S.idx, S.ctrl);
+  }
+  function homeContSync() {
+    if (HC.cont === S.cont) return;
+    var c = HV.cont, k = contKey(S.cont);
+    if (!c || !S.cont.items.length) return renderHome();
+    if (k !== HC.contK) { for (var t in c.tiles) c.inner.removeChild(c.tiles[t]); c.tiles = {}; c.off = 0; }
+    HC.cont = S.cont; HC.contK = k;
+  }
+  function homeSyncMats(root) {
+    var F = activeFader(), ml = root.querySelectorAll('.mat-img'), i;
+    for (i = 0; F && i < ml.length; i++) if (ml[i].fd === F) fdPaint(F, ml[i].fdFr, 'blur', 0);
+    updateMats();
+  }
+  function renderHome(reuse) {
+    S.homeAt = Date.now();
+    if (reuse && HC && HC.sig === homeSig() && HC.entries === S.entries && !!HC.v.cont === !!S.cont.items.length) {
+      screenEl.innerHTML = '';
+      screenEl.appendChild(HC.root);
+      HV = HC.v;
+      if (HV.pop) { if (HV.pop.parentNode) HV.pop.parentNode.removeChild(HV.pop); HV.pop = null; }
+      if (HV.peek && /out/.test(HV.peek.tx.className)) HV.peek.key = null;   /* yarim kalan vitrin degisimi: yeniden */
+      var hc = HC;
+      homeContSync();
+      if (HC !== hc) return;                       /* serit yapisi degisti: yeniden kuruldu */
+      homeSyncMats(HC.root);
+      HV.clock.textContent = clockText(); HV.greet.textContent = greetText();
+      updateHome(HV, S.zone, S.idx, S.ctrl);
+      if (S.pop) popBuild(false);
+      g.setTimeout(updatePrompt, 800);
+      return;
+    }
     screenEl.innerHTML = '';
-    HV = buildHome(screenEl, false);
+    var root = el('div', 'home-root');
+    screenEl.appendChild(root);
+    HV = buildHome(root, false);
+    HC = { root: root, v: HV, sig: homeSig(), entries: S.entries, cont: S.cont, contK: contKey(S.cont) };
     measure(HV);
     updateHome(HV, S.zone, S.idx, S.ctrl);
     if (S.pop) popBuild(false);
@@ -906,20 +984,23 @@
   var peekDebounce = null;
   function homeFocus(zone, idx, ctrl) {
     if (idx !== S.idx) S.heroIdx = 0;
+    S.navAt = Date.now();
     S.zone = zone; S.idx = idx; S.ctrl = ctrl;
+    if (zone === 'controls') S.topSeen = true;
     if (!HV) return;
     var v = HV;
     updateHome(v, zone, idx, ctrl, 'skip');
-    /* odak hemen; vitrin kisa gecikmeyle (hizli gezinmede gorsel yuklemesin). Afis modunda gorsel hazirsa 100 ms, degilse
-       150 ms; bolum degisiminde gecis kisa (SECTION_FADE_MS), vitrin dongusu POSTER_FADE_MS */
+    /* odak hemen; vitrin odak durunca (hizli gezinmede arka plan her adimda degismez, gorsel yuklenmez). Afis modunda gorsel
+       hazirsa 250 ms, degilse 300 ms; bolum degisiminde gecis kisa (SECTION_FADE_MS), vitrin dongusu POSTER_FADE_MS */
     if (peekDebounce) g.clearTimeout(peekDebounce);
-    var pm = posterMode(), wait = pm ? (posterIsReady(peekItem(zone, idx)) ? 100 : 150) : 200;
+    var pm = posterMode(), wait = pm ? (posterIsReady(peekItem(zone, idx)) ? 250 : 300) : 200;
     peekDebounce = g.setTimeout(function () { if (HV === v) peekFor(v, S.zone, S.idx, false, pm ? SECTION_FADE_MS : 0); }, wait);
   }
 
   /* bolum vitrini otomatik doner (7 sn) */
   g.setInterval(function () {
     if (S.screen !== 'home' || !HV || S.zone !== 'list') return;
+    if (Date.now() - (S.homeAt || 0) < 4000 || Date.now() - (S.navAt || 0) < 3000) return;   /* donus/gezinme sirasinda gecis yok */
     var e = S.entries[S.idx];
     if (!e || !e.items || e.items.length < 2) return;
     S.heroIdx = (S.heroIdx + 1) % e.items.length;
@@ -945,11 +1026,11 @@
     var offset = first ? 0 : e.items.length;
     api.row(e.id, S.pid, offset, 40, function (err, data) {
       e.loading = false;
-      if (err) { e.err = err.message; if (S.screen === 'grid' && S.grid && S.grid.entry === e) renderGridWindow(); return; }
+      if (err) { e.err = err.message; if (GV && S.screen === 'grid' && S.grid && S.grid.entry === e) renderGridWindow(); return; }
       var items = data.items || [];
       e.items = first ? items : e.items.concat(items);
       e.total = data.total !== undefined ? data.total : e.items.length;
-      if (S.screen === 'grid' && S.grid && S.grid.entry === e) { GV.count.textContent = e.total; renderGridWindow(); }
+      if (GV && S.screen === 'grid' && S.grid && S.grid.entry === e) { GV.count.textContent = e.total; renderGridWindow(); }
     });
   }
   function renderGrid() {
@@ -974,13 +1055,17 @@
     bindPointer(t, 'grid', i);
     return t;
   }
-  function channelTile(it) {
-    var t = el('div', 'gt'), inn = el('div', 'gt-in'), im = el('div', 'gt-img ch-art'), h = chHue(it);
+  function chArt(it) {
+    var im = el('div', 'gt-img ch-art'), h = chHue(it);
     im.style.background = 'linear-gradient(150deg, hsla(' + h + ',42%,46%,.58), hsla(' + ((h + 28) % 360) + ',38%,22%,.62))';
     im.appendChild(el('div', 'ch-ini', chInitials(it)));
     if (it.channel_no) im.appendChild(el('div', 'ch-no', String(it.channel_no)));
     im.appendChild(el('div', 'ch-live', 'CANLI'));
-    inn.appendChild(im);
+    return im;
+  }
+  function channelTile(it) {
+    var t = el('div', 'gt'), inn = el('div', 'gt-in');
+    inn.appendChild(chArt(it));
     inn.appendChild(el('div', 'gt-name ell', it.title));
     var cc = chCats(it);
     inn.appendChild(el('div', 'gt-sub ell', (it.channel_no ? 'Kanal ' + it.channel_no : 'Canlı') + (cc.length ? ' · ' + cc.join(', ') : '')));
@@ -1002,7 +1087,7 @@
     if (!GV) return;
     var G = S.grid, e = G.entry, n = e.items.length, row = Math.floor(G.idx / GRID.cols);
     var lastRow = Math.max(0, Math.floor((n - 1) / GRID.cols));
-    var off = clamp(row - 1, 0, Math.max(0, lastRow - 2));
+    var off = GV.off = keepOff(GV.off, row, 3, clamp(row - 1, 0, Math.max(0, lastRow - 2)));
     setT(GV.inner, 'translateY(' + (-off * GRID_STRIDE) + 'px)');
     setMask(GV.wrap, 'linear-gradient(180deg, ' + (off > 0 ? 'rgba(0,0,0,0) 0px, #000 40px' : '#000 0px') + ', #000 700px, rgba(0,0,0,0) 840px)');
     /* sanal pencere: yalniz gorunen +-1 satir DOM'da */
@@ -1029,12 +1114,57 @@
   }
 
   /* =====================================================================
-     BOLUM SAYFASI (menu ogesi -> kendi satirlari; satir icinde yatay gezinme)
+     BOLUM SAYFASI (menu ogesi -> kendi satirlari). Sabit "mercek" odak: odak yeri satirin ilk yuvasi (x=PE) ve odak
+     satirinin dikey konumu SABIT; ←→ kart seridi (translateX), ↑↓ satirlar (translateY) kayar, mercek kipirdamaz.
+     Satir kendi icinde sonsuz dongu (toplam > SECL.vis): sanal konum r.pos (sinirsiz), gercek indeks r.col = pos mod total.
+     Yuklenmemis indeks: yer tutucu kart + /api/row sayfasi (on ek r.items sirali, uzak kuyruk r.tail[i]; bitisince on eke katilir).
+     Az ogeli satir (toplam <= SECL.vis): dongu yok, kartlar mercekten baslar, uclarda durur.
      ===================================================================== */
   var SECV = null;
+  var SECL = { cw: 360, ch: 312, gap: 32, vis: 5, stride: 440, rowTop: 30, cardTop: 72, page: 40, repMs: 120 };
+  SECL.step = SECL.cw + SECL.gap;
+  var keyRep = false;   /* son tus basili tutma tekrari mi (keydown ev.repeat) */
+  function md(a, n) { return ((a % n) + n) % n; }
+  function secLoop(r) { return r.total > SECL.vis; }
+  function secItem(r, i) { return r.items[i] || (r.tail && r.tail[i]) || null; }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  /* kart alti 3 satir: [ad, bolum/tur/kanal no, yil · puan | CANLI] */
+  function cardLines(it) {
+    if (isChannel(it)) {
+      var cc = chCats(it), l2 = [];
+      if (it.channel_no) l2.push(String(it.channel_no));
+      if (cc.length) l2.push(cc.join(', '));
+      return [it.title || '', l2.join(' · '), 'CANLI'];
+    }
+    var se = it.season !== undefined && it.season !== null && it.episode ? 'S' + pad2(+it.season) + ' B' + pad2(+it.episode) : '';
+    var g2 = it.genres && it.genres.length ? it.genres.slice(0, 2).join(' · ') : '';
+    var l2 = it.type === 'movie' ? g2 : (it.episode_label || se || g2);
+    var l3 = [], rt = it.imdb_rating !== undefined && it.imdb_rating !== null ? it.imdb_rating : it.rating;
+    if (it.year) l3.push(String(it.year));
+    if (rt) l3.push('★ ' + (+rt).toFixed(1));
+    return [it.title || '', l2, l3.join(' · ')];
+  }
+  function secTile(it) {
+    var t = el('div', 'gt sc'), inn = el('div', 'gt-in'), im, ln = it ? cardLines(it) : ['', '', ''];
+    if (!it) { t.className = 'gt sc ph'; im = el('div', 'gt-img'); }
+    else if (isChannel(it)) im = chArt(it);
+    else {
+      im = el('div', 'gt-img');
+      var img = el('img');
+      img.alt = ''; img.src = api.sized(it.card_kind === 'episode' && it.has_still && it.still_url ? it.still_url : (it.card || it.backdrop), 384, 216);
+      img.onerror = function () { img.style.visibility = 'hidden'; };
+      im.appendChild(img);
+    }
+    inn.appendChild(im);
+    inn.appendChild(el('div', 'gt-name ell', ln[0]));
+    inn.appendChild(el('div', 'gt-sub ell', ln[1]));
+    inn.appendChild(el('div', 'gt-sub gt-sub3 ell', ln[2]));
+    t.appendChild(inn);
+    return t;
+  }
   function openSection(entry) {
     if (entry.status === 'soon') { S.soon = entry; return go('soon'); }
-    var P = S.sec = { entry: entry, rows: null, row: 0, err: null, loading: true };
+    var P = S.sec = { entry: entry, rows: null, row: 0, err: null, loading: true, last: 0 };
     go('section');
     api.section(entry.id, S.pid, function (err, data) {
       if (S.sec !== P) return;
@@ -1045,7 +1175,8 @@
         var rs = data.rows || [];
         for (var i = 0; i < rs.length; i++) {
           if (!rs[i].items || !rs[i].items.length) continue;
-          P.rows.push({ id: rs[i].id, title: rs[i].title, items: rs[i].items, total: rs[i].total || rs[i].items.length, col: 0 });
+          P.rows.push({ id: rs[i].id, title: rs[i].title, items: rs[i].items, total: Math.max(rs[i].total || 0, rs[i].items.length),
+            col: 0, pos: 0, tail: {}, pend: [] });
         }
       }
       if (S.screen === 'section') renderSectionWindow();
@@ -1056,13 +1187,14 @@
     screenEl.innerHTML = '';
     var back = el('div', 'back'); back.innerHTML = chev(true); back.appendChild(doc.createTextNode('Ana sayfa'));
     back.onclick = function () { goHome(); };
-    var info = el('div', 'sec-info ell', '');
     var wrap = el('div', 'sec-wrap'), inner = el('div', 'sec-in');
+    /* mercek: arka cam plaka (seridin altinda) + on kenar isigi (ustunde); yeri sabit, odak satirinin ilk yuvasi */
+    var lensB = el('div', 'lens lens-b'), lensF = el('div', 'lens lens-f');
     var empty = el('div', 'grid-empty', '');
-    wrap.appendChild(inner);
+    wrap.appendChild(lensB); wrap.appendChild(inner); wrap.appendChild(lensF);
     screenEl.appendChild(back); screenEl.appendChild(el('div', 'h-title nowrap', P.entry.title));
-    screenEl.appendChild(info); screenEl.appendChild(wrap); screenEl.appendChild(empty);
-    SECV = { wrap: wrap, inner: inner, info: info, empty: empty, rows: {} };
+    screenEl.appendChild(wrap); screenEl.appendChild(empty);
+    SECV = { wrap: wrap, inner: inner, lensB: lensB, lensF: lensF, empty: empty, rows: {} };
     renderSectionWindow();
   }
   function renderSectionWindow() {
@@ -1070,16 +1202,19 @@
     if (!V || !P) return;
     var rs = P.rows || [], n = rs.length, k;
     V.empty.textContent = P.err ? P.err + ' · OK: yeniden dene' : (P.loading ? 'Yükleniyor…' : (n ? '' : 'Bu bölümde henüz yapım yok.'));
-    setT(V.inner, 'translateY(' + (-P.row * SEC.stride) + 'px)');
-    setMask(V.wrap, 'linear-gradient(180deg, ' + (P.row > 0 ? 'rgba(0,0,0,0) 0px, #000 36px' : '#000 0px') +
-      ', #000 680px, rgba(0,0,0,0) 812px)');
+    V.lensB.className = 'lens lens-b' + (n ? ' on' : '');
+    V.lensF.className = 'lens lens-f' + (n ? ' on' : '');
+    V.inner.className = 'sec-in' + (keyRep ? ' rep' : '');
+    setT(V.inner, 'translateY(' + (-P.row * SECL.stride) + 'px)');
+    setMask(V.wrap, 'linear-gradient(180deg, ' + (P.row > 0 ? 'rgba(0,0,0,0) 0px, #000 26px' : '#000 0px') +
+      ', #000 836px, rgba(0,0,0,0) 866px)');
     /* sanal pencere: odak satiri +-1 (ve alttaki bir sonraki) DOM'da */
     var from = Math.max(0, P.row - 1), to = Math.min(n, P.row + 3);
     for (k in V.rows) if (+k < from || +k >= to) { V.inner.removeChild(V.rows[k].el); delete V.rows[k]; }
     for (var ri = from; ri < to; ri++) {
       if (!V.rows[ri]) {
         var e = el('div', 'srw'), st = el('div', 'srw-strip');
-        e.style.top = (ri * SEC.stride) + 'px';
+        e.style.top = (SECL.rowTop + ri * SECL.stride) + 'px';
         e.appendChild(el('div', 'srw-title nowrap t-shadow', rs[ri].title));
         e.appendChild(st);
         V.rows[ri] = { el: e, strip: st, tiles: {} };
@@ -1087,36 +1222,51 @@
       }
       secStrip(V.rows[ri], rs[ri], ri);
     }
-    var r = rs[P.row], it = r && r.items[r.col];
-    V.info.textContent = it ? (it.title + (it.episode_label ? ' · ' + it.episode_label : '') + ' · ' + metaLine(it)) : '';
   }
   function secStrip(R, r, ri) {
-    var P = S.sec, n = r.items.length, on = ri === P.row, step = SEC.cw + SEC.gap, k;
-    var off = clamp(r.col - 2, 0, Math.max(0, n - SEC.vis));
-    setT(R.strip, 'translateX(' + (-off * step) + 'px)');
-    var from = Math.max(0, off - 1), to = Math.min(n, off + SEC.vis + 2);
-    for (k in R.tiles) if (+k < from || +k >= to) { R.strip.removeChild(R.tiles[k]); delete R.tiles[k]; }
-    for (var i = from; i < to; i++) {
-      if (!R.tiles[i]) {
-        var t = cardTile(r.items[i]);
-        t.style.left = (PE + i * step) + 'px';
-        bindPointer(t, 'scard', ri * 10000 + i);
-        R.tiles[i] = t; R.strip.appendChild(t);
+    var P = S.sec, on = ri === P.row, step = SECL.step, N = r.total, loop = secLoop(r), k, v;
+    if (loop) { if (md(r.pos, N) !== r.col) r.pos = r.pos - md(r.pos, N) + r.col; }   /* disaridan degisen col (oynatici donusu) */
+    else r.pos = r.col = clamp(r.col, 0, Math.max(0, N - 1));
+    R.strip.className = 'srw-strip' + (on && keyRep ? ' rep' : '');
+    setT(R.strip, 'translateX(' + (-r.pos * step) + 'px)');
+    var from = r.pos - 1, to = r.pos + SECL.vis + 1;
+    if (!loop) { from = Math.max(0, from); to = Math.min(N, to); }
+    for (k in R.tiles) if (+k < from || +k >= to) { R.strip.removeChild(R.tiles[k].node); delete R.tiles[k]; }
+    for (v = from; v < to; v++) {
+      var it = secItem(r, loop ? md(v, N) : v), T = R.tiles[v];
+      if (T && T.it !== it) { R.strip.removeChild(T.node); T = null; }   /* yer tutucu -> gelen kart */
+      if (!T) {
+        T = R.tiles[v] = { node: secTile(it), it: it };
+        T.node.style.left = (PE + v * step) + 'px';
+        bindPointer(T.node, 'scard', { r: ri, v: v });
+        R.strip.appendChild(T.node);
       }
-      R.tiles[i].className = 'gt' + (on && i === r.col ? ' on' : '');
+      T.node.className = 'gt sc' + (it ? '' : ' ph') + (on && v === r.pos ? ' on' : (v < r.pos ? ' prev' : ''));
     }
     R.el.className = 'srw' + (on ? ' on' : '');
-    if (on && r.col >= n - 6) secMore(r);
+    if (on) for (v = r.pos - 6; v <= r.pos + SECL.vis + 6; v++) {
+      if (!loop && (v < 0 || v >= N)) continue;
+      if (!secItem(r, md(v, N))) secNeed(r, md(v, N));
+    }
   }
-  function secMore(r) {
-    if (r.loading || r.items.length >= r.total) return;
+  /* eksik indeks: on ekin hemen arkasindaysa siradaki sayfa, uzaktaysa (sona sarma) o bolgenin sayfasi */
+  function secNeed(r, i) {
+    for (var p = 0; p < r.pend.length; p++) if (i >= r.pend[p] && i < r.pend[p] + SECL.page) return;
+    var off = i < r.items.length + SECL.page ? r.items.length : Math.max(r.items.length, Math.min(i - 10, r.total - SECL.page));
+    secFetch(r, off);
+  }
+  function secFetch(r, off) {
     var P = S.sec;
-    r.loading = true;
-    api.row(r.id, S.pid, r.items.length, 40, function (err, data) {
-      r.loading = false;
+    r.pend.push(off);
+    if (off === r.items.length) r.loading = true;
+    api.row(r.id, S.pid, off, SECL.page, function (err, data) {
+      r.pend.splice(r.pend.indexOf(off), 1);
+      if (off === r.items.length) r.loading = false;
       if (err) return;
-      r.items = r.items.concat(data.items || []);
-      r.total = data.total !== undefined ? data.total : r.items.length;
+      var its = (data && data.items) || [], j;
+      for (j = 0; j < its.length; j++) if (off + j >= r.items.length) r.tail[off + j] = its[j];
+      while (r.tail[r.items.length]) { var x = r.tail[r.items.length]; delete r.tail[r.items.length]; r.items.push(x); }
+      if (data && data.total !== undefined && data.total !== null) r.total = Math.max(data.total, r.items.length);
       if (S.screen === 'section' && S.sec === P) renderSectionWindow();
     });
   }
@@ -1124,13 +1274,20 @@
     var P = S.sec, rs = P.rows || [], r = rs[P.row];
     if (k === 'back') return goHome();
     if (!r) { if (k === 'ok' && P.err) openSection(P.entry); return; }
+    if (k === 'up' || k === 'down' || k === 'left' || k === 'right') {
+      var now = new Date().getTime();
+      if (keyRep && now - P.last < SECL.repMs) return;   /* basili tutma: tekrar hizi sinirli, animasyon birikmez */
+      P.last = now;
+    }
+    var loop = secLoop(r);
     if (k === 'up' && P.row > 0) P.row--;
     else if (k === 'down' && P.row < rs.length - 1) P.row++;
-    else if (k === 'left' && r.col > 0) r.col--;
-    else if (k === 'right' && r.col < r.items.length - 1) r.col++;
-    else if (k === 'ok' && r.items[r.col]) {
-      if (isChannel(r.items[r.col])) return playChannel(r.items[r.col], r);   /* kanal: detay yok, dogrudan oynatici */
-      return openDetail(r.items[r.col], { title: P.entry.title }, 'section');
+    else if (k === 'left' && (loop || r.pos > 0)) { r.pos--; r.col = loop ? md(r.pos, r.total) : r.pos; }
+    else if (k === 'right' && (loop || r.pos < r.total - 1)) { r.pos++; r.col = loop ? md(r.pos, r.total) : r.pos; }
+    else if (k === 'ok' && secItem(r, r.col)) {
+      var it = secItem(r, r.col);
+      if (isChannel(it)) return playChannel(it, r);   /* kanal: detay yok, dogrudan oynatici */
+      return openDetail(it, { title: P.entry.title }, 'section');
     }
     else return;
     renderSectionWindow();
@@ -1160,11 +1317,23 @@
      ===================================================================== */
   var SRV = null;
   var SR = { top: 300, stride: 330, vis: 5 };
-  var SEARCH_FROM = { home: 1, grid: 1, section: 1, soon: 1, detail: 1, settings: 1, search: 1 };
+  var SEARCH_FROM = { home: 1, grid: 1, section: 1, soon: 1, detail: 1, settings: 1, search: 1 };   /* renk tusu kisayollarinin calistigi ekranlar */
+  /* renk tusu kisayolu (oynatici disi): Kirmizi = Ara, Yesil = Listem, Mavi = Ayarlar; donuste (Geri) odak ana ekranda ilgili hapta */
+  var COLOR_CTRL = { red: 'search', green: 'mylist', blue: 'settings' };
+  function colorKey(k) {
+    var id = COLOR_CTRL[k];
+    if (id === 'search') return openSearch();
+    if (id === 'settings' && S.screen === 'settings') return;
+    if (id === 'mylist' && S.screen === 'grid' && S.grid && S.grid.entry && S.grid.entry.id === 'mylist') return;
+    if (S.pop) closePop();
+    if (S.srch) { S.srch.ctl.dispose(); S.srch = null; }   /* aramadan cikis: sorgu birakilir */
+    S.zone = 'controls'; S.ctrl = ctrlIdx(id);
+    openCtrl(id);
+  }
   function openSearch() {
     if (S.screen === 'search' && S.srch) {            /* zaten aramada (Kirmizi): kutuya don */
       S.srch.zone = 'input'; searchPaint();
-      if (SRV) { try { SRV.inp.focus(); } catch (e) {} }
+      if (SRV) { try { focusNoScroll(SRV.inp); } catch (e) {} }
       return;
     }
     if (S.pop) closePop();
@@ -1244,7 +1413,7 @@
     screenEl.appendChild(hintBar([['OK', ' Yaz / Aç'], ['Kırmızı', ' Ara'], ['Geri', ' Ana sayfa']]));
     SRV = { fld: fld, inp: inp, busy: busy, busyT: busyT, info: info, rows: rows, note: note };
     searchPaint();
-    if (X.autofocus && X.zone === 'input') { X.autofocus = false; try { inp.focus(); } catch (e2) {} }   /* tarayici: dogrudan yaz */
+    if (X.autofocus && X.zone === 'input') { X.autofocus = false; try { focusNoScroll(inp); } catch (e2) {} }   /* tarayici: dogrudan yaz */
   }
   /* dir yonunde (from dahil) sonucu olan ilk satir, yoksa -1 */
   function firstRow(rs, from, dir) {
@@ -1279,7 +1448,7 @@
     var on = X.zone === 'rows' && X.row === ri, col = X.cols[ri];
     R.title.textContent = r.title + (n ? '  ·  ' + n : '');
     R.msg.textContent = r.msg;
-    var off = clamp(col - 2, 0, Math.max(0, n - SR.vis));
+    var off = R.off = keepOff(R.items === items && R.off, col, SR.vis, clamp(col - 2, 0, Math.max(0, n - SR.vis)));
     setT(R.strip, 'translateX(' + (-off * step) + 'px)');
     /* sanal pencere: gorunen +-1 kart DOM'da (gorseller yalniz bu kartlar icin yuklenir) */
     var from = Math.max(0, off - 1), to = Math.min(n, off + SR.vis + 1);
@@ -1299,7 +1468,7 @@
     var X = S.srch, rs = searchRows();
     if (X.zone === 'input') {
       if (k === 'down') { var d = firstRow(rs, 0, 1); if (d >= 0) { X.zone = 'rows'; X.row = d; } }
-      else if (k === 'ok') { if (SRV) { try { SRV.inp.focus(); } catch (e) {} } return; }   /* TV: ekran klavyesi */
+      else if (k === 'ok') { if (SRV) { try { focusNoScroll(SRV.inp); } catch (e) {} } return; }   /* TV: ekran klavyesi */
       else if (k === 'back') return searchExit();
       else return;
       return searchPaint();
@@ -1336,16 +1505,16 @@
       }
       if (err) D.err = err.message; else D.data = data;
       if (data && data.seasons) {
-        /* ozel bolumler (sezon 0) basta gelir -> sona al */
-        var se = data.seasons.slice(0), sp = [];
-        while (se.length && se[0].season === 0) sp.push(se.shift());
-        data.seasons = se.concat(sp);
+        fixSeasons(data);
         if (item.season) for (var i = 0; i < data.seasons.length; i++) if (data.seasons[i].season === item.season) D.season = i;
       }
       if (focusId) { /* oynaticidan donus: odak girilen dugmeye (yoksa ust) */
         var fr = detailRows();
         for (var j = 0; j < fr.length; j++) if (fr[j].id === focusId) { D.row = j; break; }
       }
+      /* oynaticiya Bolumler panelinden gidildiyse panel yeniden acilir, odak son oynatilan bolumde */
+      if (D.reEps && !err && data.seasons && data.seasons.length && S.screen === 'detail') openEps(D, typeof D.reEps === 'string' ? D.reEps : null);
+      D.reEps = null;
       if (autoplay && S.screen === 'detail' && !err) {
         var ar = detailRows();
         if (ar[0] && ar[0].id === 'play' && !ar[0].dis) { D.row = 0; D.rows = ar; return playFromDetail(D, ar[0]); }
@@ -1353,6 +1522,12 @@
       }
       if (S.screen === 'detail') renderDetail();
     });
+  }
+  /* ozel bolumler (sezon 0) basta gelir -> sona al */
+  function fixSeasons(data) {
+    var se = data.seasons.slice(0), sp = [];
+    while (se.length && se[0].season === 0) sp.push(se.shift());
+    data.seasons = se.concat(sp);
   }
   function epCode(id) {
     var m = /:s(\d+):e(\d+)/.exec(id || '');
@@ -1393,8 +1568,8 @@
     if (r.arrows) {
       var a = el('div', 'sr-arr'), b = el('div', 'sr-arr');
       a.innerHTML = chev(true); b.innerHTML = chev(false);
-      a.onclick = function (ev) { ev.stopPropagation(); onKey('left'); };
-      b.onclick = function (ev) { ev.stopPropagation(); onKey('right'); };
+      a.onclick = function (ev) { ev.stopPropagation(); ptrArrow(e, 'left'); };
+      b.onclick = function (ev) { ev.stopPropagation(); ptrArrow(e, 'right'); };
       e.appendChild(a); e.appendChild(b);
     }
     return e;
@@ -1421,11 +1596,18 @@
     D.rows = rows;
     D.row = clamp(D.row, 0, rows.length - 1);
     for (var i = 0; i < rows.length; i++) {
-      var r = settingRow(rows[i], i, i === D.row, rows.length > 4 ? 486 : 500, rows.length > 4 ? 94 : 100);  /* 5 satir ipucu cubuguna tasmasin */
+      var r = settingRow(rows[i], i, i === D.row && !D.eps, rows.length > 4 ? 486 : 500, rows.length > 4 ? 94 : 100);  /* 5 satir ipucu cubuguna tasmasin */
       bindPointer(r, 'drow', i);
       screenEl.appendChild(r);
     }
-    var pv = el('div', 'pv'), img = el('img', 'pv-img');
+    if (D.eps) {   /* Sezonlar OK: afis yerine Bolumler paneli */
+      D.epsEl = buildEps(D);
+      screenEl.appendChild(D.epsEl);
+      screenEl.appendChild(hintBar([['↑↓', ' Bölüm'], ['‹ ›', ' Sezon'], ['OK', ' Oynat'], ['Geri', ' Kapat']]));
+      if (g.DZDebug && g.DZDebug.enabled()) g.DZDebug.mount(screenEl, 'detail', { rows: g.DZDebug.detailed() ? 3 : 1, cls: 'dbg-detail' });
+      return;
+    }
+    var pv = el('div', 'pv rclip'), img = el('img', 'pv-img');
     img.alt = ''; img.src = wideSrc(it, 912, 513);
     pv.appendChild(img); screenEl.appendChild(pv);
     var note = [];
@@ -1444,13 +1626,16 @@
   }
   function detailKey(k) {
     var D = S.detail, rows = D.rows || [], r = rows[D.row];
+    if (D.eps) return epsKey(D, k);
     if (k === 'up') D.row = Math.max(0, D.row - 1);
     else if (k === 'down') D.row = Math.min(rows.length - 1, D.row + 1);
     else if ((k === 'left' || k === 'right') && r && r.id === 'season') {
       var n = D.data.seasons.length;
       D.season = (D.season + (k === 'left' ? -1 : 1) + n) % n;
+      D.seasonSet = true;
     } else if (k === 'back') return D.from === 'home' ? homeRefresh() : go(D.from);
     else if (k === 'ok' && r) {
+      if (r.id === 'season' && D.data) return openEps(D);
       if (r.id === 'play' || r.id === 'restart' || r.id === 'trailer') {
         if (r.dis) return showVeil(D.item.title, r.value);
         return playFromDetail(D, r);
@@ -1463,6 +1648,126 @@
       }
     } else return;
     renderDetail();
+  }
+
+  /* ---------- detay Bolumler paneli (Sezonlar satiri OK): afis yerine cam liste ----------
+     Veri: detay yaniti `seasons[].episodes[]` (bicim js/episodes.js, oynaticinin Bolumler paneliyle ortak). Sezon bolumsuz ama
+     episode_count > 0 ise /api/detail bir kez yeniden istenir. ^v bolum (sanal pencere, EPS_ROWS satir), <> sezon (Sezonlar satiriyla
+     senkron, sezon basina odak saklanir), OK = oynat (Izle akisi: kaldigi yer / streams / kaynak bulucu), Geri = kapat (odak Sezonlar). */
+  var EPS_ROWS = 6, EPS_ROW = 92;
+  function resumeEpId(D) {
+    var it = D.item, d = D.data || {}, acts = d.actions || [];
+    if (it.card_kind === 'episode' && it.episode_id) return it.episode_id;
+    for (var i = 0; i < acts.length; i++) if (/^(play|resume)_episode$/.test(acts[i].kind) && acts[i].episode_id) return acts[i].episode_id;
+    if (d.progress && d.progress.episode_id) return d.progress.episode_id;
+    return d.resume && d.resume.episode_id !== it.id ? d.resume.episode_id : null;
+  }
+  function epsRows(D) { return DZP.episodes.rows(D.data.seasons[D.season], D.eps.curId); }
+  function epsFocus(D) {   /* sezonun saklanan odagi; yoksa devam edilen bolum, yoksa ilk */
+    var E = D.eps, rs = epsRows(D);
+    if (E.idx[D.season] === undefined) {
+      E.idx[D.season] = 0;
+      for (var i = 0; i < rs.length; i++) if (rs[i].cur) E.idx[D.season] = i;
+    }
+    E.idx[D.season] = clamp(E.idx[D.season], 0, Math.max(0, rs.length - 1));
+    return rs;
+  }
+  function openEps(D, curId) {
+    var ss = D.data && D.data.seasons;
+    if (!ss || !ss.length) return;
+    D.eps = { idx: {}, curId: curId || resumeEpId(D), note: '' };
+    /* sezon secilmediyse devam edilen bolumun sezonuna gec */
+    if (D.eps.curId && (!D.seasonSet || curId)) {
+      for (var i = 0; i < ss.length; i++) for (var j = 0; j < (ss[i].episodes || []).length; j++) if (ss[i].episodes[j].id === D.eps.curId) D.season = i;
+    }
+    epsEnsure(D);
+    renderDetail();
+  }
+  function epsEnsure(D) {   /* bolum listesi eksikse detayi bir kez daha iste */
+    var s = D.data.seasons[D.season];
+    if (!s || (s.episodes && s.episodes.length) || !(s.episode_count > 0) || D.epsFetch) return;
+    D.epsFetch = true;
+    api.detail(D.item.id, S.pid, function (err, data) {
+      if (S.detail !== D || err || !data || !data.seasons || !data.seasons.length) return;
+      fixSeasons(data);
+      D.data = data;
+      D.season = clamp(D.season, 0, data.seasons.length - 1);
+      if (S.screen === 'detail' && D.eps) renderDetail();
+    });
+  }
+  function buildEps(D) {
+    var E = D.eps, ss = D.data.seasons, s = ss[D.season] || ss[0], rs = epsFocus(D), idx = E.idx[D.season] || 0, n = rs.length;
+    var p = el('div', 'dep pl-glass');
+    var hd = el('div', 'dep-s');
+    var la = el('span', 'pl-side-arr', ss.length > 1 ? '‹' : ''), ra = el('span', 'pl-side-arr', ss.length > 1 ? '›' : '');
+    la.onclick = function (ev) { ev.stopPropagation(); if (S.detail === D && D.eps) epsKey(D, 'left'); };
+    ra.onclick = function (ev) { ev.stopPropagation(); if (S.detail === D && D.eps) epsKey(D, 'right'); };
+    hd.appendChild(la);
+    hd.appendChild(el('span', 'ell', (s.season === 0 ? 'Özel bölümler' : (s.name || s.title || ('Sezon ' + s.season))) +
+      (ss.length > 1 ? ' · ' + (D.season + 1) + '/' + ss.length : '') + ' · ' + (n || s.episode_count || 0) + ' bölüm'));
+    hd.appendChild(ra);
+    p.appendChild(el('div', 'pl-side-t', 'Bölümler'));
+    p.appendChild(hd);
+    var list = el('div', 'dep-list');
+    if (!n) list.appendChild(el('div', 'dep-empty', s.episode_count > 0 ? 'Bölümler yükleniyor…' : 'Bu sezonda bölüm yok.'));
+    var off = E.off = keepOff(E.offS === D.season && E.off, idx, EPS_ROWS, Math.max(0, Math.min(idx - Math.floor(EPS_ROWS / 2), n - EPS_ROWS)));
+    E.offS = D.season;
+    if (n) {
+      var hl = el('div', 'pl-side-hl dep-hl');
+      setT(hl, 'translateY(' + ((idx - off) * EPS_ROW) + 'px)');
+      list.appendChild(hl);
+    }
+    for (var i = off; i < Math.min(n, off + EPS_ROWS); i++) {
+      var r = rs[i], ep = r.ep, row = el('div', 'dep-it' + (i === idx ? ' on' : '') + (r.dis ? ' dis' : ''));
+      setT(row, 'translateY(' + ((i - off) * EPS_ROW) + 'px)');
+      var th = el('div', 'dep-th');
+      if (ep.has_still && ep.still_url) { var im = el('img', 'dep-img'); im.alt = ''; im.src = api.sized(ep.still_url, 160, 90); th.appendChild(im); }
+      if (r.pct > 0) { var bar = el('div', 'dep-bar'), fill = el('div', 'dep-fill'); fill.style.width = r.pct + '%'; bar.appendChild(fill); th.appendChild(bar); }
+      row.appendChild(th);
+      var body = el('div', 'dep-body');
+      body.appendChild(el('div', 'dep-l ell', (r.cur ? '▸ ' : '') + r.label));
+      var sub = el('div', 'dep-m ell', r.meta);
+      if (r.state) sub.appendChild(el('span', 'pl-badge', r.state === 'soon' ? 'Yakında' : 'Kaynak yok'));
+      body.appendChild(sub);
+      row.appendChild(body);
+      row.onclick = (function (k) { return function () { if (S.detail === D && D.eps && S.screen === 'detail' && !S.veil) { D.eps.idx[D.season] = k; epsKey(D, 'ok'); } }; })(i);
+      row.dzHover = (function (k) { return function () {   /* hover = odak (panel yerinde kalir: keepOff) */
+        if (S.detail === D && D.eps && S.screen === 'detail' && D.eps.idx[D.season] !== k) { D.eps.idx[D.season] = k; D.eps.note = ''; epsPaint(D); }
+      }; })(i);
+      list.appendChild(row);
+    }
+    p.appendChild(list);
+    p.appendChild(el('div', 'pl-side-note', E.note || ((ss.length > 1 ? '‹ › sezon · ' : '') + 'OK oynat · Geri kapat')));
+    return p;
+  }
+  function epsPaint(D) {   /* yalniz panel yenilenir (Sezonlar satiri metni sezonla degisir -> sezon degisiminde tam cizim) */
+    if (!D.epsEl || !D.epsEl.parentNode) return renderDetail();
+    var nn = buildEps(D);
+    var par = D.epsEl.parentNode;
+    par.insertBefore(nn, D.epsEl); par.removeChild(D.epsEl);
+    D.epsEl = nn;
+  }
+  function epsKey(D, k) {
+    var E = D.eps, rs = epsRows(D), i = E.idx[D.season] || 0, n = D.data.seasons.length;
+    if (k === 'back') { D.eps = null; D.epsEl = null; return renderDetail(); }   /* odak Sezonlar satirinda kalir (D.row) */
+    if (k === 'up' && i > 0) E.idx[D.season] = i - 1;
+    else if (k === 'down' && i < rs.length - 1) E.idx[D.season] = i + 1;
+    else if ((k === 'left' || k === 'right') && n > 1) {
+      D.season = (D.season + (k === 'left' ? -1 : 1) + n) % n;
+      D.seasonSet = true; E.note = '';
+      epsEnsure(D);
+      return renderDetail();
+    } else if (k === 'ok' && rs[i]) {
+      if (rs[i].dis) { E.note = rs[i].state === 'soon' ? 'Bu bölüm henüz yayınlanmadı.' : 'Bu bölümün kaynağı henüz yok.'; return epsPaint(D); }
+      return playEpisode(D, rs[i]);
+    } else return;
+    E.note = '';
+    epsPaint(D);
+  }
+  /* bolum oynat: Izle akisiyla ayni (startPlay); bitmemis ilerleme varsa kaldigi yer (sunucunun resume_position'i da gecerli) */
+  function playEpisode(D, r) {
+    var it = D.item, d = D.data || {}, pr = r.ep.progress, pos = pr && pr.position > 0 && r.pct < 95 ? pr.position : 0;
+    startPlay({ item: it, type: d.type || it.type, detail: D.data, episodeId: r.id, position: pos, restart: !pos && r.pct >= 95 });
   }
 
   /* =====================================================================
@@ -1514,7 +1819,7 @@
       screenEl.appendChild(r);
     }
     /* onizleme: ana ekranin olceklenmis kopyasi (tasarimdaki gibi) */
-    var pv = el('div', 'pv'), sc = el('div', 'pv-scale');
+    var pv = el('div', 'pv rclip'), sc = el('div', 'pv-scale');
     setT(sc, 'scale(' + (912 / W) + ')');
     var b = curBg();
     var pbg = el('div', 'bg');
@@ -1601,7 +1906,7 @@
 
   /* =====================================================================
      SUNUCU ADRESI (ilk acilis; Ayarlar > Sunucu)
-     IP ya da URL (kurallar: api.serverCandidates; alan adi once https://, sonra http://:8090; adaylar sirayla denenir). "Baglan" KAYDETMEDEN /api/health dener;
+     IP ya da URL (kurallar: api.serverCandidates; alan adi once https://, sonra http://:8090; semali portsuz URL aynen + :8090; adaylar sirayla denenir). "Baglan" KAYDETMEDEN /api/health dener;
      basariliysa kaydeder ve profil ekranina gecer. Kumanda: satir 0 girdi (OK = ekran klavyesi; klavyede Done = Baglan),
      satir 1 [Baglan].
      ===================================================================== */
@@ -1679,7 +1984,7 @@
     var V = S.srv;
     SV.fld.className = 'fld' + (V.row === 0 ? ' on' : '');
     SV.btn.className = 'ctrl' + (V.row === 1 ? ' on' : '');
-    SV.st.className = 'c-status' + (V.err ? ' err' : '');
+    SV.st.className = 'c-status srv' + (V.err ? ' err' : '');
     SV.st.textContent = V.msg;
   }
   function serverConnect() {
@@ -1717,7 +2022,7 @@
     if (k === 'up') V.row = 0;
     else if (k === 'down') V.row = 1;
     else if (k === 'ok') {
-      if (V.row === 0 && SV) { try { SV.inp.focus(); } catch (e) {} return; }   /* TV: odak girdiye -> ekran klavyesi */
+      if (V.row === 0 && SV) { try { focusNoScroll(SV.inp); } catch (e) {} return; }   /* TV: odak girdiye -> ekran klavyesi */
       return serverConnect();
     } else if (k === 'back') {
       if (V.from === 'settings' || V.back === 'settings') go('settings');
@@ -1839,7 +2144,7 @@
     P.foot = clamp(P.foot, 0, PV.foot.length - 1);
     /* ortala; 6'dan fazlaysa odaga gore kaydir */
     var total = n * step - PF_GAP, vis = 6, off = 0;
-    if (n > vis) off = clamp(P.idx - 2, 0, n - vis) * step;
+    if (n > vis) off = (PV.off = keepOff(PV.off, P.idx, vis, clamp(P.idx - 2, 0, n - vis))) * step;
     var x = n > vis ? (W - (vis * step - PF_GAP)) / 2 - off : (W - total) / 2;
     setT(PV.inn, 'translateX(' + Math.round(x) + 'px)');
     for (i = 0; i < n; i++) PV.cards[i].className = 'pf' + (P.zone === 'cards' && i === P.idx ? ' on' : '');
@@ -2001,7 +2306,7 @@
       for (var i = 0; i < n; i++) if (E.avatars[i].seed === E.seed) ai = i;
       E.seed = E.avatars[(ai + d + n) % n].seed;
     } else if ((k === 'left' || k === 'right' || k === 'ok') && r.id === 'kids') E.kids = !E.kids;
-    else if (k === 'ok' && r.id === 'name') { if (PEV && PEV.inp) { try { PEV.inp.focus(); } catch (e) {} } return; }
+    else if (k === 'ok' && r.id === 'name') { if (PEV && PEV.inp) { try { focusNoScroll(PEV.inp); } catch (e) {} } return; }
     else if (k === 'ok' && r.id === 'avatar' && E.avatars.length) return peditKey('right');
     else if (k === 'ok' && r.id === 'save') return peSave();
     else if (k === 'ok' && r.id === 'del') { if (E.confirm) return peDelete(); E.confirm = true; }
@@ -2020,7 +2325,7 @@
     swapTimer = g.setTimeout(function () {
       applyClasses();
       HV = null; GV = null; SECV = null; SV = null; PV = null; PEV = null; SRV = null;
-      if (screen === 'home') renderHome();
+      if (screen === 'home') renderHome(true);
       else if (screen === 'search') renderSearch();
       else if (screen === 'grid') renderGrid();
       else if (screen === 'section') renderSection();
@@ -2104,7 +2409,12 @@
       if (from === 'section' && S.sec && S.sec.rows) for (var ri = 0; ri < S.sec.rows.length; ri++) if (S.sec.rows[ri] === chs) S.sec.row = ri;
       if (from === 'grid' && S.grid && S.grid.entry === chs && ci < chs.items.length) S.grid.idx = ci;
     }
-    if (from === 'detail' && S.detail) { var D = S.detail, fid = D.rows && D.rows[D.row] ? D.rows[D.row].id : null; return openDetail(D.item, D.entry, D.from, fid); }
+    if (from === 'detail' && S.detail) {
+      var D = S.detail, fid = D.rows && D.rows[D.row] ? D.rows[D.row].id : null, re = D.eps ? ((info && info.episodeId) || true) : null;
+      openDetail(D.item, D.entry, D.from, fid);
+      if (re && S.detail) S.detail.reEps = re;   /* Bolumler panelinden gelindi: panel son oynatilan bolumle yeniden acilir */
+      return;
+    }
     if (from === 'home') return homeRefresh();
     go(from);
   }
@@ -2116,7 +2426,7 @@
       if (err || gen !== S.gen) return;
       S.cont = { items: (data && data.items) || [], idx: 0 };
       if (S.zone === 'cont' && !S.cont.items.length) S.zone = 'list';
-      if (S.screen === 'home') renderHome();
+      homeContChanged();
     });
   }
   function playFromDetail(D, r) {
@@ -2178,9 +2488,8 @@
     if (!P || !v) return;
     if (v.pop && v.pop.parentNode) v.pop.parentNode.removeChild(v.pop);
     var n = P.items.length, h = n * POP_ROW + POP_PAD * 2 + 9, x, y;
-    /* her iki duzende profil hapi ustte: menu hapin altinda, hapin sag kenarina hizali, ekran icinde */
-    if (v.list && v.pf) x = clamp((v.top.offsetLeft || 0) + v.pf.offsetLeft + v.pf.offsetWidth - POP_W, PE, 1920 - 122 - POP_W);
-    else x = 1920 - 122 - POP_W;
+    /* menu hapin altinda, sag kenara hizali (hap iki duzende ust siranin en saginda) */
+    x = 1920 - 122 - POP_W;
     y = 72 + 64 + 14;
     var box = el('div', 'pop' + (anim ? '' : ' on'));
     box.style.left = x + 'px'; box.style.top = y + 'px'; box.style.width = POP_W + 'px'; box.style.height = h + 'px';
@@ -2238,8 +2547,11 @@
     loadHome();
   }
 
+  /* List: ust siraya donuste son odaklanan oge (hic odaklanmadiysa profil hapi) */
+  function topCtrl() { return S.topSeen ? S.ctrl : PF; }
   function homeKey(k) {
     if (S.pop) return popKey(k);
+    if (S.zone === 'controls') S.topSeen = true;
     var list = S.look.layout === 'list', prev = list ? 'up' : 'left', next = list ? 'down' : 'right';
     var n = S.entries.length, cn = S.cont.items.length, ci = S.cont.idx;
     if (S.error || (!n && k === 'ok')) { if (k === 'ok') boot(); return; }
@@ -2247,38 +2559,33 @@
     var hp = heroPlayable(HV);
     if (S.zone === 'play' && !hp) S.zone = 'list';
     if (S.zone === 'list') {
-      if (list && k === 'up' && !S.idx) homeFocus('controls', S.idx, PF);   /* List: menunun basindan ^ = profil hapi */
+      if (list && k === 'up' && !S.idx) homeFocus('controls', S.idx, S.topSeen ? S.ctrl : 0);   /* List: menunun basindan ^ = ust sira */
       else if (k === prev) homeFocus('list', Math.max(0, S.idx - 1), S.ctrl);
       else if (k === next) homeFocus('list', Math.min(n - 1, S.idx + 1), S.ctrl);
-      else if (k === (list ? 'right' : 'up')) homeFocus(hp && (list || !cn) ? 'play' : (cn ? 'cont' : 'controls'), S.idx, S.ctrl);
+      else if (k === (list ? 'right' : 'up')) homeFocus(hp && (list || !cn) ? 'play' : (cn ? 'cont' : 'controls'), S.idx, list ? topCtrl() : S.ctrl);
       else if (k === 'ok' && n) openSection(S.entries[S.idx]);
       else if (k === 'back' && S.idx) homeFocus('list', 0, S.ctrl);
       else if (k === 'back') exitApp();   /* kok ekran: Android kabugu uygulamayi kapatir */
     } else if (S.zone === 'play') {
-      /* vitrin Oynat: List: <- menu, v Devam Et (yoksa kontroller); Dock: v Devam Et (yoksa dock), ^ kontroller, <- dock */
+      /* vitrin Oynat: List: <- menu, ^ ust siranin son odagi (yoksa profil), v Devam Et (yoksa yerinde); Dock: v Devam Et (yoksa dock), ^ kontroller, <- dock */
       if (k === 'left' || k === 'back') homeFocus('list', S.idx, S.ctrl);
-      else if (k === 'down') homeFocus(cn ? 'cont' : (list ? 'controls' : 'list'), S.idx, list ? 0 : S.ctrl);
-      else if (k === 'up') homeFocus('controls', S.idx, list ? PF : S.ctrl);   /* List: ^ = profil hapi */
+      else if (k === 'down' && (cn || !list)) homeFocus(cn ? 'cont' : 'list', S.idx, S.ctrl);
+      else if (k === 'up') homeFocus('controls', S.idx, list ? topCtrl() : S.ctrl);
       else if (k === 'ok') heroPlay();
     } else if (S.zone === 'cont') {
-      /* List: <- menu, ^ Oynat, v kontroller; Dock: v menu, ^ Oynat (yoksa kontroller) */
+      /* List: <- menu, ^ Oynat (yoksa ust sira); Dock: v menu, ^ Oynat (yoksa kontroller) */
       if (k === 'left' && ci > 0) { S.cont.idx = ci - 1; homeFocus('cont', S.idx, S.ctrl); }
       else if (k === 'left' && list) homeFocus('list', S.idx, S.ctrl);
       else if (k === 'right' && ci < cn - 1) { S.cont.idx = ci + 1; homeFocus('cont', S.idx, S.ctrl); }
       else if (k === 'up' && hp) homeFocus('play', S.idx, S.ctrl);
-      else if (k === (list ? 'down' : 'up')) homeFocus('controls', S.idx, 0);
+      else if (k === 'up') homeFocus('controls', S.idx, list ? topCtrl() : 0);
       else if ((!list && k === 'down') || k === 'back') homeFocus('list', S.idx, S.ctrl);
       else if (k === 'ok') playContinue(S.cont.items[ci]);
-    } else if (list && S.ctrl === PF) {
-      /* List profil hapi (sag ust): v Oynat (yoksa sutun), <- / Geri menu */
-      if (k === 'down') homeFocus(hp ? 'play' : 'controls', S.idx, 0);
-      else if (k === 'left' || k === 'back') homeFocus('list', S.idx, S.ctrl);
-      else if (k === 'ok') openPop();
     } else if (list) {
-      /* List sutunu (Ara · Listem · Ayarlar): ^ basta profil hapi, <- Devam Et (yoksa menu) */
-      if (k === 'up') homeFocus('controls', S.idx, S.ctrl > 0 ? S.ctrl - 1 : PF);
-      else if (k === 'down') homeFocus('controls', S.idx, Math.min(PF - 1, S.ctrl + 1));
-      else if (k === 'left' && cn) homeFocus('cont', S.idx, S.ctrl);
+      /* List ust sirasi (Ara · Listem · Ayarlar · Profil, sag ust): <-> gez (Ara'dan <- menu), v Oynat (yoksa Devam Et), Geri menu */
+      if (k === 'left' && S.ctrl > 0) homeFocus('controls', S.idx, S.ctrl - 1);
+      else if (k === 'right') homeFocus('controls', S.idx, Math.min(CTRLS.length - 1, S.ctrl + 1));
+      else if (k === 'down' && (hp || cn)) homeFocus(hp ? 'play' : 'cont', S.idx, S.ctrl);
       else if (k === 'left' || k === 'back') homeFocus('list', S.idx, S.ctrl);
       else if (k === 'ok') ctrlOk();
     } else {
@@ -2291,8 +2598,8 @@
       else if (k === 'ok') ctrlOk();
     }
   }
-  function ctrlOk() {
-    var id = CTRLS[S.ctrl].id;
+  function ctrlOk() { openCtrl(CTRLS[S.ctrl].id); }
+  function openCtrl(id) {
     if (id === 'settings') { S.setRow = 0; S.up = ''; go('settings'); reloadBackgrounds(function () { if (S.screen === 'settings') renderSettings(); }); }
     else if (id === 'profile') openPop();
     else if (id === 'mylist') openGrid({ id: 'mylist', title: 'Listem', items: [], total: null });
@@ -2315,12 +2622,15 @@
     else if (S.screen === 'pedit') peditKey(k);
   }
   var KEYMAP = { 37: 'left', 38: 'up', 39: 'right', 40: 'down', 13: 'ok', 32: 'ok', 27: 'back', 8: 'back', 10009: 'back', 461: 'back',
-    /* Tizen medya/renk tuslari (eski istemcinin keys.js'i ile ayni kodlar); masaustu: F1 = Kirmizi, Y = Sari, G = Yesil (oynaticida hata ayiklama paneli) */
-    10252: 'playpause', 415: 'play', 19: 'pause', 413: 'stop', 417: 'ff', 412: 'rew', 403: 'red', 112: 'red', 405: 'yellow', 89: 'yellow', 404: 'green', 71: 'green',
+    /* Tizen medya/renk tuslari (eski istemcinin keys.js'i ile ayni kodlar); masaustu: F1 = Kirmizi, F2 / G = Yesil (oynaticida hata ayiklama
+       paneli), Y = Sari, F4 = Mavi */
+    10252: 'playpause', 415: 'play', 19: 'pause', 413: 'stop', 417: 'ff', 412: 'rew', 403: 'red', 112: 'red', 405: 'yellow', 89: 'yellow',
+    404: 'green', 71: 'green', 113: 'green', 406: 'blue', 115: 'blue',
     /* Canli TV: Tizen ChannelUp/Down (427/428), masaustu PageUp/PageDown; rakamlar (ust sira + sayi tus takimi) = kanal numarasi */
     427: 'chup', 428: 'chdown', 33: 'chup', 34: 'chdown' };
+  var COLOR_CODES = { 403: 'red', 112: 'red', 404: 'green', 113: 'green', 406: 'blue', 115: 'blue' };   /* kisayol: harf karsiliklari yok */
   for (var dk = 0; dk < 10; dk++) { KEYMAP[48 + dk] = 'd' + dk; KEYMAP[96 + dk] = 'd' + dk; }
-  var MEDIA_KEYS = ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaFastForward', 'MediaRewind', 'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow',
+  var MEDIA_KEYS = ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaFastForward', 'MediaRewind', 'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue',
     'ChannelUp', 'ChannelDown', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
   var KEYNAME = { ArrowLeft: 'left', ArrowUp: 'up', ArrowRight: 'right', ArrowDown: 'down', Enter: 'ok', ' ': 'ok',
     Escape: 'back', Backspace: 'back', GoBack: 'back', BrowserBack: 'back', XF86Back: 'back',
@@ -2328,9 +2638,19 @@
     ChannelUp: 'chup', ChannelDown: 'chdown', PageUp: 'chup', PageDown: 'chdown' };
   doc.addEventListener('keydown', function (ev) {
     var k = KEYNAME[ev.key] || KEYMAP[ev.keyCode];
+    ptrKeyMode();   /* kumanda/klavye: fare hover'i, fare gercekten hareket edene kadar odak calmaz */
+    armHistory();
     /* metin girdisi odakta (TV ekran klavyesi acik): Enter/Done = gonder, Geri/Cancel = klavyeyi kapat, ^v = birak ve gez;
        diger tuslar (harf, Backspace, <- ->) girdiye kalir. Tizen IME: Done 65376, Cancel 65385. */
     var t = ev.target;
+    /* renk tusu kisayollari (Kirmizi Ara / Yesil Listem / Mavi Ayarlar; masaustu F1/F2/F4): oynatici disinda her ekranda, metin
+       girdisi odaktayken de (girdi birakilir). Harf karsiliklari (G/Y) yalniz oynaticida; girdide harf olarak kalir. */
+    if (COLOR_CODES[ev.keyCode] && S.screen !== 'player' && SEARCH_FROM[S.screen] && !S.veil &&
+        !(DZP.exitConfirm && DZP.exitConfirm.active()) && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
+      ev.preventDefault();
+      if (t && t.tagName === 'INPUT') { try { t.blur(); } catch (eb) {} }
+      return colorKey(COLOR_CODES[ev.keyCode]);
+    }
     if (t && t.tagName === 'INPUT') {
       var kc = ev.keyCode;
       if (kc === 13 || kc === 65376) { ev.preventDefault(); if (t.dzSubmit) t.dzSubmit(); else t.blur(); return; }
@@ -2340,26 +2660,175 @@
     }
     if (!k) return;
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;   /* tarayici kisayollari (yenile vb.) */
-    /* Kirmizi (masaustu F1): oynatici disinda arama kisayolu (eski istemci: katalogda Kirmizi = arama kutusu) */
-    if (k === 'red' && S.screen !== 'player' && SEARCH_FROM[S.screen]) { ev.preventDefault(); return openSearch(); }
     /* medya/renk tuslari yalniz oynaticida; Y harfi / F1 baska ekranda olagan kalir */
     if (S.screen !== 'player' && !/^(left|right|up|down|ok|back)$/.test(k)) return;
     ev.preventDefault();
+    keyRep = !!ev.repeat;
     onKey(k);
   });
   try { if (g.tizen && g.tizen.tvinputdevice) g.tizen.tvinputdevice.registerKey('Return'); } catch (e) {}
   for (var mk = 0; mk < MEDIA_KEYS.length; mk++) { try { if (g.tizen && g.tizen.tvinputdevice) g.tizen.tvinputdevice.registerKey(MEDIA_KEYS[mk]); } catch (e2) {} }
 
-  /* fare (tarayici): yalniz gercek hareketten sonra odak izler (tasarim: pointermove < 250 ms) */
-  var lastMove = 0;
-  doc.addEventListener('mousemove', function () { lastMove = new Date().getTime(); });
-  function bindPointer(node, kind, i) {
-    node.onmouseenter = function () {
-      if (new Date().getTime() - lastMove > 250) return;
-      pointerFocus(kind, i);
-    };
-    node.onclick = function () { pointerFocus(kind, i); onKey('ok'); };
+  /* ---------- fare = kumanda ----------
+     Masaustu tarayici, Android box (fare / air-mouse), Tizen Magic Remote isaretcisi (fare olaylari). Kurallar:
+     - hover -> o ogeye odak (kumanda odagiyla ayni durum S.*; klavyeye gecince oradan devam). Hover, mouseenter ile degil
+       GERCEK mousemove ile izlenir: icerik imlecin altinda kayinca / yeniden cizilince (sanal pencere) odak kendiliginden kaymaz.
+     - son giris turu: tus / tekerlek -> 'key' kipi, fare en az PTR_WAKE px gercekten hareket edene kadar hover yok sayilir
+       (air-mouse titremesi odak calmaz).
+     - click -> OK (o ogeye odak + OK). Bolum sayfasi: merceğin disindaki karta tik = kart mercege kayar, mercekteki karta tik = ac.
+     - sag tik / fare "geri" dugmesi (3) / tarayici geri (popstate) -> Geri.
+     - tekerlek -> ^v, shift+tekerlek ya da yatay tekerlek -> <>; adim basina esik + hiz siniri (birikmez).
+     - hover kaynakli odak, gorunur penceredeki ogeyi kaydirmaz (keepOff): imlecin altindaki liste yerinde kalir. */
+  var PTR_WAKE = 12, WHEEL_STEP = 50, WHEEL_MS = 150;
+  var PTR = { mode: 'key', x: -1, y: -1, ax: -1, ay: -1, node: null, backT: 0, wh: { acc: 0, t: 0, last: 0, horiz: false } };
+  var ptrNav = false;   /* odak degisikligi fareden mi (keepOff) */
+  function ptrNow() { return new Date().getTime(); }
+  function ptrClass(on) {
+    var b = doc.body;
+    if (!b) return;
+    var c = String(b.className || '').replace(/\s*\bdz-ptr\b/g, '');
+    b.className = on ? (c ? c + ' ' : '') + 'dz-ptr' : c;
   }
+  function ptrKeyMode() {
+    if (PTR.mode === 'mouse') ptrClass(false);
+    PTR.mode = 'key'; PTR.ax = PTR.x; PTR.ay = PTR.y; PTR.node = null;
+  }
+  /* fare kaynakli odak degisikligi: gorunur penceredeki oge icin kaydirma yok (keepOff) */
+  function ptrDo(fn) { ptrNav = true; try { fn(); } finally { ptrNav = false; } }
+  /* kaydirma ofseti: fareyle odaklanan oge zaten gorunur pencerede ise eski ofset korunur, yoksa hesaplanan (klavye) */
+  function keepOff(prev, idx, vis, calc) {
+    return ptrNav && typeof prev === 'number' && idx >= prev && idx < prev + vis ? prev : calc;
+  }
+  /* engel: ust uste binen pencere/perde ya da eski ekranin (gecis animasyonu) dugumu */
+  function ptrBlocked(node) {
+    if (S.veil || (DZP.exitConfirm && DZP.exitConfirm.active())) return true;
+    return !!(node && node.dzScr && node.dzScr !== S.screen);
+  }
+  function bindPointer(node, kind, i) {
+    node.dzPtr = { kind: kind, i: i };
+    node.dzScr = S.screen;
+    node.onclick = function (ev) {
+      if (ev && ev.button) return;
+      if (S.veil) { hideVeil(); return; }
+      if (ptrBlocked(node)) return;
+      PTR.node = node;
+      if (kind === 'controls' && i === PF && S.pop) { closePop(); return; }   /* acik profil menusu: hapa tik = kapat */
+      if (kind === 'scard' && S.sec && S.sec.rows) {   /* mercek: once kart mercege kayar, mercekteki karta tik = ac */
+        var sr = S.sec.rows[i.r];
+        if (sr && i.r === S.sec.row && sr.pos === i.v) { keyRep = false; return onKey('ok'); }
+        return ptrDo(function () { pointerFocus(kind, i); });
+      }
+      ptrDo(function () { pointerFocus(kind, i); });
+      keyRep = false;
+      onKey('ok');
+    };
+  }
+  /* satir ici ‹ › oklari: once o satira odak, sonra <- / -> (odaktaki baska satirin degeri degismesin) */
+  function ptrArrow(row, k) {
+    if (S.veil || ptrBlocked(row)) return;
+    var wasOn = /(^|\s)on(\s|$)/.test(String(row.className || ''));
+    if (row && row.dzPtr) ptrDo(function () { pointerFocus(row.dzPtr.kind, row.dzPtr.i); });
+    if (!wasOn) return;   /* oklar yalniz odaktaki satirda gorunur: odaksiz satirin (gorunmez) okuna tik yalniz odaklar */
+    keyRep = false;
+    onKey(k);
+  }
+  function ptrTarget(t) {
+    for (var n = t, d = 0; n && d < 12; n = n.parentNode, d++) if (n.dzPtr || n.dzHover) return n;
+    return null;
+  }
+  function ptrHover(t) {
+    var n = ptrTarget(t);
+    if (n === PTR.node) return;
+    PTR.node = n;
+    if (!n) return;
+    if (n.dzHover) { if (!S.veil) ptrDo(n.dzHover); return; }
+    if (ptrBlocked(n)) return;
+    var k = n.dzPtr.kind;
+    if (S.pop && k !== 'pop') return;   /* profil menusu acikken baska ogeler uzerinden gecmek menuyu kapatmaz (tik kapatir) */
+    if (k === 'drow' && S.detail && S.detail.eps) return;   /* Bolumler paneli acikken eylem satirlari uzerinden gecmek paneli kapatmaz */
+    if (k === 'scard') return;   /* bolum sayfasi: hover mercegi kaydirmaz (imlecin altinda serit kayardi); tik kaydirir */
+    ptrDo(function () { pointerFocus(k, n.dzPtr.i); });
+  }
+  doc.addEventListener('mousemove', function (ev) {
+    var x = ev.clientX, y = ev.clientY;
+    if (typeof x !== 'number' || (x === PTR.x && y === PTR.y)) return;   /* sentetik (yerlesim sonrasi) hareket */
+    PTR.x = x; PTR.y = y;
+    if (PTR.mode !== 'mouse') {
+      if (PTR.ax < 0) { PTR.ax = x; PTR.ay = y; return; }
+      if (Math.abs(x - PTR.ax) + Math.abs(y - PTR.ay) < PTR_WAKE) return;   /* titreme / kucuk kayma: kumanda odagi korunur */
+      PTR.mode = 'mouse'; PTR.node = null; ptrClass(true);
+    }
+    if (S.screen === 'player') { if (DZP.player.pointer) DZP.player.pointer(); }
+    ptrHover(ev.target);
+  });
+  function ptrBack() {
+    var t = ptrNow();
+    if (t - PTR.backT < 400) return;   /* ayni geri hareketinin ikinci olayi (mouseup + popstate) */
+    PTR.backT = t;
+    keyRep = false;
+    onKey('back');
+  }
+  doc.addEventListener('contextmenu', function (ev) {
+    var t = ev.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;   /* girdide yapistir menusu kalsin */
+    if (typeof ev.button === 'number' && ev.button !== 2) return;            /* yalniz fare sag tusu (dokunmatik uzun basma degil) */
+    if (ev.preventDefault) ev.preventDefault();
+    ptrBack();
+  });
+  doc.addEventListener('mousedown', function (ev) {
+    armHistory();
+    if (ev.button === 3 || ev.button === 4) { if (ev.preventDefault) ev.preventDefault(); return; }
+    /* hizli profil menusu acikken disariya tik = kapat */
+    if (ev.button === 0 && S.pop && S.screen === 'home' && !ptrTarget(ev.target)) closePop();
+  });
+  doc.addEventListener('click', function (ev) {   /* bilgi perdesi (Yakinda, guncelleme bildirimi): bos alana tik = kapat */
+    if (S.veil && !ev.button && !ptrTarget(ev.target)) hideVeil();
+  });
+  doc.addEventListener('mouseup', function (ev) {
+    if (ev.button === 3) { if (ev.preventDefault) ev.preventDefault(); ptrBack(); }   /* fare geri dugmesi */
+    else if (ev.button === 4 && ev.preventDefault) ev.preventDefault();
+  });
+  /* tarayici geri (fare geri dugmesi tarayiciya ulasirsa, Alt+<-, gecmis dugmesi): tek gecmis tuzagi; ilk kullanici
+     etkilesiminde kurulur (Chrome, etkilesimsiz eklenen kaydi atlar). Tizen/Android kabugunda yok (Geri tus olarak gelir). */
+  var histArmed = false, histOk = !g.tizen && !g.DZAndroid;
+  function armHistory() {
+    if (histArmed || !histOk) return;
+    try { if (g.history && g.history.pushState) { g.history.pushState({ dz: 1 }, ''); histArmed = true; } } catch (e) { histOk = false; }
+  }
+  g.addEventListener('popstate', function () {
+    if (!histArmed) return;
+    histArmed = false;
+    ptrBack();
+  });
+  function wheelKey(ev) {
+    var dx = +ev.deltaX || 0, dy = +ev.deltaY || 0, m = ev.deltaMode === 1 ? 40 : (ev.deltaMode === 2 ? 800 : 1);
+    dx *= m; dy *= m;
+    if (ev.shiftKey && !dx) { dx = dy; dy = 0; }
+    var horiz = Math.abs(dx) > Math.abs(dy), d = horiz ? dx : dy, W = PTR.wh, t = ptrNow();
+    if (!d) return null;
+    if (t - W.t > 250 || W.horiz !== horiz || (W.acc > 0) !== (d > 0)) W.acc = 0;   /* duraklama / yon degisimi: sifirdan */
+    W.t = t; W.horiz = horiz; W.acc += d;
+    if (Math.abs(W.acc) < WHEEL_STEP) return null;
+    W.acc = 0;
+    if (t - W.last < WHEEL_MS) return null;   /* hiz siniri: fazlasi atilir (kuyruk/birikme yok) */
+    var rep = t - W.last < 400;
+    W.last = t;
+    return { k: horiz ? (d > 0 ? 'right' : 'left') : (d > 0 ? 'down' : 'up'), rep: rep };
+  }
+  function onWheel(ev) {
+    var t = ev.target;
+    if (ev.ctrlKey) return;   /* tarayici yakinlastirma */
+    if (ev.preventDefault) ev.preventDefault();
+    var w = wheelKey(ev);
+    if (!w) return;
+    if (t && t.tagName === 'INPUT' && t.blur) { try { t.blur(); } catch (e) {} }
+    ptrKeyMode();             /* icerik imlecin altinda kayar: hover, fare hareket edene kadar odak calmaz */
+    keyRep = w.rep;           /* art arda tekerlek: bolum seridinde kisa dogrusal gecis */
+    onKey(w.k);
+  }
+  try { doc.addEventListener('wheel', onWheel, { passive: false }); } catch (e) { doc.addEventListener('wheel', onWheel); }
+  /* testler icin */
+  DZP._ptr = { state: function () { return PTR; }, S: function () { return S; } };
   function pointerFocus(kind, i) {
     if (S.pop && kind !== 'pop') closePop();
     if (kind === 'pop' && S.pop) { S.pop.idx = i; popPaint(); }
@@ -2368,13 +2837,13 @@
     else if (kind === 'cont' && S.screen === 'home') { S.cont.idx = i; homeFocus('cont', S.idx, S.ctrl); }
     else if (kind === 'hplay' && S.screen === 'home' && S.zone !== 'cont' && heroPlayable(HV)) homeFocus('play', S.idx, S.ctrl);   /* Devam Et'te: dugme o karti oynatir */
     else if (kind === 'scard' && S.screen === 'section' && S.sec && S.sec.rows) {
-      var sr = S.sec.rows[Math.floor(i / 10000)];
-      if (sr) { S.sec.row = Math.floor(i / 10000); sr.col = i % 10000; renderSectionWindow(); }
+      var sr = S.sec.rows[i.r];   /* i = {r: satir, v: sanal yuva}; tiklanan kart mercegin altina kayar */
+      if (sr) { S.sec.row = i.r; sr.pos = i.v; sr.col = secLoop(sr) ? md(i.v, sr.total) : i.v; renderSectionWindow(); }
     }
     else if (kind === 'grid' && S.screen === 'grid' && S.grid.idx !== i) { S.grid.idx = i; renderGridWindow(); }
     else if (kind === 'sfld' && S.screen === 'search' && S.srch) { S.srch.zone = 'input'; searchPaint(); }
     else if (kind === 'scard2' && S.screen === 'search' && S.srch) { S.srch.zone = 'rows'; S.srch.row = Math.floor(i / 10000); S.srch.cols[S.srch.row] = i % 10000; searchPaint(); }
-    else if (kind === 'drow' && S.screen === 'detail' && S.detail.row !== i) { S.detail.row = i; renderDetail(); }
+    else if (kind === 'drow' && S.screen === 'detail' && (S.detail.row !== i || S.detail.eps)) { S.detail.eps = null; S.detail.row = i; renderDetail(); }
     else if (kind === 'srow' && S.screen === 'settings' && S.setRow !== i) { S.setRow = i; renderSettings(); }
     else if (kind === 'srv' && S.screen === 'server' && S.srv.row !== i) { S.srv.row = i; serverPaint(); }
     else if (kind === 'pf' && S.screen === 'profiles') { S.pf.zone = 'cards'; S.pf.idx = i; pfPaint(); }
@@ -2450,8 +2919,8 @@
   /* profil ekranindan secim: secim saklanir (sonraki soguk acilista odak o kartta), ana ekran sifirdan */
   /* oturumu bosalt: profil ana ekran verisi (menu, Devam Et, bolum/izgara/detay) bellekten silinir; yeni yanitlar gen ile ayrilir */
   function clearSession() {
-    S.gen++;
-    S.entries = []; S.cont = { items: [], idx: 0 }; S.idx = 0; S.zone = 'list'; S.ctrl = 0; S.heroIdx = 0;
+    S.gen++; HC = null;
+    S.entries = []; S.cont = { items: [], idx: 0 }; S.idx = 0; S.zone = 'list'; S.ctrl = 0; S.topSeen = false; S.heroIdx = 0;
     S.sec = null; S.grid = null; S.detail = null;
     if (S.srch) { S.srch.ctl.dispose(); S.srch = null; }
     S.loading = true; S.error = null;

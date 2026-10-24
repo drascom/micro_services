@@ -18,7 +18,7 @@ kontrol edilir; HTTP/Cloudflare engeli parser'a başarılı HTML diye aktarılma
 ## Linux kurulumu ve dağıtım
 
 ```bash
-cd /root/micro_services/diziflix/server
+cd /home/drascom/diziflix/server
 bash tools/install_crawler.sh
 ```
 

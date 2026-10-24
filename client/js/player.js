@@ -410,54 +410,8 @@
     return eng;
   }
 
-  /* ================= bolum bilgisi + sonraki bolum (eski istemciden) ================= */
-  function todayIso() { var d = new Date(); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
-  function sortedSeasons(detail) {
-    var list = detail && detail.seasons && detail.seasons.slice ? detail.seasons.slice() : [];
-    list.sort(function (a, b) { return (a.season === 0 ? 1e9 : (a.season || 0)) - (b.season === 0 ? 1e9 : (b.season || 0)); });
-    return list;
-  }
-  function episodePlayable(ep, today) {
-    var a = ep && ep.availability ? ep.availability.state : '';
-    var air = ep && typeof ep.air_date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(ep.air_date) ? ep.air_date.slice(0, 10) : '';
-    if (air && air > today && a !== 'ready') return false;
-    return a !== 'unavailable';
-  }
-  function epTag(season, episode) { var b = 'B' + pad2(episode || 0); return season === 0 ? ('Özel ' + b) : ('S' + pad2(season || 0) + ' ' + b); }
-  function episodeLabel(tag, title) {
-    var t = String(title || '').replace(/^\s+|\s+$/g, '');
-    if (!t || /^\d+\s*\.?\s*b[oö]l[uü]m$/i.test(t)) return tag;
-    return tag ? (tag + ' · ' + t) : t;
-  }
-  function epObj(ep, sn) { var tag = epTag(sn, ep.episode); return { id: ep.id, season: sn, episode: ep.episode, tag: tag, title: ep.title || '', label: episodeLabel(tag, ep.title) }; }
-  function episodeInfo(detail, id) {
-    if (!id) return null;
-    var list = sortedSeasons(detail), si, ei;
-    for (si = 0; si < list.length; si++) {
-      var eps = list[si].episodes || [];
-      for (ei = 0; ei < eps.length; ei++) if (eps[ei].id === id) return epObj(eps[ei], eps[ei].season !== undefined && eps[ei].season !== null ? eps[ei].season : list[si].season);
-    }
-    var m = /:s(\d+):e(\d+)$/i.exec(String(id));
-    if (!m) return null;
-    var tg = epTag(+m[1], +m[2]);
-    return { id: id, season: +m[1], episode: +m[2], tag: tg, title: '', label: tg };
-  }
-  /* bir sonraki ARDISIK bolum; aradaki bolum oynatilamiyorsa null (sessizce atlanmaz); ozel bolumler yalniz kendi aralarinda */
-  function nextEpisodeOf(detail, id, today) {
-    if (!detail || !id) return null;
-    var list = sortedSeasons(detail), found = false, special = false;
-    for (var si = 0; si < list.length; si++) {
-      var eps = list[si].episodes || [];
-      for (var ei = 0; ei < eps.length; ei++) {
-        var ep = eps[ei];
-        if (!found) { if (ep.id === id) { found = true; special = list[si].season === 0; } continue; }
-        if ((list[si].season === 0) !== special) return null;
-        if (!episodePlayable(ep, today || todayIso())) return null;
-        return epObj(ep, ep.season !== undefined && ep.season !== null ? ep.season : list[si].season);
-      }
-    }
-    return null;
-  }
+  /* ================= bolum bilgisi + sonraki bolum: ortak js/episodes.js (detaydaki Bolumler paneliyle ayni) ================= */
+  var EPS = DZP.episodes, todayIso = EPS.todayIso, episodeInfo = EPS.episodeInfo, nextEpisodeOf = EPS.nextEpisodeOf;
 
   /* ================= kaynak bulucu (eski istemcinin finder.js'inden) ================= */
   function finderState(f) { var s = f && typeof f === 'object' ? f.state : null; return s === 'searching' || s === 'not_found' ? s : null; }
@@ -505,11 +459,23 @@
     u.bar = el('div', 'pl-bar');
     u.fill = el('div', 'pl-fill'); u.knob = el('div', 'pl-knob');
     u.bar.appendChild(u.fill); u.bar.appendChild(u.knob);
+    /* fare: ilerleme cubuguna tik = o konuma git. Oran ekran koordinatindan (getBoundingClientRect): sahne olcekli (transform)
+       ve tik dolgu/topuz uzerine dusebilir -> offsetX guvenilmez. Hover = cubuk satiri odakta. */
     u.bar.onclick = function (ev) {
-      if (!P || !P.eng || !P.eng.dur) return;
-      var x = ev && typeof ev.offsetX === 'number' ? ev.offsetX : 0;
-      P.eng.seek(Math.max(0, Math.min(1, x / BAR_W)) * P.eng.dur); paint(); sendProgress(true);
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      if (!P || !P.eng || P.live || P.ended) return;
+      var dur = P.eng.dur || P.duration || 0;
+      if (!dur) return;
+      var r = null, x;
+      try { r = u.bar.getBoundingClientRect(); } catch (e) { r = null; }
+      if (r && r.width > 0 && ev && typeof ev.clientX === 'number') x = (ev.clientX - r.left) / r.width;
+      else x = (ev && typeof ev.offsetX === 'number' ? ev.offsetX : 0) / BAR_W;
+      T('seekTimer'); P.seeking = false; P.holdCount = 0;
+      P.row = 0;
+      P.eng.seek(Math.max(0, Math.min(1, x)) * dur); paint(); sendProgress(true);
+      showUI();
     };
+    u.bar.dzHover = function () { if (P && P.uiOn && !P.live && P.row !== 0) { P.row = 0; paintFocus(); } };
     var times = el('div', 'pl-times');
     u.tCur = el('span', '', '0:00'); u.tRem = el('span', '', '');
     times.appendChild(u.tCur); times.appendChild(u.tRem);
@@ -527,7 +493,16 @@
     u.root.appendChild(u.poster); u.root.appendChild(u.media); u.root.appendChild(u.subsHost); u.root.appendChild(u.ui);
     u.root.appendChild(u.side); u.root.appendChild(u.next); u.root.appendChild(u.dim); u.root.appendChild(u.err); u.root.appendChild(u.hint);
     u.root.appendChild(u.band);
-    u.root.onmousemove = function () { if (P && P.shown && !P.err && !P.iframe) showUI(); };
+    /* fare: hareket = katman gorunur (app.js gercek hareketi suzer -> DZP.player.pointer); bos alana tik = oynat/duraklat
+       (canli: katman), panel acikken = paneli kapat. Kontrollerin kendi tiklamasi var (cift OK yok). */
+    u.root.onclick = function (ev) {
+      if (!P || (ev && ev.button) || P.iframe || P.err || !P.shown) return;
+      for (var n = ev && ev.target, d = 0; n && n !== u.root && d < 12; n = n.parentNode, d++)
+        if (n.onclick || n.dzHover || n === u.pn || n === u.side || n === u.next || n === u.err || n === u.band) return;   /* kontrol / cam kutu ici */
+      if (P.panel) { closePanel(); return; }
+      if (P.live || P.ended) { showUI(); return; }
+      togglePlay();
+    };
     return u;
   }
 
@@ -605,9 +580,7 @@
   function tracksOn() { return !!(P && P.model && P.sel && DZ.tracks && !P.iframe); }
   function episodesList() {
     if (!isEp() || P.kind === 'trailer' || !P.detail) return [];
-    var ss = sortedSeasons(P.detail), out = [];
-    for (var i = 0; i < ss.length; i++) if (ss[i].episodes && ss[i].episodes.length) out.push(ss[i]);
-    return out;
+    return EPS.withEpisodes(P.detail);
   }
   function buttonDefs() {
     if (P.live) {
@@ -647,6 +620,7 @@
         if (d.value) b.appendChild(el('span', 'pl-bv ell', d.value));
       }
       b.onclick = (function (k) { return function () { if (!P) return; P.row = 1; P.btn = k; activate(P.btnDefs[k].id); }; })(i);
+      b.dzHover = (function (k) { return function () { if (P && P.uiOn && (P.row !== 1 || P.btn !== k)) { P.row = 1; P.btn = k; paintFocus(); } }; })(i);
       u.btns.appendChild(b);
       P.btnEls.push(b);
     }
@@ -847,13 +821,8 @@
       var cl = chList();
       for (i = 0; i < cl.length; i++) out.push({ id: cl[i].id, label: chLabel(cl[i]), cur: cl[i].id === P.itemId, badge: '' });
     } else if (pn.kind === 'episodes') {
-      var s = pn.seasons[pn.si], eps = s.episodes || [], today = todayIso();
-      for (i = 0; i < eps.length; i++) {
-        var sn = eps[i].season !== undefined && eps[i].season !== null ? eps[i].season : s.season;
-        var tag = 'B' + pad2(eps[i].episode || 0), t = String(eps[i].title || '');
-        out.push({ id: eps[i].id, label: /^\d+\s*\.?\s*b[oö]l[uü]m$/i.test(t) || !t ? tag : tag + ' · ' + t, cur: eps[i].id === P.episodeId,
-          dis: !episodePlayable(eps[i], today), sn: sn });
-      }
+      var er = EPS.rows(pn.seasons[pn.si], P.episodeId, todayIso());
+      for (i = 0; i < er.length; i++) out.push({ id: er[i].id, label: er[i].label, cur: er[i].cur, dis: er[i].dis, sn: er[i].sn });
     }
     return out;
   }
@@ -891,13 +860,19 @@
     if (pn.kind === 'episodes') {
       var se = pn.seasons[pn.si];
       var sl = el('div', 'pl-side-s');
-      sl.appendChild(el('span', 'pl-side-arr', pn.seasons.length > 1 ? '‹' : ''));
+      var la = el('span', 'pl-side-arr', pn.seasons.length > 1 ? '‹' : ''), ra = el('span', 'pl-side-arr', pn.seasons.length > 1 ? '›' : '');
+      la.onclick = function (ev) { if (ev && ev.stopPropagation) ev.stopPropagation(); if (P && P.panel === pn) panelKey('left'); };
+      ra.onclick = function (ev) { if (ev && ev.stopPropagation) ev.stopPropagation(); if (P && P.panel === pn) panelKey('right'); };
+      sl.appendChild(la);
       sl.appendChild(el('span', 'ell', se.season === 0 ? 'Özel bölümler' : (se.name || se.title || ('Sezon ' + se.season))));
-      sl.appendChild(el('span', 'pl-side-arr', pn.seasons.length > 1 ? '›' : ''));
+      sl.appendChild(ra);
       s.appendChild(sl);
     }
     var list = el('div', 'pl-side-list' + (pn.kind === 'episodes' ? ' has-s' : ''));
     var n = pn.items.length, off = Math.max(0, Math.min(pn.idx - Math.floor(SIDE_ROWS / 2), n - SIDE_ROWS));
+    /* fare hover'i: odaktaki satir zaten gorunuyorsa liste kaymaz (imlecin altindaki satir yerinde kalir) */
+    if (pn.keep && typeof pn.off === 'number' && pn.idx >= pn.off && pn.idx < pn.off + SIDE_ROWS && pn.off <= Math.max(0, n - SIDE_ROWS)) off = pn.off;
+    pn.keep = false; pn.off = off;
     var hl = el('div', 'pl-side-hl');
     setT(hl, 'translateY(' + ((pn.idx - off) * SIDE_ROW) + 'px)');
     list.appendChild(hl);
@@ -907,7 +882,8 @@
       r.appendChild(el('span', 'pl-chk', it.cur ? '✓' : ''));
       r.appendChild(el('span', 'pl-it-l ell', it.label));
       if (it.badge) r.appendChild(el('span', 'pl-badge', it.badge));
-      r.onclick = (function (k) { return function () { if (P && P.panel) { P.panel.idx = k; panelKey('ok'); } }; })(i);
+      r.onclick = (function (k) { return function (ev) { if (ev && ev.stopPropagation) ev.stopPropagation(); if (P && P.panel === pn) { pn.idx = k; panelKey('ok'); } }; })(i);
+      r.dzHover = (function (k) { return function () { if (P && P.panel === pn && pn.idx !== k) { pn.idx = k; pn.note = ''; pn.keep = true; renderPanel(); if (!P.iframe) showUI(); } }; })(i);
       list.appendChild(r);
     }
     list.style.height = (Math.min(n, SIDE_ROWS) * SIDE_ROW) + 'px';
@@ -981,6 +957,7 @@
       b.appendChild(el('div', 'pl-hl'));
       b.appendChild(el('span', '', labels[i]));
       b.onclick = (function (k) { return function () { if (P && P.err) { P.err.btn = k; errKey('ok'); } }; })(i);
+      b.dzHover = (function (k) { return function () { if (P && P.err && P.err.btn !== k) { P.err.btn = k; errPaint(); } }; })(i);
       row.appendChild(b); cur.err.els.push(b);
     }
     e.appendChild(row);
@@ -1546,6 +1523,8 @@
 
   DZP.player = {
     open: open, key: key, close: function () { exit('close'); }, active: function () { return !!P; },
+    /* fare gercekten hareket etti (app.js): katman gorunur */
+    pointer: function () { if (P && P.shown && !P.err && !P.iframe) showUI(); },
     enginePref: enginePref, setEnginePref: setEnginePref,
     /* testler icin */
     _: { createEngine: createEngine, preferHlsJs: preferHlsJs, isEmbedStream: isEmbedStream, isHlsStream: isHlsStream,

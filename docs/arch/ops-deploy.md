@@ -4,19 +4,21 @@
 
 ## Deploy ve config kararı
 
-Deploy: git dışı `deploy.env`'deki (`DZ_HOST`, `DZ_DEST`, `DZ_SERVICE`, `DZ_PORT`, ops. `DZ_BACKUP_DIR`; örnek `deploy.env.example`, yoksa `deploy.sh`/`clear-remote.sh` anlaşılır hatayla durur; ortam değişkenleri dosyayı ezer) host'a tar-over-ssh (`--exclude "._*"`); `.env`, `data/`, `venv/` korunur. Servis: `systemctl restart diziflix` (`.env` değişince).
+Deploy: git dışı `deploy.env`'deki (`DZ_HOST`, `DZ_DEST`, `DZ_SERVICE`, `DZ_PORT`, ops. `DZ_BACKUP_DIR`; örnek `deploy.env.example`, yoksa `deploy.sh`/`clear-remote.sh` anlaşılır hatayla durur; ortam değişkenleri dosyayı ezer) host'a tar-over-ssh (`--exclude "._*"`); `.env`, `data/`, `venv/` korunur. Servis: `systemctl restart diziflix` (`.env` değişince; root değilse `sudo -n`, NOPASSWD gerekir).
+
+Sunucu (2026-10-24): `diziflix` = `drascom@192.168.0.124` (NetBird `diziflix.internal`, public https://diziflix.drascom.uk → :8090), kod `/home/drascom/diziflix/server`, yedekler `DZ_BACKUP_DIR=/home/drascom/diziflix-backups`. Kullanıcı root değil: restart/stop `sudo -n systemctl` ile (NOPASSWD sudo şart). İlk kurulum: kodu gönderdikten sonra sunucuda `./install.sh` (venv + requirements + `.env` + systemd); `deploy.sh` venv kurmaz, yalnız `requirements.txt` değişince mevcut venv'e `pip install` yapar.
 
 Otomatik deploy (proje kökünden): `./deploy.sh` = sunucuda yedek + requirements/configs fark kontrolü + tar-over-ssh + `import app.main` + restart + `/admin`,`/api/*` doğrulama; önce `./deploy.sh --dry-run` (yazmaz). Scraper `configs/` site bazında akıllı karar (yaml+baseline birlikte, tabloyla): sunucu sürümü < yerel VE sunucuda uygulanmış heal kaydı (`data/_ops.json`, `scraper_state/<site>.json`) / yeni arşiv (`<site>.vN.yaml`) yoksa otomatik EZER ("v7 → v8"); sunucu sürümü ≥ yerel, heal izi var ya da sürüm/heal okunamadıysa KORUR (yalnız o dosyalar `--exclude`; `--overwrite-configs` ezer, onay ister; `--keep-configs` hiç ezmez); sunucu configs'i her durumda önce `deploy-backups/`e iner
 
 
 ## Geri alma, bayraklar, env
 
-Geri alma: `./deploy.sh --rollback [YEDEK_YOLU]` (yolsuz: en son `/root/diziflix-server-bak-*.tgz`; `.env`/`data/`/`venv/` korunur). Diğer: `--keep-configs`, `--overwrite-configs`, `--no-restart`, `--no-prune`, `--keep N`, `--yes`, `--help`; env: `DZ_HOST`, `DZ_DEST`, `DZ_SERVICE`, `DZ_PORT`, `DZ_BACKUP_DIR`, `DZ_KEEP_BACKUPS`
+Geri alma: `./deploy.sh --rollback [YEDEK_YOLU]` (yolsuz: en son `$DZ_BACKUP_DIR/diziflix-server-bak-*.tgz`; `.env`/`data/`/`venv/` korunur). Diğer: `--keep-configs`, `--overwrite-configs`, `--no-restart`, `--no-prune`, `--keep N`, `--yes`, `--help`; env: `DZ_HOST`, `DZ_DEST`, `DZ_SERVICE`, `DZ_PORT`, `DZ_BACKUP_DIR`, `DZ_KEEP_BACKUPS`
 
 
 ## Yedek budama
 
-Yedek budama (varsayılan AÇIK): başarılı deploy'un sonunda (restart + tüm uç doğrulaması geçtikten sonra) sunucuda `/root/diziflix-server-bak-YYYYMMDD-HHMMSS.tgz` yedeklerinden yalnız EN YENİ 3'ü (ad zaman damgasına göre; bu deploy'un yedeği hep kalır) ve yerelde `deploy-backups/remote-configs-YYYYMMDD-HHMMSS/` klasörlerinden en yeni 3'ü kalır, eskiler silinir. `--keep N` / `DZ_KEEP_BACKUPS` (varsayılan 3, en az 1), `--no-prune` kapatır; `--prune-backups` kullanımdan kalktı (etkisiz). Başarısız/doğrulanamayan deploy, import hatası, `--rollback`, `--no-restart`, `--dry-run`/`--local-only`'de silme YOK (dry-run yalnız "silinecekti" listesi); `diziflix-server-prerollback-*`, `diziflix-db-bak-*`, `data/diziflix.db.bak.*` ve ad kalıbına uymayan dosyalara asla dokunulmaz
+Yedek budama (varsayılan AÇIK): başarılı deploy'un sonunda (restart + tüm uç doğrulaması geçtikten sonra) sunucuda `$DZ_BACKUP_DIR/diziflix-server-bak-YYYYMMDD-HHMMSS.tgz` yedeklerinden yalnız EN YENİ 3'ü (ad zaman damgasına göre; bu deploy'un yedeği hep kalır) ve yerelde `deploy-backups/remote-configs-YYYYMMDD-HHMMSS/` klasörlerinden en yeni 3'ü kalır, eskiler silinir. `--keep N` / `DZ_KEEP_BACKUPS` (varsayılan 3, en az 1), `--no-prune` kapatır; `--prune-backups` kullanımdan kalktı (etkisiz). Başarısız/doğrulanamayan deploy, import hatası, `--rollback`, `--no-restart`, `--dry-run`/`--local-only`'de silme YOK (dry-run yalnız "silinecekti" listesi); `diziflix-server-prerollback-*`, `diziflix-db-bak-*`, `data/diziflix.db.bak.*` ve ad kalıbına uymayan dosyalara asla dokunulmaz
 
 
 ## REMOTEONLY / `--pull-configs`
@@ -31,9 +33,9 @@ Test için sunucu veritabanını SIFIRLAMA: `./clear-remote.sh [--cache] [--no-b
 
 ## Yerel test
 
-Yerel test (sunucuya bağlanmaz): `./deploy.sh --local-only -v` (gönderilecek dosya listesi); yedekler `/root/diziflix-server-bak-<ts>.tgz`, indirilen sunucu configs `./deploy-backups/` altına (git dışı)
+Yerel test (sunucuya bağlanmaz): `./deploy.sh --local-only -v` (gönderilecek dosya listesi); yedekler `$DZ_BACKUP_DIR/diziflix-server-bak-<ts>.tgz` (varsayılan `/root`), indirilen sunucu configs `./deploy-backups/` altına (git dışı)
 
 
-## Scraper config referansı sunucudur (61)
+## Scraper config referansı sunucudur (`diziflix`)
 
-- **Scraper config'inde referans SUNUCUDUR (61)**: sunucuda gerçek LLM bağlı (`SCRAPER_HEAL_*`, autoapply açık), `configs/<site>.yaml` + `.baseline.json` düzeltmelerini (selector/drift heal, sürüm artışı) o kendi yapar. Biz yalnızca uygulama kodunu (normalize, site_extractors, providers, ingest, API, istemci, testler) düzenleriz; var olan bir sitenin yaml/baseline'ını yerelde ELLE düzeltmeyiz. Yerel `server/app/scraper/configs/` sunucunun AYNASIDIR: sunucudan çekilir (deploy'un indirdiği `deploy-backups/remote-configs-<ts>/configs`), yerelden sunucuya itilmez; yerel sürüm ≤ sunucu kaldıkça `deploy.sh` zaten KORUR. Yalnızca YENİ site config'i yerelde yazılır ve deploy'la gider (sonra referans sunucu olur). Bir scraper bozulursa önce admin Olay defteri/heal'e bak (`POST /api/ops/sites/{site}/heal`), elle config düzeltmesi gerekirse kullanıcıya sor. Yerel fixture testleri sunucu config'iyle uyuşmazsa düzeltilen FIXTURE/test olur (canlı sayfadan yenile, `tools.homepage_probe`); config yerel eski sürüme döndürülmez
+- **Scraper config'inde referans SUNUCUDUR** (`diziflix`, 192.168.0.124): sunucuda heal bağlı (sağlayıcı pi / `pi_agent`, autoapply açık), `configs/<site>.yaml` + `.baseline.json` düzeltmelerini (selector/drift heal, sürüm artışı) o kendi yapar. Biz yalnızca uygulama kodunu (normalize, site_extractors, providers, ingest, API, istemci, testler) düzenleriz; var olan bir sitenin yaml/baseline'ını yerelde ELLE düzeltmeyiz. Yerel `server/app/scraper/configs/` sunucunun AYNASIDIR: sunucudan çekilir (`./deploy.sh --pull-configs`; deploy'un indirdiği `deploy-backups/remote-configs-<ts>/configs`), yerelden sunucuya itilmez; yerel sürüm ≤ sunucu kaldıkça `deploy.sh` zaten KORUR. Yalnızca YENİ site config'i yerelde yazılır ve deploy'la gider (sonra referans sunucu olur). Bir scraper bozulursa önce admin Olay defteri/heal'e bak (`POST /api/ops/sites/{site}/heal`), elle config düzeltmesi gerekirse kullanıcıya sor. Yerel fixture testleri sunucu config'iyle uyuşmazsa düzeltilen FIXTURE/test olur (canlı sayfadan yenile, `tools.homepage_probe`); config yerel eski sürüme döndürülmez

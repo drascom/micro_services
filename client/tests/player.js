@@ -94,7 +94,7 @@ function env(routes, o) {
   };
 
   vm.createContext(sb);
-  for (const f of ['debug.js', 'api.js', 'tracks.js', 'subs.js', 'player.js']) vm.runInContext(read(f), sb, { filename: f });
+  for (const f of ['debug.js', 'api.js', 'tracks.js', 'subs.js', 'episodes.js', 'player.js']) vm.runInContext(read(f), sb, { filename: f });
   const stage = mk('div'), veil = mk('div');
   stage.appendChild(veil);
   const P = sb.DZP.player;
@@ -613,6 +613,44 @@ const okRoutes = [['POST', /\/api\/progress/, () => ({ ok: true })], ['POST', /\
     assert.equal(e.log.hls.length, 0, 'no Hls instance');
     assert(!e.log.videos.some(v => /\.m3u8/.test(v.src || '')), 'm3u8 never assigned to <video>');
     assert.equal(e.video().src, 'https://cdn.test/v2.mp4', 'next stream');
+    e.P.close();
+  }
+  // (21) mouse = remote: real pointer move shows the layer, hover focuses (bar / buttons / panel rows), progress-bar click seeks
+  //      to that position (screen coords, scale-independent), background click = play/pause (panel open: closes it)
+  {
+    const e = env([streamsRoute({ streams: [S(1), S(2)], duration: 2700 }), ...okRoutes]);
+    await e.open();
+    const v = e.video();
+    v.duration = 2700; v.listeners.loadedmetadata(); v.listeners.playing(); v.currentTime = 100; v.listeners.timeupdate();
+    await tick(); e.T.advance(5000); await tick();
+    const st = e.st(), u = st.ui;
+    assert(/hide/.test(u.ui.className), 'layer hidden once playing');
+    e.P.pointer();
+    assert(st.uiOn && !/hide/.test(u.ui.className), 'pointer move shows the layer');
+    u.bar.getBoundingClientRect = () => ({ left: 100, top: 0, width: 800, height: 8 });   // scaled stage: 1600 css px -> 800 screen px
+    u.bar.onclick({ button: 0, clientX: 500, offsetX: 3, stopPropagation() {} });
+    assert.equal(v.currentTime, 1350, 'bar click seeks to 50% (clientX within the bar rect, not offsetX)');
+    const btns = st.btnEls;
+    const src = st.btnDefs.findIndex(d => d.id === 'source');
+    assert(src > 0, 'source button');
+    btns[src].dzHover();
+    assert.equal(st.row, 1); assert.equal(st.btn, src);
+    assert(/\bon\b/.test(btns[src].className), 'hovered button focused');
+    u.bar.dzHover();
+    assert.equal(st.row, 0, 'bar hover -> progress row');
+    const playing = st.eng.playing;
+    u.root.onclick({ button: 0, target: u.media });
+    assert.equal(st.eng.playing, !playing, 'background click toggles play/pause');
+    u.root.onclick({ button: 0, target: btns[0] });
+    assert.equal(st.eng.playing, !playing, 'click on a control is not a background click');
+    btns[src].onclick();
+    assert(st.panel && st.panel.kind === 'source', 'button click = OK (panel)');
+    const rows = () => findAll(u.side, 'pl-it');
+    rows()[1].dzHover();
+    assert.equal(st.panel.idx, 1, 'panel row hover focuses');
+    assert(/\bon\b/.test(rows()[1].className));
+    u.root.onclick({ button: 0, target: u.media });
+    assert(!st.panel, 'background click closes the panel');
     e.P.close();
   }
   console.log('client player: ok');

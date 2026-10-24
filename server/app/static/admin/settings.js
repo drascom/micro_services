@@ -8,6 +8,7 @@ var $=function(i){return document.getElementById(i)};
 var D=null,failed=false,llm=null,llmBusy=false,pollTimer=null;
 var TS=null,tFail=false,tKind='movie',tDec='',tOff=0,tPrev=null,tPrevBusy=false,tStarting=false,tLast='',tTimer=null,tTicks=0,tWatch=false,tLastId=null;
 var LV=null,lvFail=false,lvOpen=false,lvFilter='';
+var MS=null,msFail=false,msBusy=false,msLast=null,MF={kind:'link',name:'',url:'',llm:true,file:null};
 var PG=20,KL={movie:'film',series:'dizi',seasons:'dizi (sezon/bölüm)'},KLG={movie:'filmden',series:'diziden'},KLP={movie:'Film',series:'Dizi',seasons:'Sezon ve bölüm görselleri'};
 var DECL={auto:['ok','Otomatik'],review:['warn','İnceleme'],unmatched:['','Eşleşmedi'],error:['bad','Hata'],deferred:['','Ertelendi']};
 var SDECL={auto:['ok','Bulundu'],empty:['','TMDB’de yok'],error:['bad','Hata'],deferred:['','Ertelendi']};
@@ -340,23 +341,91 @@ function liveScan(b){
     .catch(function(e){toast('Başlatılamadı: '+(e&&e.message||e),'bad');b.disabled=false});
 }
 
+/* ---- M3U kaynakları (/api/ops/live/sources; library/m3u.py) ---- */
+var MLLM={not_needed:'gerekmedi',ok:'çalıştı',disabled:'kapalı (seçilmedi)'};
+function m3uLoad(){
+  return call('/api/ops/live/sources').then(function(d){MS=d;msFail=false;renderM3u()}).catch(function(e){msFail=String(e&&e.message||e);renderM3u()});
+}
+function llmText(s){if(!s)return '-';if(MLLM[s])return MLLM[s];if(s.indexOf('off:')===0)return 'atlandı ('+s.slice(4).trim()+')';return s}
+function sumText(x){
+  if(!x)return '';if(x.error)return 'Hata: '+x.error;
+  return num(x.added)+' eklendi · '+num(x.updated)+' güncellendi · '+num(x.unchanged)+' aynı · '+num(x.skipped)+' atlandı · '+
+    num(x.llm_fixed)+' LLM ile düzeltildi'+(x.deactivated?' · '+num(x.deactivated)+' kaldırıldı':'')+
+    (x.problems?' · LLM: '+llmText(x.llm)+(x.unresolved?' ('+num(x.unresolved)+' satır okunamadı)':''):'');
+}
+function m3uHtml(){
+  var mb=Math.round(((MS&&MS.max_bytes)||5242880)/1048576);
+  var h='<div class="sh"><span class="sname" style="font-size:16px">M3U kaynakları</span></div>'+
+    '<p class="hint">M3U/M3U8 listesi bağlantı ya da dosya olarak eklenir; kanallar Canlı TV’ye katılır (dil süzgeci yok). Bağlantılar saatlik taramayla yenilenir, dosya sabittir. En fazla '+mb+' MB.</p>'+
+    '<div class="srow" style="flex-wrap:wrap;gap:8px;align-items:center">'+
+      '<label class="chk"><input type="radio" name="m3u-kind" value="link" data-m3u-kind="1"'+(MF.kind==='link'?' checked':'')+'> Bağlantı</label>'+
+      '<label class="chk"><input type="radio" name="m3u-kind" value="file" data-m3u-kind="1"'+(MF.kind==='file'?' checked':'')+'> Dosya</label>'+
+      '<input type="text" id="m3u-name" data-m3u-field="name" maxlength="80" placeholder="Ad (örn. Ulusal kanallar)" value="'+esc(MF.name)+'" aria-label="Kaynak adı" style="min-width:180px">'+
+      (MF.kind==='link'?'<input type="url" id="m3u-url" data-m3u-field="url" maxlength="2048" placeholder="https://…/liste.m3u" value="'+esc(MF.url)+'" aria-label="M3U bağlantısı" style="flex:1;min-width:240px">':
+        '<input type="file" id="m3u-file" accept=".m3u,.m3u8,audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain" aria-label="M3U dosyası">'+
+        (MF.file?'<small>'+esc(MF.file.name)+' · '+num(Math.round(MF.file.size/1024))+' KB</small>':''))+
+      '<label class="chk"><input type="checkbox" id="m3u-llm" data-m3u-llm="1"'+(MF.llm?' checked':'')+'> LLM ile düzelt</label>'+
+      '<button class="btn" id="m3u-add"'+(msBusy?' disabled':'')+'>'+(msBusy?'İçe aktarılıyor…':'İçe aktar')+'</button></div>';
+  if(msLast)h+='<p class="hint" style="margin-top:8px"><b>'+esc(msLast.name||'')+'</b>: '+esc(sumText(msLast.summary))+'</p>';
+  if(msFail&&!MS)return h+'<div class="empty">Liste alınamadı: '+esc(msFail)+'</div>';
+  if(!MS)return h+'<div class="empty">Yükleniyor…</div>';
+  var rows=MS.sources||[];
+  if(!rows.length)return h+'<div class="empty">Henüz M3U kaynağı yok.</div>';
+  h+='<table style="width:100%;font-size:13px;border-collapse:collapse;margin-top:8px"><tr style="text-align:left"><th style="padding:6px 6px 6px 0">Ad</th><th>Tür</th><th>Kanal</th><th>Sağlıklı</th><th>Son tarama</th><th></th></tr>'+
+    rows.map(function(x){
+      return '<tr style="border-top:1px solid var(--line);vertical-align:top"><td style="padding:6px 6px 6px 0"><b>'+esc(x.name)+'</b>'+
+        (x.url?'<div class="mono hint" style="font-size:11.5px;overflow-wrap:anywhere">'+esc(x.url)+'</div>':'')+
+        (x.last?'<div class="hint">'+esc(sumText(x.last))+'</div>':'')+'</td>'+
+        '<td style="padding:6px">'+(x.kind==='link'?'bağlantı':'dosya')+'</td>'+
+        '<td style="padding:6px" class="num">'+num(x.channels)+'</td>'+
+        '<td style="padding:6px" class="num">'+num(x.healthy)+'</td>'+
+        '<td style="padding:6px;white-space:nowrap">'+esc(x.ran_at?when(x.ran_at*1000):'hiç')+'<small> '+esc(x.ran_at?ago(x.ran_at*1000):'')+'</small></td>'+
+        '<td style="padding:6px;white-space:nowrap"><button class="btn" data-m3u-refresh="'+esc(x.id)+'"'+(msBusy?' disabled':'')+'>Yenile</button> '+
+        '<button class="btn obdanger" data-m3u-del="'+esc(x.id)+'" data-m3u-dname="'+esc(x.name)+'"'+(msBusy?' disabled':'')+'>Sil</button></td></tr>'}).join('')+'</table>';
+  return h;
+}
+function renderM3u(){var el=$('m3u-card');if(el)el.innerHTML=m3uHtml()}
+function m3uDone(name,p){
+  return p.then(function(d){msLast={name:name,summary:d.summary};toast('İçe aktarıldı: '+name);if(d.source!==undefined){MF.name='';MF.url='';MF.file=null}})
+    .catch(function(e){toast('İçe aktarılamadı: '+(e&&e.message||e),'bad')})
+    .then(function(){msBusy=false;return m3uLoad()}).then(function(){setTimeout(m3uLoad,8000);liveLoad()});
+}
+function m3uAdd(){
+  var body={name:MF.name,kind:MF.kind,llm:!!MF.llm};
+  if(MF.kind==='link'){if(!/^https?:\/\//i.test(MF.url||'')){toast('Geçerli bir http(s) bağlantısı girin','bad');return}body.url=MF.url}
+  else{if(!MF.file){toast('Bir .m3u dosyası seçin','bad');return}body.content=MF.file.text;if(!body.name)body.name=MF.file.name.replace(/\.m3u8?$/i,'')}
+  msBusy=true;renderM3u();
+  m3uDone(body.name||MF.url||'M3U',call('/api/ops/live/sources',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}));
+}
+function m3uFile(inp){
+  var f=inp.files&&inp.files[0];if(!f)return;
+  var max=(MS&&MS.max_bytes)||5242880;
+  if(f.size>max){toast('Dosya '+Math.round(max/1048576)+' MB sınırını aşıyor','bad');inp.value='';return}
+  var r=new FileReader();
+  r.onload=function(){MF.file={name:f.name,size:f.size,text:String(r.result||'')};renderM3u()};
+  r.onerror=function(){toast('Dosya okunamadı','bad')};
+  r.readAsText(f);
+}
+
 function render(){
   var root=$('set-root');if(!root)return;
   if(!D){root.innerHTML=failed?'<div class="empty">Ayarlar yüklenemedi: '+esc(failed)+'<br><button class="btn" id="set-retry">Yeniden dene</button></div>':'<div class="empty">Yükleniyor…</div>';return}
   var h='';
   h+='<section><h2>TMDB zenginleştirme</h2><div class="card tmdb" id="tmdb-card"></div></section>';
-  h+='<section><h2>Canlı TV</h2><div class="card" id="live-card"></div></section>';
+  h+='<section><h2>Canlı TV</h2><div class="card" id="live-card"></div><div class="card" id="m3u-card"></div></section>';
   h+=healHtml();
   h+=resetHtml();
   root.innerHTML=h;
-  tLast='';renderTmdb();renderLive();
+  tLast='';renderTmdb();renderLive();renderM3u();
 }
 
 /* ---- yenileme ---- */
 function poll(){
   if($('tab-settings').classList.contains('hidden')||document.hidden)return;
+  var mc=$('m3u-card');if(mc&&mc.contains(document.activeElement)&&document.activeElement.tagName==='INPUT')return;   /* yazarken formu silme */
   load();
   liveLoad();
+  if(!msBusy)m3uLoad();
 }
 
 /* ---- etkileşim ---- */
@@ -372,12 +441,21 @@ root.addEventListener('change',function(ev){
   } else if(t.dataset.liveAuto){
     var lv=t.checked;
     save({live_tv:{enabled:lv}},'Canlı TV otomatik tarama '+(lv?'açıldı':'kapatıldı')).then(liveLoad);
+  } else if(t.dataset.m3uKind){
+    MF.kind=t.value;renderM3u();
+  } else if(t.dataset.m3uLlm){
+    MF.llm=t.checked;
+  } else if(t.id==='m3u-file'){
+    m3uFile(t);
   } else if(t.dataset.healProvider){
     save({heal_provider:t.value},'Heal sağlayıcısı: '+t.value);
   } else if(t.dataset.autoapply){
     var v=t.checked;
     save({heal_autoapply:v},'Otomatik uygulama '+(v?'açıldı':'kapatıldı'));
   }
+});
+root.addEventListener('input',function(ev){
+  var f=ev.target.dataset&&ev.target.dataset.m3uField;if(f)MF[f]=ev.target.value;
 });
 root.addEventListener('click',function(ev){
   var g=ev.target.closest('a[data-goto]');
@@ -388,6 +466,16 @@ root.addEventListener('click',function(ev){
   if(b.id==='lib-reset'){libReset(b);return}
   if(b.id==='live-scan'){liveScan(b);return}
   if(b.id==='live-list'){lvOpen=!lvOpen;renderLive();return}
+  if(b.id==='m3u-add'){m3uAdd();return}
+  if(b.dataset.m3uRefresh){msBusy=true;renderM3u();
+    var rn=(((MS&&MS.sources)||[]).filter(function(x){return x.id===b.dataset.m3uRefresh})[0]||{}).name||'';
+    m3uDone(rn,call('/api/ops/live/sources/'+encodeURIComponent(b.dataset.m3uRefresh)+'/refresh',{method:'POST'}));return}
+  if(b.dataset.m3uDel){
+    if(!window.confirm('"'+b.dataset.m3uDname+'" kaynağı ve tüm kanalları silinsin mi?'))return;
+    call('/api/ops/live/sources/'+encodeURIComponent(b.dataset.m3uDel),{method:'DELETE'})
+      .then(function(d){toast('Silindi · '+num(d.removed)+' kanal kaldırıldı');m3uLoad();liveLoad()})
+      .catch(function(e){toast('Silinemedi: '+(e&&e.message||e),'bad')});
+    return}
   if(b.dataset.lvf!==undefined){lvFilter=b.dataset.lvf;renderLive();return}
   if(b.id==='tmdb-retry'){tFail=false;tmdbLoad();return}
   if(b.id==='tmdb-preview'){tmdbStart(true);return}
@@ -405,6 +493,7 @@ root.addEventListener('click',function(ev){
 function onShow(){
   load().then(tmdbLoad);
   liveLoad();
+  m3uLoad();
   if(!llm||Date.now()-T(llm.checked_at)>60000)loadLlm(false);
   if(!tTimer)tTimer=setInterval(tmdbTick,2500);
   if(!pollTimer)pollTimer=setInterval(poll,20000);

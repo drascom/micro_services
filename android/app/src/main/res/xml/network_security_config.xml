@@ -13,7 +13,7 @@
 
     <base-config cleartextTrafficPermitted="false" />
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">192.168.0.61</domain>
+        <domain includeSubdomains="false">192.168.0.124</domain>
     </domain-config>
 -->
 <network-security-config>

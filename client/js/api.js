@@ -21,12 +21,16 @@
     return s;
   }
   /* kullanicinin yazdigi adresin deneme adaylari (sirayla /api/health):
-     semali URL aynen; port verilmis semasiz -> http://<host:port>; IP / localhost / tek etiket (nas) -> http://<host>:8090;
+     semali URL aynen (port/yol yoksa ek aday <sema>://<host>:8090); port verilmis semasiz -> http://<host:port>; IP / localhost / tek etiket (nas) -> http://<host>:8090;
      semasiz alan adi (diziflix.ornek.com) -> once https://<ad> (ters vekil, portsuz), olmazsa http://<ad>:8090 */
   function serverCandidates(v) {
     var s = String(v || '').replace(/^\s+|\s+$/g, '').replace(/\/+$/, '');
     if (!s) return [];
-    if (/^https?:\/\//i.test(s)) return [s];
+    if (/^https?:\/\//i.test(s)) {
+      /* semali, portsuz ve yolsuz -> once aynen, sonra ayni sema+host :8090 (ters vekil yoksa dogrudan uvicorn) */
+      var m = /^(https?:\/\/)([^\/:?#]+|\[[^\]]+\])$/i.exec(s);
+      return m ? [s, m[1] + m[2] + ':' + PORT] : [s];
+    }
     var hostPart = s.split('/')[0], rest = s.slice(hostPart.length);
     if (/:\d+$/.test(hostPart)) return ['http://' + s];
     var plain = 'http://' + hostPart + ':' + PORT + rest;

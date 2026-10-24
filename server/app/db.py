@@ -162,6 +162,11 @@ SCHEMA += [
         youtube TEXT NOT NULL DEFAULT '[]', geo_blocked INTEGER NOT NULL DEFAULT 0, stream_health TEXT NOT NULL DEFAULT '{}',
         health TEXT NOT NULL DEFAULT 'unknown', active INTEGER NOT NULL DEFAULT 1, seen_at INTEGER, updated_at INTEGER,
         created_at INTEGER)""",
+    # M3U playlist sources of live TV (library/m3u.py): kind = link (re-fetched with the hourly live scan) | file (static, the
+    # uploaded text kept under DATA_DIR/live/m3u/<id>.m3u); last = JSON summary of the last import; llm = fix broken parts by LLM
+    """CREATE TABLE IF NOT EXISTS live_sources (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, url TEXT, llm INTEGER NOT NULL DEFAULT 1,
+        last TEXT, ran_at INTEGER, created_at INTEGER)""",
     # admin Kütüphane K/T toplaması (canonical_id, status, kind) kapsayıcı indeksle tablo okumadan yapılır
     "CREATE INDEX IF NOT EXISTS idx_video_health ON video_sources(canonical_id, status, kind)",
     # trailer liveness verdicts per YouTube video id (library/trailer_check.py). state: 'ok' | 'dead' (transient errors
@@ -400,6 +405,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
     ):
         if vcols and col not in vcols:
             conn.execute(f"ALTER TABLE video_sources ADD COLUMN {col} {decl}")
+    # channels of an M3U source (library/m3u.py): source_id = live_sources.id (NULL = famelack), logo = tvg-logo,
+    # headers = JSON request headers (#EXTVLCOPT / #KODIPROP Referer / User-Agent), labels = JSON {category slug: group-title}
+    chcols = {r["name"] for r in conn.execute("PRAGMA table_info(channels)")}
+    for col, decl in (("source_id", "TEXT"), ("logo", "TEXT"), ("headers", "TEXT"), ("labels", "TEXT")):
+        if chcols and col not in chcols:
+            conn.execute(f"ALTER TABLE channels ADD COLUMN {col} {decl}")
     # failure_counted: this attempt's failure was added to video_sources.failures (videos.feedback can
     # take it back when the same attempt later reports success). Attempts still open at upgrade time:
     # a failure reported without a success is assumed counted (device-side codes are never counted).

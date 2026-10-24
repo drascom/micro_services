@@ -18,18 +18,19 @@ body { font-family: 'Manrope', system-ui, Arial, sans-serif; color: var(--ink); 
 /* ---------- arka plan ---------- */
 .bg, .bg-layer, .bg-dim, .bg-shade { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
 .bg { overflow: hidden; background: #0E0E0E; }
-.bg-layer { opacity: 0; background-size: cover; background-position: 50% 50%; will-change: opacity; }
-.bg-shade { transition: opacity 300ms linear; }
+/* will-change yalniz gecis sirasinda (JS): kalici tam ekran katman TV GPU bellegini doldurur, donuste takilma yapar */
+.bg-layer { opacity: 0; background-size: cover; background-position: 50% 50%; }
+.bg-shade { transition: opacity 240ms linear; }
 /* koyu gradyan: gorsel yok (Afisler'de afis + Gorsellerim yok, Gorsellerim bos) */
 .bg-grad .bg { background: radial-gradient(ellipse 1500px 1000px at 72% 22%, #2A2520 0%, #16140F 55%, #0B0B0C 100%); }
 /* fader (afis / Gorsellerim): iki kare ust uste, yalniz opacity (z-index JS'te) */
 .fd-fr { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background-size: cover; background-position: 50% 50%;
-  opacity: 0; will-change: opacity; }
+  opacity: 0; }
 /* afis / Gorsellerim: sabit karartma + yazi tarafinda gradyan (canli blur yok) */
 .poster-scrim { position: absolute; left: 0; top: 0; width: 100%; height: 100%; z-index: 3; background: rgba(8,8,10,.30); }
 .l-list .poster-scrim { background: linear-gradient(0deg, rgba(8,8,10,.62), rgba(8,8,10,0) 58%), linear-gradient(90deg, rgba(8,8,10,.30), rgba(8,8,10,0) 40%, rgba(8,8,10,.22) 58%, rgba(8,8,10,.30)), rgba(8,8,10,.22); }
 .l-dock .poster-scrim { background: linear-gradient(180deg, rgba(8,8,10,.56), rgba(8,8,10,0) 52%), linear-gradient(0deg, rgba(8,8,10,.40), rgba(8,8,10,0) 40%), rgba(8,8,10,.22); }
-.bg-dim { opacity: 0; transition: opacity 420ms var(--ease); }
+.bg-dim { opacity: 0; transition: opacity 240ms var(--ease); }
 .bg-dim .dim-img { position: absolute; left: -96px; top: -54px; width: 2112px; height: 1188px; background-size: cover; background-position: 50% 50%; }
 .bg-dim .dim-veil { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: rgba(8,8,10,.56); }
 .is-dim .bg-dim { opacity: 1; }
@@ -38,6 +39,7 @@ body { font-family: 'Manrope', system-ui, Arial, sans-serif; color: var(--ink); 
 /* ---------- ekran gecisi (tasarim: opacity 160ms + scale 1.01) ---------- */
 #screen { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transition: opacity 160ms linear, transform 220ms var(--ease); }
 #screen.is-out { opacity: 0; transform: scale(1.01); }
+.home-root { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
 .abs { position: absolute; }
 .nowrap { white-space: nowrap; }
 .ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -53,6 +55,10 @@ body { font-family: 'Manrope', system-ui, Arial, sans-serif; color: var(--ink); 
 
 /* ---------- cam malzemesi ---------- */
 .mat { position: absolute; overflow: hidden; }
+/* rclip: yuvarlak kose kirpma yardimcisi. Chromium 85 (Tizen 6.5) border-radius + overflow:hidden ebeveyni, kendi katmanina
+   terfi etmis (transform/will-change/opacity) cocugu yalniz DIKDORTGEN kirpar -> on-bulanik kopya (.mat-img/.fd-fr) koselerden
+   kare tasar. Opak maske, alt agaci tek katmanda yuvarlak kirpmaya zorlar; modern tarayicida gorunum degismez. */
+.rclip { -webkit-mask-image: -webkit-radial-gradient(white, black); isolation: isolate; }
 .mat-img { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background-size: cover; background-position: 50% 50%; }
 .mat-tone { position: absolute; left: 0; top: 0; right: 0; bottom: 0; border-radius: inherit; }
 .m-soft  .mat-tone { background: rgba(22,18,14,.34); box-shadow: inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 1px rgba(255,255,255,.06), 0 10px 32px rgba(0,0,0,.16); }
@@ -79,7 +85,7 @@ body { font-family: 'Manrope', system-ui, Arial, sans-serif; color: var(--ink); 
 
 /* ---------- kontroller (tasarim: Inputs / All apps / Settings) ---------- */
 .ctrls { position: absolute; display: -webkit-flex; display: flex; }
-/* List: sag ust sira = profil hapi + saat (ayni 64px yukseklik, dikey ortali) */
+/* List: sol ust satir (.top-l) = saat + selam (ayni 64px yukseklik, dikey ortali) */
 .top-r { position: absolute; height: 64px; display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; }
 .ctrl { position: relative; height: 64px; padding: 0 22px; border-radius: 32px; display: -webkit-flex; display: flex;
   -webkit-align-items: center; align-items: center; font-size: 28px; font-weight: 500; letter-spacing: -.2px; white-space: nowrap;
@@ -123,7 +129,7 @@ body { font-family: 'Manrope', system-ui, Arial, sans-serif; color: var(--ink); 
 .peek { position: absolute; }
 .peek-txt { position: absolute; transition: opacity 200ms linear; }
 .peek-txt.out { opacity: 0; }
-/* List sag sutunu x 920..1776, kart yok (tum arka plan modlarinda): yazi blogu selamlama alti (172) ile Devam Et basligi (768)
+/* List sag sutunu x 920..1776, kart yok (tum arka plan modlarinda): yazi blogu karsilama satiri alti (216) ile Devam Et basligi (768)
    arasinda dikey ortali (merkez 470); aciklama en fazla 3 satir. Scrim sabit, en uzun blogu (~206px) kaplar */
 .l-list .peek { left: 920px; top: 176px; }
 .l-list .peek-txt { left: 0; width: 856px; top: 20px; height: 548px; display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column;
@@ -236,12 +242,37 @@ body { font-family: 'Manrope', system-ui, Arial, sans-serif; color: var(--ink); 
 
 /* ---------- bolum sayfasi ---------- */
 .sec-info { position: absolute; left: 140px; top: 204px; width: 1640px; font-size: 26px; line-height: 34px; font-weight: 500; opacity: .66; }
-.sec-wrap { position: absolute; left: 0; top: 256px; width: 1920px; height: 824px; overflow: hidden; }
-.sec-in { position: absolute; left: 0; top: 0; width: 1920px; transition: transform 320ms var(--ease); will-change: transform; }
-.srw { position: absolute; left: 0; width: 1920px; height: 320px; opacity: .62; transition: opacity 200ms linear; }
+/* sabit mercek odagi: odak satiri wrap'te y=30'da durur, mercek ilk yuvada (x=140); ←→ serit, ↑↓ satirlar kayar.
+   Kart 360x312 (izgara kartinin 1.2 kati), odaktaki kart mercek altinda scale(1.11). Yalniz transform/opacity animasyonu. */
+.sec-wrap { position: absolute; left: 0; top: 214px; width: 1920px; height: 866px; overflow: hidden; }
+.sec-in { position: absolute; left: 0; top: 0; width: 1920px; transition: transform 300ms var(--ease); will-change: transform; }
+.srw { position: absolute; left: 0; width: 1920px; height: 400px; opacity: .6; transition: opacity 200ms linear; }
 .srw.on { opacity: 1; }
-.srw-title { position: absolute; left: 140px; top: 0; font-size: 32px; line-height: 40px; font-weight: 600; letter-spacing: -.6px; }
-.srw-strip { position: absolute; left: 0; top: 54px; height: 260px; width: 1920px; transition: transform 300ms var(--ease); will-change: transform; }
+.srw-title { position: absolute; left: 140px; top: 0; font-size: 38px; line-height: 46px; font-weight: 600; letter-spacing: -.8px; }
+.srw-strip { position: absolute; left: 0; top: 72px; height: 312px; width: 1920px; transition: transform 280ms var(--ease); will-change: transform; }
+.sec-in.rep, .srw-strip.rep { transition-duration: 140ms; transition-timing-function: linear; }
+.gt.sc { width: 360px; height: 312px; border-radius: 36px; transition: transform 260ms var(--ease), opacity 160ms linear; }
+.gt.sc .gt-in { width: 360px; height: 312px; }
+.gt.sc .gt-img { left: 12px; top: 12px; width: 336px; height: 189px; border-radius: 26px; }
+.gt.sc .gt-img img { width: 336px; height: 189px; }
+.gt.sc .gt-name { left: 18px; right: 18px; top: 211px; font-size: 28px; line-height: 36px; }
+.gt.sc .gt-sub { left: 18px; right: 18px; top: 248px; font-size: 22px; line-height: 28px; }
+.gt.sc .gt-sub3 { top: 276px; }
+.gt.sc .ch-ini { top: 44px; font-size: 86px; line-height: 104px; }
+.gt.sc.prev { opacity: .32; }
+.gt.sc.ph .gt-img { background: rgba(255,255,255,.08); }
+.sec-wrap .gt.sc.on { -webkit-transform: scale(1.11); transform: scale(1.11); background: none; box-shadow: none; }
+.f-type .sec-wrap .gt.sc.on .gt-in { transform: none; }
+/* mercek: arka cam plaka (kartin altinda) + on kenar isigi (ustunde); ikisi de sabit, tiklama gecirgen */
+.lens { position: absolute; left: 112px; top: 77px; width: 416px; height: 362px; border-radius: 46px; pointer-events: none; opacity: 0;
+  transition: opacity 200ms linear; }
+.lens.on { opacity: 1; }
+.lens-b { background: linear-gradient(170deg, rgba(255,255,255,.24), rgba(255,255,255,.08) 58%, rgba(255,255,255,.12));
+  box-shadow: 0 22px 54px rgba(0,0,0,.40), 0 6px 16px rgba(0,0,0,.22); }
+.lens-f { z-index: 2; background: linear-gradient(165deg, rgba(255,255,255,.16), rgba(255,255,255,0) 26%);
+  box-shadow: inset 0 1.5px 0 rgba(255,255,255,.55), inset 0 0 0 1.5px rgba(255,255,255,.26), inset 0 -1px 0 rgba(255,255,255,.10),
+  0 0 0 1px rgba(255,255,255,.08), 0 0 28px rgba(255,244,228,.14); }
+.flat .lens-b { background: rgba(255,255,255,.08); }
 .soon { position: absolute; left: 140px; top: 360px; }
 .soon-t { font-size: 96px; line-height: 112px; font-weight: 600; letter-spacing: -2.4px; opacity: .92; }
 .soon-s { margin-top: 18px; font-size: 32px; line-height: 42px; font-weight: 500; opacity: .66; }
@@ -273,6 +304,9 @@ body { font-family: 'Manrope', system-ui, Arial, sans-serif; color: var(--ink); 
 .c-status { position: absolute; left: 260px; width: 1400px; text-align: center; font-size: 28px; line-height: 38px; font-weight: 500;
   opacity: .8; text-shadow: var(--shadow-text); }
 .c-status.err { color: #ffd9a8; opacity: 1; }
+/* sunucu adresi ekrani: girdi kutusu genisliginde, sarmali, en cok 3 satir (uzun URL de kirilir) */
+.c-status.srv { left: 460px; width: 1000px; max-height: 114px; overflow: hidden; white-space: normal;
+  word-break: break-word; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .c-ctrls { position: absolute; left: 0; width: 1920px; display: -webkit-flex; display: flex; -webkit-justify-content: center; justify-content: center; }
 .c-ctrls .ctrl { margin: 0 6px; }
 .c-ctrls .ctrl.on { opacity: 1; }
@@ -320,6 +354,7 @@ body { font-family: 'Manrope', system-ui, Arial, sans-serif; color: var(--ink); 
 
 /* ust menu: profil degistirici (mini avatar + ad) ve Cikis ikonu */
 .ctrl-pf { padding-left: 12px; }
+.top-l .greet { margin-left: 24px; line-height: 64px; }
 .ctrl .ctrl-av { position: relative; width: 44px; height: 44px; margin-right: 12px; border-radius: 14px; overflow: hidden;
   background: rgba(255,255,255,.16); box-shadow: 0 0 0 1px rgba(255,255,255,.14); font-size: 22px; line-height: 44px;
   font-weight: 600; text-align: center; text-shadow: none; }
@@ -437,6 +472,29 @@ html.av-active .pl { background: transparent; }
 .pl-badge { margin-left: 12px; padding: 0 10px; height: 28px; line-height: 27px; border-radius: 14px; font-size: 17px; font-weight: 600;
   border: 1.5px solid rgba(246,241,231,.5); opacity: .8; white-space: nowrap; }
 .pl-side-note { padding: 16px 32px 0; font-size: 20px; line-height: 28px; font-weight: 500; opacity: .6; }
+/* detay Bolumler paneli (Sezonlar OK; afis alani yerine; js/app.js buildEps). Satirlar sanal pencere, konum/odak yalniz transform/opacity */
+.dep { position: absolute; left: 868px; top: 216px; width: 912px; border-radius: 32px; padding: 26px 0 22px; }
+.m-frost .dep { background: rgba(34,30,26,.66); }
+.dep-s { margin: 8px 20px 0; padding: 0 12px; height: 52px; display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center;
+  -webkit-justify-content: space-between; justify-content: space-between; font-size: 30px; font-weight: 600; letter-spacing: -.4px; }
+.dep-s .pl-side-arr { cursor: pointer; }
+.dep-list { position: relative; margin: 14px 12px 0; height: 552px; overflow: hidden; }
+.dep-hl { height: 88px; }
+.dep-it { position: absolute; left: 0; right: 0; top: 0; height: 88px; padding: 0 20px 0 10px; display: -webkit-flex; display: flex;
+  -webkit-align-items: center; align-items: center; opacity: .74; transition: opacity 140ms linear; cursor: pointer; }
+.dep-it.on { opacity: 1; }
+.dep-it.dis { opacity: .4; }
+.dep-it.dis.on { opacity: .64; }
+.dep-th { position: relative; -webkit-flex: none; flex: none; width: 128px; height: 72px; margin-right: 22px; border-radius: 12px; overflow: hidden;
+  background: rgba(255,255,255,.08); }
+.dep-img { position: absolute; left: 0; top: 0; width: 128px; height: 72px; }
+.dep-bar { position: absolute; left: 8px; right: 8px; bottom: 6px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.28); overflow: hidden; }
+.dep-fill { height: 100%; background: #F4F1EA; }
+.dep-body { -webkit-flex: 1; flex: 1; min-width: 0; }
+.dep-l { font-size: 28px; line-height: 36px; font-weight: 500; }
+.dep-m { font-size: 20px; line-height: 30px; font-weight: 500; opacity: .62; }
+.dep-m .pl-badge { display: inline-block; margin-left: 10px; }
+.dep-empty { padding: 24px 22px; font-size: 26px; opacity: .6; }
 /* sonraki bolum karti (sag ust) */
 .pl-next { position: absolute; left: 1316px; top: 64px; width: 484px; padding: 24px 28px 22px; border-radius: 30px; opacity: 0; pointer-events: none;
   -webkit-transform: translateY(-12px); transform: translateY(-12px); transition: opacity 200ms linear, transform 280ms var(--ease); }
@@ -478,6 +536,12 @@ html.av-active .pl { background: transparent; }
 
 /* ---------- arama (Ara hapi): cam arama kutusu + iki sonuc satiri ---------- */
 .ctrl .ctrl-ic { display: -webkit-flex; display: flex; margin-right: 10px; }
+/* renk tusu ipucu: Samsung kumanda renkleri (Kirmizi Ara / Yesil Listem / Mavi Ayarlar) */
+.ctrl .ctrl-dot { width: 12px; height: 12px; margin-right: 12px; border-radius: 6px; -webkit-flex-shrink: 0; flex-shrink: 0;
+  box-shadow: 0 0 0 1.5px rgba(255,255,255,.22), 0 1px 3px rgba(0,0,0,.3); }
+.ctrl-dot.k-red { background: #e5413a; }
+.ctrl-dot.k-green { background: #3fae49; }
+.ctrl-dot.k-blue { background: #2f7fe0; }
 .sfld, .sfld .mat, .sfld .fld-ring { width: 1100px; height: 96px; }
 .sfld .fld-in { width: 1100px; height: 96px; padding: 0 40px 0 92px; text-align: left; font-size: 38px; }
 .sfld-ic { position: absolute; left: 36px; top: 33px; opacity: .7; pointer-events: none; }
@@ -522,3 +586,15 @@ html.av-active .pl { background: transparent; }
 .xq-b { width: 200px; height: 72px; margin: 0 14px; border-radius: 36px; font-size: 30px; line-height: 72px; text-align: center; font-weight: 600;
   background: rgba(246,241,231,.10); opacity: .8; transition: background 160ms linear, color 160ms linear; }
 .xq-b.on { background: #F4F1EA; color: #1C1A17; opacity: 1; }
+
+/* ---------- fare (fare = kumanda; js/app.js "fare = kumanda") ----------
+   Odak hover'la tasinir (ayri :hover gorunumu yok); yalniz bolum seridinde hover mercegi kaydirmaz -> hafif vurgu.
+   Gizli/katman ogeleri tiklamayi yutmaz. */
+.back, .li, .dt, .ctrl, .pk-play, .cc, .gt, .sr, .sr-arr, .fld, .pf, .pop-it, .xq-b, .pl-btn, .pl-bar, .pl-it, .pl-side-arr,
+.dep-it, .pl-next-b { cursor: pointer; }
+.fld-in, .sr-input { cursor: text; }
+.dz-ptr .back:hover { opacity: 1; }
+.dz-ptr .sec-wrap .gt.sc:not(.on):hover .gt-in { opacity: 1; }
+.pv-scale { pointer-events: none; }                 /* Ayarlar onizlemesi (ana ekran kopyasi): tiklanmaz */
+.pl-ui.hide { pointer-events: none; }               /* gizli katman gomulu oynaticinin / videonun tiklamasini yutmasin */
+.pl-bar::before { content: ''; position: absolute; left: -8px; right: -8px; top: -18px; bottom: -18px; }   /* 8px cubuga genis tik alani */

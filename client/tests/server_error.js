@@ -55,8 +55,11 @@ function env(o) {
   {
     const { api } = env({});
     const C = v => api.serverCandidates(v);
-    assert.deepEqual(C('https://diziflix.drascom.uk'), ['https://diziflix.drascom.uk'], 'schemed URL as-is (https, no port)');
+    assert.deepEqual(C('https://diziflix.drascom.uk'), ['https://diziflix.drascom.uk', 'https://diziflix.drascom.uk:8090'], 'schemed https, no port: as-is first, then :8090');
     assert.deepEqual(C('  http://x.lan:9000/ '), ['http://x.lan:9000']);
+    assert.deepEqual(C('http://diziflix.internal'), ['http://diziflix.internal', 'http://diziflix.internal:8090'], 'schemed, no port -> as-is then :8090');
+    assert.deepEqual(C('http://diziflix.internal:8090'), ['http://diziflix.internal:8090'], 'explicit port -> single');
+    assert.deepEqual(C('http://x.lan/sub'), ['http://x.lan/sub'], 'path -> as-is only');
     assert.deepEqual(C('diziflix.drascom.uk'), ['https://diziflix.drascom.uk', 'http://diziflix.drascom.uk:8090'], 'domain: https first, then http:8090');
     assert.deepEqual(C('192.168.1.10'), ['http://192.168.1.10:8090'], 'IP -> http:8090');
     assert.deepEqual(C('192.168.1.10:9000'), ['http://192.168.1.10:9000']);

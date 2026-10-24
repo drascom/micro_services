@@ -2,7 +2,7 @@
 
 Tek web istemcisi: tarayıcıda açılır, Tizen TV için `.wgt` olarak paketlenir (`./build-wgt.sh` -> `../dist/diziflix.wgt`, `config.xml`
 app id `dzfLX00001.DiziFlix`), Android'de WebView kabuğu (`android/`) aynı kodu yükler. Vanilla ES5 HTML/CSS/JS, build adımı yok,
-canlı diziflix API'si. Testler: `node tests/player.js`, `node tests/search.js`, `node tests/exitconfirm.js`, `node tests/update.js`, `node tests/server_error.js`.
+canlı diziflix API'si. Testler: `node tests/player.js`, `node tests/search.js`, `node tests/exitconfirm.js`, `node tests/update.js`, `node tests/server_error.js`, `node tests/colorkeys.js`, `node tests/section.js`, `node tests/detail_episodes.js`, `node tests/mouse.js`.
 
 ## Açma
 
@@ -10,7 +10,7 @@ canlı diziflix API'si. Testler: `node tests/player.js`, `node tests/search.js`,
 cd client && python3 -m http.server 8001
 ./build-wgt.sh                     # Tizen paketi: ../dist/diziflix.wgt (version.json -> config.xml + js/version.js)
 # http://localhost:8001            -> ilk açılışta "Sunucu adresi" ekranı (öneri: http://<sayfanın host'u>:8090)
-# http://localhost:8001/?server=192.168.0.61:8090
+# http://localhost:8001/?server=192.168.0.124:8090
 ```
 
 Sunucu adresi sırası: kayıtlı (`dzproto.server`, ilk açılış / Ayarlar > Sunucu) → `?server=` → sayfa sunucunun kendisinden
@@ -18,10 +18,26 @@ Sunucu adresi sırası: kayıtlı (`dzproto.server`, ilk açılış / Ayarlar > 
 
 Tuşlar: oklar, Enter/OK, Geri (Esc/Backspace, Tizen Return; Android kabuğu Geri'yi Escape olarak verir). Kök ekranlarda (ana ekran menü başı,
 soğuk açılış profil seçimi, ilk açılış sunucu adresi) Geri = cam "Uygulamadan çıkılsın mı?" onayı (`js/exitconfirm.js`; Hayır varsayılan, ←→ gez,
-OK seç, Geri = Hayır); Evet → Tizen `tizen.application.getCurrentApplication().exit()`, Android `DZAndroid.exit()`, tarayıcıda yalnız kapanır. Fareyle de gezilebilir. Oynatıcıda ayrıca Tizen medya tuşları
+OK seç, Geri = Hayır); Evet → Tizen `tizen.application.getCurrentApplication().exit()`, Android `DZAndroid.exit()`, tarayıcıda yalnız kapanır. Oynatıcıda ayrıca Tizen medya tuşları
 (Play/Pause/PlayPause/Stop/FF/RW), Sarı = Altyazı (masaüstü Y), Kırmızı = kaynağı bozuk bildir (masaüstü F1), Yeşil = hata ayıklama
 paneli gizle/göster (masaüstü G; yalnız Hata ayıklama açıkken); Canlı TV'de
 ChannelUp/ChannelDown (masaüstü PageUp/PageDown) ve rakamlar.
+Renk tuşu kısayolları (oynatıcı DIŞINDA her ekranda: ana ekran, bölüm, detay, Listem, arama, Ayarlar; metin kutusu odaktayken de çalışır,
+kutu bırakılır): **Kırmızı = Ara** (masaüstü F1), **Yeşil = Listem** (masaüstü F2), **Mavi = Ayarlar** (masaüstü F4); Geri → ana ekran, odak
+ilgili hapta. Harf karşılıkları (G/Y) yalnız oynatıcıda. Ara · Listem · Ayarlar haplarının başında renkli nokta (iki düzende). Tizen'de
+ColorF0Red/F1Green/F2Yellow/F3Blue `tvinputdevice.registerKey` ile kaydedilir; Android kabuğu KEYCODE_PROG_RED/GREEN/YELLOW/BLUE'yu
+403/404/405/406'ya eşler (`MainActivity.kt`). Test: `node tests/colorkeys.js`.
+
+**Fare** (masaüstü, Android box fare / air-mouse, Tizen Magic Remote işaretçisi; ilke: fare = kumanda, `js/app.js` "fare = kumanda"):
+hover = o öğeye odak (kumanda odağıyla aynı durum; klavyeye geçince oradan devam), tık = OK, sağ tık / fare geri düğmesi /
+tarayıcı geri = Geri, tekerlek = ↑↓, shift+tekerlek ya da yatay tekerlek = ←→ (adım eşiği + ~150 ms hız sınırı, birikmez).
+Hover yalnız GERÇEK fare hareketiyle odak taşır: tuş/tekerlek kullanılınca fare ≥ 12 px oynayana kadar hover yok sayılır (air-mouse
+titremesi, imlecin altında kayan/yeniden çizilen içerik odak çalmaz); fareyle odaklanan öğe görünürse liste kaymaz. Bölüm sayfasında
+hover merceği kaydırmaz: karta tık = kart merceğe kayar, mercekteki karta tık = aç. Detay/Ayarlar/profil düzenle ‹ › okları
+tıklanır (odaksız satırın görünmez oku yalnız odaklar). Profil menüsü açıkken dışarı tık = kapat; çıkış/güncelleme penceresinde
+dışarı tık = Hayır/Sonra; bilgi perdesinde tık = kapat. Oynatıcı: fare hareketi katmanı gösterir, ilerleme çubuğuna tık = o konuma
+git, düğme/panel satırı hover = odak, boş alana tık = oynat/duraklat (panel açıkken kapatır); gizli katman tıklamayı yutmaz
+(gömülü oynatıcı fareyle kullanılabilir). Geçiş animasyonundaki eski ekranın tıklaması yok sayılır (çift OK yok). Test: `node tests/mouse.js`.
 
 ## Sürüm ve güncelleme (`version.json`, `js/update.js`)
 
@@ -52,20 +68,29 @@ ChannelUp/ChannelDown (masaüstü PageUp/PageDown) ve rakamlar.
   Misafir (`guest: true`, kart değil, düzenlenemez) · Profil ekle · Profilleri düzenle (kart OK = Ad/Avatar/Çocuk/Kaydet/Sil).
   Sunucu adresi Ayarlar > Sunucu'dan ya da bağlantı hatası ekranından değişir (aynı kurallar; başarısızsa kaydedilmez).
 
-- **Ana ekran** (Liste ya da Dock): sağ üstte saat (yerel) + karşılama; büyük menü = bölümler (`/api/sections`: Öne Çıkanlar ·
+- **Ana ekran** (Liste ya da Dock): sol üstte tek satır marka işareti · saat (yerel) · selam (gün saatine göre "Günaydın / İyi günler / İyi akşamlar / İyi geceler"; ad yok, ad yalnız profil hapında; iki düzende); büyük menü = bölümler (`/api/sections`: Öne Çıkanlar ·
   Diziler · Filmler · Canlı TV · Animeler · DVR); sağda vitrin yazısı (kart yok, tüm arka plan modlarında; List'te sağ sütun
-  x=920, selamlama ile Devam Et arasında dikey ortalı; odaktaki bölümün öne çıkanları, 7 sn'de bir döner; "Yakında" bölümlerde metin); açıklamanın altında **Oynat** düğmesi (ilerleme varsa "Devam et", dizide "S01 B03"; List: menüden →, Dock: dock/Devam Et'ten ↑; ← / Geri menü, ↓ Devam Et; odaktayken vitrin dönmez) → detay açılır ve İzle kendiliğinden başlar (oynatıcıda Geri → detay, detayda Geri → ana ekran, odak düğmede); "İzlemeye Devam Et" şeridi (`/api/row/continue`, boşsa yok): List'te vitrin altında (menüden →, ↓ kontroller),
-  Dock'ta dock'un üstünde (dock'tan ↑, ↑ kontroller); kart OK → detay. Kontrol menüsü: List'te Ara · Listem · Ayarlar sağ alt sütunda,
-  Profil hapı (avatar + ad / Misafir) en üstte saatin solunda (sütunun başından ↑, menünün başından ↑ ya da Oynat'tan ↑; hapta ↓ Oynat, ← menü);
-  Dock'ta sağ üstte tek sıra Ara · Listem · Ayarlar · Profil. Profil OK = hızlı profil değiştirici (cam açılır menü, iki düzende de hapın altında): profiller (seçilide ✓) · Misafir · Profiller (tam ekran profil sayfası). ↑↓ gez, OK = anında geçiş (menü/Devam Et
+  x=920, üst sıra ile Devam Et arasında dikey ortalı; odaktaki bölümün öne çıkanları, 7 sn'de bir döner; "Yakında" bölümlerde metin); açıklamanın altında **Oynat** düğmesi (ilerleme varsa "Devam et", dizide "S01 B03"; List: menüden → ya da üst sıradan ↓, ↑ üst sıranın son odağı (yoksa profil hapı), Dock: dock/Devam Et'ten ↑; ← / Geri menü, ↓ Devam Et; odaktayken vitrin dönmez) → detay açılır ve İzle kendiliğinden başlar (oynatıcıda Geri → detay, detayda Geri → ana ekran, odak düğmede); "İzlemeye Devam Et" şeridi (`/api/row/continue`, boşsa yok): List'te vitrin altında (Oynat'tan ↓; ← menü),
+  Dock'ta dock'un üstünde (dock'tan ↑, ↑ kontroller); kart OK → detay. Kontrol menüsü: iki düzende sağ üstte tek sıra cam haplar
+  Ara · Listem · Ayarlar · Profil hapı (avatar + ad / Misafir; renk noktası yok). List: menünün başından ↑ (Oynat ve Devam Et yoksa menüden →);
+  ←→ dört öğe arasında, Ara'dan ← / Geri menü, ↓ Oynat (yoksa Devam Et). Dock: dock/Oynat/Devam Et'ten ↑. Profil OK = hızlı profil değiştirici (cam açılır menü, iki düzende de hapın altında): profiller (seçilide ✓) · Misafir · Profiller (tam ekran profil sayfası). ↑↓ gez, OK = anında geçiş (menü/Devam Et
   yenilenir, eski yanıtlar yok sayılır; odak pill'de kalır), Geri / başka yön = kapat. Liste önbellekten, açılınca `/api/profiles` tazelenir.
-- **Bölüm** (menüde OK): `/api/section/<id>` satırları; ↑↓ satır, ←→ kart (satır başına odak saklanır), sanal pencere
-  (odak satırı ±1, satır içinde görünen ±1 kart), `/api/row` ile 40'arlı tembel yükleme; Geri → menü (aynı öğe).
+  Akıcılık (TV): ana ekran DOM'u bellekte tutulur; bölüm/Listem/detaydan dönüşte yeniden kurulmaz (veri + görünüm aynıysa geri takılır,
+  yalnız Devam Et şeridi yenilenir). Arka plan odak durunca değişir (~250 ms), görsel decode edildikten sonra kısa (240 ms) crossfade;
+  vitrin dönüşü ana ekrana dönüşte/gezinirken bekler; `will-change` yalnız geçiş boyunca; karartılmış ekranlarda Görsellerim dönmez.
+- **Bölüm** (menüde OK): `/api/section/<id>` satırları. Sabit "mercek" odak: odak yeri her zaman satırın ilk yuvası (x=140) ve odak
+  satırı sabit dikey konumda; ←→ kart şeridi (translateX), ↑↓ satırlar (translateY) kayar, mercek (cam plaka + kenar ışığı, canlı blur yok)
+  kıpırdamaz, merceğin altındaki kart ×1.11. Kartlar 360×312 (ızgara kartının 1.2 katı), kart altı 3 satır: ad · (bölüm kartında
+  `episode_label`, dizide bölüm etiketi yoksa tür, filmde en çok 2 tür; kanalda "No · kategori") · yıl ★ puan (kanalda CANLI).
+  Satır kendi içinde sonsuz döngü (toplam > 5; sanal konum, `total` üzerinden): uca gelince başa/sona sarar; yüklenmemiş indeks için
+  yer tutucu kart + ilgili `/api/row` sayfası (40'arlı; sona sarma için kuyruk sayfası önceden alınır). ≤ 5 öğeli satırda döngü yok,
+  kartlar mercekten başlar. Basılı tutmada tekrar ~120 ms'de bir (doğrusal kısa geçiş, animasyon birikmez). Sanal pencere (odak satırı
+  ±1, satır içinde görünen yuvalar ±1), satır başına konum saklanır; Geri → menü (aynı öğe). Test: `tests/section.js`.
   DVR: "Yakında" sayfası.
 - **Canlı TV** (`live_tv`, bölüm ekranıyla aynı): "Tüm kanallar" + kategori satırları; kanal kartı (`card_kind:"channel"`, görsel yok) =
   kategoriye göre sabit tonlu cam yüzey + baş harf + kanal no + CANLI. Kart OK = doğrudan oynatıcı (detay yok; kanal sırası = o satır).
   Vitrinde kanal adı, arka plan Görsellerim / gradyan; vitrin İzle de doğrudan oynatır (sıra = "Tüm kanallar" `live_all`, tembel yükleme).
-- **Ara** (kontrol hapı, büyüteç; oynatıcı dışında Kırmızı / masaüstü F1 kısayol): cam arama kutusu (OK = ekran klavyesi, Enter/Done = ara;
+- **Ara** (kontrol hapı, büyüteç; oynatıcı dışında Kırmızı / masaüstü F1 kısayol; Yeşil/F2 = Listem, Mavi/F4 = Ayarlar): cam arama kutusu (OK = ekran klavyesi, Enter/Done = ara;
   tarayıcıda açılınca odak kutuda, yazdıkça ~300 ms debounce). <2 karakter temizler; ≥2 `/api/catalog?q=` (Kütüphanede), ≥3 ayrıca canlı
   `/api/search` (Sitelerde; kütüphanede olanlar tekrar gösterilmez); yeni sorgu eskisini iptal eder (`js/search.js`). Yanıt vermeyen
   siteler / sonuç yok notu sağ altta. Kart OK → detay (canlı sonucun ilk açılışı uzun sürebilir: detay zaman aşımı 180 sn). Geri:
@@ -74,6 +99,12 @@ ChannelUp/ChannelDown (masaüstü PageUp/PageDown) ve rakamlar.
   klavye kapanınca normal ölçek.
 - **Listem** (kontrol): 5 sütunlu ızgara, sanal pencere, `/api/row/mylist`.
 - **Detay** (OK): iki bölmeli; İzle / Fragman / Sezonlar (‹ ›) / Listem. İzle / Fragman → oynatıcı (aşağıda).
+  Sezonlar satırı OK → sağ bölmede afiş yerine cam **Bölümler** paneli: üstte sezon (‹ ›, satırla senkron; özel bölümler sonda),
+  altında o sezonun bölümleri (`B03 · Ad`, süre · yayın tarihi, ilerleme çubuğu, `still_url` küçük görsel, "Yakında" / "Kaynak yok").
+  Açılınca odak devam edilen bölümde (yoksa ilk); ↑↓ bölüm (sanal pencere, 6 satır), ←→ sezon (sezon başına odak saklanır),
+  OK → o bölüm oynatıcıda (İzle akışı: kaldığı yer, streams, kaynak bulucu; oynatıcıdan dönünce panel son bölümde açılır), Geri → afiş,
+  odak Sezonlar. Veri detay yanıtının `seasons[].episodes[]`'i (bölümsüz sezonda detay bir kez yeniden istenir). Bölüm biçim/oynatılabilirlik
+  mantığı `js/episodes.js` (oynatıcının Bölümler paneliyle ortak).
 - **Ayarlar**: Arka plan (Afişler (bölüme göre) · Görsellerim · Siyah; aşağıda), Yerleşim (Liste/Dock), Odak (Cam/Yazı),
   Malzeme (Yumuşak/Buzlu/Saydam; varsayılan Afişler · Liste · Cam · Buzlu), Görsel yükle (yalnız tarayıcıda, TV'de gizli), Profil, Sunucu (OK = adres ekranı; Geri = Ayarlar),
   Oynatıcı (yalnız Tizen: Otomatik = HTML5 `<video>` / AVPlay; `dzproto.engine`), Hata ayıklama (Kapalı/Özet/Ayrıntılı; aşağıda);
@@ -159,6 +190,11 @@ Ayarlar > Arka plan (`dzproto.look.bg`; kayıtlı eski mod — gün döngüsü s
   crossfade. Cam paneller sunucunun `blur_url` kopyasını kullanır (canlı blur yok). Boşsa koyu gradyan + Ayarlar notu
   "Görselleri yönetim panelinden yükle (http://<sunucu>/admin → Arka planlar)".
 - **Siyah**: düz koyu zemin.
+
+Köşe kırpma: tüm cam paneller (`.mat`, dock kırpıcısı, Ayarlar önizlemesi `.pv`, çıkış kutusu `.xq`) `rclip` sınıfını taşır
+(opak `-webkit-mask-image`). Chromium 85 (Tizen 6.5) `border-radius + overflow:hidden` ebeveyninde kendi katmanındaki çocuğu
+(ön-bulanık kopya) yalnız dikdörtgen kırpar → köşelerde açık kare; maske tek katmanda yuvarlak kırpmaya zorlar. Yeni cam
+kırpıcı eklerken `rclip` ekle (className yeniden yazılıyorsa da koru).
 
 Liste açılışta, sunucu değişince, Ayarlar açılınca ve 10 dk'da bir yenilenir (ETag). Tarayıcıda (Tizen değil) Ayarlar >
 "Görsel yükle": dosya seçici (jpg/png/webp, çoklu) → sırayla `POST /api/backgrounds` (multipart `file`) → liste yenilenir.

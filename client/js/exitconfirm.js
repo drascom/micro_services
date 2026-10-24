@@ -1,5 +1,6 @@
 /* exitconfirm.js - kok ekranlarda (ana ekran menu basi, soguk acilis profil secimi, ilk acilis sunucu adresi) Geri:
    cam "Uygulamadan çıkılsın mı?" onayi. Hayir (varsayilan odak) / Evet; ←→ gez, OK sec, Geri = Hayir.
+   Fare: hover = odak, tik = OK, pencere disina tik = Geri.
    Evet: Android kabugu `DZAndroid.exit()`, Tizen `tizen.application.getCurrentApplication().exit()`, tarayici: yalniz kapanir.
    DZP.exitConfirm = { open(host, opts?), key(k) -> true, close(), active(), quit() } ; opts: {mat(cls, x, y) -> cam katmani, onClose(),
    title?, labels? [hayir, evet], onYes? (verilirse Evet cikis yerine bunu cagirir; ör. "Güncelleme hazır" Sonra / Şimdi kur)} */
@@ -31,7 +32,7 @@
   function open(host, opts) {
     if (C) return;
     opts = opts || {};
-    var box = el('div', 'xq');
+    var box = el('div', 'xq rclip');
     box.style.left = X + 'px'; box.style.top = Y + 'px'; box.style.width = W + 'px'; box.style.height = H + 'px';
     if (opts.mat) { try { box.appendChild(opts.mat('xq-mat', X, Y)); } catch (e) {} }
     box.appendChild(el('div', 'xq-t', opts.title || 'Uygulamadan çıkılsın mı?'));
@@ -39,16 +40,19 @@
     for (var i = 0; i < labels.length; i++) {
       var b = el('div', 'xq-b', labels[i]);
       b.onclick = (function (k) { return function () { if (C) { C.btn = k; key('ok'); } }; })(i);
+      /* fare: hover = odak (app.js gercek hareketle cagirir), tik = OK */
+      b.dzHover = (function (k) { return function () { if (C && C.btn !== k) { C.btn = k; paint(); } }; })(i);
       row.appendChild(b); btns.push(b);
     }
     box.appendChild(row);
     var dim = el('div', 'xq-dim');
+    dim.onclick = function () { key('back'); };   /* pencere disina tik = Geri (Hayir / Sonra) */
     host.appendChild(dim);
     host.appendChild(box);
     C = { box: box, dim: dim, btns: btns, btn: 0, onClose: opts.onClose, onYes: opts.onYes };
     paint();
     void box.offsetWidth;
-    box.className = 'xq on'; dim.className = 'xq-dim on';
+    box.className = 'xq rclip on'; dim.className = 'xq-dim on';
   }
   function close() {
     if (!C) return;

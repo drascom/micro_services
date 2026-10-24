@@ -222,10 +222,11 @@ def build(cfg: dict, countries: dict[str, list[dict]], categories: dict[str, lis
 
 
 # ---- probe ----------------------------------------------------------------------------------------------------------------
-def probe_url(client, url: str) -> dict:
-    """Short GET of a playlist: ``{probe: ok|fail, cors: bool, error}``; ``ok`` = the body starts with ``#EXTM3U``."""
+def probe_url(client, url: str, headers: Optional[dict] = None) -> dict:
+    """Short GET of a playlist: ``{probe: ok|fail, cors: bool, error}``; ``ok`` = the body starts with ``#EXTM3U``.
+    ``headers`` = the channel's own request headers (M3U ``#EXTVLCOPT``; library/m3u.py) over the default UA."""
     try:
-        with client.stream("GET", url, headers={"User-Agent": UA, "Origin": PROBE_ORIGIN}) as resp:
+        with client.stream("GET", url, headers={"User-Agent": UA, "Origin": PROBE_ORIGIN, **(headers or {})}) as resp:
             if resp.status_code >= 400:
                 return {"probe": "fail", "cors": False, "error": f"HTTP {resp.status_code}"}
             buf = b""
@@ -243,8 +244,10 @@ def probe_url(client, url: str) -> dict:
         return {"probe": "fail", "cors": False, "error": type(exc).__name__}
 
 
-def probe_all(urls: list[str], cfg: dict, client=None) -> dict[str, dict]:
-    """``{url: probe result}`` for ``urls`` (``probe.parallel`` at a time, ``probe.timeout`` seconds each)."""
+def probe_all(urls: list[str], cfg: dict, client=None, headers: Optional[dict] = None) -> dict[str, dict]:
+    """``{url: probe result}`` for ``urls`` (``probe.parallel`` at a time, ``probe.timeout`` seconds each);
+    ``headers`` = optional ``{url: request headers}``."""
+    headers = headers or {}
     pcfg = cfg.get("probe") or {}
     own = client is None
     if own:
@@ -253,7 +256,7 @@ def probe_all(urls: list[str], cfg: dict, client=None) -> dict[str, dict]:
     try:
         workers = max(1, min(int(pcfg.get("parallel") or 8), len(urls) or 1))
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="live-probe") as pool:
-            return dict(zip(urls, pool.map(lambda u: probe_url(client, u), urls)))
+            return dict(zip(urls, pool.map(lambda u: probe_url(client, u, headers.get(u)), urls)))
     finally:
         if own:
             client.close()
@@ -324,7 +327,7 @@ def upsert(records: dict[str, dict], countries: list[str], now: Optional[int] = 
                           old["updated_at"] if same else now, nid))
             stats["unchanged" if same else "updated"] += 1
         for nid, old in existing.items():
-            if nid not in records and old["active"] == 1 and old["country"] in countries:
+            if nid not in records and old["active"] == 1 and old["country"] in countries and not old["source_id"]:
                 conn.execute("UPDATE channels SET active=0,updated_at=? WHERE nanoid=?", (now, nid))
                 stats["deactivated"] += 1
     invalidate()
@@ -485,12 +488,24 @@ def tick() -> Optional[dict]:
     """Scheduler job (every minute): run when the admin switch is on and the interval has passed. Never raises."""
     from .. import settings
     try:
-        if not settings.live_tv_auto() or is_running() or not due():
+        if not settings.live_tv_auto():
+            return None
+        _m3u_tick()
+        if is_running() or not due():
             return None
         return run(trigger="auto")
     except Exception:
         log.exception("live ingest failed")
         return None
+
+
+def _m3u_tick() -> None:
+    """M3U link sources (library/m3u.py) are re-fetched on the same switch and interval as famelack. Never raises."""
+    try:
+        from . import m3u
+        m3u.refresh_due()
+    except Exception:
+        log.exception("m3u refresh failed")
 
 
 # ---- read side ----------------------------------------------------------------------------------------------------------
@@ -504,7 +519,10 @@ def _row_to_channel(r) -> dict:
             "languages": _loads(r["languages"], []), "categories": _loads(r["categories"], []),
             "streams": _loads(r["streams"], []), "youtube": _loads(r["youtube"], []), "geo_blocked": bool(r["geo_blocked"]),
             "stream_health": _loads(r["stream_health"], {}), "health": r["health"], "active": bool(r["active"]),
-            "seen_at": r["seen_at"], "updated_at": r["updated_at"]}
+            "seen_at": r["seen_at"], "updated_at": r["updated_at"],
+            # M3U sources (library/m3u.py); famelack rows: source_id None, no logo / headers / labels
+            "source_id": r["source_id"], "logo": r["logo"] or None, "headers": _loads(r["headers"], {}),
+            "labels": _loads(r["labels"], {})}
 
 
 def all_channels() -> list[dict]:
@@ -552,12 +570,17 @@ def card(c: dict) -> dict:
         "id": c["id"], "card_kind": "channel", "card_key": "channel:" + c["id"], "type": "channel",
         "availability": {"state": "ready", "reason": None, "has_trailer": False},
         "title": c["title"], "year": None, "card": "", "portrait": "", "backdrop": "", "has_backdrop": False,
-        "overview": "", "genres": [CATEGORY_TITLES.get(k, k) for k in c["categories"]], "rating": None,
-        "country": c["country"], "followers": None, "badge": None, "sources": ["famelack"], "tmdb_id": None,
+        "overview": "", "genres": [c.get("labels", {}).get(k) or CATEGORY_TITLES.get(k, k) for k in c["categories"]],
+        "rating": None, "country": c["country"], "followers": None, "badge": None, "sources": [source_name(c)], "tmdb_id": None,
         "imdb_id": None, "playback": "video", "progress": None,
         "channel_no": c.get("channel_no", 0), "categories": list(c["categories"]), "has_youtube": bool(c["youtube"]),
-        "geo_blocked": c["geo_blocked"], "live": True,
+        "geo_blocked": c["geo_blocked"], "live": True, "logo": c.get("logo") or None,
     }
+
+
+def source_name(c: dict) -> str:
+    """``famelack`` or ``m3u`` (a channel of an admin M3U source, library/m3u.py)."""
+    return "m3u" if c.get("source_id") else "famelack"
 
 
 def hero_card(c: dict) -> dict:
@@ -593,7 +616,13 @@ def row_title(row_id: str) -> str:
     if row_id == ALL_ROW:
         return ALL_TITLE
     cat = row_id[5:]
-    return CATEGORY_TITLES.get(cat, cat.replace("-", " ").title())
+    if cat in CATEGORY_TITLES:
+        return CATEGORY_TITLES[cat]
+    for c in visible_channels():   # an M3U group-title (library/m3u.py: category slug -> original title)
+        title = (c.get("labels") or {}).get(cat)
+        if title:
+            return title
+    return cat.replace("-", " ").title()
 
 
 def heroes(limit: int = SECTION_HEROES) -> list[dict]:
@@ -629,7 +658,7 @@ def _embed_url(url: str) -> str:
 
 def _stream(c: dict, url: str, kind: str, token: str, label: str) -> dict:
     return {"url": url, "type": kind, "quality": "auto", "label": label, "attempt_token": token, "kind": "live",
-            "source_id": c["id"], "source": "famelack", "variant_id": stream_key(url), "audio_lang": None,
+            "source_id": c["id"], "source": source_name(c), "variant_id": stream_key(url), "audio_lang": None,
             "sub_mode": "none", "hard_lang": None, "sub_known": False, "site_lang_hint": None, "mirror_of": None}
 
 
@@ -658,6 +687,9 @@ def streams(c: dict) -> list[dict]:
         s = _stream(c, url, "hls", token_for(url), label(f"{urlparse(url).hostname or 'akış'} · canlı"))
         h = health.get(url) or {}
         if h.get("probe") == "ok" and h.get("cors") is False:
+            s["stream_proxy"] = True
+        if c.get("headers"):   # M3U #EXTVLCOPT Referer / User-Agent: only the server's proxy can send them
+            s["request_headers"] = dict(c["headers"])
             s["stream_proxy"] = True
         return s
 
@@ -766,6 +798,7 @@ def admin_view() -> dict:
     for c in chans:
         h = c["stream_health"]
         items.append({"id": c["id"], "title": c["title"], "country": c["country"], "active": c["active"],
+                      "source": source_name(c), "source_id": c["source_id"],
                       "visible": c["id"] in visible, "channel_no": visible.get(c["id"]),
                       "health": channel_health(c["streams"], c["youtube"], h) if c["active"] else "inactive",
                       "categories": c["categories"], "geo_blocked": c["geo_blocked"], "youtube": len(c["youtube"]),

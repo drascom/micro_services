@@ -45,7 +45,7 @@ node_modules/
 HANDOFF*.md
 /docs/handoff-reports/
 
-# --- site scraper configs: the SERVER (61) is the reference, the local dir is only a mirror (pull-configs / deploy); the provider library is code and stays tracked ---
+# --- site scraper configs: the SERVER (`diziflix`, 192.168.0.124) is the reference, the local dir is only a mirror (pull-configs / deploy); the provider library is code and stays tracked ---
 /server/app/scraper/configs/*.yaml
 /server/app/scraper/configs/*.baseline.json
 /server/app/scraper/configs/*.lock

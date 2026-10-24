@@ -87,7 +87,7 @@ Ortam değişkenleri dosyayı ezer (şu anki değer):
   ./deploy.sh --pull-configs --dry-run        sunucuda yerelde olmayan site var mı? (hiçbir şey yazmaz)
   ./deploy.sh --pull-configs [--sync-configs] yalnız sunucu configs'ini yerele çek (deploy yok)
   ./deploy.sh --rollback                      en son yedeğe dön
-  ./deploy.sh --rollback /root/diziflix-server-bak-20260929-221530.tgz --yes
+  ./deploy.sh --rollback /home/drascom/diziflix-backups/diziflix-server-bak-20260929-221530.tgz --yes
 
 Scraper configs kararı (site bazında; yaml + .baseline.json birlikte; md5 farkı varsa):
   sunucu sürümü < yerel VE sunucuda o site için uygulanmış heal kaydı / yeni arşiv yok -> EZ (yerel daha yeni)
