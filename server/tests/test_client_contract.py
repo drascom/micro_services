@@ -1,4 +1,4 @@
-"""Server <-> client contract: for every endpoint, the fields the TV client (tizen-client/js) and an Android client READ.
+"""Server <-> client contract: for every endpoint, the fields the web client (client/js, packaged for Tizen and Android WebView) READ.
 
 A seeded throw-away library (tests/_contract_seed.py: film / series with seasons + specials / series without episodes /
 poster-less film / dead or missing trailer / broken and announced episodes) is served by the real FastAPI app through
@@ -675,7 +675,7 @@ class SectionTests(Base):
         self.conforms(b, S.SECTIONS)
         self.assertEqual([x["id"] for x in b["sections"]], ["featured", "series", "movies", "live_tv", "anime", "dvr"])
         soon = {x["id"]: x for x in b["sections"] if x["status"] == "soon"}
-        self.assertEqual(sorted(soon), ["dvr", "live_tv"])
+        self.assertEqual(sorted(soon), ["dvr"])   # live_tv is ready (channels, tests/test_live_tv.py)
         self.assertTrue(all(not x["heroes"] for x in soon.values()))
         self.get("/api/section/no_such?profile=p1", 404)
 

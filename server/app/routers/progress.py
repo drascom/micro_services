@@ -27,6 +27,9 @@ def post_progress(body: ProgressIn) -> dict:
     if not db.query_one("SELECT 1 FROM profiles WHERE id = ?", (body.profile,)):
         raise bad_request(f"unknown profile '{body.profile}'")
 
+    if body.item_id.startswith("ch_"):   # Canlı TV channel: no progress is kept (the clients do not send it; ignored)
+        return {"ok": True, "watched": False, "next_episode": None}
+
     snap = cache.get()
     item = snap.by_id.get(body.item_id)
     if not item:

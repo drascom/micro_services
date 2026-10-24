@@ -39,7 +39,9 @@ HEAL_CLASSES = ("forbidden", "not_media", "server_blocked", "gone", "unreachable
 #: heal classes whose repair is verified with the server's own reachability probe (``heal_agent._follow(probe=True)``)
 PROBE_CLASSES = ("forbidden", "not_media", "server_blocked")
 #: shown in the admin, never a heal signal
-VISIBLE_ONLY = ("hls_unsupported_browser", "proxy_learned", "expired", "unsupported", "decode", "reachable")
+#: ``stall`` = the stream started but kept waiting (client / CDN speed, not the recipe); ``timeout_reachable`` = the client timed out but the
+#: server's own probe reached the stream (not a scraper problem): both visible, never a heal trigger
+VISIBLE_ONLY = ("hls_unsupported_browser", "proxy_learned", "expired", "unsupported", "decode", "reachable", "stall", "timeout_reachable")
 SKIP_CODES = ("aborted", "offline", "autoplay")      # the client's own, unrelated to the stream: not recorded at all
 DIAG_PROBLEMS = ("forbidden", "not_media", "server_blocked", "gone", "unreachable", "ip_bound", "timeout", "expired")
 KEEP_SECONDS = 7 * 86400
@@ -51,12 +53,14 @@ OK_EXAMPLES = 3
 _CLIENT_NOTES = {
     "playback_failed": "Oynatıcı akışı oynatamadı.", "timeout": "Oynatma zaman aşımına uğradı.", "network": "Oynatıcı ağ hatası bildirdi.",
     "unsupported": "Cihaz bu biçimi desteklemiyor.", "decode": "Cihaz videoyu çözemedi.",
+    "stall": "Akış oynarken takıldı (istemci / CDN hızı).",
 }
 LABELS = {   # the Turkish names the admin shows (also used for the heal record's reason)
     "forbidden": "akış erişilemiyor (403)", "not_media": "akış video yerine hata sayfası veriyor", "server_blocked": "akışa sunucu da erişemiyor",
     "gone": "video kaynakta yok", "unreachable": "kaynağa ulaşılamıyor", "ip_bound": "adres IP'ye bağlı", "timeout": "oynatma zaman aşımı",
     "expired": "adresin süresi dolmuş", "hls_unsupported_browser": "tarayıcı HLS'i oynatamıyor", "proxy_learned": "vekil öğrenildi (kendiliğinden düzelir)",
     "playback_failed": "oynatıcı hatası", "network": "ağ hatası", "unsupported": "cihaz desteklemiyor", "decode": "cihaz çözemiyor",
+    "stall": "takılma", "timeout_reachable": "zaman aşımı (sunucu akışa erişiyor)",
 }
 _lock = threading.Lock()
 
@@ -89,6 +93,10 @@ def issue_class(client_code: str, diag_code: str = "", browser_hls: bool = False
     """The issue class of one failure: see the module text. ``learned`` = the server's probe learned the proxy / a Referer helps."""
     if learned:
         return "proxy_learned"
+    if client_code == "stall":   # started, then kept waiting: client / CDN speed, never the recipe
+        return "stall"
+    if client_code == "timeout" and diag_code == "reachable":   # the server reaches the stream: not a scraper problem
+        return "timeout_reachable"
     if diag_code in DIAG_PROBLEMS:
         return diag_code
     if browser_hls or diag_code == "hls_unsupported_browser":

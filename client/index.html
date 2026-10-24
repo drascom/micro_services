@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DIZIFLIX</title>
+  <link rel="icon" type="image/png" href="img/favicon.png">
+  <link rel="stylesheet" href="css/app.css?v=30">
+</head>
+<body>
+  <div id="viewport">
+    <div id="stage">
+      <div class="bg">
+        <div id="bg-layers"></div>
+        <div id="bg-shade" class="bg-shade"></div>
+        <div class="bg-dim"><div id="dim-img" class="dim-img"></div><div class="dim-veil"></div></div>
+      </div>
+      <div id="screen"></div>
+      <div id="veil"></div>
+    </div>
+  </div>
+  <!-- Tizen: AVPlay (webapis.avplay); tarayici/Android'de 404 olur, zararsiz (player.js webapis yoksa <video>/hls.js) -->
+  <script src="$WEBAPIS/webapis/webapis.js"></script>
+  <script src="js/version.js?v=30"></script>
+  <script src="js/backgrounds.js?v=30"></script>
+  <script src="js/debug.js?v=30"></script>
+  <script src="js/api.js?v=30"></script>
+  <script src="js/tracks.js?v=30"></script>
+  <script src="js/subs.js?v=30"></script>
+  <script src="js/player.js?v=30"></script>
+  <script src="js/search.js?v=30"></script>
+  <script src="js/exitconfirm.js?v=30"></script>
+  <script src="js/app.js?v=30"></script>
+</body>
+</html>

@@ -20,6 +20,7 @@ var built=false,H=null,hFail=false,hAt=0,drafts=null,dFail=false,sites=null,sFai
 var cur=null,D=null,evs=[],evN=0,sig='',yamlKey=null,fetching=false,fetchP=null,tickN=0,timer=null;
 var sidTouched=false,dnTouched=false,savedInfo=null,starting=false,estarting=false,sending=false,saving=false,openSteps={};
 var svOpen=false,svErr='',forceSrv=false,opt={scan:true,enable:false},panelKey='',askKey='';
+var lives=[];   /* GET /api/ops/sites/manage live_sources: Canlı TV kaynakları (scraper sitesi değil; heal/YAML/düzenle yok) */
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function T(t){return t?new Date(t).getTime():0}
@@ -294,18 +295,50 @@ function siteRow(s){
   '</div></li>';
   return h;
 }
+/* Canlı TV kaynağı satırı (library/live.py): durum + "Şimdi tara" (POST /api/ops/live/scan); oto-tarama Ayarlar › Canlı TV */
+var LIVEST={success:['ok','Başarılı'],no_change:['','Değişiklik yok'],error:['bad','Hata']};
+function liveRow(l){
+  var c=l.counts||{},le=l.last_event,m=le&&LIVEST[le.status];
+  var last=!le?'<span class="dim">henüz tarama yok</span>':esc(when(le.at))+' <span class="dim">('+esc(ago(le.at))+')</span> '+(m?pill(m[0],m[1]):pill('',le.status||'?'))+
+    ' <span class="dim">'+esc(le.status==='error'?(le.error||''):num(le.new)+' yeni · '+num(le.updated)+' güncellendi · '+num(le.deactivated)+' pasif')+'</span>';
+  var st=l.running?pill('run','Taranıyor…'):l.enabled?pill('ok','Açık'):pill('','Kapalı');
+  var next=!l.enabled?'planlı değil':l.running?'çalışıyor…':'<span data-next="'+esc(l.next_scan_at)+'">'+esc(countdown(l.next_scan_at))+'</span> <span class="dim">'+esc(when(l.next_scan_at))+'</span>';
+  return '<li class="obs'+(l.running?' isbusy':'')+'" data-live="'+esc(l.source)+'">'+
+    '<div class="obsm"><b class="obsname">'+esc(l.source)+'</b>'+pill('heal',l.label||'Canlı TV')+
+    (l.running?'<span class="pill run"><span class="dot pulse"></span>çalışıyor: tarama</span>':'')+'</div>'+
+    '<div class="hint mono obsu">'+esc(l.source)+' · canlı kanal listesi (scraper sitesi değil)</div>'+
+    '<div class="obscan"><div class="srow"><b>Otomatik tarama</b>'+st+'</div>'+
+      '<div class="srow"><span>Aralık</span><span>'+esc(l.interval_minutes||60)+' dk</span></div>'+
+      '<div class="srow"><span>Sonraki tarama</span><span>'+next+'</span></div>'+
+      '<div class="hint">Açma/kapama: Ayarlar › Canlı TV.</div></div>'+
+    '<dl class="obsd">'+
+      '<dt>Ülke</dt><dd>'+esc((l.countries||[]).join(', ').toUpperCase()||'-')+(l.languages&&l.languages.length?' <span class="dim">· dil '+esc(l.languages.join(', '))+'</span>':'')+'</dd>'+
+      '<dt>Son tarama</dt><dd>'+last+'</dd>'+
+      '<dt>Kanallar</dt><dd>'+esc(num(c.active)+' aktif · '+num(c.visible)+' görünür · '+num(c.hidden)+' gizli · '+num(c.inactive)+' pasif')+'</dd>'+
+      '<dt>Sağlık</dt><dd>'+esc(num(c.ok)+' sağlıklı (m3u8) · '+num(c.youtube_only)+' yalnız YouTube · '+num(c.hidden)+' oynatılamaz')+'</dd>'+
+    '</dl>'+
+    '<div class="obsa"><button class="btn" data-ob="lscan" data-site="'+esc(l.source)+'"'+(l.running?' disabled':'')+'>Şimdi tara</button>'+
+      '<button class="btn" data-ob="lsettings">Ayarlar › Canlı TV</button></div></li>';
+}
+function liveScanNow(b){
+  b.disabled=true;
+  call('/api/ops/live/scan',{method:'POST'}).then(function(r){
+    toast(r&&r.started===false?'Canlı TV: zaten çalışıyor':'Canlı TV taraması başladı',r&&r.started===false?'bad':'');
+    setTimeout(loadSites,1500);
+  }).catch(function(e){toast('Başlatılamadı: '+msgOf(e),'bad');b.disabled=false});
+}
 function drawSites(){
   var el=$('ob-sites');
   if(!sites){
     el.innerHTML=sFail?'<div class="note bad">Site listesi alınamadı: '+esc(sFail)+' <button class="btn" data-ob="srefresh">Yeniden dene</button></div>':'<div class="empty">Yükleniyor…</div>';
     return;
   }
-  if(!sites.length){el.innerHTML='<div class="pempty">Kayıtlı site yok.'+(obOn?' “+ Yeni site” ile bir adres ekleyerek başla.':'')+'</div>';return}
+  if(!sites.length&&!lives.length){el.innerHTML='<div class="pempty">Kayıtlı site yok.'+(obOn?' “+ Yeni site” ile bir adres ekleyerek başla.':'')+'</div>';return}
   var warn=sMeta.any_enabled===false?'<div class="note warnbar" role="alert"><b>Otomatik tarama kapalı</b>Hiçbir kaynak kendiliğinden taranmıyor; yeni içerik yalnızca elle “Şimdi tara” ile gelir. Aşağıdan bir kaynağı açın.</div>':'';
   var lim=sMeta.limits;
   var hint='<div class="hint obscanh">Kontrol '+esc(sMeta.tick_seconds||60)+' sn’de bir yapılır; değişiklikler yeniden başlatma gerektirmez.'+
     (lim?' Aralıklar '+esc(hoursText(lim.min_interval_hours))+' – '+esc(hoursText(lim.max_interval_hours))+' arasındadır.':'')+'</div>';
-  el.innerHTML=warn+'<ul class="obsl">'+sites.map(siteRow).join('')+'</ul>'+hint;
+  el.innerHTML=warn+'<ul class="obsl">'+sites.map(siteRow).join('')+lives.map(liveRow).join('')+'</ul>'+hint;
   updateStart();
 }
 /* satır içi form açıkken yazılanı silmemek için yoklama yeniden çizmez */
@@ -313,7 +346,7 @@ function scanEditing(){var a=document.activeElement,r=$('ob-sites');return !!(a&
 function renderSites(){if(ui.edit||ui.rename||scanEditing())return;drawSites()}
 function loadSites(){
   sLoading=true;
-  return call(SITES+'/manage').then(function(d){sites=(d&&d.sites)||[];sMeta={any_enabled:d&&d.any_enabled,limits:d&&d.limits,tick_seconds:d&&d.tick_seconds};sFail=false;applyOnboardFlag(!(d&&d.onboard_enabled===false))}).catch(function(e){sFail=msgOf(e)})
+  return call(SITES+'/manage').then(function(d){sites=(d&&d.sites)||[];lives=(d&&d.live_sources)||[];sMeta={any_enabled:d&&d.any_enabled,limits:d&&d.limits,tick_seconds:d&&d.tick_seconds};sFail=false;applyOnboardFlag(!(d&&d.onboard_enabled===false))}).catch(function(e){sFail=msgOf(e)})
     .then(function(){sLoading=false;renderSites()});
 }
 
@@ -996,6 +1029,8 @@ function bind(){
     else if(a==='rnsave'){doRename(site)}
     else if(a==='srollback'){rollbackSite(site)}
     else if(a==='sscan'){scanNow(site,b)}
+    else if(a==='lscan'){liveScanNow(b)}
+    else if(a==='lsettings'){var tb=$('tab-btn-settings');if(tb)tb.click()}
     else if(a==='sarchive'){archiveNow(site,b)}
     else if(a==='syaml'){openYaml(site)}
     else if(a==='shandoff'){openHandoff(site)}

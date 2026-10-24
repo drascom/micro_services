@@ -8,7 +8,7 @@ import time
 import uuid
 from urllib.parse import urljoin, urlparse
 from .. import config as app_config, db
-from . import streamdiag, streamlife, streamprobe, tracks
+from . import debugtrace as dbg, streamdiag, streamlife, streamprobe, tracks
 from ..scraper import badhosts
 
 TTL=6*3600  # legacy trailer cache on source_items; resolved payloads follow config.RESOLVE_CACHE_TTL
@@ -194,6 +194,7 @@ def _resolve_candidate(row,cfg,raw,locator,frame_pages,load_cookies,use_neg):
         candidate=site_extractors.resolve_candidate(row['source'],raw,locator,load_cookies,**_cfg_kw(cfg))
         if not candidate: raise ValueError('sağlayıcı yönlendirmesi çözülemedi')
         candidate_url=urljoin(locator,candidate.get('url') or '')
+        out['host']=dbg.host(candidate_url)
         if not _url(candidate_url): raise ValueError('geçersiz sağlayıcı adresi')
         if badhosts.blocked_host(candidate_url,getattr(cfg,'blocked_hosts',None)): raise ValueError('engelli sağlayıcı adresi (blocked_hosts)')
         out['resolver_type']=out['resolver_type'] or candidate.get('resolver_type') or ''
@@ -266,7 +267,7 @@ def _run_candidates(candidates,run_one):
         return run_one(candidates[i])
     t0=time.monotonic()
     pool=ThreadPoolExecutor(max_workers=max(1,min(app_config.RESOLVE_PARALLEL,n)),thread_name_prefix='resolve')
-    futures={pool.submit(job,i):i for i in range(n)}
+    futures={pool.submit(dbg.bind(job),i):i for i in range(n)}
     pending=set(futures);first_ok=None
     try:
         while pending:
@@ -399,6 +400,8 @@ def _resolve_page(row,force):
             bundle=fetch.page_bundle(cfg,locator)
         except Exception as exc:
             _record(row,[],started,int((time.monotonic()-started)*1000),'sayfa: '+str(exc)[:150])
+            dbg.add('page','error',site=row['source'],host=dbg.host(locator),detail='sayfa alınamadı: '+str(exc)[:150],
+                    ms=int((time.monotonic()-started)*1000))
             raise
         page_ms=int((time.monotonic()-started)*1000)
         html=bundle.get('initial_html') or bundle['html']
@@ -419,7 +422,17 @@ def _resolve_page(row,force):
             candidates=[{'url':candidate,**_json_api_stamp(cfg)}] if candidate else []
     else:
         candidates=[{'url':media,**_json_api_stamp(cfg)}]
-    candidates=drop_blocked(candidates,cfg,locator)
+    if dbg.active() is not None:
+        dbg.add('page','found' if candidates else 'none',site=row['source'],host=dbg.host(locator),ms=page_ms,
+                detail=(f'{len(candidates)} aday oynatıcı' if candidates else 'sayfada oynatıcı yok')+(' (önbellek fragman adresi)' if media else ''))
+        kept=drop_blocked(candidates,cfg,locator)
+        for c in candidates:
+            if c not in kept:
+                dbg.add('provider','skipped',site=row['source'],host=dbg.host(urljoin(locator,c.get('url') or '')),
+                        provider=c.get('label') or '',detail='engelli sunucu (blocked_hosts)')
+        candidates=kept
+    else:
+        candidates=drop_blocked(candidates,cfg,locator)
     if not candidates:
         _record(row,[],started,page_ms,'Sayfada video sağlayıcısı bulunamadı')
         raise ValueError('Sayfada video sağlayıcısı bulunamadı')
@@ -434,6 +447,7 @@ def _resolve_page(row,force):
             return cookie_state['jar']
 
     outcomes=_run_candidates(candidates,lambda raw:_resolve_candidate(row,cfg,raw,locator,frame_pages,load_cookies,not force))
+    if dbg.active() is not None: _trace_outcomes(row,candidates,outcomes,locator)
     order=list(range(len(outcomes)))
     fast=app_config.RESOLVE_FAST_FIRST  # candidates that answered clearly faster go first (0.5 s buckets keep page order otherwise)
     order.sort(key=lambda i:(_rank(candidates[i],outcomes[i]),   # measured Turkish-subtitle files, then unknown (OK.ru), then English
@@ -444,7 +458,10 @@ def _resolve_page(row,force):
         outcome=outcomes[i]
         for stream in outcome['streams']:
             identity=tracks.file_identity(stream)   # the same file re-signed by a second candidate is one stream
-            if identity in seen_streams: continue
+            if identity in seen_streams:
+                dbg.add('stream','skipped',site=row['source'],provider=stream.get('provider') or '',host=dbg.host(stream.get('url')),
+                        detail='aynı dosya başka adaydan (tekrar)')
+                continue
             seen_streams.add(identity)
             result['streams'].append(stream)
         for sub in outcome.get('subtitles') or []:
@@ -454,7 +471,9 @@ def _resolve_page(row,force):
             result['subtitles'].append(sub)
         result['duration']=result['duration'] or outcome['duration']
     if app_config.STREAM_PROBE_RANK and row['kind']!='trailer':   # several different files: the one whose DURATION fits the episode first (library/streamprobe.py)
+        probe_t=time.monotonic()
         result['streams']=streamprobe.rank_streams(result['streams'],streamprobe.expected_runtime(row['canonical_id'],row['episode_id'] or ''),row['locator'])
+        dbg.add('probe','info',site=row['source'],detail=f"{len(result['streams'])} akışın süresi ölçülüp sıralandı",ms=int((time.monotonic()-probe_t)*1000))
     tracks.share_audio(result['streams'])
     result['streams']=tracks.link_mirrors(result['streams'])   # a spare copy of a stream (other CDN host/path) follows it
     ttls=[o['cache_ttl'] for o in outcomes if o and o.get('streams') and o.get('cache_ttl')]
@@ -464,6 +483,24 @@ def _resolve_page(row,force):
     if not result['streams']:
         raise ValueError('Video sağlayıcısı çözülemedi')
     return result
+
+
+def _trace_outcomes(row,candidates,outcomes,locator):
+    """One debug step per candidate (debug=1 only): provider, host, found / none / skipped / error / timeout, duration."""
+    for c,o in zip(candidates,outcomes):
+        if not o: continue
+        err=str(o.get('error') or '')
+        host=o.get('host') or dbg.host(urljoin(locator,c.get('url') or ''))
+        name=o.get('provider') or o.get('label') or c.get('label') or ''
+        last=(o.get('events') or [{}])[-1]
+        where=(f" [{last.get('stage')}]" if last.get('stage') else '')
+        if o['streams']: result,detail='found',f"{len(o['streams'])} akış"
+        elif o.get('timed_out'): result,detail='timeout',err
+        elif 'kısa süre önce' in err: result,detail='skipped','az önce başarısızdı (negatif önbellek): '+err.split('kısa süre önce başarısız oldu: ')[-1]
+        elif 'blocked_hosts' in err: result,detail='skipped','engelli sunucu (blocked_hosts)'
+        elif 'akış vermedi' in err or 'geçerli akış' in err or 'reklam/izleyici' in err: result,detail='none',err.split(': ',1)[-1]+where
+        else: result,detail='error',err.split(': ',1)[-1]+where
+        dbg.add('provider',result,site=row['source'],provider=name,host=host,detail=detail,ms=o.get('ms') or 0)
 
 
 def _stamp_validity(result):
@@ -546,6 +583,7 @@ def resolve_source(row, force=False):
             cached,until,legacy=hit
             left=until-time.time()
             if row['resolver']=='page': _record_cache_hit(row,cached,max(0,int(left)))
+            dbg.add('cache','found',site=row['source'],detail=f"{len(cached.get('streams') or [])} akış önbellekten, {max(0,int(left))} sn geçerli")
             if not legacy and left<app_config.RESOLVE_REFRESH_AHEAD: _refresh_async(row)
             return cached
     return _resolve_and_store(row,force)
@@ -557,10 +595,12 @@ def _resolve_and_store(row, force, background=False):
     remembered in the negative cache; the payload is only written while the locator is still the one that was resolved."""
     locator=row['locator']
     if row['resolver'] in ('direct','embed'):
+        dbg.add('source','found',site=row['source'],host=dbg.host(locator),detail=f"doğrudan adres ({row['resolver']})")
         result={'streams':[{'url':locator,'type':'embed' if row['resolver']=='embed' else row['media_type'],
                             'quality':'auto','label':row['label']}], 'duration':0}
     else:
         cached_error=None if force else _neg_get(_neg_sources,row['id'])
+        if cached_error: dbg.add('source','skipped',site=row['source'],detail='az önce başarısızdı (negatif önbellek): '+cached_error[:120])
         if cached_error: raise (Blocked if cached_error.startswith(BLOCKED_PREFIX) else ValueError)(cached_error)
         try:
             result=_resolve_page(row,force)
@@ -606,7 +646,7 @@ def _resolve_rows(chosen):
     workers=min(app_config.RESOLVE_SOURCES_PARALLEL,len(chosen))
     if workers<=1: return [one(row) for row in chosen]
     with ThreadPoolExecutor(max_workers=workers,thread_name_prefix='resolve-src') as pool:
-        return list(pool.map(one,chosen))
+        return list(pool.map(dbg.bind(one),chosen))
 
 
 def _finder_state(cid, episode_id, profile_id):
@@ -633,10 +673,17 @@ def streams(cid, episode_id=None, kind=None, profile_id=''):
     if chosen and all(r['kind']=='trailer' for r in chosen):
         chosen.sort(key=lambda r: r['source'] != 'sinemalar')
     from . import trailer_check
-    chosen=trailer_check.filter_alive(chosen)  # a trailer whose YouTube video is gone/private/non-embeddable is not offered
+    if dbg.active() is not None: _trace_sources(cid,episode_id,rows,chosen,kind)
+    alive=trailer_check.filter_alive(chosen)  # a trailer whose YouTube video is gone/private/non-embeddable is not offered
+    if dbg.active() is not None:
+        alive_ids={r['id'] for r in alive}
+        for r in chosen:
+            if r['id'] not in alive_ids: dbg.add('source','skipped',site=r['source'],detail='fragman YouTube\'da yok/gizli')
+    chosen=alive
     output=[];duration=0;labels={};soft=[];spares={}
     for row,result,exc in _resolve_rows(chosen):
         if exc is not None:
+            dbg.add('source','skipped' if is_blocked(exc) else 'none',site=row['source'],detail=str(exc)[:160])
             if is_blocked(exc):   # a not-public placeholder is not a failing source: it is marked ``blocked``, never suspect / broken
                 db.execute("UPDATE video_sources SET status='blocked',failures=0,last_error=?,last_checked_at=?,resolved_payload=NULL,resolved_at=NULL WHERE id=? AND status!='disabled'",(str(exc)[:250],int(time.time()),row['id']))
                 continue
@@ -662,6 +709,20 @@ def streams(cid, episode_id=None, kind=None, profile_id=''):
         finder=_finder_state(cid,episode_id,profile_id)
         if finder: payload['finder']=finder
     return payload
+
+
+def _trace_sources(cid,episode_id,rows,chosen,kind):
+    """debug=1: the episode's source rows, which ones are tried, which are left out and why."""
+    try:
+        out=db.query("SELECT source,status,kind FROM video_sources WHERE canonical_id=? AND episode_id=? AND status IN ('disabled','broken','blocked')",(cid,episode_id or ''))
+    except Exception:
+        out=[]
+    why={'broken':'bozuk (sağlık: 3 hata)','disabled':'devre dışı','blocked':'telif/erişim engeli'}
+    for r in out: dbg.add('source','skipped',site=r['source'],detail=why.get(r['status'],r['status'])+(' · fragman' if r['kind']=='trailer' else ''))
+    ids={r['id'] for r in chosen}
+    for r in rows:
+        if r['id'] not in ids: dbg.add('source','skipped',site=r['source'],detail=('fragman (tam video var)' if r['kind']=='trailer' else 'tam video (fragman istendi)'))
+    dbg.add('sources','info',detail=f"{len(chosen)} kaynak denenecek"+(f" ({kind})" if kind else '')+(': '+', '.join(r['source']+'/'+(r['status'] or '') for r in chosen) if chosen else ''))
 
 
 def _stamped(row):
@@ -700,7 +761,7 @@ DEVICE_CODES=('unsupported','decode','autoplay','aborted','offline')  # device-s
 KEEP_CACHE_CODES=('autoplay','aborted','offline')  # device-side AND unrelated to the link: the stored resolution stays; any other failure drops it
 
 
-def feedback(token, event, code='', engine='', detail='', user_agent='', hlsjs=False, profile_id=''):
+def feedback(token, event, code='', engine='', detail='', user_agent='', hlsjs=False, profile_id='', variant_id=''):
     """One health update per provider/attempt; tokens expire and bind the source.
 
     Every stream of a source shares one token and the client falls through to the next stream after a
@@ -713,8 +774,13 @@ def feedback(token, event, code='', engine='', detail='', user_agent='', hlsjs=F
     stays (library/streamdiag.py). Any failure that is about the stream (everything but aborted / offline / autoplay) also
     queues a background probe of the source's streams after the transaction (``detail`` = the client's own error text,
     <= 120 characters, ends up in the source's ``last_diag`` note); the answer is never delayed by it. Every failure that is about the
-    stream also joins the playback issue ledger (library/playissues.py: admin Olay defteri, playback heal), a success clears it."""
-    result,job=_feedback(token,event,code,engine,detail,user_agent,hlsjs)
+    stream also joins the playback issue ledger (library/playissues.py: admin Olay defteri, playback heal), a success clears it.
+
+    ``variant_id`` (optional, streams[].variant_id): a failure of one variant while the source still has variants this attempt has not
+    reported is per-variant: that variant moves to the end of the stored resolution, the source's health and its stored link stay, the
+    issue ledger notes that variant's stream, no source finder starts (answer ``variant: true``). Each variant fails at most once per
+    attempt (``duplicate``); the failure of the last remaining variant (or a report without ``variant_id``) is the whole-source failure."""
+    result,job=_feedback(token,event,code,engine,detail,user_agent,hlsjs,variant_id)
     if job:
         try: streamdiag.schedule(job)
         except Exception: pass
@@ -724,7 +790,7 @@ def feedback(token, event, code='', engine='', detail='', user_agent='', hlsjs=F
             if event=='success': playissues.clear_for_token(token)
             else:
                 cls=playissues.record_failure(token,code,engine,detail,job)
-                finder=_finder_for_failure(token,cls,profile_id)
+                finder=None if result.get('variant') else _finder_for_failure(token,cls,profile_id)
                 if finder: result={**result,'finder':finder}
         except Exception: pass
     return result
@@ -746,8 +812,39 @@ def _finder_for_failure(token, issue_class, profile_id):
         return None
 
 
-def _feedback(token, event, code, engine, detail, user_agent, hlsjs=False):
+def _variant_of(stream, source_id):
+    return tracks.with_defaults(stream,source_id).get('variant_id') or ''
+
+
+def _variant_failure(conn, attempt, variant, code, engine, detail, now):
+    """Per-variant part of :func:`_feedback`: ``(answer, job)`` when the report is handled here (duplicate, or a variant failure while
+    other variants of the source are left), else None (whole-source failure: the caller's old path)."""
+    try: failed=[str(v) for v in json.loads(attempt['failed_variants'] or '[]') if v]
+    except (TypeError,ValueError,IndexError,KeyError): failed=[]
+    if variant in failed: return {'ok':True,'duplicate':True},None
+    failed.append(variant)
+    conn.execute('UPDATE playback_attempts SET failed_variants=? WHERE token=?',(json.dumps(failed[-50:]),attempt['token']))
+    if attempt['failure_at']: return {'ok':True,'duplicate':True},None
+    source=conn.execute('SELECT * FROM video_sources WHERE id=?',(attempt['source_id'],)).fetchone()
+    if not source or source['status']=='disabled': return {'ok':True},None
+    raw=source['resolved_payload']
+    streams=streamdiag.payload_streams(raw)
+    everyone={_variant_of(s,source['id']) for s in streams if s.get('url') and s.get('type')!='embed'}
+    if not everyone or variant not in everyone or everyone<=set(failed): return None
+    try:  # the failed variant goes to the end of the stored resolution (next play request offers the others first)
+        payload=json.loads(raw)
+        items=[s for s in payload.get('streams') or [] if isinstance(s,dict)]
+        payload['streams']=[s for s in items if _variant_of(s,source['id'])!=variant]+[s for s in items if _variant_of(s,source['id'])==variant]
+        conn.execute('UPDATE video_sources SET resolved_payload=? WHERE id=?',(json.dumps(payload,ensure_ascii=False),source['id']))
+    except (TypeError,ValueError,AttributeError): pass
+    conn.execute('UPDATE playback_attempts SET error_code=?,engine=? WHERE token=?',(code[:80],engine[:30],attempt['token']))
+    mine=[s for s in streams if _variant_of(s,source['id'])==variant]
+    return {'ok':True,'variant':True},streamdiag.build_job(source,mine,code,engine,detail,False)
+
+
+def _feedback(token, event, code, engine, detail, user_agent, hlsjs=False, variant_id=''):
     """``(answer, diagnosis job or None)`` of :func:`feedback`."""
+    variant=str(variant_id or '')[:80]
     now=int(time.time())
     job=None
     with closing(db.connect()) as conn, conn:
@@ -755,6 +852,9 @@ def _feedback(token, event, code, engine, detail, user_agent, hlsjs=False):
         attempt=conn.execute('SELECT * FROM playback_attempts WHERE token=?',(token,)).fetchone()
         if not attempt or now-attempt['created_at']>86400: raise ValueError('Oynatma denemesi bulunamadı veya süresi doldu')
         success=event=='success'
+        if not success and variant and code not in DEVICE_CODES:
+            handled=_variant_failure(conn,attempt,variant,code,engine,detail,now)
+            if handled is not None: return handled
         if attempt['success_at' if success else 'failure_at']: return {'ok':True,'duplicate':True},None
         if success:  # keep the failure's error_code; only note the engine that finally played
             conn.execute("UPDATE playback_attempts SET success_at=?,engine=COALESCE(NULLIF(?,''),engine) WHERE token=?",(now,engine[:30],token))

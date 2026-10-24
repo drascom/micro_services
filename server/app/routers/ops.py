@@ -176,9 +176,15 @@ def overview() -> dict[str, Any]:
     sites = [_site_summary(s, states.get(s), active) for s in scfg.list_sites()]
     for s in sites:
         s["catalog"] = catalog.get(s["site"]) or {"item_count": 0, "recent_items": []}
+    try:   # live TV sources (library/live.py): not scraper sites, listed apart (admin filter chip / Siteler row)
+        from ..library import live
+        live_sources = [live.source_summary()]
+    except Exception:
+        live_sources = []
     return {
         "now": sstate._now(),
         "sites": sites,
+        "live_sources": live_sources,
         "active": active,
         "schedule": _schedule(),
     }
@@ -293,6 +299,8 @@ def events(site: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=20
     """Merged run + heal feed, newest first. ``before``: ISO time cursor (exclusive).
 
     Each event: ``kind`` scan|heal|cooldown|rollback|tmdb|onboard|finder|reset, ``at``, plus the raw record.
+    ``live`` events (site ``"famelack"``) are live TV channel scans (``scraper/state.py`` ``record_ops_live``): status
+    success | no_change | error, ``trigger`` auto | manual | cli, ``countries``, new/updated/deactivated, health counts.
     ``reset`` events (site ``"library"``) are admin library resets: ``backup, cleared, kept, cache, cache_files, seconds``.
     ``finder`` events (``?site=`` matches the site a source was found on) are finished source-finder jobs: ``id, title,
     canonical_id, episode_id, season, episode, state`` (found | not_found), ``method`` (retry | search | heal), ``site``,
@@ -332,6 +340,8 @@ def events(site: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=20
         if site and h.get("site") != site:
             continue
         rows.append({**h, "kind": _heal_kind(h), "can_rollback": h.get("id") in revertable, **_playback_view(h)})
+    for lv in sstate.list_ops("live", site, 500):   # live TV scans (library/live.py, site "famelack")
+        rows.append({**lv, "kind": "live", "at": lv.get("at") or lv.get("started_at")})
     for t in sstate.list_ops("tmdb", site, 1000):
         rows.append({**t, "kind": "tmdb", "at": t.get("started_at")})
     for o in sstate.list_ops("onboard", None, 1000):

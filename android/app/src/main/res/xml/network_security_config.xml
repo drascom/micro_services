@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Diziflix sunucusu LAN'da düz HTTP (http://192.168.0.61:8090) sunar; görseller (/img) ve API aynı
+  Diziflix sunucusu LAN'da düz HTTP (http://<ip>:8090) sunar; görseller (/img) ve API aynı
   adresten gelir. Android 9+ varsayılan olarak cleartext trafiği engeller.
 
   Neden genel izin (base-config)? Network Security Config, IP aralığı/CIDR ya da "özel ağ" kalıbı

@@ -192,7 +192,7 @@ dönüşümlü; varsayılan sıra, admin Kategoriler'den değişir). "Listem" an
 ### `GET /api/sections?profile={pid}` · `GET /api/section/{id}?profile={pid}`   ← yeni ana ekran menüsü (ui-proto; yalnız EKLEME)
 `/api/sections` → `{"sections":[{"id","title","status":"ready"|"soon","heroes":[Hero...]}]}`, menü sırası:
 `featured` Öne Çıkanlar · `series` Diziler · `movies` Filmler · `live_tv` Canlı TV · `anime` Animeler · `dvr` DVR
-(`soon` = henüz kaynak yok: `heroes` ve `rows` boş, menüde görünür). `heroes` = o bölümün vitrini (en çok 6, backdrop'lu,
+(`soon` = henüz kaynak yok: `heroes` ve `rows` boş, menüde görünür; şu an yalnız `dvr`, `live_tv` için aşağıdaki "Canlı TV"). `heroes` = o bölümün vitrini (en çok 6, backdrop'lu,
 oynatılabilir; tek yer `homelayout._vitrins`, boot `heroes`'tan bağımsız). Tür: anime havuzundaki (`anime` satırı) dizi = anime, diğerleri
 `type`. Her tür için adaylar: sitelerin `featured` listelerindeki o türden yapımlar (siteler arası sırayla, site sırası korunur), sonra
 `score_parts` puanına göre en iyiler (klasik film yalnız trend puanıyla). `featured` (Öne Çıkanlar) vitrini karışık: dizi · film ·
@@ -208,6 +208,27 @@ gönderilmez; bilinmeyen id → 404). Satırlar (sıra; tek yer `homelayout.sect
 - Kategori satırı `cat_animeler` (ana ekran/featured): sitelerin `category_animeler_*` listeleri (liste sırası), 20'den (`TREND_TARGET`) kısaysa kütüphanedeki diğer animelerle (kaynak adresi `/anime/` altında diziler) `rating` azalan (eşitlikte `id`) 20'ye tamamlanır; `min_items` tamamlanmış satıra bakar. Diğer kategori satırları tamamlanmaz.
 - `anime`: `anime` (Animeler: sitelerin `category_animeler_*` listeleri + kaynak adresi `/anime/` altında olan diğer diziler, yeni eklenen önce).
 Yeni satır kimlikleri `featured_series`, `featured_movies`, `anime` de `/api/row/{id}` ile sayfalanır. `/api/boot` değişmedi.
+
+### Canlı TV (`live_tv` bölümü, kanallar)   ← ek (yalnız EKLEME; kaynak famelack, `server/app/library/live.py`)
+- `/api/sections`: `live_tv` artık `status:"ready"` (`dvr` hâlâ `soon`); `heroes` = birkaç kanal kartı (önce m3u8'i çalışanlar,
+  `channel_no` sırasıyla; görsel yok), Hero ekleri `logo_text` = kanal adı, `tagline:"Canlı"`, `in_mylist:false`.
+- `GET /api/section/live_tv` → diğer bölümlerle AYNI şekil. Satırlar: `live_all` ("Tüm kanallar") önce, sonra kanalı olan
+  kategoriler `live_<kategori>` (Türkçe başlık: `live_news` Haber, `live_sports` Spor, `live_kids` Çocuk, `live_music` Müzik,
+  `live_general` Genel, `live_entertainment` Eğlence, `live_documentary` Belgesel, `live_religious` Din, `live_series` Dizi,
+  `live_movies` Film, ...). Kategorisiz kanal yalnız `live_all`'da. `GET /api/row/live_<kategori>` (ve `live_all`) sayfalanır
+  (ROW_PAGE şekli; bilinmeyen kategori boş satır döner).
+- Kanal kartı (Item alanları + ek): `{"id":"ch_<nanoid>","type":"channel","card_kind":"channel","card_key":"channel:ch_<nanoid>",
+  "title":"24 TV","channel_no":3,"categories":["news"],"has_youtube":true,"geo_blocked":false,"live":true,
+  "card":"","portrait":"","backdrop":"","has_backdrop":false,"genres":["Haber"],"year":null,"progress":null,...}`.
+  `channel_no` = `live_all` sırasında 1..N (ada göre kararlı); kategori satırlarında da aynı numara. Kanal detayı YOK (OK = oynatıcı).
+  Akışı hiç çalışmayan VE YouTube'u olmayan kanal listelenmez.
+- `GET /api/streams/ch_<nanoid>` → mevcut yanıt şekli + `"live":true`, `"channel":{"id","title","channel_no"}`; `resume_position:0`,
+  `duration:null`, `subtitles`/`audio` boş. `streams[]` sırası: çalışan m3u8'ler (`type:"hls"`, `label:"<host> · canlı"`), sonra
+  YouTube (`type:"embed"`, `https://www.youtube-nocookie.com/embed/<id>?autoplay=1`, `label:"YouTube · canlı"`), en sonda sağlıksız
+  (broken / sunucu yoklamasında açılmayan) m3u8'ler. Akış alanları: `kind:"live"`, `source:"famelack"`, `source_id:"ch_<nanoid>"`,
+  her akışın KENDİ `attempt_token`'ı. CORS başlığı vermeyen playlist vekilden geçer (`proxied:true`, `proxy_reason:"recipe"`).
+- `POST /api/playback-report` kanal akışının `attempt_token`'ıyla da çalışır (1 hata = suspect, 3 = broken, başarı = healthy; cihaz
+  kodları sayılmaz). `POST /api/progress` kanal için çağrılmaz; `item_id` `ch_` ile gelirse yok sayılır (`{"ok":true,...}`).
 
 ### `GET /api/row/{row_id}?profile={pid}&offset=0&limit=20`   ← **KADEME 2**
 `{"id":"genre_drama","title":"Dram","items":[...],"offset":0,"limit":20,"total":34}`
@@ -285,6 +306,15 @@ Aynı dosyanın (aynı sağlayıcı + host + yol; yalnız imza/sorgu farklı) ik
 kalite) başka bir host/yoldaki gerçek yedeği korunur: etiketi ana akışınkine ` · yedek` (ikinci yedek ` · yedek 2`) eklenerek ayrılır ve ana akışın
 HEMEN arkasına konur; ana etiketle çakışan başka bir dosyanın etiketine son çare olarak ` (2)` eklenir. Sıra: altyazı durumu ölçülmüş Türkçe dosyalar →
 altyazı durumu bilinmeyen dosyalar (OK.ru) → İngilizce dosyalar. Alan adları/şekil değişmez.
+
+**Hata ayıklama izi (ek: `?debug=1`, geriye uyumlu).** `debug=1` ile istenirse yanıta `debug_trace` eklenir (yoksa alan HİÇ yoktur, ek
+maliyet yok): çözümleme adımları, zamana göre sıralı `[{"t_ms":int,"stage":str,"result":"found"|"none"|"skipped"|"error"|"timeout"|"info",
+"site"?,"provider"?,"host"?,"detail"?,"ms"?}]` (en çok 200). `t_ms` = isteğin başından geçen ms, `ms` = adımın kendi süresi. `stage`:
+`sources` (denenecek kaynak satırları), `source` (kaynak satırı: atlandı = bozuk/devre dışı/telif engeli/negatif önbellek, doğrudan adres, hata),
+`cache` (saklı çözümleme kullanıldı), `page` (sitenin oynatma sayfası, aday oynatıcı sayısı), `provider` (bir aday oynatıcı: bulundu `n akış` /
+kaynak yok / atlandı (`blocked_hosts`, negatif önbellek) / hata / zaman aşımı), `probe` (süre ölçümüyle sıralama), `stream` (istemciye giden her
+akış: tür, `doğrudan` ya da `vekil (<proxy_reason>)`, vekil paralel aralık indirme yapıyorsa `paralel <n>×<parça>`; elenen tekrar dosya
+`skipped`). Metinler Türkçe ve yalnız gösterim içindir (istemci ayrıştırmaz, şekil değişebilir). Canlı TV kanalında da çalışır.
 
 **Ses / altyazı izleri (ek alanlar, geriye uyumlu: mevcut alanların adı/anlamı değişmedi, eski istemci yok sayar).**
 Bir *varyant* = sağlayıcının tek video dosyası. Aynı bölümün iki dosyası yalnızca altyazıda ayrışabilir (yabancidizi: Türkçe sekme =
@@ -381,6 +411,8 @@ bulucuyu o bölüm için başlatır (`trigger: playback_failed`; tek-uçuş / co
 `steps` en çok 6 kısa kayıt (`name` = `retry|search|heal`; `ok` = bu adım akış buldu; `note` kısa Türkçe açıklama), `updated_at` epoch saniye (`idle`'da 0).
 `episode` verilmezse film kendisidir; dizide verilmezse başlığın en yeni işinin durumu döner. `idle` = hiç iş yok (ya da yeniden başlatmada yarıda kesildi).
 Bilinmeyen yapım/bölüm 404. `not_found` yalnızca bu uçta görünür: kullanıcıya bildirim GİTMEZ.
+`?debug=1` (ek): yanıta `/api/streams?debug=1` ile aynı şekilde `debug_trace` eklenir (`stage:"finder"`, `provider` = adımın Türkçe adı, `detail` = `note`,
+`t_ms` = adım sürelerinin toplamı; son satır `result:"info"` + durum).
 
 #### `GET /api/notifications?profile={pid}&since={id}` · `POST /api/notifications/read?profile={pid}` `{"upto":12}`
 `GET` → `{"items":[{"id":12,"kind":"source_found","canonical_id":"tmdb_tv_103516","episode_id":"tmdb_tv_103516:s1:e3","title":"Dizi adı","season":1,"episode":3,
@@ -515,3 +547,38 @@ host'u ile oynatma sorunu defterine girer, ağ hatası kaynak sağlığına yaz�
 İstemci motor seçimi `streams[].type`'a (`hls|mp4|embed`) göre yapılır, URL uzantısına DEĞİL (vekil mp4 adresi uzantısız,
 doğrudan HLS adresi `.txt` olabilir); uzantı yalnız `type` yoksa yedektir.
 Yönetim: `/api/admin/video-sources`, `/api/admin/identities`.
+
+### Oynatma bildirimi: akış kimliği + takılma (EK, geriye uyumlu)
+
+`POST /api/playback-report` isteğe bağlı EK alanlar: `variant_id` (≤80, düşen akışın `streams[].variant_id`'si), `stream_url_host` (≤255),
+`stream_type` (≤20) — bilgi amaçlı. `code` listesine EK `"stall"`: akış oynamaya başladıktan sonra takıldı (tek bekleme >15 sn ya da son 60 sn'de
+toplam bekleme >30 sn; `detail` süreleri taşır, ör. `stall: bekleme 18 sn …`). `variant_id` varsa ve kaynağın bu denemede bildirilmemiş başka akışı
+kaldıysa hata YALNIZ o akışa yazılır: kaynağın sağlığı ve kayıtlı çözümlemesi (`resolved_payload`) değişmez, akış kayıtlı listede sona alınır,
+oynatma sorunu defterine o akışın host'uyla girer, kaynak bulucu başlamaz; yanıt `{ok:true, variant:true}`. Her akış bir denemede en çok bir kez
+sayılır (`duplicate`); kalan son akışın hatası (ya da `variant_id`siz bildirim) eskisi gibi tüm kaynağın hatasıdır. Takılma (`stall`) ve sunucunun
+akışa erişebildiği zaman aşımı (`timeout` + tanı `reachable` → sınıf `timeout_reachable`) olay defterinde görünür, heal TETİKLEMEZ.
+
+### Oynatıcı motoru ipucu: `engine_hint` (EK, geriye uyumlu)
+
+`GET /api/streams/{id}` isteğe bağlı sorgu `platform` = `tizen` | `android` | `browser` (yoksa `User-Agent`'tan: Tizen/SMART-TV → tizen,
+Android → android, diğeri browser). `streams[]` isteğe bağlı EK alanlar: `engine_hint` = `native` (doğal `<video>`) | `hlsjs` (`<video>` + hls.js/MSE)
+| `avplay` ve `engine_hint_source` = `learned` | `seed`. Sunucu bu platformda o sağlayıcı + akış türü için doğru motoru biliyorsa verir: öğrenilmiş
+(`engine_stats`: aşağıdaki bildirimlerden motor başına başarı/başarısızlık; ≥ `ENGINE_HINT_MIN_SAMPLES` örnek ve ≥ `ENGINE_HINT_MIN_RATE` başarı
+oranında en iyi motor) ya da tohum tablosu (`ENGINE_HINT_SEED`; ör. Tizen'de UNS hls → hlsjs, VidHide hls → hlsjs, OK.ru mp4 → native).
+Yalnız `ENGINE_HINT_PLATFORMS` (varsayılan `tizen`) için verilir; gömülü akışta yok. İstemci ipucu varsa akışı DOĞRUDAN o motorla açar (desteklemiyorsa
+kendi varsayılanı); düşerse aynı akışı başka motorla denemez, sıradaki akışa geçer. İpucu yoksa istemcinin kendi seçimi.
+
+`POST /api/playback-report` EK: `engine` değerlerine `native` / `hlsjs` eklendi (sunucu `html5` + `hlsjs` olarak saklar; eski `html5` geçerli),
+isteğe bağlı `platform` (≤20; yoksa `User-Agent`'tan) ve `provider` (≤60, akışın `streams[].provider`'ı; yoksa `variant_id`'den bulunur). Her bildirim
+(cihaz kaynaklı `autoplay`/`aborted`/`offline` hariç) platform + sağlayıcı + tür + motor istatistiğine bir sayılır.
+
+### Uzak hata ayıklama logu (EK)
+
+İstemci Hata ayıklama Özet/Ayrıntılı açıkken panel satırlarını toplu gönderir (2 sn'de bir, ≤50 satır/istek; kapalıyken istek yok). Auth yok
+(kapalı LAN), gövde ≤64 KB (aşan 413), satır metni 500 karaktere kırpılır. Yalnız bellekte: cihaz başına son 1000 satır (halka tampon), en çok
+50 cihaz; yeniden başlatmada silinir.
+- `POST /api/debug-log` `{device, ua?, app_ver?, mode?, lines:[{t, area, level, text}]}` (≤100 satır) → `{ok:true, accepted:n}`. `device` =
+  model (Tizen productinfo) ya da platform (`tizen|android|browser`) + `-` + kalıcı kısa rastgele id; `level` = `info|ok|error|skip|head`.
+- `GET /api/ops/debug-log` → `{devices:[{device, ua, app_ver, mode, last_at, lines, seq}]}` (son görülen önce).
+- `GET /api/ops/debug-log?device=<id>&since=<seq>&limit=<n>` → `{device, lines:[{seq, t, at, area, level, text}], seq}` (`seq > since`, eskiden
+  yeniye, en çok `limit` (varsayılan 200, ≤1000) en yeni satır; bilinmeyen cihaz 404).

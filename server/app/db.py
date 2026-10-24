@@ -151,8 +151,17 @@ SCHEMA += [
     """CREATE TABLE IF NOT EXISTS playback_attempts (
         token TEXT PRIMARY KEY, source_id TEXT NOT NULL, created_at INTEGER NOT NULL,
         success_at INTEGER, failure_at INTEGER, error_code TEXT, engine TEXT,
-        failure_counted INTEGER NOT NULL DEFAULT 0)""",
+        failure_counted INTEGER NOT NULL DEFAULT 0, failed_variants TEXT NOT NULL DEFAULT '[]')""",
     "CREATE INDEX IF NOT EXISTS idx_attempt_created ON playback_attempts(created_at)",
+    # live TV channels (library/live.py, famelack): id = "ch_<nanoid>"; languages / categories / streams / youtube = JSON lists;
+    # stream_health = JSON {url: {probe: ok|fail, cors, status: unknown|healthy|suspect|broken, failures, ...}};
+    # health = ok | youtube | dead (dead = hidden from the clients); active=0 = gone from the source
+    """CREATE TABLE IF NOT EXISTS channels (
+        id TEXT PRIMARY KEY, nanoid TEXT NOT NULL UNIQUE, name TEXT NOT NULL, country TEXT NOT NULL DEFAULT '',
+        languages TEXT NOT NULL DEFAULT '[]', categories TEXT NOT NULL DEFAULT '[]', streams TEXT NOT NULL DEFAULT '[]',
+        youtube TEXT NOT NULL DEFAULT '[]', geo_blocked INTEGER NOT NULL DEFAULT 0, stream_health TEXT NOT NULL DEFAULT '{}',
+        health TEXT NOT NULL DEFAULT 'unknown', active INTEGER NOT NULL DEFAULT 1, seen_at INTEGER, updated_at INTEGER,
+        created_at INTEGER)""",
     # admin Kütüphane K/T toplaması (canonical_id, status, kind) kapsayıcı indeksle tablo okumadan yapılır
     "CREATE INDEX IF NOT EXISTS idx_video_health ON video_sources(canonical_id, status, kind)",
     # trailer liveness verdicts per YouTube video id (library/trailer_check.py). state: 'ok' | 'dead' (transient errors
@@ -232,6 +241,16 @@ SCHEMA += [
         source_key TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, via TEXT NOT NULL DEFAULT '',
         reason TEXT, checked_at INTEGER NOT NULL, PRIMARY KEY (site, url))""",
     "CREATE INDEX IF NOT EXISTS idx_blocked_key ON blocked_pages(site, source_key, kind)",
+]
+
+
+SCHEMA += [
+    # Player engine statistics (library/enginehint.py): playback reports counted per client platform (tizen | android | browser),
+    # provider (normalized label), stream type (hls | mp4) and engine (native | hlsjs | avplay). Feeds ``streams[].engine_hint``.
+    """CREATE TABLE IF NOT EXISTS engine_stats (
+        platform TEXT NOT NULL, provider TEXT NOT NULL, stream_type TEXT NOT NULL, engine TEXT NOT NULL,
+        ok INTEGER NOT NULL DEFAULT 0, fail INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
+        PRIMARY KEY (platform, provider, stream_type, engine))""",
 ]
 
 
@@ -390,6 +409,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("UPDATE playback_attempts SET failure_counted=1 WHERE failure_at IS NOT NULL "
                      "AND success_at IS NULL AND COALESCE(error_code,'') NOT IN "
                      "('unsupported','decode','autoplay','aborted','offline')")
+    # failed_variants: JSON list of the variant_ids (one provider file of the source) this attempt reported as failed (videos.feedback)
+    if acols and "failed_variants" not in acols:
+        conn.execute("ALTER TABLE playback_attempts ADD COLUMN failed_variants TEXT NOT NULL DEFAULT '[]'")
 
 
 # Kalıcı misafir profili: her kurulumda var, silinemez/düzenlenemez; izleme ilerlemesi ve Listem YAZILMAZ

@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from . import config, db, rows
-from .library import categories
+from .library import categories, live
 
 # ---- rows ---------------------------------------------------------------------------------------------------------
 # the skeleton rows (ids = ``categories.SYSTEM_DEFAULT``) and their titles
@@ -61,7 +61,8 @@ POOL_IDS = ("latest_movies", "trending_series", "trending_movies", "must_watch",
 # (id, title) in menu order; a "soon" section has no source yet (no rows, no heroes) but is listed
 SECTIONS = (("featured", "Öne Çıkanlar"), ("series", "Diziler"), ("movies", "Filmler"), ("live_tv", "Canlı TV"),
             ("anime", "Animeler"), ("dvr", "DVR"))
-SOON_SECTIONS = ("live_tv", "dvr")
+SOON_SECTIONS = ("dvr",)
+LIVE_SECTION = "live_tv"   # Canlı TV: rows / heroes are channels (library/live.py), not catalogue titles
 # rows of a section (``featured`` = the home rows of :func:`layout` minus ``continue``: the new home shows "Devam Et" on
 # the menu screen itself, from ``/api/row/continue``)
 SECTION_ROWS = {"series": ("featured_series", "new_episodes", "trending_series", "series"),
@@ -596,9 +597,11 @@ def _vitrins(ctx: Context) -> dict[str, list[dict]]:
 
 
 def _section_heroes(ctx: Context, section_id: str, vitrins: Optional[dict] = None) -> list[dict]:
-    """The vitrin of a section (:func:`_vitrins`); ``[]`` for a "soon" or unknown section."""
+    """The vitrin of a section (:func:`_vitrins`; Canlı TV: a few channel cards); ``[]`` for a "soon" or unknown section."""
     if section_id in SOON_SECTIONS or section_id not in dict(SECTIONS):
         return []
+    if section_id == LIVE_SECTION:
+        return live.heroes()
     vitrins = _vitrins(ctx) if vitrins is None else vitrins
     return vitrins.get(section_id, [])
 
@@ -617,5 +620,6 @@ def section(snap, section_id: str, profile_id: str, pmap: dict, now: Optional[fl
     if section_id not in names:
         return None
     ctx = Context(snap, profile_id, pmap, now)
+    rows_out = live.rows_json(ROW_ITEMS) if section_id == LIVE_SECTION else _rows_json(ctx, section_rows(section_id, ctx.profile_id))
     return {"id": section_id, "title": names[section_id], "status": "soon" if section_id in SOON_SECTIONS else "ready",
-            "heroes": _section_heroes(ctx, section_id), "rows": _rows_json(ctx, section_rows(section_id, ctx.profile_id))}
+            "heroes": _section_heroes(ctx, section_id), "rows": rows_out}

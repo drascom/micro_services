@@ -243,6 +243,31 @@ STREAM_PROXY_HLS_MAX = max(1, _int("STREAM_PROXY_HLS_MAX", 24))
 STREAM_PROXY_QUEUE_WAIT = max(0.0, _float("STREAM_PROXY_QUEUE_WAIT", 8.0))
 STREAM_PROXY_PLAYLIST_MAX = max(4096, _int("STREAM_PROXY_PLAYLIST_MAX", 2 * 1024 * 1024))
 STREAM_PROXY_PLAYLIST_URIS = max(10, _int("STREAM_PROXY_PLAYLIST_URIS", 20000))
+# Hosts that cap EACH connection's speed (OK.ru's okcdn / vkuser: ~2 Mbit/s per connection, a 1080p file needs ~5): a proxied
+# progressive file of such a host is fetched as STREAM_PROXY_CHUNK-byte ranges, STREAM_PROXY_PARALLEL at a time, and handed to
+# the player in order (the head range streams as it arrives). STREAM_PROXY_PARALLEL_HOSTS empty or STREAM_PROXY_PARALLEL=1 = off.
+STREAM_PROXY_PARALLEL_HOSTS = tuple(h.strip().lower().strip(".") for h in (
+    os.environ.get("STREAM_PROXY_PARALLEL_HOSTS", "okcdn.ru,vkuser.net,mycdn.me") or "").split(",") if h.strip())
+STREAM_PROXY_PARALLEL = min(16, max(1, _int("STREAM_PROXY_PARALLEL", 12)))
+STREAM_PROXY_CHUNK = max(64 * 1024, _int("STREAM_PROXY_CHUNK", 256 * 1024))
+# Player engine hint (library/enginehint.py, ``streams[].engine_hint``): the engine the client should open a stream with on its
+# platform (``?platform=`` or the User-Agent). Learned = engine_stats with >= ENGINE_HINT_MIN_SAMPLES reports for that engine and a
+# success rate >= ENGINE_HINT_MIN_RATE (best rate wins); otherwise the seed table (ENGINE_HINT_SEED: JSON
+# ``{"platform": {"provider/type": "native|hlsjs|avplay"}}``, provider = label lowercased, letters/digits only). Hints are given only
+# for ENGINE_HINT_PLATFORMS (default tizen; android/browser keep the client's own choice); ENGINE_HINT=0 switches it off.
+ENGINE_HINT = os.environ.get("ENGINE_HINT", "1").strip() != "0"
+ENGINE_HINT_PLATFORMS = tuple(p.strip().lower() for p in (os.environ.get("ENGINE_HINT_PLATFORMS", "tizen") or "").split(",") if p.strip())
+ENGINE_HINT_MIN_SAMPLES = max(1, _int("ENGINE_HINT_MIN_SAMPLES", 3))
+ENGINE_HINT_MIN_RATE = min(1.0, max(0.0, _float("ENGINE_HINT_MIN_RATE", 0.5)))
+_ENGINE_HINT_SEED_DEFAULT = {"tizen": {"uns/hls": "hlsjs", "vidhide/hls": "hlsjs", "vidmoly/hls": "native", "vidmolly/hls": "native",
+                                       "okru/mp4": "native"}}
+try:
+    import json as _json
+    ENGINE_HINT_SEED = _json.loads(os.environ["ENGINE_HINT_SEED"]) if os.environ.get("ENGINE_HINT_SEED", "").strip() else _ENGINE_HINT_SEED_DEFAULT
+    if not isinstance(ENGINE_HINT_SEED, dict):
+        ENGINE_HINT_SEED = _ENGINE_HINT_SEED_DEFAULT
+except ValueError:
+    ENGINE_HINT_SEED = _ENGINE_HINT_SEED_DEFAULT
 # Playback failure diagnosis (library/streamdiag.py): after a failed playback report the server probes the stream in the
 # background (once per source per STREAM_DIAG_COOLDOWN seconds, at most STREAM_DIAG_PARALLEL at a time, STREAM_DIAG_TIMEOUT
 # seconds per request) and stores the verdict in video_sources.last_diag; STREAM_DIAG=0 switches it off (the report still

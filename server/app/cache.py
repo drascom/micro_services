@@ -247,6 +247,11 @@ def ingest_tick() -> None:
         log.exception("catalogue refresh after scheduled ingest failed")
 
 
+def _live_tick() -> None:
+    from .library import live
+    live.tick()
+
+
 def _bind_progress_hook() -> None:
     """Let a running ingest (admin scan, scheduled tick) refresh this snapshot at its stages. The CLI never gets
     here, so ``python -m tools.ingest`` has no hook and just writes the database."""
@@ -291,6 +296,15 @@ def start() -> None:
             seconds=autoscan.TICK_SECONDS,
             id="library_ingest",
             max_instances=3,
+            coalesce=True,
+        )
+        # Canlı TV (library/live.py): checked every minute, runs when the admin switch is on and its interval passed
+        _scheduler.add_job(
+            _live_tick,
+            "interval",
+            seconds=autoscan.TICK_SECONDS,
+            id="live_tv",
+            max_instances=1,
             coalesce=True,
         )
         _scheduler.start()

@@ -230,7 +230,7 @@ def activity_list() -> list[dict[str, Any]]:
     return sorted(items, key=lambda i: i["started_at"])
 
 
-_OPS_KEYS = ("runs", "heals", "tmdb", "onboard", "maintenance", "hydrate")
+_OPS_KEYS = ("runs", "heals", "tmdb", "onboard", "maintenance", "hydrate", "live")
 
 
 def _ops_read() -> dict[str, list]:
@@ -299,7 +299,14 @@ def record_ops_hydrate(entry: dict[str, Any]) -> dict[str, Any]:
     return _ops_append("hydrate", entry)
 
 
+def record_ops_live(entry: dict[str, Any]) -> dict[str, Any]:
+    """One live TV (Canlı TV) scan (event ``kind=live``, ``site`` = ``"famelack"``; library/live.py): ``{started_at, at,
+    trigger, countries, status (success | no_change | error), duration, new, updated, deactivated, unchanged, active,
+    inactive, visible, hidden, ok, youtube_only, probed?, probe_ok?, no_cors?, error?}``."""
+    return _ops_append("live", entry)
+
+
 def list_ops(key: str, site: Optional[str] = None, limit: int = 50) -> list[dict[str, Any]]:
-    """Newest first. key: 'runs' | 'heals' | 'tmdb' | 'onboard' | 'maintenance' | 'hydrate'."""
+    """Newest first. key: 'runs' | 'heals' | 'tmdb' | 'onboard' | 'maintenance' | 'hydrate' | 'live'."""
     rows = [r for r in _ops_read()[key] if not site or r.get("site") == site]
     return rows[::-1][:limit]

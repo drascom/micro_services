@@ -7,6 +7,7 @@
 var $=function(i){return document.getElementById(i)};
 var D=null,failed=false,llm=null,llmBusy=false,pollTimer=null;
 var TS=null,tFail=false,tKind='movie',tDec='',tOff=0,tPrev=null,tPrevBusy=false,tStarting=false,tLast='',tTimer=null,tTicks=0,tWatch=false,tLastId=null;
+var LV=null,lvFail=false,lvOpen=false,lvFilter='';
 var PG=20,KL={movie:'film',series:'dizi',seasons:'dizi (sezon/bölüm)'},KLG={movie:'filmden',series:'diziden'},KLP={movie:'Film',series:'Dizi',seasons:'Sezon ve bölüm görselleri'};
 var DECL={auto:['ok','Otomatik'],review:['warn','İnceleme'],unmatched:['','Eşleşmedi'],error:['bad','Hata'],deferred:['','Ertelendi']};
 var SDECL={auto:['ok','Bulundu'],empty:['','TMDB’de yok'],error:['bad','Hata'],deferred:['','Ertelendi']};
@@ -298,21 +299,62 @@ function libReset(b){
     .catch(function(e){toast('Sıfırlanamadı: '+(e&&e.message||e),'bad')})
     .then(function(){b.disabled=false});
 }
+/* ---- Canlı TV (/api/ops/live) ---- */
+var LVH={ok:['ok','Çalışıyor'],youtube:['warn','Yalnız YouTube'],dead:['bad','Gizli (akış yok)'],inactive:['','Kaynakta yok']};
+function liveLoad(){
+  return call('/api/ops/live').then(function(d){LV=d;lvFail=false;renderLive()}).catch(function(e){lvFail=String(e&&e.message||e);renderLive()});
+}
+function liveHtml(){
+  var on=!!(D&&D.live_tv&&D.live_tv.enabled);
+  var h='<div class="sh"><span class="sname" style="font-size:16px">Saatlik kanal taraması</span>'+sw('live-auto',on,'Canlı TV otomatik tarama','data-live-auto="1"')+'</div>'+
+    '<p class="hint">famelack kanal listesi (yalnız seçili dillerdeki kanallar); akışı çalışmayan ve YouTube’u olmayan kanallar istemcide gizlenir.</p>';
+  if(lvFail&&!LV)return h+'<div class="empty">Durum alınamadı: '+esc(lvFail)+'</div>';
+  if(!LV)return h+'<div class="empty">Yükleniyor…</div>';
+  var c=LV.counts||{};
+  h+='<dl class="skv"><div><dt>Ülke / dil</dt><dd>'+esc((LV.countries||[]).join(', ')||'-')+'<small>'+esc((LV.languages||[]).join(', ')||'tümü')+'</small></dd></div>'+
+    '<div><dt>Son tarama</dt><dd>'+esc(LV.ran_at?when(LV.ran_at*1000):'hiç')+'<small>'+esc(LV.ran_at?ago(LV.ran_at*1000):'')+(LV.running?' · taranıyor…':'')+'</small></dd></div>'+
+    '<div><dt>Kanallar</dt><dd>'+num(c.visible)+' görünür<small>'+num(c.ok)+' çalışan · '+num(c.youtube_only)+' yalnız YouTube · '+num(c.dead)+' gizli · '+num(c.total-c.active)+' kaynakta yok</small></dd></div></dl>'+
+    '<div class="act"><button class="btn" id="live-scan"'+(LV.running?' disabled':'')+'>'+(LV.running?'Taranıyor…':'Şimdi tara')+'</button> '+
+    '<button class="btn" id="live-list">'+(lvOpen?'Listeyi gizle':'Kanalları göster')+'</button></div>';
+  if(lvOpen){
+    var F=[['','Hepsi'],['ok','Çalışan'],['youtube','Yalnız YouTube'],['dead','Gizli'],['inactive','Kaynakta yok']];
+    h+='<div class="act">'+F.map(function(f){return '<button class="btn'+(lvFilter===f[0]?' on':'')+'" data-lvf="'+f[0]+'" aria-pressed="'+(lvFilter===f[0])+'">'+f[1]+'</button>'}).join(' ')+'</div>';
+    var rows=(LV.channels||[]).filter(function(x){return !lvFilter||x.health===lvFilter});
+    h+='<div style="max-height:420px;overflow:auto"><table style="width:100%;font-size:13px;border-collapse:collapse">'+rows.map(function(x){
+      var m=LVH[x.health]||['',x.health];
+      var st=x.streams.map(function(s){return '<div class="mono" style="font-size:11.5px;overflow-wrap:anywhere">'+
+        pill(s.status==='broken'||s.probe==='fail'?'bad':s.status==='healthy'||s.probe==='ok'?'ok':'',(s.probe||'?')+' · '+s.status)+
+        (s.cors===false?' '+pill('warn','vekil'):'')+' '+esc(s.url)+(s.error?' <small>('+esc(s.error)+')</small>':'')+'</div>'}).join('');
+      return '<tr style="border-top:1px solid var(--line);vertical-align:top"><td style="padding:6px 6px 6px 0;white-space:nowrap" class="num">'+esc(x.channel_no||'-')+'</td>'+
+        '<td style="padding:6px"><b>'+esc(x.title)+'</b>'+(x.geo_blocked?' '+pill('','geo'):'')+'<div class="hint">'+esc((x.categories||[]).join(', '))+(x.youtube?' · YouTube '+x.youtube:'')+'</div>'+st+'</td>'+
+        '<td style="padding:6px;white-space:nowrap">'+pill(m[0],m[1])+'</td></tr>'}).join('')+'</table></div>';
+  }
+  return h;
+}
+function renderLive(){var el=$('live-card');if(el)el.innerHTML=liveHtml()}
+function liveScan(b){
+  b.disabled=true;
+  call('/api/ops/live/scan',{method:'POST'}).then(function(){toast('Canlı TV taraması başladı');setTimeout(liveLoad,1500)})
+    .catch(function(e){toast('Başlatılamadı: '+(e&&e.message||e),'bad');b.disabled=false});
+}
+
 function render(){
   var root=$('set-root');if(!root)return;
   if(!D){root.innerHTML=failed?'<div class="empty">Ayarlar yüklenemedi: '+esc(failed)+'<br><button class="btn" id="set-retry">Yeniden dene</button></div>':'<div class="empty">Yükleniyor…</div>';return}
   var h='';
   h+='<section><h2>TMDB zenginleştirme</h2><div class="card tmdb" id="tmdb-card"></div></section>';
+  h+='<section><h2>Canlı TV</h2><div class="card" id="live-card"></div></section>';
   h+=healHtml();
   h+=resetHtml();
   root.innerHTML=h;
-  tLast='';renderTmdb();
+  tLast='';renderTmdb();renderLive();
 }
 
 /* ---- yenileme ---- */
 function poll(){
   if($('tab-settings').classList.contains('hidden')||document.hidden)return;
   load();
+  liveLoad();
 }
 
 /* ---- etkileşim ---- */
@@ -325,6 +367,9 @@ root.addEventListener('change',function(ev){
   } else if(t.dataset.tmdbType){
     var sel=[].slice.call(root.querySelectorAll('[data-tmdb-type]')).filter(function(x){return x.checked}).map(function(x){return x.dataset.tmdbType});
     save({tmdb:{types:sel}},'TMDB türleri: '+(sel.map(function(k){return KL[k]}).join(', ')||'hiçbiri')).then(tmdbLoad);
+  } else if(t.dataset.liveAuto){
+    var lv=t.checked;
+    save({live_tv:{enabled:lv}},'Canlı TV otomatik tarama '+(lv?'açıldı':'kapatıldı')).then(liveLoad);
   } else if(t.dataset.autoapply){
     var v=t.checked;
     save({heal_autoapply:v},'Otomatik uygulama '+(v?'açıldı':'kapatıldı'));
@@ -337,6 +382,9 @@ root.addEventListener('click',function(ev){
   if(b.id==='llm-test'){loadLlm(true);return}
   if(b.id==='set-retry'){load();return}
   if(b.id==='lib-reset'){libReset(b);return}
+  if(b.id==='live-scan'){liveScan(b);return}
+  if(b.id==='live-list'){lvOpen=!lvOpen;renderLive();return}
+  if(b.dataset.lvf!==undefined){lvFilter=b.dataset.lvf;renderLive();return}
   if(b.id==='tmdb-retry'){tFail=false;tmdbLoad();return}
   if(b.id==='tmdb-preview'){tmdbStart(true);return}
   if(b.id==='tmdb-apply'){tmdbStart(false);return}
@@ -352,6 +400,7 @@ root.addEventListener('click',function(ev){
 /* ---- sekme kancası ---- */
 function onShow(){
   load().then(tmdbLoad);
+  liveLoad();
   if(!llm||Date.now()-T(llm.checked_at)>60000)loadLlm(false);
   if(!tTimer)tTimer=setInterval(tmdbTick,2500);
   if(!pollTimer)pollTimer=setInterval(poll,20000);

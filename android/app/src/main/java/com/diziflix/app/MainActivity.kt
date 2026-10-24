@@ -1,120 +1,264 @@
 package com.diziflix.app
 
+import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.pm.ApplicationInfo
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Surface
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.diziflix.app.data.net.UrlUtil
-import com.diziflix.app.ui.common.BrandBoot
-import com.diziflix.app.ui.common.LocalBaseUrl
-import com.diziflix.app.ui.common.LocalContainer
-import com.diziflix.app.ui.nav.MainNav
-import com.diziflix.app.ui.profiles.ProfilesScreen
-import com.diziflix.app.ui.settings.SettingsScreen
-import com.diziflix.app.ui.theme.DiziflixTheme
-import com.diziflix.app.ui.theme.DzColors
-import com.diziflix.app.ui.tv.LocalIsTv
-import com.diziflix.app.ui.tv.detectTv
-import com.diziflix.app.ui.tv.LocalTvToaster
-import com.diziflix.app.ui.tv.TvBootLogo
-import com.diziflix.app.ui.tv.TvColors
-import com.diziflix.app.ui.tv.TvProfilesScreen
-import com.diziflix.app.ui.tv.TvSettingsScreen
-import com.diziflix.app.ui.tv.TvTheme
-import com.diziflix.app.ui.tv.TvToastHost
-import com.diziflix.app.ui.tv.rememberTvToaster
-import kotlinx.coroutines.launch
-
-/** Tek Activity: Compose içerik + Navigation-Compose. */
-class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val container = (application as DiziflixApp).container
-        // Android TV algılaması çalışma zamanında (tek APK): TV'ye özgü tüm davranış LocalIsTv'ye bağlıdır.
-        val isTv = detectTv(this)
-        setContent {
-            CompositionLocalProvider(LocalIsTv provides isTv) {
-                DiziflixTheme {
-                    AppRoot(container)
-                }
-            }
-        }
-    }
-}
+import android.view.KeyEvent
+import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
+import android.util.Log
+import android.webkit.ConsoleMessage
+import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.widget.FrameLayout
+import androidx.webkit.WebViewAssetLoader
+import java.io.ByteArrayInputStream
 
 /**
- * Kök: ayarlar yüklenene kadar boş; profil seçilmemişse profil ekranı (seçim DataStore'da hatırlanır);
- * seçiliyse ana gezinme. Profil değişince gezinme yığını sıfırlanır.
+ * İnce WebView kabuğu: `client/` web istemcisini (derlemede assets/client/'e kopyalanır) yükler.
+ *
+ * Köken: http://appassets.androidplatform.net (WebViewAssetLoader, http izinli) -> LAN'daki http sunucusuna
+ * XHR karışık içerik değildir; sunucu CORS `*` verir. localStorage bu köken için kalıcıdır.
+ *
+ * Tuşlar: oklar/OK/rakamlar WebView'e doğal gider (DPAD_CENTER -> Enter/13). Geri -> JS'e `Escape` (27);
+ * kök ekranda istemci `DZAndroid.exit()` çağırır. Kanal ve medya tuşları istemcinin tuş haritasına
+ * (client/js/app.js KEYMAP/KEYNAME) birebir key + keyCode ile enjekte edilir.
  */
-@Composable
-private fun AppRoot(container: AppContainer) {
-    val settings by container.settings.settings.collectAsStateWithLifecycle()
-    val current = settings
-    val baseUrl = current?.baseUrl ?: UrlUtil.DEFAULT_BASE_URL
-    val isTv = LocalIsTv.current
-    val toaster = if (isTv) rememberTvToaster() else null
+class MainActivity : Activity() {
 
-    CompositionLocalProvider(
-        LocalContainer provides container,
-        LocalBaseUrl provides baseUrl,
-        LocalTvToaster provides toaster,
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = if (isTv) TvColors.Background else DzColors.Background,
-            contentColor = DzColors.OnSurface,
-        ) {
-            Box(Modifier.fillMaxSize()) {
-                if (current == null) {
-                    // Ayarlar (DataStore) yüklenene kadar: ortada kare marka logosu (Tizen `bootLogo()`).
-                    if (isTv) TvTheme { TvBootLogo(Modifier.align(Alignment.Center)) } else BrandBoot()
-                } else {
-                    val profileId = current.profileId
-                    if (profileId == null) {
-                        ProfileGate()
-                    } else {
-                        MainNav(
-                            profileId = profileId,
-                            onSwitchProfile = {
-                                container.appScope.launch { container.settings.setProfileId(null) }
-                            },
-                        )
-                    }
-                }
-                // TV bildirimleri (küçük toast + zengin kart) her ekranın ÜSTÜNDE; odaklanmaz.
-                if (toaster != null) TvTheme { TvToastHost(toaster) }
+    private lateinit var root: FrameLayout
+    private lateinit var web: WebView
+    private var customView: View? = null
+    private var customCallback: WebChromeClient.CustomViewCallback? = null
+
+    private val assetLoader by lazy {
+        WebViewAssetLoader.Builder()
+            .setDomain(HOST)
+            .setHttpAllowed(true)
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .build()
+    }
+
+    @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
+
+        root = FrameLayout(this)
+        root.setBackgroundColor(Color.BLACK)
+        web = WebView(this)
+        web.setBackgroundColor(Color.BLACK)
+        root.addView(web, FrameLayout.LayoutParams(MATCH, MATCH))
+        setContentView(root)
+
+        web.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            databaseEnabled = true
+            mediaPlaybackRequiresUserGesture = false
+            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            loadWithOverviewMode = true
+            useWideViewPort = true
+            allowFileAccess = false
+            allowContentAccess = false
+        }
+        web.isFocusable = true
+        web.isFocusableInTouchMode = true
+        web.addJavascriptInterface(Bridge(), "DZAndroid")
+        web.webViewClient = ShellClient()
+        web.webChromeClient = ShellChrome()
+
+        if (savedInstanceState == null || web.restoreState(savedInstanceState) == null) {
+            web.loadUrl(START_URL)
+        }
+        web.requestFocus()
+        immersive()
+    }
+
+    /* ---------------- tuşlar ---------------- */
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val code = event.keyCode
+        if (code == KeyEvent.KEYCODE_BACK) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                if (customView != null) hideCustom() else sendKey("Escape", 27)
+            }
+            return true
+        }
+        val mapped = KEYS[code]
+        if (mapped != null) {
+            if (event.action == KeyEvent.ACTION_DOWN) sendKey(mapped.first, mapped.second)
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    /** document'e keydown (key + keyCode/which; KeyboardEvent kurucusu keyCode'u ayarlayamaz -> defineProperty). */
+    private fun sendKey(key: String, keyCode: Int) {
+        val js = "(function(k,c){var d=document,e;try{e=new KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true});}" +
+            "catch(x){e=d.createEvent('Event');e.initEvent('keydown',true,true);e.key=k;}" +
+            "try{Object.defineProperty(e,'keyCode',{get:function(){return c;}});Object.defineProperty(e,'which',{get:function(){return c;}});}catch(x){}" +
+            "(d.activeElement||d.body||d).dispatchEvent(e);})('" + key + "'," + keyCode + ");"
+        web.evaluateJavascript(js, null)
+    }
+
+    /* ---------------- JS köprüsü ---------------- */
+
+    private inner class Bridge {
+        @JavascriptInterface
+        fun exit() {
+            runOnUiThread { finish() }
+        }
+    }
+
+    /* ---------------- WebView istemcileri ---------------- */
+
+    private inner class ShellClient : WebViewClient() {
+        override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
+            intercept(request.url)
+
+        @Deprecated("API < 21 yolu; minSdk 21'de çağrılmaz ama zararsız")
+        override fun shouldInterceptRequest(view: WebView, url: String): WebResourceResponse? =
+            intercept(Uri.parse(url))
+
+        private fun intercept(uri: Uri): WebResourceResponse? {
+            val path = uri.path ?: ""
+            val hit = if (path.contains("/webapis/")) null else assetLoader.shouldInterceptRequest(uri)
+            if (hit != null) return hit
+            // Kendi alanımızda bulunamayan dosya (ör. Tizen `$WEBAPIS/webapis/webapis.js`): ağa gitmesin, hızlı 404.
+            if (uri.host == HOST) {
+                return WebResourceResponse("text/plain", "utf-8", 404, "Not Found",
+                    emptyMap(), ByteArrayInputStream(ByteArray(0)))
+            }
+            return null
+        }
+
+        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
+            request.url.host != HOST && request.isForMainFrame
+    }
+
+    private inner class ShellChrome : WebChromeClient() {
+        override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+            if (customView != null) {
+                callback.onCustomViewHidden(); return
+            }
+            customView = view
+            customCallback = callback
+            root.addView(view, FrameLayout.LayoutParams(MATCH, MATCH))
+            web.visibility = View.GONE
+            immersive()
+        }
+
+        override fun onHideCustomView() {
+            removeCustom()
+        }
+
+        /** JS konsolu logcat'e (etiket DZWeb): hata ayıklama için. */
+        override fun onConsoleMessage(msg: ConsoleMessage): Boolean {
+            Log.d("DZWeb", "${msg.messageLevel()} ${msg.message()} (${msg.sourceId()}:${msg.lineNumber()})")
+            return true
+        }
+
+        /** Boş poster (varsayılan gri oynat simgesi görünmesin). */
+        override fun getDefaultVideoPoster(): Bitmap =
+            Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+    }
+
+    private fun hideCustom() {
+        val cb = customCallback
+        removeCustom()
+        cb?.onCustomViewHidden()
+    }
+
+    private fun removeCustom() {
+        val v = customView ?: return
+        (v.parent as? ViewGroup)?.removeView(v)
+        customView = null
+        customCallback = null
+        web.visibility = View.VISIBLE
+        web.requestFocus()
+        immersive()
+    }
+
+    /* ---------------- yaşam döngüsü / tam ekran ---------------- */
+
+    @Suppress("DEPRECATION")
+    private fun immersive() {
+        window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_FULLSCREEN)
+        if (Build.VERSION.SDK_INT >= 28) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
         }
     }
-}
 
-/** Profil seçilmemişken: profil ekranı; oradan Ayarlar (sunucu adresi) açılabilir. */
-@Composable
-private fun ProfileGate() {
-    var showSettings by remember { mutableStateOf(false) }
-    if (showSettings) BackHandler { showSettings = false }
-    if (LocalIsTv.current) {
-        // TV: Tizen profil seçimi / ayarlar (kendi güvenli alanlarıyla).
-        if (showSettings) TvSettingsScreen(showSwitchProfile = false) else TvProfilesScreen(onOpenSettings = { showSettings = true })
-        return
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) immersive()
     }
-    Box(Modifier.fillMaxSize()) {
-        if (showSettings) {
-            SettingsScreen(onBack = { showSettings = false }, showSwitchProfile = false)
-        } else {
-            ProfilesScreen(onOpenSettings = { showSettings = true })
-        }
+
+    override fun onResume() {
+        super.onResume()
+        web.onResume()
+    }
+
+    override fun onPause() {
+        web.onPause()
+        super.onPause()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        web.saveState(outState)
+    }
+
+    override fun onDestroy() {
+        (web.parent as? ViewGroup)?.removeView(web)
+        web.destroy()
+        super.onDestroy()
+    }
+
+    companion object {
+        private const val HOST = WebViewAssetLoader.DEFAULT_DOMAIN
+        private const val START_URL = "http://$HOST/assets/client/index.html"
+        private const val MATCH = FrameLayout.LayoutParams.MATCH_PARENT
+
+        /** Android tuşu -> (DOM key, keyCode); client/js/app.js KEYNAME + KEYMAP ile birebir. */
+        private val KEYS: Map<Int, Pair<String, Int>> = mapOf(
+            KeyEvent.KEYCODE_CHANNEL_UP to ("PageUp" to 33),
+            KeyEvent.KEYCODE_CHANNEL_DOWN to ("PageDown" to 34),
+            KeyEvent.KEYCODE_PAGE_UP to ("PageUp" to 33),
+            KeyEvent.KEYCODE_PAGE_DOWN to ("PageDown" to 34),
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE to ("MediaPlayPause" to 10252),
+            KeyEvent.KEYCODE_HEADSETHOOK to ("MediaPlayPause" to 10252),
+            KeyEvent.KEYCODE_MEDIA_PLAY to ("MediaPlay" to 415),
+            KeyEvent.KEYCODE_MEDIA_PAUSE to ("MediaPause" to 19),
+            KeyEvent.KEYCODE_MEDIA_STOP to ("MediaStop" to 413),
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD to ("MediaFastForward" to 417),
+            KeyEvent.KEYCODE_MEDIA_REWIND to ("MediaRewind" to 412),
+            KeyEvent.KEYCODE_PROG_RED to ("ColorF0Red" to 403),
+            KeyEvent.KEYCODE_PROG_YELLOW to ("ColorF2Yellow" to 405),
+            KeyEvent.KEYCODE_CAPTIONS to ("ColorF2Yellow" to 405),
+        )
     }
 }

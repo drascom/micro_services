@@ -50,6 +50,7 @@ def _view() -> dict[str, Any]:
         "heal": _heal_info(),
         # configured = a TMDB key exists (never its value); auto/types are the persisted admin switches
         "tmdb": {"configured": tmdb.enabled(), **settings.tmdb_settings()},
+        "live_tv": {"enabled": settings.live_tv_auto()},   # Canlı TV hourly scan (status + channels: /api/ops/live)
     }
 
 
@@ -61,7 +62,8 @@ def get_settings() -> dict[str, Any]:
 @router.put("/api/ops/settings")
 def put_settings(body: Any = Body(...)) -> dict[str, Any]:
     """Partial update: ``{"sites": {"<site>": {"enabled"?, "interval_hours"?}}, "heal_autoapply"?,
-    "tmdb": {"auto"?: bool, "types"?: ["movie"|"series", ...]}}`` (``tmdb.configured`` is read-only)."""
+    "tmdb": {"auto"?: bool, "types"?: ["movie"|"series", ...]}, "live_tv": {"enabled"?: bool}}``
+    (``tmdb.configured`` is read-only)."""
     try:
         settings.update(body)
     except settings.SettingsError as exc:

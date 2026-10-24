@@ -1,6 +1,6 @@
 """Admin "Siteler" tab: list every registered site (hand-built ones included), view its yaml, rename, delete.
 
-`GET    /api/ops/sites/manage`            ``{sites: [row], any_enabled, limits{min_interval_hours, max_interval_hours}, tick_seconds}``:
+`GET    /api/ops/sites/manage`            ``{sites: [row], live_sources: [live.source_summary()], any_enabled, limits{min_interval_hours, max_interval_hours}, tick_seconds}``:
                                           ``site_id, display_name, base_url, version, hand_built, heal_cooldown_until,
                                           auto_scan{enabled, interval_hours, next_scan_at, source, running, last_run_at}, last_run{at, status, scraped,
                                           ingested}|null, counts{titles, series, movies, episodes, with_sources}, search,
@@ -199,7 +199,12 @@ def manage() -> dict[str, Any]:
         last_runs.setdefault(str(run.get("site")), run)
     counts, busy = _counts(), _busy_map()
     rows = [_row(site, last_runs, counts, busy) for site in scfg.list_sites()]
-    return {"sites": rows, "any_enabled": any(r["auto_scan"]["enabled"] for r in rows),
+    try:   # live TV sources (library/live.py): NOT scraper sites -> a separate list (no heal / baseline / edit)
+        from ..library import live
+        live_sources = [live.source_summary()]
+    except Exception:
+        live_sources = []
+    return {"sites": rows, "live_sources": live_sources, "any_enabled": any(r["auto_scan"]["enabled"] for r in rows),
             "limits": {"min_interval_hours": settings.MIN_INTERVAL_HOURS, "max_interval_hours": settings.MAX_INTERVAL_HOURS},
             "tick_seconds": autoscan.TICK_SECONDS, "onboard_enabled": bool(config.ONBOARD_ENABLED)}
 

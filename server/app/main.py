@@ -19,6 +19,7 @@ from . import cache, config, db
 from .http_cache import ETagMiddleware
 from .routers import (
     backgrounds,
+    debuglog,
     catalog,
     boot,
     detail,
@@ -30,6 +31,7 @@ from .routers import (
     ops,
     ops_categories,
     ops_library,
+    ops_live,
     ops_onboard,
     ops_settings,
     ops_sites,
@@ -156,9 +158,11 @@ for module in (
     search,
     images,
     backgrounds,
+    debuglog,
     ops,
     ops_categories,
     ops_library,
+    ops_live,
     ops_onboard,
     ops_settings,
     ops_sites,

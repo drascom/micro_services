@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from .. import cache, rows as rowlib
 from ..deps import require_profile
 from ..errors import not_found
-from ..library import categories
+from ..library import categories, live
 
 router = APIRouter(tags=["rows"])
 
@@ -29,6 +29,8 @@ def get_row(
     limit: int = Query(20, ge=1, le=100),
     source: str = "",
 ) -> dict:
+    if live.is_row(row_id):   # Canlı TV rows (`live_all`, `live_<category>`): channel cards
+        return live.row_page(row_id, offset, limit)
     snap = cache.get()
     known = row_id in STATIC_ROWS or (
         row_id.startswith("genre_") and row_id[len("genre_") :] in snap.slug_genre

@@ -13,3 +13,6 @@
 /app/release/
 /compose-reports/
 /app/compose-reports/
+
+# web istemcisi derlemede ../client'ten kopyalanır
+/app/src/main/assets/client/

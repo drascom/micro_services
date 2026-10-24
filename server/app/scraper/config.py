@@ -305,8 +305,12 @@ def _active_path(site_id: str) -> str:
     return os.path.join(CONFIG_DIR, f"{site_id}.yaml")
 
 
+# yaml files in configs/ that are NOT scraper sites (read by their own module): famelack = live TV (library/live.py)
+LIVE_CONFIGS = ("famelack",)
+
+
 def list_sites() -> list[str]:
-    """All registered site ids (active ``<site>.yaml`` files in configs/)."""
+    """All registered site ids (active ``<site>.yaml`` files in configs/, minus ``LIVE_CONFIGS``)."""
     if not os.path.isdir(CONFIG_DIR):
         return []
     out = []
@@ -317,7 +321,7 @@ def list_sites() -> list[str]:
             continue
         if name.endswith(".yaml") and not _VERSION_RE.search(name):
             sid = name[: -len(".yaml")]
-            if sid.startswith((".", "_")):
+            if sid.startswith((".", "_")) or sid in LIVE_CONFIGS:
                 continue
             out.append(sid)
     return out

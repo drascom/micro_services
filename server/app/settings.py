@@ -14,6 +14,7 @@ Only what an admin has saved lives in the file. Everything else falls back to th
 * ``SCRAPER_HEAL_AUTOAPPLY``     -> ``heal_autoapply`` (unset = on)
 * ``TMDB_ENRICH_TYPES`` (comma)  -> ``tmdb_types`` (``config.TMDB_ENRICH_TYPES``, read at call time)
 * ``tmdb_auto`` has no env twin: default on (it is inert while no TMDB key is configured)
+* ``LIVE_TV_AUTO``               -> ``live_tv_auto`` (hourly live TV channel scan, library/live.py; unset = on)
 
 A missing / corrupt file, or an invalid entry inside it, degrades to those defaults.
 The environment is read live (``config`` is imported so ``.env`` is loaded first).
@@ -124,6 +125,8 @@ def _load() -> dict[str, Any]:
         out["heal_autoapply"] = raw["heal_autoapply"]
     if isinstance(raw.get("tmdb_auto"), bool):
         out["tmdb_auto"] = raw["tmdb_auto"]
+    if isinstance(raw.get("live_tv_auto"), bool):
+        out["live_tv_auto"] = raw["live_tv_auto"]
     types = raw.get("tmdb_types")
     if isinstance(types, list) and all(isinstance(t, str) and t in TMDB_KINDS for t in types):
         out["tmdb_types"] = [k for k in TMDB_KINDS if k in types]  # canonical order, no dups; [] = none
@@ -220,13 +223,22 @@ def tmdb_types() -> list[str]:
     return list(saved["tmdb_types"]) if "tmdb_types" in saved else _env_tmdb_types()
 
 
+def live_tv_auto() -> bool:
+    """Whether the live TV channel list is scanned automatically (library/live.py ``tick``); read on every tick."""
+    saved = _load()
+    if "live_tv_auto" in saved:
+        return bool(saved["live_tv_auto"])
+    return (os.environ.get("LIVE_TV_AUTO") or "1").strip().lower() in _TRUTHY
+
+
 def tmdb_settings() -> dict[str, Any]:
     """``{auto, types}``; the router adds the read-only ``configured`` flag (key present?)."""
     return {"auto": tmdb_auto(), "types": tmdb_types()}
 
 
 def snapshot() -> dict[str, Any]:
-    return {"sites": all_sites(), "heal_autoapply": heal_autoapply(), "tmdb": tmdb_settings()}
+    return {"sites": all_sites(), "heal_autoapply": heal_autoapply(), "tmdb": tmdb_settings(),
+            "live_tv": {"enabled": live_tv_auto()}}
 
 
 # --- update -----------------------------------------------------------------
@@ -234,7 +246,7 @@ def snapshot() -> dict[str, Any]:
 def _validate_patch(patch: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(patch, dict):
         raise SettingsError("body must be an object")
-    extra = set(patch) - {"sites", "heal_autoapply", "tmdb"}
+    extra = set(patch) - {"sites", "heal_autoapply", "tmdb", "live_tv"}
     if extra:
         raise SettingsError(f"unknown setting(s): {', '.join(sorted(extra))}")
     clean: dict[str, Any] = {}
@@ -242,6 +254,14 @@ def _validate_patch(patch: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(patch["heal_autoapply"], bool):
             raise SettingsError("heal_autoapply must be a boolean")
         clean["heal_autoapply"] = patch["heal_autoapply"]
+    live = patch.get("live_tv")
+    if live is not None:
+        if not isinstance(live, dict) or set(live) - {"enabled"}:
+            raise SettingsError("live_tv must be an object with only 'enabled'")
+        if live.get("enabled") is not None:
+            if not isinstance(live["enabled"], bool):
+                raise SettingsError("live_tv.enabled must be a boolean")
+            clean["live_tv_auto"] = live["enabled"]
     tmdb = patch.get("tmdb")
     if tmdb is not None:
         if not isinstance(tmdb, dict):
@@ -328,7 +348,7 @@ def update(patch: dict[str, Any]) -> dict[str, Any]:
             eff = site_settings(name)
             merged = {"enabled": eff["enabled"], "interval_hours": eff["interval_hours"], **item}
             data.setdefault("sites", {})[name] = merged
-        for name in ("heal_autoapply", "tmdb_auto", "tmdb_types"):
+        for name in ("heal_autoapply", "tmdb_auto", "tmdb_types", "live_tv_auto"):
             if name in clean:
                 data[name] = clean[name]
         if clean:

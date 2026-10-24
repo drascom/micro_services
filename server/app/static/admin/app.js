@@ -2,7 +2,7 @@
 'use strict';
 var $=function(i){return document.getElementById(i)};
 var sites=[], events=[], nextBefore=null, sel=null, srcFilter='', typeFilter='all';
-var lastKey=null, evLoaded=false, activeNow=[], lastHeal=null, onbHost={};
+var lastKey=null, evLoaded=false, activeNow=[], lastHeal=null, onbHost={}, liveSrc=[];
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function api(path,opt){return fetch(path,opt).then(function(r){return r.json()})}
@@ -38,6 +38,7 @@ function pill(cls,txt){return '<span class="pill '+cls+'">'+esc(txt)+'</span>'}
 function pbiLabel(e){return (e.title||e.canonical_id||'?')+(e.season!=null&&e.episode!=null?' · S'+(e.season<10?'0':'')+e.season+' B'+(e.episode<10?'0':'')+e.episode:'')}
 function evPill(e){
   if(e.kind==='onboard')return pill('heal','Site ekle');
+  if(e.kind==='live')return e.status==='error'?pill('bad','✕ Hata'):e.status==='no_change'?pill('','Değişiklik yok'):pill('ok','✓ Başarılı');
   if(e.kind==='reset')return pill('warn','Sıfırlama');
   if(e.kind==='hydrate')return pill(e.status==='error'?'bad':'warn','! Bölüm yok');
   if(e.kind==='blocked_page')return pill('warn','⊘ '+(BV[e.via]||e.via||'Engelli'));
@@ -171,15 +172,27 @@ function renderFilters(){
       (resolverLine(s)?'<span class="s num" style="'+(s.last_resolver.ok?'':'color:var(--bad)')+'" title="Oynatma sırasında video sağlayıcısını çözme sonucu">'+esc(resolverLine(s))+'</span>':'')+
       (s.scanning?'<span class="s" style="color:var(--run)">taranıyor…</span>':s.healing?'<span class="s" style="color:var(--heal)">heal çalışıyor…</span>':
        s.heal_cooldown_until?'<span class="cd">heal cooldown: '+esc(until(s.heal_cooldown_until))+'</span>':'')+'</button>';
-  }).join('');
+  }).join('')+liveSrc.map(liveChip).join('');
+}
+/* Canlı TV kaynağı (library/live.py; scraper sitesi değil): süzgeç çipi */
+function liveLine(l){
+  var c=l.counts||{},le=l.last_event;
+  return num(c.visible)+' görünür · '+num(c.hidden)+' gizli'+(le?' · son '+ago(le.at):' · henüz tarama yok');
+}
+function liveChip(l){
+  var le=l.last_event,hl=!le?['','Henüz yok']:le.status==='error'?['bad','Sorunlu']:['ok','Sağlıklı'];
+  return '<button class="chip" data-src="'+esc(l.source)+'" aria-pressed="'+(srcFilter===l.source)+'"><span class="r"><span>'+esc(l.source)+'</span>'+pill('heal',l.label||'Canlı TV')+pill(hl[0],hl[1])+'</span>'+
+    '<span class="s num">'+esc(liveLine(l))+'</span>'+
+    '<span class="s num" title="Ayarlar › Canlı TV">'+esc(l.enabled?'her '+(l.interval_minutes||60)+' dk · sonraki '+(T(l.next_scan_at)-Date.now()>60000?until(l.next_scan_at):'birazdan'):'planlı değil')+'</span>'+
+    (l.running?'<span class="s" style="color:var(--run)">taranıyor…</span>':'')+'</button>';
 }
 
 /* ---- feed ---- */
 function visible(){
   return events.filter(function(e){
-    if(typeFilter==='scan'&&e.kind!=='scan')return false;
+    if(typeFilter==='scan'&&e.kind!=='scan'&&e.kind!=='live')return false;
     if(typeFilter==='onboard'&&e.kind!=='onboard')return false;
-    if(typeFilter==='heal'&&(e.kind==='scan'||e.kind==='tmdb'||e.kind==='onboard'||e.kind==='finder'||e.kind==='playback_issue'||e.kind==='reset'||e.kind==='hydrate'||e.kind==='blocked_page'))return false;
+    if(typeFilter==='heal'&&(e.kind==='scan'||e.kind==='live'||e.kind==='tmdb'||e.kind==='onboard'||e.kind==='finder'||e.kind==='playback_issue'||e.kind==='reset'||e.kind==='hydrate'||e.kind==='blocked_page'))return false;
     if(typeFilter==='issue'&&e.kind!=='playback_issue')return false;
     if(typeFilter==='blocked'&&e.kind!=='blocked_page')return false;
     if(typeFilter!=='blocked'&&typeFilter!=='all'&&e.kind==='blocked_page')return false;
@@ -190,7 +203,13 @@ function visible(){
 }
 function evHtml(e){
   var cls,title,meta;
-  if(e.kind==='blocked_page'){
+  if(e.kind==='live'){
+    cls='scan '+(e.status==='error'?'bad':e.status==='no_change'?'':'ok');
+    title='Canlı TV · '+esc(e.site)+' '+evPill(e);
+    meta=e.status==='error'?esc(e.error||'hata'):e.status==='no_change'?'kaynak değişmedi (ETag 304) · '+num(e.visible)+' görünür kanal':
+      num(e.new)+' yeni · '+num(e.updated)+' güncellendi · '+num(e.deactivated)+' pasif · '+num(e.ok)+' sağlıklı / '+num(e.hidden)+' gizli';
+    meta+=' · '+esc((e.countries||[]).join(', '))+' · '+dur(e.duration);
+  } else if(e.kind==='blocked_page'){
     cls='scan warn';
     title='Engelli sayfa · '+esc(e.site)+' '+evPill(e);
     meta=esc(e.source_key||e.url||'')+' · '+esc(e.reason||'');
@@ -283,7 +302,19 @@ function renderDetail(){
   var el=$('detail'),e=events.filter(function(x){return key(x)===sel})[0];
   if(!e){el.innerHTML='<div class="empty">Ayrıntısını görmek için soldan bir olay seçin.<br><small>Her tarama, düzeltme, cooldown ve geri alma bir olaydır.</small></div>'+catLine();return}
   var h='<button class="close" id="close">Kapat</button>',s=siteOf(e.site)||{};
-  if(e.kind==='blocked_page'){
+  if(e.kind==='live'){
+    var TG={auto:'otomatik',manual:'elle',cli:'komut satırı'};
+    h+=evPill(e)+' '+pill('heal','Canlı TV')+'<h3>'+esc(e.site)+' · '+esc((e.countries||[]).join(', ').toUpperCase()||'-')+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+' · '+esc(TG[e.trigger]||e.trigger||'')+'</div>';
+    if(e.status==='error')h+='<div class="note" style="border-color:var(--bad)">'+esc(e.error||'hata')+'</div>';
+    else{
+      if(e.status==='no_change')h+='<div class="note" style="border-color:var(--muted)">Kaynak listesi değişmedi (ETag 304); kanal kaydı yazılmadı'+(e.probed!=null?', yalnız sağlık yoklaması yapıldı':'')+'.</div>';
+      else h+='<h2 class="sec">Kanal değişiklikleri</h2><div class="kv">'+kv(num(e.new),'yeni')+kv(num(e.updated),'güncellendi')+kv(num(e.deactivated),'pasifleşti')+kv(num(e.unchanged),'aynı')+'</div>';
+      h+='<h2 class="sec">Sağlık</h2><div class="kv">'+kv(num(e.ok),'sağlıklı (m3u8)')+kv(num(e.youtube_only),'yalnız YouTube')+kv(num(e.hidden),'gizli (oynatılamaz)')+kv(num(e.visible),'görünür')+kv(num(e.active),'aktif')+kv(num(e.inactive),'pasif')+'</div>';
+      if(e.probed!=null)h+='<div class="note" style="border-color:var(--muted)">Yoklama: '+num(e.probe_ok)+' / '+num(e.probed)+' akış yanıt verdi'+(e.no_cors?' · '+num(e.no_cors)+' CORS yok (vekil)':'')+'</div>';
+    }
+    h+='<div class="kv">'+kv(dur(e.duration),'Süre')+kv(num(e.total),'kaynaktaki kanal')+kv(num(e.kept),'dil süzgecinden geçen')+'</div>'+
+      '<div class="act"><button data-goto="onboard">Siteler sekmesi</button><button data-goto="settings">Ayarlar › Canlı TV</button></div>';
+  } else if(e.kind==='blocked_page'){
     h+=evPill(e)+'<h3>'+esc(e.source_key||e.url)+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+'</div>'+
       '<div class="kv">'+kv(esc(e.site||'-'),'Site')+kv(esc(BV[e.via]||e.via||'-'),'Neden')+kv(esc(e.page_kind||'-'),'Sayfa türü')+kv(e.until?esc(full(e.until)):'-','Yeniden denenir')+'</div>'+
       '<div class="note" style="border-color:var(--warn)">'+esc(e.reason||'')+'</div>'+
@@ -395,7 +426,7 @@ function loadEvents(more){
   });
 }
 function refresh(){
-  return api('/api/ops/overview').then(function(d){sites=d.sites||[];renderSys();renderFilters();return loadEvents(false)});
+  return api('/api/ops/overview').then(function(d){sites=d.sites||[];liveSrc=d.live_sources||[];renderSys();renderFilters();return loadEvents(false)});
 }
 function poll(){
   api('/api/ops/active').then(function(a){

@@ -3,13 +3,13 @@
 
 # CLAUDE.md
 
-diziflix: film/dizi kataloğu + FastAPI backend ve istemciler (web = `tizen-client/` tarayıcıda, Samsung Tizen TV, Android). Bu dal `drascom/micro_services` reposunda tek başına bu projedir; git kökü bu dizindir.
+diziflix: film/dizi kataloğu + FastAPI backend ve tek web istemci `client/` (tarayıcı, Tizen wgt, Android WebView). Bu dal `drascom/micro_services` reposunda tek başına bu projedir; git kökü bu dizindir.
 
 Bu dosya KISA tutulur (her ajan turunda bağlama girer). Ayrıntı `docs/arch/` altındadır: ilgili alana dokunmadan önce o dosyayı oku; yeni uzun paragrafı buraya değil oraya yaz.
 
 ## Odak ve kararlar (kullanıcı)
 
-- **Odak: sunucu + web istemcisi** (tizen-client tarayıcıda). Android ve Tizen TV istemcileri ertelendi; kullanıcı "şimdi istemcilere bakalım" diyene kadar önerme, görevlere katma (APK/wgt, cihaz doğrulaması, TV'ye özgü kusurlar). Sözleşme gereği zorunlu ek alan değişikliği hariç.
+- **Odak: sunucu + web istemcisi**: tek web istemci `client/` (Tizen wgt + Android WebView kabuğu aynı kodu paketler).
 - **Yalnız halka açık içerik**: telif/erişim engelli ya da oynatıcısı bulunamayan dizi/bölüm kütüphaneye HİÇ alınmaz (yaml `availability_gate:` + `blocked:`; `library/gate.py`). Ayrıntı: `docs/arch/onboarding-quality.md`.
 - **Scraper elle yazılır, heal kendini düzeltir**: yeni site config'ini geliştirici yazar; çalışırken drift/oynatma hatasında gömülü LLM heal (`heal.py`/`heal_agent.py`/`playheal.py`, pi repair modu) otomatik düzeltir (`heal_autoapply` varsayılan AÇIK, kapılar geçmezse uygulanmaz). Var olan sitenin yaml/baseline'ı yalnız kullanıcıyla adım adım (bölüm bölüm onaylı) elle düzeltilir, sonra heal devralır; kendiliğinden elle düzeltme. Otomatik onboarding (pi onboarding ajanı, Site ekle/Düzenle, sandbox `discover_site`/`submit`) DONDURULDU: `ONBOARD_ENABLED=0` (varsayılan) ile kapalı, kod referans için duruyor, ileride silinecek.
 - **ŞU AN SUNUCU YOK (2026-10-22, kullanıcı)**: iş yerelde; referans yerel `server/app/scraper/configs/`. Sunucu yeniden kurulunca aşağıdaki kural geri gelir.
@@ -26,16 +26,16 @@ Yalnız **smoke set** (≤ 350 test, < 20 sn; `cd server/tests && ../venv/bin/py
 
 ## Git kuralı
 
-Repo `github.com/drascom/micro_services` (PUBLIC). Yalnız `diziflix` dalına commit/push; `main`'e dokunma/merge etme. Yalnız ilgili dosyaları `git add <yol>` ile ekle (ilgisiz yerel farklara dokunma, ASLA `git add -A`/`commit -a`). Testler (`server/tests/`, `tests/*.js`) git'te İZLENİR (kullanıcı kararı). Site config'leri (`providers/` hariç), `.env`, data, build, `deploy-backups`, `HANDOFF*.md` git dışı (`.gitignore`). Commit sonuna sistemin verdiği `Co-Authored-By` satırı.
+Repo `github.com/drascom/micro_services` (PUBLIC). Yalnız `diziflix` dalına commit/push; `main`'e dokunma/merge etme. Yalnız ilgili dosyaları `git add <yol>` ile ekle (ilgisiz yerel farklara dokunma, ASLA `git add -A`/`commit -a`). Testler (`server/tests/`, `client/tests/*.js`) git'te İZLENİR (kullanıcı kararı). Site config'leri (`providers/` hariç), `.env`, data, build, `deploy-backups`, `HANDOFF*.md` git dışı (`.gitignore`). Commit sonuna sistemin verdiği `Co-Authored-By` satırı.
 
 ## Yapı
 
 - `server/` - FastAPI + SQLite + Pillow, `0.0.0.0:8090` (ana kod). Giriş: `server/app/main.py` (`app.main:app`)
-- `tizen-client/` - vanilla HTML/CSS/JS istemci (build adımı yok; `build-wgt.sh` -> `dist/diziflix.wgt`). Gömülü sunucu adresi YOK: ilk açılışta "Sunucu adresi" ekranı (`screens/server_setup.js`; sayfa sunucunun kendisinden 8090'dan açılırsa o origin), soğuk açılışta her seferinde profil seçimi, sunucunun kalıcı misafir profili (`guest`)
-- `API.md` - istemci-sunucu wire sözleşmesi (kaynak gerçek budur). Sözleşme değişirse `API.md` ve `tizen-client/js/api.js` birlikte güncellenir; yalnızca ALAN EKLENİR
+- `client/` - tek web istemci, vanilla ES5 HTML/CSS/JS (build adımı yok; `build-wgt.sh` -> `dist/diziflix.wgt`, `config.xml`; Android WebView kabuğu aynı kodu yükler). Gömülü sunucu adresi YOK: ilk açılışta "Sunucu adresi" ekranı, soğuk açılışta her seferinde profil seçimi, misafir profili (`guest`). Ayrıntı `client/README.md`
+- `API.md` - istemci-sunucu wire sözleşmesi (kaynak gerçek budur). Sözleşme değişirse `API.md` ve `client/js/api.js` birlikte güncellenir; yalnızca ALAN EKLENİR
 - `docs/DATA-CONTRACT-V1.md`, `server/CANONICAL.md` - scraper -> katalog -> TV sözleşmesi, kimlik birleştirme, oynatma sağlığı
 - `docs/arch/` - ayrıntılı mimari notlar (aşağıdaki liste); `docs/plans/site-onboarding/` - onboarding planı/faz görevleri
-- `tests/*.js` - istemci testleri (Node, DOM/AVPlay sahte nesneleriyle), `server/tests/` - Python unittest
+- `client/tests/*.js` - istemci testleri (Node, sahte DOM), `server/tests/` - Python unittest
 - Veri: `server/data/` (`diziflix.db`, `imgcache/`, `scraper_state/<site>.json`, `fixture.json`); db/imgcache gitignored; tabanı `DATA_DIR` (`config.py`)
 
 ## Komutlar (`server/` içinde)
@@ -45,7 +45,7 @@ Repo `github.com/drascom/micro_services` (PUBLIC). Yalnız `diziflix` dalına co
 source venv/bin/activate
 uvicorn app.main:app --reload --port 8090      # geliştirme; docs: /docs
 venv/bin/python -m unittest discover -s tests -v          # sunucu testleri (hedefli kullan; tam takım yok)
-node tests/player_health.js                    # proje kökünden; diğer istemci testleri: tests/*.js
+node client/tests/player.js                    # proje kökünden; diğer: client/tests/*.js; Tizen paketi: cd client && ./build-wgt.sh
 venv/bin/python -m tools.ingest <site>         # elle ingest (sinemalar | yabancidizi)
 venv/bin/python -m tools.series_crawl yabancidizi [--dry-run] [--limit N] [--force] [--key dizi/<slug>]  # dizi bölüm envanteri
 venv/bin/python -m tools.homepage_probe yabancidizi [--html tests/fixtures/yabancidizi_home.html]  # salt-okunur scraper probu
@@ -65,6 +65,7 @@ Her satır: ne yapar, ana dosya -> ayrıntı için doc.
 - `library/` - `ingest.py` (scraper -> normalize -> kimlik -> merge), `normalize.py` (`@register` site başına | yaml `normalize:` genel), `identity.py`, `tmdb.py`/`enrich.py`/`seasons.py` (TMDB), `series_crawl.py` + `series_dir.py` (dizi tam bölüm envanteri), `gate.py` (telif kapısı), `trailer_check.py`. -> `library-ingest.md`
 - `library/videos.py` - kaynak çözümleme (adaylar/kaynaklar paralel, süre sınırı, önbellek; sağlık 1 hata=suspect, 3=broken), `streamlife.py` (`valid_until` yük önbelleği), `streamproxy.py`/`hlsproxy.py` (imzalı mp4/HLS vekili `/api/stream-proxy/<token>`), `streamdiag.py` (hata tanısı), `tracks.py`/`subtitles.py` (ses/altyazı). -> `streams.md`
 - `scraper/` - config-as-data: `configs/<site>.yaml` (+`.baseline.json`) -> `runner.run_site` (fetch -> parse -> schema -> drift -> LLM self-heal `heal.py`); `site_extractors/`, `providers/` (vidmolly, okru + yaml tarifleri), `resolvers/`, `collections.py`, `series_generic.py`, `search_generic.py`, `fetch.py`, `obscura_worker.py`/`crawlee_worker.py`. -> `scraper-engine.md`
+- `library/live.py` - Canlı TV: famelack kanal listesi (`configs/famelack.yaml`, scraper sitesi değil) -> `channels` tablosu, saatlik tarama + m3u8 sağlığı, `live_tv` bölümü / `ch_<nanoid>` akışları; CLI `tools.live_ingest`. -> `home-and-api.md`
 - `library/search_all.py` + `library/sourcefinder.py` - toplu arama (siteden yalnız ana sayfa bölümleri alınır, tam liste ARAMA ile gelir) ve oynatmada akış yoksa arka plan kaynak bulucu. -> `scraper-engine.md`
 - Onboarding: `scraper/onboard.py` (tek slotlu pi oturumu), `routers/onboard_sandbox.py` (`/api/onboard/sandbox/*`, localhost + token, SSRF `netguard`), `server/pi/` (skill + extension), `onboard_pipeline.py`, `routers/ops_onboard.py`, `ops_sites.py`; heal ajanı `heal_agent.py`/`playheal.py`. -> `onboarding.md`, `onboarding-quality.md`
 - Admin: `static/admin/` (vanilla; Olay defteri, Ayarlar, Kütüphane K/T rozeti, Site ekle/Siteler); yeni admin js dosyası `ops.py` `_ASSETS`'e eklenmeli. -> `home-and-api.md`, `onboarding.md`
@@ -88,7 +89,7 @@ Anahtar `TMDB_ACCESS_KEY` (v4 Bearer ya da v3; `TMDB_TOKEN`/`TMDB_API_KEY` de ge
 ## Notlar / tuzaklar
 
 - Yeni scraper sitesi: yaml + gerekirse `normalize.py` fonksiyonu/`site_extractors/`; yeni video host'u: provider kütüphanesine tarif (`scraper/configs/providers/<ad>.yaml`) ya da `scraper/providers/` modülü; yeni host'un afişi için `REMOTE_IMG_HOSTS`.
-- Kart kimliği kuralı: `id` = yapım id'si, bölüm kartı `card_kind=episode` + `episode_id` + `card_key`. İstemci sözleşme koruması: `server/tests/test_client_contract.py` + `docs/api-samples/*.json` (`venv/bin/python -m tools.gen_api_samples`) + `node tests/api_samples_client.js`.
-- İstemci HLS/motor kararı `streams[].type`'a göre (URL uzantısına değil); cache-bust şu an `responsive-v42` (`index.html`). UI cilası: `tizen-client/README.md`.
+- Kart kimliği kuralı: `id` = yapım id'si, bölüm kartı `card_kind=episode` + `episode_id` + `card_key`. İstemci sözleşme koruması: `server/tests/test_client_contract.py` + `docs/api-samples/*.json` (`venv/bin/python -m tools.gen_api_samples`).
+- İstemci HLS/motor kararı `streams[].type`'a göre (URL uzantısına değil); cache-bust şu an `?v=24` (`client/index.html`). UI: `client/README.md`.
 - `server/pi/` deploy ile gider; skill referans blokları üretilir (`tools.gen_onboard_refs`), elle dokunma.
 - Bekleyen istemci işleri (oynatıcı akış değişikliği, sezon/bölüm görselleri, altyazı paneli vb.) kullanıcı istemci turunu başlatınca topluca yapılır (hafıza: diziflix-client-batch).

@@ -1,5 +1,8 @@
 # Android parity list
 
+> **2026-10-24: native Android (Compose) client removed.** `android/` is now a thin WebView shell that loads the web client
+> (`client/`) itself, so feature parity with the web client is automatic. The list below is historical; no new lines needed.
+
 Features added to the web/Tizen client (`tizen-client/`) that the Android client (`android/`) still needs. Add a line whenever the web client gains something; tick it when Android has it.
 
 ## Open
@@ -19,6 +22,8 @@ Features added to the web/Tizen client (`tizen-client/`) that the Android client
 - [ ] Player overlay of the new UI: manual source pick ("Kaynak" list of `streams[]`) and a quick "Bölümler" episode list (‹ › season) inside the player (ui-proto: `js/player.js` `openPanel()`).
 - [ ] Detail "Baştan başla" action when there is progress (movie or the episode to resume): plays from 0, ignoring `resume_position`; focus returns to the entering button (ui-proto: `js/app.js` `detailRows()`, `js/player.js` `restart`).
 - [ ] Home hero "Oynat" button under the hero text ("Devam et" with progress, series episode code): opens the title's detail and starts playback automatically (same as detail İzle); player Back -> detail (focus İzle), detail Back -> home (focus on the button); hero rotation pauses while it is focused (ui-proto: `js/app.js` `heroPlay()`).
+- [ ] Settings > "Hata ayıklama" (debug mode): player panel (device line, `/api/streams?debug=1` `debug_trace` in Turkish, live engine events: prepare/buffering/error codes/first frame, playback-report, finder steps), Green key toggles; detail line with request time + `hydrating` (client: `js/debug.js`, `js/player.js`).
+- [ ] Root-screen Back -> glass "Uygulamadan çıkılsın mı?" confirm (Hayır default / Evet -> exit) (client: `js/exitconfirm.js`).
 - [ ] Release build feels sluggish on the Android box — profile before porting more screens.
 
 ## Done

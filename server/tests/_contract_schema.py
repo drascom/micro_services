@@ -1,4 +1,4 @@
-"""Response schemas = the fields the TV client (``tizen-client/js``) and a future Android client READ.
+"""Response schemas = the fields the web client (``client/js``, packaged for Tizen and Android WebView) READ.
 
 Pure Python, no ``app`` import: usable from tests and from ad-hoc checks of a live server's JSON.
 A spec is a dict ``{field: type}`` where type is one of the codes below, ``lst(x)`` (list of x), ``opt(x)`` (x or null),

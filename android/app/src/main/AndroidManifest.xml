@@ -2,16 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Oynatma hatasında "cihaz çevrimdışı mı?" ayrımı için (sunucuya sağlık raporunda offline kodu). -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Android TV: dokunmatik/leanback ZORUNLU değil. Aynı APK hem tablete hem TV kutusuna kurulabilir
-         (required=true olsaydı Play/pm bu cihazlardan birini dışlardı). TV algılama çalışma zamanındadır. -->
+    <!-- Aynı APK hem TV kutusuna hem telefon/tablete: dokunmatik/leanback ZORUNLU değil. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
+    <!-- usesCleartextTraffic + network_security_config: sunucu LAN'da düz HTTP (http://<ip>:8090). -->
     <application
-        android:name=".DiziflixApp"
         android:allowBackup="false"
         android:banner="@drawable/tv_banner"
         android:hardwareAccelerated="true"
@@ -19,22 +17,22 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:networkSecurityConfig="@xml/network_security_config"
+        android:usesCleartextTraffic="true"
         android:supportsRtl="true"
         android:theme="@style/Theme.Diziflix">
 
-        <!-- Tek Activity + Navigation-Compose. configChanges: döndürmede Activity yeniden
-             yaratılmaz (oynatıcı kesintisiz kalır, tam ekran yatay geçiş akıcı olur). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:banner="@drawable/tv_banner"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode|density"
+            android:screenOrientation="sensorLandscape"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Android TV ana ekranı (leanback launcher) bu kategoriyle uygulamayı listeler; LAUNCHER yanında kalır. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />

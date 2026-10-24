@@ -1,5 +1,7 @@
 # İstemciler: Tizen/web, Android, istemci turu notları
 
+> **Eski tizen-client ve native Android kaldırıldı (2026-10-24); tek web istemci `client/`** (Tizen wgt + Android WebView kabuğu). Aşağısı tarihsel notlardır.
+
 > Bu bölüm CLAUDE.md'den taşındı (2026-10-02). Metin birebir taşınmıştır; kısa harita ve kurallar `CLAUDE.md`'dedir.
 
 ## İstemci turu (sunucu uyumu)

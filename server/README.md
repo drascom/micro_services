@@ -637,6 +637,7 @@ Copy `.env.example` → `.env`. Relative paths resolve against `server/`.
 | `STREAM_PROXY_FORCE` / `STREAM_PROXY_HOSTS` | `0` / *(empty)* | `1` proxies every mp4 / hls stream (`proxy_reason: env`); comma separated hosts (subdomains too) that are always proxied |
 | `STREAM_PROXY_HLS_MAX` / `STREAM_PROXY_QUEUE_WAIT` | `24` / `8` | HLS: upstream connections at a time per stream group / seconds a request waits for a place before 503 |
 | `STREAM_PROXY_PLAYLIST_MAX` / `STREAM_PROXY_PLAYLIST_URIS` | `2097152` / `20000` | HLS: longest playlist read (bytes) / most URIs one playlist may hold (502 above) |
+| `STREAM_PROXY_PARALLEL_HOSTS` / `STREAM_PROXY_PARALLEL` / `STREAM_PROXY_CHUNK` | `okcdn.ru,vkuser.net,mycdn.me` / `12` (max 16) / `262144` | Hosts that cap each connection (OK.ru ~2 Mbit/s): a proxied progressive file is fetched as CHUNK-byte ranges, PARALLEL at a time, served in order (empty host list or 1 = off) |
 | `STREAM_DIAG` | `1` | `0` switches off the background probe after a failed playback report (`video_sources.last_diag`, learned proxy) |
 | `STREAM_DIAG_COOLDOWN` / `STREAM_DIAG_PARALLEL` / `STREAM_DIAG_TIMEOUT` | `600` / `2` / `8` | seconds between probes of one source / probes at a time / seconds per probe request |
 | `STREAM_PROXY_BASE_URL` | *(empty)* | base of the proxy URLs in `/api/streams`; empty = the address the client used (`X-Forwarded-Proto`/`-Host`, `Forwarded`, else `Host` + scheme). Set (`https://host[:port][/prefix]`) only to force one base for every client |

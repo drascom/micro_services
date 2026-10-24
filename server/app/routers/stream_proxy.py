@@ -21,7 +21,10 @@ httpx response shape the rest of this module uses); same redirects, SSRF checks,
 from __future__ import annotations
 
 import asyncio
+import collections
+import hashlib
 import logging
+import time
 from urllib.parse import urljoin, urlparse
 
 import anyio
@@ -46,6 +49,26 @@ _CLIENT_FORWARD = (("range", "Range"), ("if-range", "If-Range"))
 _active = 0                                   # progressive-file connections open right now (event-loop thread only)
 _client_state: dict = {"loop": None, "client": None}
 _group_state: dict = {"loop": None, "groups": {}}   # HLS: stream group -> [semaphore, users] (bound to the running loop)
+
+
+# the last proxied requests (method, Range, status, bytes, duration, how they ended), newest last: what a player (AVPlay)
+# actually asked for, read at GET /api/ops/stream-proxy/recent (in memory only, no URL / header / token is kept)
+_recent: "collections.deque[dict]" = collections.deque(maxlen=300)
+
+
+def _trace(token: str, request: Request, kind: str) -> dict:
+    entry = {"at": round(time.time(), 3), "id": hashlib.sha1(token.encode()).hexdigest()[:8], "kind": kind,
+             "method": request.method, "range": (request.headers.get("range") or "")[:60],
+             "client": request.client.host if request.client else "", "ua": (request.headers.get("user-agent") or "")[:80],
+             "status": None, "parallel": False, "ttfb_ms": None, "bytes": 0, "ms": None, "end": "open"}
+    _recent.append(entry)
+    return entry
+
+
+def _trace_end(entry: "dict | None", end: str) -> None:
+    if entry is not None and entry["end"] == "open":
+        entry["end"] = end
+        entry["ms"] = int((time.time() - entry["at"]) * 1000)
 
 
 _curl_state: dict = {"loop": None, "session": None}
@@ -115,8 +138,9 @@ def _client() -> httpx.AsyncClient:
     if client is None or _client_state["loop"] is not loop or client.is_closed:
         client = _client_state["client"] = httpx.AsyncClient(
             follow_redirects=False, timeout=httpx.Timeout(10.0, read=30.0),
-            limits=httpx.Limits(max_connections=max(16, config.STREAM_PROXY_MAX * 2, config.STREAM_PROXY_HLS_MAX * 2),
-                                max_keepalive_connections=16))
+            limits=httpx.Limits(max_connections=max(16, config.STREAM_PROXY_MAX * (2 + config.STREAM_PROXY_PARALLEL),
+                                                  config.STREAM_PROXY_HLS_MAX * 2),
+                                max_keepalive_connections=max(16, 2 * config.STREAM_PROXY_PARALLEL)))
         _client_state["loop"] = loop
     return client
 
@@ -197,8 +221,8 @@ class _Relay:
     """Async iterator over the upstream body. Owns the upstream response and the slot: both are given back when the
     body ends, fails, or the client goes away (``aclose`` is also the response's background task)."""
 
-    def __init__(self, upstream: httpx.Response, slot: _Slot) -> None:
-        self._upstream, self._slot = upstream, slot
+    def __init__(self, upstream: httpx.Response, slot: _Slot, trace: "dict | None" = None) -> None:
+        self._upstream, self._slot, self._trace = upstream, slot, trace
         self._chunks = upstream.aiter_raw()   # as the socket delivers them (a chunk_size would hold data back until it is full)
         self._closed = False
 
@@ -207,15 +231,21 @@ class _Relay:
 
     async def __anext__(self) -> bytes:
         try:
-            return await self._chunks.__anext__()
+            piece = await self._chunks.__anext__()
+            if self._trace is not None:
+                self._trace["bytes"] += len(piece)
+            return piece
         except StopAsyncIteration:
+            _trace_end(self._trace, "done")
             await self.aclose()
             raise
         except httpx.HTTPError as exc:   # the upstream broke mid-file: end the body, the client sees a short read
             log.info("stream proxy: upstream read failed (%s)", type(exc).__name__)
+            _trace_end(self._trace, "upstream-error")
             await self.aclose()
             raise StopAsyncIteration from None
         except BaseException:            # client disconnect (cancellation) or a bug: never keep the upstream open
+            _trace_end(self._trace, "client-gone")
             await self.aclose()
             raise
 
@@ -223,11 +253,132 @@ class _Relay:
         if self._closed:
             return
         self._closed = True
+        _trace_end(self._trace, "client-gone")
         try:
             with anyio.CancelScope(shield=True):
                 await self._upstream.aclose()
         except Exception:
             pass
+        finally:
+            self._slot.release()
+
+
+def _parallel_host(url: str) -> bool:
+    """A host whose per-connection speed cap the parallel range relay works around (``STREAM_PROXY_PARALLEL_HOSTS``)."""
+    if config.STREAM_PROXY_PARALLEL <= 1:
+        return False
+    host = (urlparse(url).hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in config.STREAM_PROXY_PARALLEL_HOSTS)
+
+
+def _span(upstream: httpx.Response):
+    """``(start, end)`` (inclusive) of the bytes a 200 / 206 file answer carries, None when the length is unknown."""
+    try:
+        if upstream.status_code == 206:
+            value = upstream.headers.get("content-range", "")
+            unit, _, rest = value.partition(" ")
+            first, _, last = rest.partition("/")[0].partition("-")
+            if unit.strip().lower() == "bytes":
+                return int(first), int(last)
+            return None
+        if upstream.status_code == 200 and upstream.headers.get("content-length"):
+            return 0, int(upstream.headers["content-length"]) - 1
+    except ValueError:
+        return None
+    return None
+
+
+class _ParallelRelay:
+    """The body ``start..end`` fetched as ``STREAM_PROXY_CHUNK`` ranges, ``STREAM_PROXY_PARALLEL`` in flight, yielded in
+    order (the head range as its bytes arrive, the ones behind it are buffered: at most parallel x chunk bytes). Same
+    contract as :class:`_Relay`: the slot and every range request are given back when the body ends, fails, or the client
+    goes away. A range that fails or answers anything but its own 206 ends the body (the client sees a short read)."""
+
+    def __init__(self, client: httpx.AsyncClient, url: str, headers: dict, start: int, end: int, slot: _Slot,
+                 chunk: int = 0, parallel: int = 0, trace: "dict | None" = None) -> None:
+        self._client, self._url, self._slot, self._trace = client, url, slot, trace
+        self._headers = {k: v for k, v in headers.items() if k.lower() not in ("range", "if-range")}
+        self._next, self._end = start, end
+        self._chunk = chunk or config.STREAM_PROXY_CHUNK
+        self._parallel = parallel or config.STREAM_PROXY_PARALLEL
+        self._pending: list = []          # [(task, queue)] in byte order
+        self._closed = False
+
+    def __aiter__(self) -> "_ParallelRelay":
+        return self
+
+    async def _fetch(self, first: int, last: int, queue: asyncio.Queue) -> None:
+        response = None
+        try:
+            request = self._client.build_request("GET", self._url, headers={**self._headers, "Range": f"bytes={first}-{last}"})
+            response = await self._client.send(request, stream=True)
+            if response.status_code != 206 or _span(response) != (first, last):
+                raise httpx.HTTPError(f"range answered HTTP {response.status_code}")
+            got = 0
+            async for piece in response.aiter_raw():
+                got += len(piece)
+                queue.put_nowait(piece)
+            if got != last - first + 1:
+                raise httpx.HTTPError("short range")
+            queue.put_nowait(None)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            queue.put_nowait(exc)
+        finally:
+            if response is not None:
+                with anyio.CancelScope(shield=True):
+                    await response.aclose()
+
+    def _fill(self) -> None:
+        while len(self._pending) < self._parallel and self._next <= self._end:
+            first, last = self._next, min(self._end, self._next + self._chunk - 1)
+            self._next = last + 1
+            queue: asyncio.Queue = asyncio.Queue()
+            self._pending.append((asyncio.ensure_future(self._fetch(first, last, queue)), queue))
+
+    async def __anext__(self) -> bytes:
+        try:
+            while True:
+                self._fill()
+                if not self._pending:
+                    _trace_end(self._trace, "done")
+                    await self.aclose()
+                    raise StopAsyncIteration
+                item = await self._pending[0][1].get()
+                if item is None:
+                    self._pending.pop(0)
+                    continue
+                if isinstance(item, Exception):
+                    log.info("stream proxy: parallel range failed (%s)", str(item)[:80])
+                    _trace_end(self._trace, "upstream-error")
+                    await self.aclose()
+                    raise StopAsyncIteration
+                if self._trace is not None:
+                    self._trace["bytes"] += len(item)
+                return item
+        except StopAsyncIteration:
+            raise
+        except BaseException:            # client disconnect (cancellation) or a bug: never keep a range open
+            _trace_end(self._trace, "client-gone")
+            await self.aclose()
+            raise
+
+    async def aclose(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        _trace_end(self._trace, "client-gone")
+        pending, self._pending = self._pending, []
+        for task, _queue in pending:
+            task.cancel()
+        try:
+            with anyio.CancelScope(shield=True):
+                for task, _queue in pending:
+                    try:
+                        await task
+                    except BaseException:
+                        pass
         finally:
             self._slot.release()
 
@@ -327,15 +478,30 @@ async def _playlist_response(upstream: httpx.Response, info: streamproxy.TokenIn
     return Response(data, status_code=200, headers=headers)
 
 
-async def _serve_file(upstream: httpx.Response, request: Request, slot: _Slot) -> Response:
-    """A file answer (200 / 206 / 416): the upstream's media headers and a streamed body; ``slot`` goes with the stream."""
+async def _serve_file(upstream: httpx.Response, request: Request, slot: _Slot,
+                      parallel_headers: "dict | None" = None, trace: "dict | None" = None) -> Response:
+    """A file answer (200 / 206 / 416): the upstream's media headers and a streamed body; ``slot`` goes with the stream.
+    ``parallel_headers`` (a progressive file of a per-connection-capped host): the body comes from :class:`_ParallelRelay`
+    with these upstream request headers instead of the single upstream connection."""
+    if trace is not None:
+        trace["status"] = upstream.status_code
+        trace["ttfb_ms"] = int((time.time() - trace["at"]) * 1000)
     await _upstream_status(upstream)
     headers = {name: upstream.headers[name] for name in _PASSED if name in upstream.headers}
     headers["Access-Control-Expose-Headers"] = "Content-Length, Content-Range, Accept-Ranges"
     if request.method == "HEAD":
         await upstream.aclose()
+        _trace_end(trace, "done")
         return Response(status_code=upstream.status_code, headers=headers)
-    relay = _Relay(upstream, slot)
+    span = _span(upstream) if parallel_headers is not None and _parallel_host(str(upstream.url)) else None
+    if span and span[1] - span[0] + 1 > config.STREAM_PROXY_CHUNK and upstream.headers.get("accept-ranges", "").lower() == "bytes":
+        final = str(upstream.url)
+        await upstream.aclose()
+        if trace is not None:
+            trace["parallel"] = True
+        relay = _ParallelRelay(_client(), final, parallel_headers, span[0], span[1], slot, trace=trace)
+        return StreamingResponse(relay, status_code=upstream.status_code, headers=headers, background=BackgroundTask(relay.aclose))
+    relay = _Relay(upstream, slot, trace)
     return StreamingResponse(relay, status_code=upstream.status_code, headers=headers, background=BackgroundTask(relay.aclose))
 
 
@@ -347,13 +513,24 @@ async def stream_proxy(token: str, request: Request) -> Response:
     except streamproxy.TokenError as exc:
         raise ApiError(exc.status, exc.code, str(exc)) from None
     if info.kind is not None:
-        return await _serve_hls(info, request)
-    slot = _acquire()
+        return await _serve_hls(info, request, token)
+    trace = _trace(token, request, "file")
+    try:
+        slot = _acquire()
+    except ApiError:
+        trace["status"] = 503
+        _trace_end(trace, "busy")
+        raise
     handed_over = False
     try:
         upstream = await _open(request.method, info.url, info.headers, request, impersonate=info.impersonate)
         try:
-            response = await _serve_file(upstream, request, slot)
+            parallel = None
+            if not info.impersonate and _parallel_host(info.url):
+                parallel = {"Accept": "*/*", "Accept-Encoding": "identity", **info.headers}
+                if (urlparse(str(upstream.url)).hostname or "").lower() != (urlparse(info.url).hostname or "").lower():
+                    parallel.pop("Cookie", None)   # same rule as a redirect in _open
+            response = await _serve_file(upstream, request, slot, parallel, trace)
             handed_over = isinstance(response, StreamingResponse)
             return response
         except BaseException:
@@ -363,9 +540,10 @@ async def stream_proxy(token: str, request: Request) -> Response:
     finally:
         if not handed_over:
             slot.release()
+            _trace_end(trace, "error")
 
 
-async def _serve_hls(info: streamproxy.TokenInfo, request: Request) -> Response:
+async def _serve_hls(info: streamproxy.TokenInfo, request: Request, token: str = "") -> Response:
     """An HLS token: a playlist is rewritten, a segment / key is streamed. A segment-kind URL that answers with a playlist
     media type (a player-visible ``.m3u8`` without the extension) is treated as a playlist."""
     slot = await _acquire_hls(info.group or streamproxy.group_of(info.url))
@@ -380,7 +558,7 @@ async def _serve_hls(info: streamproxy.TokenInfo, request: Request) -> Response:
                             and hlsproxy.is_playlist_type(upstream.headers.get("content-type"))):
                 await _upstream_status(upstream, (200, 206))
                 return await _playlist_response(upstream, info, request)
-            response = await _serve_file(upstream, request, slot)
+            response = await _serve_file(upstream, request, slot, trace=_trace(token, request, "hls-" + str(info.kind)))
             handed_over = isinstance(response, StreamingResponse)
             return response
         except BaseException:
@@ -390,3 +568,11 @@ async def _serve_hls(info: streamproxy.TokenInfo, request: Request) -> Response:
     finally:
         if not handed_over:
             slot.release()
+
+
+@router.get("/api/ops/stream-proxy/recent", include_in_schema=False)
+def stream_proxy_recent(limit: int = 100) -> dict:
+    """The last proxied file / segment requests (oldest first): what a player really asked for and how each one ended
+    (``done`` | ``client-gone`` = the player closed it | ``upstream-error`` | ``busy`` = 503 | ``error``)."""
+    rows = list(_recent)[-max(1, min(limit, len(_recent) or 1)):]
+    return {"active": _active, "max": config.STREAM_PROXY_MAX, "requests": rows}
