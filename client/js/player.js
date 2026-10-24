@@ -1526,6 +1526,26 @@
     /* fare gercekten hareket etti (app.js): katman gorunur */
     pointer: function () { if (P && P.shown && !P.err && !P.iframe) showUI(); },
     enginePref: enginePref, setEnginePref: setEnginePref,
+    /* kanal silme (app.js, OK basili tut): Kanallar paneli acikken odaktaki kanal karti, yoksa null */
+    panelChannel: function () {
+      if (!P || !P.panel || P.panel.kind !== 'channels') return null;
+      return chList()[P.panel.idx] || null;
+    },
+    /* kanal silindi: siradan cikar (app.js ortak satiri zaten cikarmis olabilir), panel yeniden cizilir, odak komsu satirda */
+    channelRemoved: function (id) {
+      if (!P) return;
+      var l = chList(), i;
+      for (i = l.length - 1; i >= 0; i--) if (l[i] && l[i].id === id) {
+        l.splice(i, 1);
+        if (P.channels && typeof P.channels.total === 'number' && P.channels.total > 0) P.channels.total--;
+      }
+      var pn = P.panel;
+      if (pn && pn.kind === 'channels') {
+        pn.items = panelItems(pn);
+        pn.idx = Math.max(0, Math.min(pn.idx, pn.items.length - 1));
+        if (!pn.items.length) closePanel(); else renderPanel();
+      }
+    },
     /* testler icin */
     _: { createEngine: createEngine, preferHlsJs: preferHlsJs, isEmbedStream: isEmbedStream, isHlsStream: isHlsStream,
       nextEpisodeOf: nextEpisodeOf, episodeInfo: episodeInfo, state: function () { return P; } }

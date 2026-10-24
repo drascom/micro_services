@@ -70,6 +70,8 @@
     return null;
   }
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  var TRASH_SVG = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+    'stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
   function chev(left) {
     return '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' +
       (left ? 'm15 5-7 7 7 7' : 'm9 5 7 7-7 7') + '"/></svg>';
@@ -1061,6 +1063,16 @@
     im.appendChild(el('div', 'ch-ini', chInitials(it)));
     if (it.channel_no) im.appendChild(el('div', 'ch-no', String(it.channel_no)));
     im.appendChild(el('div', 'ch-live', 'CANLI'));
+    /* fare/pointer kipi: hover'da cop kutusu -> kanal silme onayi (kumandada gizli; OK basili tut ayni onayi acar) */
+    var del = el('div', 'ch-del');
+    del.innerHTML = TRASH_SVG;
+    del.onclick = function (ev) {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      if (ev && ev.button) return;
+      if (S.veil || (DZP.exitConfirm && DZP.exitConfirm.active())) return;
+      confirmRemove(it);
+    };
+    im.appendChild(del);
     return im;
   }
   function channelTile(it) {
@@ -2443,6 +2455,81 @@
       kind: r.id === 'trailer' ? 'trailer' : null });
   }
   /* kanal karti: detay yok; row = kanalin acildigi satir ({id, items, total}; oynatici gerekirse /api/row ile devamini alir) */
+  /* ---------- Canli TV kanal silme (herkesten; admin geri alabilir) ----------
+     Kanal kartinda (bolum sayfasi, liste/grid, oynaticinin Kanallar paneli) OK BASILI TUT (>= HOLD_MS) -> onay; kisa basis = mevcut
+     davranis (oynat), keyup'ta. Tizen basili tutmayi keydown tekrarlariyla verir: tekrarlar yutulur, sure zamanlayiciyla olculur.
+     Fare: kartin kosesindeki cop kutusu (chArt). Evet -> DELETE /api/live/channels/{id}, kart tum satirlardan duser, odak komsu kartta. */
+  var HOLD_MS = 800, HOLD = null;
+  function holdChannel() {
+    if (S.veil || (DZP.exitConfirm && DZP.exitConfirm.active())) return null;
+    var it = null;
+    if (S.screen === 'player') it = DZP.player && DZP.player.panelChannel ? DZP.player.panelChannel() : null;
+    else if (S.screen === 'section' && S.sec && S.sec.rows) { var r = S.sec.rows[S.sec.row]; it = r ? secItem(r, r.col) : null; }
+    else if (S.screen === 'grid' && S.grid && S.grid.entry) it = S.grid.entry.items[S.grid.idx];
+    return isChannel(it) ? it : null;
+  }
+  /* keydown: true = tus burada tuketildi (OK basili tutma takibi) */
+  function holdKeydown(k) {
+    if (HOLD) {
+      if (k === 'ok') { if (!HOLD.done && ptrNow() - HOLD.t0 >= HOLD_MS) holdFire(); return true; }   /* tekrarlar */
+      g.clearTimeout(HOLD.timer); HOLD = null;   /* basiliyken baska tus: iptal, oynatma yok */
+      return false;
+    }
+    if (k !== 'ok') return false;
+    var it = holdChannel();
+    if (!it) return false;
+    HOLD = { it: it, t0: ptrNow(), done: false, timer: g.setTimeout(holdFire, HOLD_MS) };
+    return true;
+  }
+  function holdFire() {
+    var h = HOLD;
+    if (!h || h.done) return;
+    h.done = true;
+    g.clearTimeout(h.timer);
+    confirmRemove(h.it);
+  }
+  function confirmRemove(it) {
+    if (!it || !DZP.exitConfirm || DZP.exitConfirm.active()) return;
+    DZP.exitConfirm.open(stage, { mat: makeMat, title: '“' + (it.title || 'Kanal') + '” silinsin mi?', sub: 'Tüm cihazlardan kalkar.',
+      labels: ['Hayır', 'Evet'], onYes: function () { removeChannel(it); } });
+  }
+  function removeChannel(it) {
+    api.removeChannel(it.id, function (err) {
+      if (err && err.status !== 404) { if (S.screen !== 'player') showVeil('Kanal silinemedi', err.message); return; }
+      dropChannel(it.id);
+    });
+  }
+  /* satirdan id'yi cikar: items + sayfa kuyrugu (tail) kayar, total azalir, odak ayni indekste (komsu kart) */
+  function dropFromRow(r, id) {
+    var hit = false, i, k;
+    for (i = r.items.length - 1; i >= 0; i--) {
+      if (!r.items[i] || r.items[i].id !== id) continue;
+      r.items.splice(i, 1); hit = true;
+      if (typeof r.total === 'number' && r.total > 0) r.total--;
+      if (r.tail) { var nt = {}; for (k in r.tail) if (+k !== i) nt[+k > i ? +k - 1 : +k] = r.tail[k]; r.tail = nt; }
+      if (typeof r.col === 'number' && i < r.col) r.col--;
+    }
+    if (r.tail) for (k in r.tail) if (r.tail[k] && r.tail[k].id === id) delete r.tail[k];
+    if (hit && typeof r.col === 'number') {
+      var n = typeof r.total === 'number' ? r.total : r.items.length;
+      r.col = clamp(r.col, 0, Math.max(0, n - 1));
+    }
+    return hit;
+  }
+  function dropChannel(id) {
+    var P = S.sec, i;
+    if (P && P.rows) {
+      for (i = P.rows.length - 1; i >= 0; i--) {
+        dropFromRow(P.rows[i], id);
+        if (!P.rows[i].items.length && !(P.rows[i].total > 0)) { P.rows.splice(i, 1); if (P.row > i || P.row >= P.rows.length) P.row = Math.max(0, P.row - 1); }
+      }
+    }
+    if (S.grid && S.grid.entry && dropFromRow(S.grid.entry, id)) S.grid.idx = clamp(S.grid.idx, 0, Math.max(0, S.grid.entry.items.length - 1));
+    if (S.play && S.play.channels && S.play.channels.items) dropFromRow(S.play.channels, id);
+    if (S.screen === 'player' && DZP.player && DZP.player.channelRemoved) DZP.player.channelRemoved(id);
+    else if (S.screen === 'section') renderSection();
+    else if (S.screen === 'grid') renderGrid();
+  }
   function playChannel(it, row) {
     startPlay({ item: it, type: 'channel', live: true, channels: row });
   }
@@ -2610,8 +2697,8 @@
   }
 
   function onKey(k) {
+    if (DZP.exitConfirm && DZP.exitConfirm.active()) { DZP.exitConfirm.key(k); return; }   /* oynaticida da: kanal silme onayi */
     if (S.screen === 'player') { if (DZP.player.active()) DZP.player.key(k); return; }
-    if (DZP.exitConfirm && DZP.exitConfirm.active()) { DZP.exitConfirm.key(k); return; }
     if (S.veil) { if (k === 'back' || k === 'ok') hideVeil(); return; }
     if (S.screen === 'home') homeKey(k);
     else if (S.screen === 'grid') gridKey(k);
@@ -2666,8 +2753,19 @@
     /* medya/renk tuslari yalniz oynaticida; Y harfi / F1 baska ekranda olagan kalir */
     if (S.screen !== 'player' && !/^(left|right|up|down|ok|back)$/.test(k)) return;
     ev.preventDefault();
+    if (holdKeydown(k)) return;
     keyRep = !!ev.repeat;
     onKey(k);
+  });
+  /* OK basili birakma: kanal kartinda kisa basis = oynat (keyup'ta), uzun basistan sonra keyup hicbir sey yapmaz */
+  doc.addEventListener('keyup', function (ev) {
+    var k = KEYNAME[ev.key] || KEYMAP[ev.keyCode];
+    if (k !== 'ok' || !HOLD) return;
+    if (ev.preventDefault) ev.preventDefault();
+    var h = HOLD;
+    HOLD = null;
+    g.clearTimeout(h.timer);
+    if (!h.done) { keyRep = false; onKey('ok'); }
   });
   try { if (g.tizen && g.tizen.tvinputdevice) g.tizen.tvinputdevice.registerKey('Return'); } catch (e) {}
   for (var mk = 0; mk < MEDIA_KEYS.length; mk++) { try { if (g.tizen && g.tizen.tvinputdevice) g.tizen.tvinputdevice.registerKey(MEDIA_KEYS[mk]); } catch (e2) {} }

@@ -89,6 +89,9 @@ git, düğme/panel satırı hover = odak, boş alana tık = oynat/duraklat (pane
   DVR: "Yakında" sayfası.
 - **Canlı TV** (`live_tv`, bölüm ekranıyla aynı): "Tüm kanallar" + kategori satırları; kanal kartı (`card_kind:"channel"`, görsel yok) =
   kategoriye göre sabit tonlu cam yüzey + baş harf + kanal no + CANLI. Kart OK = doğrudan oynatıcı (detay yok; kanal sırası = o satır).
+  Kanal silme (herkesten, admin geri alır): kartta (bölüm/liste ve oynatıcının Kanallar paneli) OK BASILI TUT ≥ 800 ms → "silinsin mi?"
+  onayı (odak Hayır); kısa basış keyup'ta oynatır, uzun basış sonrası keyup bir şey yapmaz. Fare kipinde (`dz-ptr`) kartın sağ alt
+  köşesinde hover'da çöp kutusu. Evet → `DELETE /api/live/channels/{id}`, kart tüm satırlardan düşer, odak komşu kartta. Test `tests/channel_delete.js`.
   Vitrinde kanal adı, arka plan Görsellerim / gradyan; vitrin İzle de doğrudan oynatır (sıra = "Tüm kanallar" `live_all`, tembel yükleme).
 - **Ara** (kontrol hapı, büyüteç; oynatıcı dışında Kırmızı / masaüstü F1 kısayol; Yeşil/F2 = Listem, Mavi/F4 = Ayarlar): cam arama kutusu (OK = ekran klavyesi, Enter/Done = ara;
   tarayıcıda açılınca odak kutuda, yazdıkça ~300 ms debounce). <2 karakter temizler; ≥2 `/api/catalog?q=` (Kütüphanede), ≥3 ayrıca canlı

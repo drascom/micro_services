@@ -191,6 +191,12 @@ body { font-family: 'Manrope', system-ui, Arial, sans-serif; color: var(--ink); 
   text-align: center; font-size: 20px; font-weight: 700; background: rgba(8,8,10,.32); }
 .ch-live { position: absolute; right: 14px; top: 14px; height: 28px; padding: 0 10px; border-radius: 14px; line-height: 28px; font-size: 15px;
   font-weight: 700; letter-spacing: 1px; background: rgba(214,48,48,.78); }
+/* kanal sil (fare/pointer kipi): kartin sag alt kosesinde hover'da cop kutusu; kumandada gorunmez (OK basili tut = sil) */
+.ch-del { display: none; position: absolute; right: 12px; bottom: 12px; width: 44px; height: 44px; border-radius: 22px; text-align: center;
+  background: rgba(8,8,10,.55); cursor: pointer; }
+.ch-del svg { margin-top: 11px; }
+.dz-ptr .gt:hover .ch-del { display: block; }
+.dz-ptr .ch-del:hover { background: rgba(214,48,48,.88); }
 .grid-empty { position: absolute; left: 140px; top: 300px; font-size: 34px; opacity: .6; }
 
 /* ---------- ayar/eylem satirlari (tasarim: Appearance) ---------- */
@@ -584,6 +590,9 @@ html.av-active .pl { background: transparent; }
 .xq .mat-tone { background: rgba(22,18,14,.62); }
 .no-blur .xq .mat-tone, .m-tint .xq .mat-tone { background: rgba(22,18,14,.80); }
 .xq-t { position: absolute; left: 0; right: 0; top: 64px; text-align: center; font-size: 40px; line-height: 52px; font-weight: 600; letter-spacing: -.6px; }
+.xq-t.ell { padding: 0 40px; }
+.xq.has-s .xq-t { top: 44px; }
+.xq-s { position: absolute; left: 40px; right: 40px; top: 104px; text-align: center; font-size: 26px; line-height: 34px; font-weight: 500; opacity: .7; }
 .xq-row { position: absolute; left: 0; right: 0; top: 172px; display: -webkit-flex; display: flex; -webkit-justify-content: center; justify-content: center; }
 .xq-b { width: 200px; height: 72px; margin: 0 14px; border-radius: 36px; font-size: 30px; line-height: 72px; text-align: center; font-weight: 600;
   background: rgba(246,241,231,.10); opacity: .8; transition: background 160ms linear, color 160ms linear; }

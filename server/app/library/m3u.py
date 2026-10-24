@@ -347,7 +347,7 @@ def build(source_id: str, entries: list[dict]) -> tuple[dict[str, dict], int]:
 def upsert(source_id: str, records: dict[str, dict], now: Optional[int] = None) -> dict:
     """Write one source's channels; its channels missing from ``records`` become ``active=0``. Stream health of a url
     that stays is kept. ``{new, updated, unchanged, deactivated}``."""
-    from .live import _loads, channel_health, ID_PREFIX
+    from .live import _loads, channel_health, ID_PREFIX, removed_mark
     now = int(time.time()) if now is None else int(now)
     stats = dict.fromkeys(("new", "updated", "unchanged", "deactivated"), 0)
     with closing(db.connect()) as conn, conn:
@@ -360,10 +360,10 @@ def upsert(source_id: str, records: dict[str, dict], now: Optional[int] = None) 
                       json.dumps(rec["headers"]) if rec["headers"] else None, json.dumps(rec["labels"], ensure_ascii=False))
             if old is None:
                 conn.execute("INSERT INTO channels (id,nanoid,name,country,languages,categories,streams,youtube,geo_blocked,"
-                             "logo,headers,labels,source_id,stream_health,health,active,seen_at,updated_at,created_at) "
-                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)",
+                             "logo,headers,labels,source_id,stream_health,health,active,seen_at,updated_at,created_at,"
+                             "removed,removed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?)",
                              (ID_PREFIX + nid, nid, *fields, source_id, "{}", channel_health(rec["streams"], [], {}),
-                              now, now, now))
+                              now, now, now, *removed_mark(conn, rec["streams"], now)))
                 stats["new"] += 1
                 continue
             health = {u: h for u, h in _loads(old["stream_health"], {}).items() if u in rec["streams"]}

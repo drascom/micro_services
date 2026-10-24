@@ -147,6 +147,8 @@
     search: function (q, pid, limit, cb) {
       return request('GET', '/api/search?q=' + enc(q) + '&profile=' + enc(pid) + '&limit=' + (limit || 20), null, cb, null, 90000);
     },
+    /* Canli TV kanalini HERKESTEN sil (admin geri alabilir): {ok, id, removed:true}; bilinmeyen id 404 */
+    removeChannel: function (id, cb) { request('DELETE', '/api/live/channels/' + enc(id), null, cb); },
     mylistAdd: function (pid, id, cb) { request('POST', '/api/mylist', { profile: pid, item_id: id }, cb); },
     mylistDel: function (pid, id, cb) { request('DELETE', '/api/mylist/' + enc(id) + '?profile=' + enc(pid), null, cb); },
     /* oynatici (js/player.js). streams: {streams[], subtitles[], audio[], resume_position, duration, finder?} (API.md) */

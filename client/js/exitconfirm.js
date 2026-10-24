@@ -3,7 +3,7 @@
    Fare: hover = odak, tik = OK, pencere disina tik = Geri.
    Evet: Android kabugu `DZAndroid.exit()`, Tizen `tizen.application.getCurrentApplication().exit()`, tarayici: yalniz kapanir.
    DZP.exitConfirm = { open(host, opts?), key(k) -> true, close(), active(), quit() } ; opts: {mat(cls, x, y) -> cam katmani, onClose(),
-   title?, labels? [hayir, evet], onYes? (verilirse Evet cikis yerine bunu cagirir; ör. "Güncelleme hazır" Sonra / Şimdi kur)} */
+   title?, sub? (ikinci satir, kucuk), labels? [hayir, evet], onYes? (verilirse Evet cikis yerine bunu cagirir; ör. "Güncelleme hazır" Sonra / Şimdi kur)} */
 (function (g) {
   'use strict';
   var DZP = g.DZP = g.DZP || {}, doc = g.document;
@@ -32,10 +32,12 @@
   function open(host, opts) {
     if (C) return;
     opts = opts || {};
-    var box = el('div', 'xq rclip');
+    var cls = 'xq rclip' + (opts.sub ? ' has-s' : '');
+    var box = el('div', cls);
     box.style.left = X + 'px'; box.style.top = Y + 'px'; box.style.width = W + 'px'; box.style.height = H + 'px';
     if (opts.mat) { try { box.appendChild(opts.mat('xq-mat', X, Y)); } catch (e) {} }
-    box.appendChild(el('div', 'xq-t', opts.title || 'Uygulamadan çıkılsın mı?'));
+    box.appendChild(el('div', 'xq-t ell', opts.title || 'Uygulamadan çıkılsın mı?'));
+    if (opts.sub) box.appendChild(el('div', 'xq-s ell', opts.sub));
     var row = el('div', 'xq-row'), btns = [], labels = opts.labels || ['Hayır', 'Evet'];
     for (var i = 0; i < labels.length; i++) {
       var b = el('div', 'xq-b', labels[i]);
@@ -52,7 +54,7 @@
     C = { box: box, dim: dim, btns: btns, btn: 0, onClose: opts.onClose, onYes: opts.onYes };
     paint();
     void box.offsetWidth;
-    box.className = 'xq rclip on'; dim.className = 'xq-dim on';
+    box.className = cls + ' on'; dim.className = 'xq-dim on';
   }
   function close() {
     if (!C) return;

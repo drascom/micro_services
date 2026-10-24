@@ -1,6 +1,8 @@
 """Admin "Canlı TV" card: ``GET /api/ops/live`` (switch, last scan, counts, every channel with its stream health) and
 ``POST /api/ops/live/scan`` (one scan in the background, ``force`` = ignore ETags / probe interval). library/live.py.
-M3U sources (library/m3u.py): ``GET/POST /api/ops/live/sources``, ``POST .../{id}/refresh``, ``DELETE .../{id}``."""
+M3U sources (library/m3u.py): ``GET/POST /api/ops/live/sources``, ``POST .../{id}/refresh``, ``DELETE .../{id}``.
+Channel delete (for everyone): client ``DELETE /api/live/channels/{ch_id}``; admin ``GET /api/ops/live/removed`` +
+``POST /api/ops/live/channels/{ch_id}/restore``."""
 from __future__ import annotations
 
 import threading
@@ -67,3 +69,23 @@ def delete_m3u_source(source_id: str) -> dict:
         return {"ok": True, "removed": m3u.delete(source_id)}
     except KeyError:
         raise ApiError(404, "not_found", "kaynak bulunamadı")
+
+
+# ---- channel delete (clients, for everyone) + admin restore ------------------------------------------------------------------
+@router.delete("/api/live/channels/{channel_id}")
+def delete_channel(channel_id: str) -> dict:
+    if not channel_id.startswith(live.ID_PREFIX) or not live.remove_channel(channel_id):
+        raise ApiError(404, "not_found", "kanal bulunamadı")
+    return {"ok": True, "id": channel_id, "removed": True}
+
+
+@router.get("/api/ops/live/removed")
+def list_removed_channels() -> dict:
+    return {"channels": live.removed_channels()}
+
+
+@router.post("/api/ops/live/channels/{channel_id}/restore")
+def restore_channel(channel_id: str) -> dict:
+    if not live.restore_channel(channel_id):
+        raise ApiError(404, "not_found", "kanal bulunamadı")
+    return {"ok": True, "id": channel_id, "removed": False}

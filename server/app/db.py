@@ -408,7 +408,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # channels of an M3U source (library/m3u.py): source_id = live_sources.id (NULL = famelack), logo = tvg-logo,
     # headers = JSON request headers (#EXTVLCOPT / #KODIPROP Referer / User-Agent), labels = JSON {category slug: group-title}
     chcols = {r["name"] for r in conn.execute("PRAGMA table_info(channels)")}
-    for col, decl in (("source_id", "TEXT"), ("logo", "TEXT"), ("headers", "TEXT"), ("labels", "TEXT")):
+    # removed = 1: deleted by a client (DELETE /api/live/channels/{id}) for everyone; hidden from every client surface, the
+    # famelack / M3U passes never touch it (a re-scan does not bring it back), the admin restores it (removed_at = when)
+    for col, decl in (("source_id", "TEXT"), ("logo", "TEXT"), ("headers", "TEXT"), ("labels", "TEXT"),
+                      ("removed", "INTEGER NOT NULL DEFAULT 0"), ("removed_at", "INTEGER")):
         if chcols and col not in chcols:
             conn.execute(f"ALTER TABLE channels ADD COLUMN {col} {decl}")
     # failure_counted: this attempt's failure was added to video_sources.failures (videos.feedback can

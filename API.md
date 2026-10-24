@@ -215,6 +215,12 @@ Yeni satır kimlikleri `featured_series`, `featured_movies`, `anime` de `/api/ro
   YouTube (`type:"embed"`, `https://www.youtube-nocookie.com/embed/<id>?autoplay=1`, `label:"YouTube · canlı"`), en sonda sağlıksız
   (broken / sunucu yoklamasında açılmayan) m3u8'ler. Akış alanları: `kind:"live"`, `source:"famelack"`, `source_id:"ch_<nanoid>"`,
   her akışın KENDİ `attempt_token`'ı. CORS başlığı vermeyen playlist vekilden geçer (`proxied:true`, `proxy_reason:"recipe"`).
+- `DELETE /api/live/channels/ch_<nanoid>` → `{"ok":true,"id":"ch_<nanoid>","removed":true}` (bilinmeyen id 404): kanal HERKESTEN
+  silinir (`channels.removed=1`); bölüm satırları, vitrin, `/api/row/live_*`, `/api/streams/ch_*` (404) dahil hiçbir istemci yüzeyinde
+  görünmez, famelack/M3U taramaları geri getirmez (aynı m3u8 URL'siyle yeni gelen satır da silinmiş doğar). Geri alma yalnız admin:
+  `GET /api/ops/live/removed` → `{"channels":[{"id","title","source","source_id","country","removed_at"}]}`,
+  `POST /api/ops/live/channels/{ch_id}/restore` → `{"ok":true,"id",...,"removed":false}`. `GET /api/ops/live` kanal satırlarında
+  `removed`, `counts.removed` ek alanları.
 - `POST /api/playback-report` kanal akışının `attempt_token`'ıyla da çalışır (1 hata = suspect, 3 = broken, başarı = healthy; cihaz
   kodları sayılmaz). `POST /api/progress` kanal için çağrılmaz; `item_id` `ch_` ile gelirse yok sayılır (`{"ok":true,...}`).
 

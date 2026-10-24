@@ -297,6 +297,15 @@ def invalidate() -> None:
 
 
 # ---- upsert ---------------------------------------------------------------------------------------------------------------
+def removed_mark(conn, streams: list[str], now: int) -> tuple[int, Optional[int]]:
+    """``(removed, removed_at)`` of a NEW row: a stream url of a removed channel = the same channel -> born removed."""
+    if streams:
+        for r in conn.execute("SELECT streams FROM channels WHERE removed=1"):
+            if set(_loads(r["streams"], [])) & set(streams):
+                return 1, now
+    return 0, None
+
+
 def upsert(records: dict[str, dict], countries: list[str], now: Optional[int] = None) -> dict:
     """Write ``records`` (by nanoid); active channels of ``countries`` not in ``records`` become ``active=0``.
     ``{new, updated, unchanged, deactivated}``. Stream health of a url that stays is kept."""
@@ -312,9 +321,10 @@ def upsert(records: dict[str, dict], countries: list[str], now: Optional[int] = 
             if old is None:
                 health = {}
                 conn.execute("INSERT INTO channels (id,nanoid,name,country,languages,categories,streams,youtube,geo_blocked,"
-                             "stream_health,health,active,seen_at,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)",
+                             "stream_health,health,active,seen_at,updated_at,created_at,removed,removed_at) "
+                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?)",
                              (ID_PREFIX + nid, nid, *fields, "{}", channel_health(rec["streams"], rec["youtube"], health),
-                              now, now, now))
+                              now, now, now, *removed_mark(conn, rec["streams"], now)))
                 stats["new"] += 1
                 continue
             health = _loads(old["stream_health"], {})
@@ -522,7 +532,15 @@ def _row_to_channel(r) -> dict:
             "seen_at": r["seen_at"], "updated_at": r["updated_at"],
             # M3U sources (library/m3u.py); famelack rows: source_id None, no logo / headers / labels
             "source_id": r["source_id"], "logo": r["logo"] or None, "headers": _loads(r["headers"], {}),
-            "labels": _loads(r["labels"], {})}
+            "labels": _loads(r["labels"], {}),
+            "removed": bool(_col(r, "removed")), "removed_at": _col(r, "removed_at")}
+
+
+def _col(r, name: str):
+    try:
+        return r[name]
+    except (IndexError, KeyError):
+        return None
 
 
 def all_channels() -> list[dict]:
@@ -543,7 +561,7 @@ def visible_channels(fresh: bool = False) -> list[dict]:
     with _view_lock:
         if not fresh and _view is not None and now - _view[0] < CACHE_TTL:
             return _view[1]
-    chans = [c for c in all_channels() if c["active"] and channel_health(c["streams"], c["youtube"], c["stream_health"]) != "dead"]
+    chans = [c for c in all_channels() if c["active"] and not c["removed"] and channel_health(c["streams"], c["youtube"], c["stream_health"]) != "dead"]
     for n, c in enumerate(chans, 1):
         c["channel_no"] = n
     with _view_lock:
@@ -556,12 +574,38 @@ def by_id(channel_id: str) -> Optional[dict]:
     for c in visible_channels():
         if c["id"] == channel_id:
             return c
-    r = db.query_one("SELECT * FROM channels WHERE id=? AND active=1", (channel_id,))
+    r = db.query_one("SELECT * FROM channels WHERE id=? AND active=1 AND removed=0", (channel_id,))
     if not r:
         return None
     c = _row_to_channel(r)
     c["channel_no"] = 0
     return c
+
+
+def remove_channel(channel_id: str, now: Optional[int] = None) -> bool:
+    """A client deletes a channel for everyone (``removed=1``); False = unknown id. The scans keep the row hidden."""
+    now = int(time.time()) if now is None else int(now)
+    with closing(db.connect()) as conn, conn:
+        n = conn.execute("UPDATE channels SET removed=1,removed_at=COALESCE(removed_at,?) WHERE id=?",
+                         (now, channel_id)).rowcount
+    invalidate()
+    return n > 0
+
+
+def restore_channel(channel_id: str) -> bool:
+    """Admin: bring a removed channel back (``removed=0``); False = unknown id."""
+    with closing(db.connect()) as conn, conn:
+        n = conn.execute("UPDATE channels SET removed=0,removed_at=NULL WHERE id=?", (channel_id,)).rowcount
+    invalidate()
+    return n > 0
+
+
+def removed_channels() -> list[dict]:
+    """Admin "Silinen kanallar": removed rows, newest removal first."""
+    out = [{"id": c["id"], "title": c["title"], "source": source_name(c), "source_id": c["source_id"],
+            "country": c["country"], "removed_at": c["removed_at"]} for c in all_channels() if c["removed"]]
+    out.sort(key=lambda c: -(c["removed_at"] or 0))
+    return out
 
 
 def card(c: dict) -> dict:
@@ -798,6 +842,7 @@ def admin_view() -> dict:
     for c in chans:
         h = c["stream_health"]
         items.append({"id": c["id"], "title": c["title"], "country": c["country"], "active": c["active"],
+                      "removed": c["removed"],
                       "source": source_name(c), "source_id": c["source_id"],
                       "visible": c["id"] in visible, "channel_no": visible.get(c["id"]),
                       "health": channel_health(c["streams"], c["youtube"], h) if c["active"] else "inactive",
@@ -811,5 +856,6 @@ def admin_view() -> dict:
             "counts": {"total": len(chans), "active": sum(1 for c in chans if c["active"]), "visible": len(visible),
                        "ok": sum(1 for i in items if i["health"] == "ok"),
                        "youtube_only": sum(1 for i in items if i["health"] == "youtube"),
-                       "dead": sum(1 for i in items if i["health"] == "dead")},
+                       "dead": sum(1 for i in items if i["health"] == "dead"),
+                       "removed": sum(1 for c in chans if c["removed"])},
             "channels": items}

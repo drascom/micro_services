@@ -89,5 +89,5 @@ Anahtar `TMDB_ACCESS_KEY` (v4 Bearer ya da v3; `TMDB_TOKEN`/`TMDB_API_KEY` de ge
 
 - Yeni scraper sitesi: yaml + gerekirse `normalize.py` fonksiyonu/`site_extractors/`; yeni video host'u: provider kütüphanesine tarif (`scraper/configs/providers/<ad>.yaml`) ya da `scraper/providers/` modülü; yeni host'un afişi için `REMOTE_IMG_HOSTS`.
 - Kart kimliği kuralı: `id` = yapım id'si, bölüm kartı `card_kind=episode` + `episode_id` + `card_key`. İstemci sözleşme koruması: `server/tests/test_client_contract.py` + `docs/api-samples/*.json` (`venv/bin/python -m tools.gen_api_samples`).
-- İstemci HLS/motor kararı `streams[].type`'a göre (URL uzantısına değil); cache-bust şu an `?v=42` (`client/index.html`). UI: `client/README.md`.
+- İstemci HLS/motor kararı `streams[].type`'a göre (URL uzantısına değil); cache-bust şu an `?v=43` (`client/index.html`). UI: `client/README.md`.
 - `server/pi/` deploy ile gider; skill referans blokları üretilir (`tools.gen_onboard_refs`), elle dokunma.
