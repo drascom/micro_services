@@ -32,7 +32,8 @@ import java.io.ByteArrayInputStream
  * XHR karışık içerik değildir; sunucu CORS `*` verir. localStorage bu köken için kalıcıdır.
  *
  * Tuşlar: oklar/OK/rakamlar WebView'e doğal gider (DPAD_CENTER -> Enter/13). Geri -> JS'e `Escape` (27);
- * kök ekranda istemci `DZAndroid.exit()` çağırır. Kanal ve medya tuşları istemcinin tuş haritasına
+ * kök ekranda istemci `DZAndroid.exit()` çağırır.
+ * Güncelleme: Updater (GitHub release) -> `DZUpdate.ready(ver)`; JS `DZAndroid.installUpdate()` ile kurdurur. Kanal ve medya tuşları istemcinin tuş haritasına
  * (client/js/app.js KEYMAP/KEYNAME) birebir key + keyCode ile enjekte edilir.
  */
 class MainActivity : Activity() {
@@ -41,6 +42,14 @@ class MainActivity : Activity() {
     private lateinit var web: WebView
     private var customView: View? = null
     private var customCallback: WebChromeClient.CustomViewCallback? = null
+    private lateinit var updater: Updater
+    private val periodic = android.os.Handler(android.os.Looper.getMainLooper())
+    private val periodicCheck = object : Runnable {
+        override fun run() {
+            updater.check(false)
+            periodic.postDelayed(this, Updater.INTERVAL_MS)
+        }
+    }
 
     private val assetLoader by lazy {
         WebViewAssetLoader.Builder()
@@ -88,6 +97,18 @@ class MainActivity : Activity() {
         }
         web.requestFocus()
         immersive()
+
+        // Otomatik güncelleme: açılışta + 6 saatte bir (Updater kendi 6 saat sınırını da uygular)
+        updater = Updater(this) { state, value -> notifyWeb(state, value) }
+        periodic.postDelayed(periodicCheck, 5000)
+    }
+
+    /** Güncelleme durumunu web'e ilet: ready -> `DZUpdate.ready(ver)`, diğerleri -> `DZUpdate.status(state, value)`. */
+    private fun notifyWeb(state: String, value: String) {
+        val v = value.replace(Regex("[^0-9A-Za-z._-]"), "")
+        val js = if (state == "ready") "window.DZUpdate&&DZUpdate.ready('$v');"
+                 else "window.DZUpdate&&DZUpdate.status('$state','$v');"
+        web.evaluateJavascript(js, null)
     }
 
     /* ---------------- tuşlar ---------------- */
@@ -123,6 +144,26 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun exit() {
             runOnUiThread { finish() }
+        }
+
+        /** Uygulamanın sürümü (versionName). */
+        @JavascriptInterface
+        fun version(): String = updater.current
+
+        /** İndirilip doğrulanmış, kurulmayı bekleyen sürüm ("" = yok); sayfa geç yüklenirse JS buradan sorar. */
+        @JavascriptInterface
+        fun pendingUpdate(): String = updater.readyVersion ?: ""
+
+        /** Elle denetim (6 saat sınırı yok); sonuç `DZUpdate.status/ready` ile gelir. */
+        @JavascriptInterface
+        fun checkUpdate() {
+            runOnUiThread { updater.check(true) }
+        }
+
+        /** Kurulum ekranını aç (bilinmeyen kaynak izni yoksa önce ayarlar). */
+        @JavascriptInterface
+        fun installUpdate() {
+            runOnUiThread { updater.install() }
         }
     }
 
@@ -220,6 +261,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         web.onResume()
+        if (::updater.isInitialized) updater.onResume()
     }
 
     override fun onPause() {
@@ -233,6 +275,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        periodic.removeCallbacks(periodicCheck)
         (web.parent as? ViewGroup)?.removeView(web)
         web.destroy()
         super.onDestroy()

@@ -278,7 +278,9 @@ function healHtml(){
       sw('heal-auto',!!h.autoapply,'Düzeltmeyi otomatik uygula','data-autoapply="1"')+'</div>'+
       '<p class="hint">Kapalıyken LLM sayfa değişince düzeltme önerir ama uygulamaz (olay defterinde “Uygulanmadı” görünür). Açıkken, doğrulamadan geçen öneri yeni config sürümü olarak hemen etkinleşir; gerekirse geri alınır.</p>'+
       '<dl class="skv"><div><dt>Heal</dt><dd>'+(h.enabled?'etkin':'kapalı')+'<small>'+(h.enabled?'':'SCRAPER_HEAL_ENABLED=false')+'</small></dd></div>'+
-      '<div><dt>Sağlayıcı</dt><dd>'+esc(h.provider||'-')+'</dd></div>'+
+      '<div><dt>Sağlayıcı</dt><dd><select id="heal-provider" data-heal-provider="1" aria-label="Heal sağlayıcısı">'+
+        (h.providers||['pi_agent']).map(function(p){return '<option value="'+esc(p)+'"'+(p===h.provider?' selected':'')+'>'+esc(p)+(p==='pi_agent'?' (önerilen)':'')+'</option>'}).join('')+
+        '</select>'+(h.provider_missing?'<small style="color:var(--bad,#c33)">'+esc(h.provider_missing)+' CLI bu sunucuda kurulu değil: heal çalışmaz</small>':'')+'</dd></div>'+
       '<div><dt>Model</dt><dd style="font-size:12.5px">'+esc(h.model||'varsayılan')+'</dd></div>'+
       '<div><dt>Cooldown</dt><dd>'+esc(secText(h.cooldown_seconds||0))+'<small>başarısız denemeden sonra</small></dd></div></dl>'+
     '</div>'+
@@ -370,6 +372,8 @@ root.addEventListener('change',function(ev){
   } else if(t.dataset.liveAuto){
     var lv=t.checked;
     save({live_tv:{enabled:lv}},'Canlı TV otomatik tarama '+(lv?'açıldı':'kapatıldı')).then(liveLoad);
+  } else if(t.dataset.healProvider){
+    save({heal_provider:t.value},'Heal sağlayıcısı: '+t.value);
   } else if(t.dataset.autoapply){
     var v=t.checked;
     save({heal_autoapply:v},'Otomatik uygulama '+(v?'açıldı':'kapatıldı'));

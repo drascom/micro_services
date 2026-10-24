@@ -900,6 +900,7 @@
     var re = function () { if (HV && S.screen === 'home') { measure(HV); updateHome(HV, S.zone, S.idx, S.ctrl); } };
     g.setTimeout(re, 400);
     try { if (doc.fonts && doc.fonts.ready) doc.fonts.ready.then(re); } catch (e) {}
+    g.setTimeout(updatePrompt, 800);
   }
 
   var peekDebounce = null;
@@ -1484,6 +1485,8 @@
     /* Oynatici motoru (yalniz Tizen): Otomatik = HTML5 <video> (sahada dogrulanmis), AVPlay yalniz secilirse; tercih `dzproto.engine` */
     if (g.tizen) defs.push({ key: 'engine', label: 'Oynatıcı', values: [{ v: 'auto', name: 'Otomatik' }, { v: 'avplay', name: 'AVPlay' }] });
     defs.push({ key: 'debug', label: 'Hata ayıklama', values: [{ v: 'off', name: 'Kapalı' }, { v: 'summary', name: 'Özet' }, { v: 'detail', name: 'Ayrıntılı' }] });
+    /* surum denetimi (js/update.js): Tizen + Android kabugu; tarayicida yok */
+    if (DZP.update && DZP.update.kind() !== 'browser') defs.push({ key: 'update', label: 'Güncellemeleri denetle · OK', action: true, text: DZP.update.statusText() });
     return defs;
   }
   function settingValue(def) {
@@ -1501,10 +1504,12 @@
     back.onclick = function () { onKey('back'); };
     screenEl.appendChild(back);
     screenEl.appendChild(el('div', 'h-title nowrap', 'Ayarlar'));
+    var tight = defs.length > 8;
     for (var i = 0; i < defs.length; i++) {
       var d = defs[i];
       var r = settingRow({ label: d.label, value: d.action ? d.text : d.values[settingValue(d)].name, arrows: !d.action }, i, i === S.setRow,
-        defs.length > 7 ? 228 : 240, defs.length > 7 ? 92 : 100);   /* 8 satir ipucu cubuguna tasmasin */
+        tight ? 214 : defs.length > 7 ? 228 : 240, tight ? 82 : defs.length > 7 ? 92 : 100);   /* 8-9 satir ipucu cubuguna tasmasin */
+      if (tight) r.style.height = '80px';
       bindPointer(r, 'srow', i);
       screenEl.appendChild(r);
     }
@@ -1526,6 +1531,10 @@
     var pn = el('div', 'pv-note', settingsNote());
     pn.style.top = (240 + 513 + 26) + 'px';
     screenEl.appendChild(pn);
+    var cur = DZP.update ? DZP.update.current() : String(g.DZ_VERSION || '');
+    var pver = el('div', 'pv-note', 'Sürüm ' + (cur || '—') + (g.DZ_BUILD ? ' · ' + g.DZ_BUILD : ''));
+    pver.style.top = '900px';
+    screenEl.appendChild(pver);
     screenEl.appendChild(hintBar([['‹ ›', ' Değiştir'], ['Geri', ' Ana sayfa']]));
   }
   function settingsNote() {
@@ -1584,6 +1593,7 @@
     else if (k === 'ok' && d && d.key === 'upload') pickUpload();
     else if (k === 'ok' && d && d.key === 'profile') openProfiles('settings');
     else if (k === 'ok' && d && d.key === 'server') openServer('settings');
+    else if (k === 'ok' && d && d.key === 'update') { if (!DZP.update.install()) DZP.update.check(true); }
     else if (k === 'right' && d && d.action) return;
     else if (k === 'right' || k === 'ok') changeSetting(S.setRow, 1);
     else if (k === 'back') { S.zone = 'controls'; S.ctrl = ctrlIdx('settings'); goHome(); }
@@ -1591,15 +1601,24 @@
 
   /* =====================================================================
      SUNUCU ADRESI (ilk acilis; Ayarlar > Sunucu)
-     IP ya da URL: `192.168.1.10` -> `http://192.168.1.10:8090`, semali URL aynen. "Baglan" KAYDETMEDEN /api/health dener;
+     IP ya da URL (kurallar: api.serverCandidates; alan adi once https://, sonra http://:8090; adaylar sirayla denenir). "Baglan" KAYDETMEDEN /api/health dener;
      basariliysa kaydeder ve profil ekranina gecer. Kumanda: satir 0 girdi (OK = ekran klavyesi; klavyede Done = Baglan),
      satir 1 [Baglan].
      ===================================================================== */
   var SV = null;
   function openServer(from) {
     var cur = api.base();
-    S.srv = { from: from, value: cur || api.suggestBase(), row: 1, busy: false, msg: '', err: false };
+    S.srv = { from: from, value: cur || api.suggestBase(), row: 1, busy: false, msg: '', err: false, fail: false, cont: null, back: '' };
     if (!S.srv.value) S.srv.row = 0;
+    go('server');
+  }
+  /* BAGLANTI HATASI (profil yukleme, ana ekran yukleme): ayni ekran hata kipinde -> hata mesaji + mevcut adresle dolu kutu
+     (odak kutuda; OK = ekran klavyesi, Done/Enter = Baglan) + tek [Baglan]. Ayni adresle Baglan = yeniden dene: basariliysa
+     `cont` (kaldigi yerden devam); adres degistiyse kaydedilir ve profil secimine gecilir. back: 'settings' | 'home' | '' (cikis onayi). */
+  function openServerError(message, cont, back) {
+    var cur = api.base();
+    S.srv = { from: 'error', back: back || '', value: cur || api.suggestBase(), row: 0, busy: false,
+      msg: 'Sunucuya bağlanılamadı (' + (cur || '—') + '): ' + (message || 'bağlantı hatası'), err: true, fail: true, cont: cont };
     go('server');
   }
   function liveClock() {
@@ -1610,15 +1629,16 @@
   function renderServer() {
     var V = S.srv;
     screenEl.innerHTML = '';
-    if (V.from === 'settings') {
-      var back = el('div', 'back'); back.innerHTML = chev(true); back.appendChild(doc.createTextNode('Ayarlar'));
+    var backLbl = V.from === 'settings' || V.back === 'settings' ? 'Ayarlar' : (V.back === 'home' ? 'Ana sayfa' : '');
+    if (backLbl) {
+      var back = el('div', 'back'); back.innerHTML = chev(true); back.appendChild(doc.createTextNode(backLbl));
       back.onclick = function () { onKey('back'); };
       screenEl.appendChild(back);
     }
     screenEl.appendChild(liveClock());
     var lg = brandImg('brand-logo', 'img/logo-wide.png', 'DiziFlix'); lg.style.top = '76px';
     screenEl.appendChild(lg);
-    var t = el('div', 'c-title', 'Sunucu adresi'); t.style.top = '300px';
+    var t = el('div', 'c-title', V.fail ? 'Sunucuya bağlanılamadı' : 'Sunucu adresi'); t.style.top = '300px';
     var sub = el('div', 'c-sub', 'diziflix sunucunuzun IP adresini ya da URL\'sini girin (örn. 192.168.1.10 ya da https://diziflix.ornek.com).');
     sub.style.top = '392px';
     screenEl.appendChild(t); screenEl.appendChild(sub);
@@ -1650,7 +1670,7 @@
 
     var st = el('div', 'c-status'); st.style.top = '752px';
     screenEl.appendChild(st);
-    screenEl.appendChild(hintBar(V.from === 'settings' ? [['OK', ' Yaz / Bağlan'], ['Geri', ' Ayarlar']] : [['OK', ' Yaz / Bağlan']]));
+    screenEl.appendChild(hintBar(backLbl ? [['OK', ' Yaz / Bağlan'], ['Geri', ' ' + backLbl]] : [['OK', ' Yaz / Bağlan']]));
     SV = { fld: fld, inp: inp, btn: b, st: st };
     serverPaint();
   }
@@ -1665,20 +1685,32 @@
   function serverConnect() {
     var V = S.srv;
     if (!V || V.busy) return;
-    var base = api.normalizeServer(V.value);
-    if (!base) { V.msg = 'Lütfen sunucunun IP adresini ya da URL\'sini girin.'; V.err = true; V.row = 0; return serverPaint(); }
-    V.value = base; if (SV) SV.inp.value = base;
-    V.busy = true; V.err = false; V.msg = 'Bağlanılıyor: ' + base + ' …';
-    serverPaint();
-    api.probe(base, function (err) {
-      if (S.srv !== V) return;
-      V.busy = false;
-      if (err) { V.err = true; V.msg = 'Bağlanılamadı: ' + (err.message || 'bağlantı hatası'); return serverPaint(); }
+    var cands = api.serverCandidates(V.value), fails = [];
+    if (!cands.length) { V.msg = 'Lütfen sunucunun IP adresini ya da URL\'sini girin.'; V.err = true; V.row = 0; return serverPaint(); }
+    V.busy = true;
+    (function next(i) {
+      if (i >= cands.length) {
+        V.busy = false; V.err = true;
+        V.msg = 'Bağlanılamadı, kaydedilmedi — ' + fails.join(' · ');
+        return serverPaint();
+      }
+      V.err = false; V.msg = 'Bağlanılıyor: ' + cands[i] + ' …';
+      serverPaint();
+      api.probe(cands[i], function (err) {
+        if (S.srv !== V) return;
+        if (err) { fails.push(cands[i] + ': ' + (err.message || 'bağlantı hatası')); return next(i + 1); }
+        V.busy = false;
+        connected(cands[i]);
+      });
+    })(0);
+    function connected(base) {
+      V.value = base; if (SV) SV.inp.value = base;
+      if (V.cont && base === api.base()) return V.cont();   /* ayni adres: yeniden dene, kaldigi yerden */
       api.setBase(base);
       DZP.BG_LIST = []; reloadBackgrounds();
       S.pid = null; S.profiles = []; S.pname = '';
       openProfiles('start');
-    });
+    }
   }
   function serverKey(k) {
     var V = S.srv;
@@ -1687,14 +1719,19 @@
     else if (k === 'ok') {
       if (V.row === 0 && SV) { try { SV.inp.focus(); } catch (e) {} return; }   /* TV: odak girdiye -> ekran klavyesi */
       return serverConnect();
-    } else if (k === 'back') { if (V.from === 'settings') go('settings'); else exitApp(); return; }
+    } else if (k === 'back') {
+      if (V.from === 'settings' || V.back === 'settings') go('settings');
+      else if (V.back === 'home') goHome();
+      else exitApp();
+      return;
+    }
     else return;
     serverPaint();
   }
 
   /* =====================================================================
      PROFIL SECIMI (her soguk acilista; Ayarlar > Profil). Kartlar = profiller (misafir HARIC); alt satir: Misafir, Profil ekle,
-     Profilleri duzenle (duzenleme kipi: kart OK = duzenle). Sunucu adresi yalniz Ayarlar > Sunucu. Odak son secilen profilde.
+     Profilleri duzenle (duzenleme kipi: kart OK = duzenle). Yukleme hatasi -> sunucu adresi ekrani hata kipinde (openServerError). Odak son secilen profilde.
      ===================================================================== */
   var PV = null, PF_W = 240, PF_GAP = 40;
   function openProfiles(from) {
@@ -1709,8 +1746,12 @@
     api.profiles(function (err, data) {
       if (S.pf !== P) return;
       P.loading = false;
-      if (err) P.err = err.message;
-      else {
+      if (err) {
+        P.err = err.message;
+        var from = P.from;
+        return openServerError(err.message, function () { openProfiles(from); }, from === 'settings' ? 'settings' : (from === 'home' ? 'home' : ''));
+      }
+      {
         P.list = data.profiles || [];
         P.cards = []; P.guest = null;
         var last = S.pid || store(K_PROFILE);
@@ -2000,10 +2041,24 @@
   function exitApp() {
     if (DZP.exitConfirm) DZP.exitConfirm.open(stage, { mat: makeMat });
   }
+  /* guncelleme (js/update.js): yalniz ana ekranda, baska pencere/perde yokken (oynatmada asla).
+     Android: "Güncelleme hazır · X" Sonra / Şimdi kur (-> DZAndroid.installUpdate()); Tizen: surum basina bir kez bildirim. */
+  function updatePrompt() {
+    var U = DZP.update;
+    if (!U || S.screen !== 'home' || S.veil || S.pop || (DZP.exitConfirm && DZP.exitConfirm.active())) return;
+    var p = U.homePrompt();
+    if (!p) return;
+    if (p.type === 'install' && DZP.exitConfirm) DZP.exitConfirm.open(stage, { mat: makeMat, title: p.title, labels: ['Sonra', 'Şimdi kur'], onYes: U.install });
+    else if (p.type === 'notify') showVeil(p.title, p.text, false, false, 7000);
+  }
+  if (DZP.update) DZP.update.onChange = function () {
+    if (S.screen === 'settings') renderSettings();
+    updatePrompt();
+  };
 
   var veilTimer = null;
   /* keep: kendiliginden kapanmaz (oynatici "Aciliyor…" perdesi; oynatici kapatir) */
-  function showVeil(title, sub, keep, logo) {
+  function showVeil(title, sub, keep, logo, ms) {
     veil.innerHTML = '';
     if (logo) veil.appendChild(brandImg('veil-logo', 'img/mascot.png', ''));
     veil.appendChild(el('div', 'veil-t', title));
@@ -2011,7 +2066,7 @@
     veil.className = 'on';
     S.veil = !keep;
     if (veilTimer) g.clearTimeout(veilTimer);
-    veilTimer = keep ? null : g.setTimeout(hideVeil, 1600);
+    veilTimer = keep ? null : g.setTimeout(hideVeil, ms || 1600);
   }
   function hideVeil() { if (veilTimer) g.clearTimeout(veilTimer); veilTimer = null; veil.className = ''; S.veil = false; }
 
@@ -2350,6 +2405,7 @@
     function finish() {
       S.loading = false;
       if (S.zone === 'cont' && !S.cont.items.length) S.zone = 'list';
+      if (S.error) return homeFail(S.error);
       if (S.screen === 'home') renderHome();
     }
     api.sections(S.pid, function (err, data) {
@@ -2373,6 +2429,11 @@
       done();
     });
   }
+  /* ana ekran yuklenemedi: sunucu adresi ekrani hata kipinde (ayni adresle Baglan = ana ekrani yeniden yukle) */
+  function homeFail(message) {
+    if (S.screen !== 'home') return;
+    openServerError(message, function () { go('home'); boot(); }, '');
+  }
   /* profil secili (profil ekrani ya da ?profile= kisayolu): profil listesi + ana ekran verisi */
   function boot() {
     S.loading = true; S.error = null;
@@ -2380,7 +2441,7 @@
     var gen = S.gen;
     api.profiles(function (err, data) {
       if (gen !== S.gen) return;
-      if (err) { S.loading = false; S.error = err.message; if (S.screen === 'home') renderHome(); return; }
+      if (err) { S.loading = false; S.error = err.message; return homeFail(err.message); }
       S.profiles = data.profiles || [];
       setProfileName();
       loadHome();
@@ -2431,4 +2492,6 @@
   if (!api.hasBase()) openServer('first');
   else if (S.pid) { go('home'); boot(); }
   else openProfiles('start');
+  /* surum denetimi: acilista (6 saat siniri update.js'te) + 6 saatte bir; tarayicida no-op */
+  if (DZP.update) { DZP.update.check(false); g.setInterval(function () { DZP.update.check(false); }, 6 * 3600 * 1000); }
 })(window);

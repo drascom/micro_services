@@ -3,6 +3,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Otomatik güncelleme: indirilen APK'nın kurulum ekranı (Updater.kt) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Aynı APK hem TV kutusuna hem telefon/tablete: dokunmatik/leanback ZORUNLU değil. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -38,6 +40,13 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Güncelleme APK'sını paket yükleyiciye okutur (yalnız URI izniyle) -->
+        <provider
+            android:name=".ApkProvider"
+            android:authorities="${applicationId}.apk"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 
 </manifest>

@@ -5,7 +5,7 @@ Design principles:
     parse time.
   * Multi-site by construction — a new site is a new ``configs/<site>.yaml`` +
     ``configs/<site>.baseline.json``; no code change is required to register it.
-  * Self-heal — when a site's layout drifts, an LLM (codex CLI) proposes new
+  * Self-heal — when a site's layout drifts, an LLM (pi repair agent) proposes new
     selectors; they are validated against the same HTML in a sandbox before
     being versioned and activated. Failures degrade gracefully.
 

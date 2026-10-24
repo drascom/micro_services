@@ -392,7 +392,7 @@ def _bg_heal(site: str, force: bool = False) -> None:
         except Exception as exc:
             sstate.record_ops_heal({
                 "site": site, "at": sstate._now(), "trigger": "manual", "reasons": reasons,
-                "provider": os.environ.get("SCRAPER_HEAL_PROVIDER") or "codex_cli", "page": "list",
+                "provider": sheal.provider_name(), "page": "list",
                 "outcome": sheal.FAILED, "applied": False, "error": f"fetch_failed: {str(exc)[:200]}",
                 "diff": [], "duration": 0,
             })

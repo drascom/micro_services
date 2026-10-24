@@ -1179,7 +1179,8 @@ do_restart() {
   since=$(rssh "date '+%Y-%m-%d %H:%M:%S'" || true)
   since=${since//[^0-9: -]/}
   [ -n "$since" ] || since="1 minute ago"
-  if ! rssh "systemctl restart $DZ_SERVICE" 2> "$TMP/restart.err"; then
+  # root değilse sudo -n (NOPASSWD gerekir); root'ta düz systemctl
+  if ! rssh 'S=""; [ "$(id -u)" = 0 ] || S="sudo -n"; $S systemctl restart '"$DZ_SERVICE" 2> "$TMP/restart.err"; then
     sed 's/^/      /' "$TMP/restart.err"
     bad "systemctl restart $DZ_SERVICE başarısız"
     RC=2

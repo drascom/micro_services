@@ -83,6 +83,7 @@ main() {
   [ -f "$db" ] || echo "uyarı: $db yok (zaten sıfır?); yine de servis yeniden başlatılır"
 
   echo "== $DZ_SERVICE durduruluyor"
+  systemctl() { if [ "$(id -u)" = 0 ]; then command systemctl "$@"; else sudo -n systemctl "$@"; fi; }  # root değilse NOPASSWD sudo
   systemctl stop "$DZ_SERVICE"
 
   if [ "$BACKUP" = 1 ] && [ -f "$db" ]; then

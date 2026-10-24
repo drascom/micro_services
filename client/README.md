@@ -2,13 +2,13 @@
 
 Tek web istemcisi: tarayıcıda açılır, Tizen TV için `.wgt` olarak paketlenir (`./build-wgt.sh` -> `../dist/diziflix.wgt`, `config.xml`
 app id `dzfLX00001.DiziFlix`), Android'de WebView kabuğu (`android/`) aynı kodu yükler. Vanilla ES5 HTML/CSS/JS, build adımı yok,
-canlı diziflix API'si. Testler: `node tests/player.js`, `node tests/search.js`, `node tests/exitconfirm.js`.
+canlı diziflix API'si. Testler: `node tests/player.js`, `node tests/search.js`, `node tests/exitconfirm.js`, `node tests/update.js`, `node tests/server_error.js`.
 
 ## Açma
 
 ```bash
 cd client && python3 -m http.server 8001
-./build-wgt.sh                     # Tizen paketi: ../dist/diziflix.wgt (build damgası js/version.js)
+./build-wgt.sh                     # Tizen paketi: ../dist/diziflix.wgt (version.json -> config.xml + js/version.js)
 # http://localhost:8001            -> ilk açılışta "Sunucu adresi" ekranı (öneri: http://<sayfanın host'u>:8090)
 # http://localhost:8001/?server=192.168.0.61:8090
 ```
@@ -23,13 +23,34 @@ OK seç, Geri = Hayır); Evet → Tizen `tizen.application.getCurrentApplication
 paneli gizle/göster (masaüstü G; yalnız Hata ayıklama açıkken); Canlı TV'de
 ChannelUp/ChannelDown (masaüstü PageUp/PageDown) ve rakamlar.
 
+## Sürüm ve güncelleme (`version.json`, `js/update.js`)
+
+- Tek sürüm kaynağı `version.json` (`{"version":"X.Y.Z"}`): `build-wgt.sh` `config.xml` widget sürümünü ve `js/version.js`'i
+  (`DZ_VERSION` + `DZ_BUILD` damgası) yazar; Android gradle `versionName`/`versionCode` (X*10000+Y*100+Z) buradan okur.
+  Ayarlar ekranının altında "Sürüm X.Y.Z · <build>".
+- Release: proje kökünden `tools/release.sh <X.Y.Z>` (önce `--dry-run`) -> GitHub release `diziflix-vX.Y.Z`
+  (`drascom/micro_services`) + `diziflix-X.Y.Z.wgt`, `diziflix-X.Y.Z.apk`, `SHA256SUMS`.
+- Denetim istemcide (sunucu yok): `api.github.com/repos/drascom/micro_services/releases`, yalnız taslak/ön sürüm olmayan
+  `diziflix-v*`; en çok 6 saatte bir (açılışta + aralık), ağ hatası sessiz.
+- Tizen (markette değil): yeni sürüm varsa ana ekranda sürüm başına BİR KEZ bildirim "Yeni sürüm X hazır — bilgisayardan kur";
+  kurulum kullanıcıda. Ayarlar > "Güncellemeleri denetle" (OK = elle denetim, sonuç satırda).
+- Android: kabuk indirir + SHA-256 doğrular, `DZUpdate.ready(ver)` ile bildirir; istemci ana ekranda (oynatmada asla)
+  "Güncelleme hazır · X" Sonra / Şimdi kur penceresi açar, Şimdi kur -> `DZAndroid.installUpdate()` (ayrıntı `android/README.md`).
+- Tarayıcı: hiçbir şey gösterilmez.
+
 ## Ekranlar
 
-- **Sunucu adresi** (kayıtlı adres yoksa): IP ya da URL (`192.168.1.10` → `http://192.168.1.10:8090`, şemalı URL aynen); Bağlan
-  `/api/health` dener, başarılıysa kaydeder → profil ekranı. Girdi satırında OK = ekran klavyesi, klavyede Done = Bağlan.
+- **Sunucu adresi** (kayıtlı adres yoksa): IP ya da URL. Kurallar (`api.serverCandidates`): şemalı URL aynen
+  (`https://diziflix.ornek.com`, portsuz); şemasız alan adı → önce `https://<ad>`, olmazsa `http://<ad>:8090`; IP / localhost /
+  tek etiket → `http://<host>:8090`; port verilmişse `http://<host:port>`. Bağlan adayları sırayla `/api/health` ile dener,
+  ilk başarılıyı kaydeder → profil ekranı; hepsi başarısızsa "Bağlanılamadı, kaydedilmedi — <adres>: <neden> · …".
+  Girdi satırında OK = ekran klavyesi, klavyede Done = Bağlan.
+- **Bağlantı hatası** (profil ya da ana ekran yüklenemedi): aynı ekran hata kipinde: "Sunucuya bağlanılamadı (<adres>): <neden>",
+  mevcut adresle dolu kutu (odak kutuda) + tek Bağlan. Aynı adresle Bağlan = yeniden dene (kaldığı yerden); yeni adres
+  denenip kaydedilir → profil ekranı. Geri: kök ekranda çıkış onayı (Ayarlar/ana sayfadan açılan profil ekranında oraya döner).
 - **Profil seçimi** (her soğuk açılışta; arka plandan dönüşte değil): ortalanmış kartlar, odak son seçilen profilde; alt satır
   Misafir (`guest: true`, kart değil, düzenlenemez) · Profil ekle · Profilleri düzenle (kart OK = Ad/Avatar/Çocuk/Kaydet/Sil).
-  Sunucu adresi yalnız Ayarlar > Sunucu'dan değişir (aynı normalize + `/api/health` denemesi; başarısızsa kaydedilmez).
+  Sunucu adresi Ayarlar > Sunucu'dan ya da bağlantı hatası ekranından değişir (aynı kurallar; başarısızsa kaydedilmez).
 
 - **Ana ekran** (Liste ya da Dock): sağ üstte saat (yerel) + karşılama; büyük menü = bölümler (`/api/sections`: Öne Çıkanlar ·
   Diziler · Filmler · Canlı TV · Animeler · DVR); sağda vitrin yazısı (kart yok, tüm arka plan modlarında; List'te sağ sütun

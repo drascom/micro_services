@@ -362,10 +362,12 @@ Testler: `tests/test_ops_library.py`.
 
 ## LLM heal setup (host `61`)
 
-`SCRAPER_HEAL_PROVIDER` selects the backend:
-`codex_cli` (subscription codex CLI, default) | `pi` (pi CLI, one-shot spawn per
+The heal backend is the admin Ayarlar choice (`ops_settings.json` `heal_provider`), else
+`SCRAPER_HEAL_PROVIDER`, else `pi_agent`. Only the `pi` CLI is needed (logged in once:
+`~/.pi/agent/auth.json`); the codex CLI is not installed and not needed. Backends:
+`codex_cli` (codex CLI, only if installed by hand; a missing CLI is a clear heal error and the admin refuses to select it) | `pi` (pi CLI, one-shot spawn per
 heal, subscription-authed via `~/.pi/agent/auth.json`, no API key) |
-`pi_agent` (the repair skill `pi/skills/diziflix-site-onboarding/`: a pi agent with the sandbox tools
+`pi_agent` (default; the repair skill `pi/skills/diziflix-site-onboarding/`: a pi agent with the sandbox tools
 inspects the pages, tests yaml / provider recipes and hands in a proposal with `submit_repair`;
 serves the list-drift heal AND the playback-triggered heal / "no sources" repair of
 `scraper/heal_agent.py`; every proposal passes the same gates: no field dropping, baseline, the
@@ -638,7 +640,7 @@ Copy `.env.example` → `.env`. Relative paths resolve against `server/`.
 | `TRAILER_CHECK_TIMEOUT` / `TRAILER_CHECK_BUDGET` | `3` / `2.5` | seconds: per oEmbed request / longest a detail or streams response waits for a check (the rest finishes in the background) |
 | `TRAILER_OK_TTL` / `TRAILER_DEAD_TTL` | `86400` / `21600` | seconds a verified-alive / verified-dead trailer verdict is reused (timeouts are never cached) |
 | `SCRAPER_HEAL_ENABLED` | `false` | master switch for LLM self-heal on drift |
-| `SCRAPER_HEAL_PROVIDER` | `codex_cli` | `codex_cli` \| `pi` \| `pi_agent` \| `openai_compatible` |
+| `SCRAPER_HEAL_PROVIDER` | `pi_agent` | `pi_agent` \| `pi` \| `codex_cli` \| `openai_compatible`; default only, admin Ayarlar `heal_provider` overrides |
 | `SCRAPER_HEAL_AGENT_TIMEOUT` / `SCRAPER_HEAL_VERIFY_TIMEOUT` | `300` / `420` | `pi_agent` only: longest one repair-agent run / longest server-side verification of its proposal (seconds) |
 | `PLAYHEAL_STREAM_MIN_SOURCES` | `2` | different sources (episodes) of one site refused by the same stream host (the server's own probe fails too: 403 / "security error" page, `streamdiag`) within 24 h that start a repair run (evidence `stream_blocked`, layer `provider`; `blocked` and `hls_unsupported_browser` never count) |
 | `STREAM_PROBE_RANK` | `1` | several different files in one resolution are ordered by how well their DURATION (`library/streamprobe.py`) fits the episode's known length; `0` = off |

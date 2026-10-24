@@ -101,6 +101,8 @@ Type=simple
 User=$(id -un)
 WorkingDirectory=${SCRIPT_DIR}
 EnvironmentFile=${SCRIPT_DIR}/.env
+# heal: the pi CLI lives in ~/.local/bin (npm --prefix ~/.local); codex is not needed
+Environment=PATH=${HOME}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=${SCRIPT_DIR}/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port ${PORT}
 Restart=always
 RestartSec=5

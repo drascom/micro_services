@@ -171,7 +171,8 @@ def parse_output(stdout: str, returncode: int, provider: str) -> dict[str, Any]:
 
 def _result(status: str, *, provider: Optional[str], model: str, detail: Optional[str] = None,
             expires_at: Optional[str] = None, refreshed_at: Optional[str] = None) -> dict[str, Any]:
-    heal_provider = _env("SCRAPER_HEAL_PROVIDER", "codex_cli")
+    from . import settings
+    heal_provider = settings.heal_provider()
     return {
         "status": status,
         "message": _MESSAGES[status],
@@ -179,7 +180,7 @@ def _result(status: str, *, provider: Optional[str], model: str, detail: Optiona
         "provider": provider,
         "model": model,
         "heal_provider": heal_provider,
-        "provider_is_pi": heal_provider == "pi",
+        "provider_is_pi": heal_provider in ("pi", "pi_agent"),
         "expires_at": expires_at,
         "refreshed_at": refreshed_at,
         "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

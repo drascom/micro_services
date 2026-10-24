@@ -20,15 +20,22 @@
     if (s && !/^https?:\/\//i.test(s)) s = 'http://' + s;
     return s;
   }
-  /* kullanicinin yazdigi adres: semasiz `192.168.1.10` / `tv.lan` -> `http://<host>:8090` (port yoksa); sema verilmisse aynen */
-  function normalizeServer(v) {
+  /* kullanicinin yazdigi adresin deneme adaylari (sirayla /api/health):
+     semali URL aynen; port verilmis semasiz -> http://<host:port>; IP / localhost / tek etiket (nas) -> http://<host>:8090;
+     semasiz alan adi (diziflix.ornek.com) -> once https://<ad> (ters vekil, portsuz), olmazsa http://<ad>:8090 */
+  function serverCandidates(v) {
     var s = String(v || '').replace(/^\s+|\s+$/g, '').replace(/\/+$/, '');
-    if (!s) return '';
-    if (/^https?:\/\//i.test(s)) return s;
-    var hostPart = s.split('/')[0];
-    if (!/:\d+$/.test(hostPart)) s = hostPart + ':' + PORT + s.slice(hostPart.length);
-    return 'http://' + s;
+    if (!s) return [];
+    if (/^https?:\/\//i.test(s)) return [s];
+    var hostPart = s.split('/')[0], rest = s.slice(hostPart.length);
+    if (/:\d+$/.test(hostPart)) return ['http://' + s];
+    var plain = 'http://' + hostPart + ':' + PORT + rest;
+    var isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostPart) || /^\[.*\]$/.test(hostPart);
+    if (isIp || hostPart.indexOf('.') < 0) return [plain];
+    return ['https://' + s, plain];
   }
+  /* tek adres (ilk aday): ?server= ve setBase icin */
+  function normalizeServer(v) { return serverCandidates(v)[0] || ''; }
   function autoBase() {
     var saved = cleanBase(lsGet(K_SERVER));
     if (saved) return saved;
@@ -93,6 +100,7 @@
     base: function () { return BASE; },
     hasBase: function () { return !!BASE; },
     normalizeServer: normalizeServer,
+    serverCandidates: serverCandidates,
     suggestBase: suggestBase,
     /* adresi kaydet ve etkinlestir (bos = kaydi sil, otomatik adrese don) */
     setBase: function (v) { var s = cleanBase(normalizeServer(v)); lsSet(K_SERVER, s); BASE = s || autoBase(); return BASE; },

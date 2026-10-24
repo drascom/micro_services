@@ -7,5 +7,5 @@ APScheduler>=3.10,<4.0
 # --- scraper (self-healing) ---
 httpx>=0.27,<1.0
 curl_cffi==0.13.0
-selectolax>=0.3
+selectolax>=0.3,<1.0   # 1.0 removed the Modest backend (selectolax.parser) used by scraper/parse.py
 PyYAML>=6.0

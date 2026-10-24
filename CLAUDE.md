@@ -32,6 +32,7 @@ Repo `github.com/drascom/micro_services` (PUBLIC). Yalnız `diziflix` dalına co
 
 - `server/` - FastAPI + SQLite + Pillow, `0.0.0.0:8090` (ana kod). Giriş: `server/app/main.py` (`app.main:app`)
 - `client/` - tek web istemci, vanilla ES5 HTML/CSS/JS (build adımı yok; `build-wgt.sh` -> `dist/diziflix.wgt`, `config.xml`; Android WebView kabuğu aynı kodu yükler). Gömülü sunucu adresi YOK: ilk açılışta "Sunucu adresi" ekranı, soğuk açılışta her seferinde profil seçimi, misafir profili (`guest`). Ayrıntı `client/README.md`
+- Release: `tools/release.sh <ver>` → GitHub release `diziflix-v*` (sürüm kaynağı `client/version.json`); Android kendini günceller, Tizen bildirir. Release keystore `~/.diziflix/` (git dışı, yedekle).
 - `API.md` - istemci-sunucu wire sözleşmesi (kaynak gerçek budur). Sözleşme değişirse `API.md` ve `client/js/api.js` birlikte güncellenir; yalnızca ALAN EKLENİR
 - `docs/DATA-CONTRACT-V1.md`, `server/CANONICAL.md` - scraper -> katalog -> TV sözleşmesi, kimlik birleştirme, oynatma sağlığı
 - `docs/arch/` - ayrıntılı mimari notlar (aşağıdaki liste)

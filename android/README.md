@@ -21,7 +21,31 @@ cd android && ./gradlew assembleDebug
 cp app/build/outputs/apk/debug/app-debug.apk ../dist/diziflix.apk
 ```
 
-Release (`assembleRelease`) da debug anahtarıyla imzalıdır; debug ↔ release `install -r` veriyi silmez.
+Sürüm `../client/version.json`'dan gelir (`versionName`, `versionCode` = X*10000+Y*100+Z); assets'teki `js/version.js`'i
+`syncClientAssets` yazar.
+
+### Release imzası (keystore — YEDEKLE)
+
+`assembleRelease` kalıcı release anahtarıyla imzalanır: `~/.diziflix/release.keystore` + şifreler `~/.diziflix/keystore.properties`
+(`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; git DIŞI). Dosya yoksa release APK imzasız çıkar (uyarı), debug etkilenmez.
+**Bu iki dosyayı güvenli bir yere yedekle**: kaybolursa yeni APK eski kurulumun üstüne kurulamaz, otomatik güncelleme zinciri kırılır
+(herkes kaldır + kur yapmak zorunda kalır). Debug ve release artık farklı anahtarla imzalı: debug ↔ release geçişi ve eski
+debug-imzalı kurulumdan ilk release'e geçiş bir kez kaldır + kur ister (`adb uninstall com.diziflix.app`; yerel veri — sunucu adresi,
+profil — silinir).
+
+Tam release (wgt + APK + GitHub release): proje kökünden `tools/release.sh [--dry-run] <X.Y.Z>`.
+
+## Otomatik güncelleme (`Updater.kt`, `ApkProvider.kt`)
+
+- Açılışta (5 sn sonra) + 6 saatte bir (en çok 6 saatte bir; API sınırı 60/saat/IP): GitHub
+  `repos/drascom/micro_services/releases?per_page=20` -> taslak/ön sürüm olmayan en yüksek `diziflix-v*`; mevcut `versionName`'den
+  büyükse `diziflix-<ver>.apk` uygulamanın `cache/updates/`'ine indirilir, release'in `SHA256SUMS` asset'iyle doğrulanır. Ağ hatası sessiz.
+- Hazır olunca web'e `DZUpdate.ready(ver)`; istemci ana ekranda "Güncelleme hazır · X" Sonra / Şimdi kur sorar (oynatmada açılmaz).
+  Şimdi kur -> `DZAndroid.installUpdate()` -> sistem kurulum ekranı (`ACTION_VIEW`; API 24+ `content://com.diziflix.app.apk/…`,
+  altı dış önbellekten `file://`). `REQUEST_INSTALL_PACKAGES`; "bilinmeyen kaynak" izni yoksa (API 26+) ayarlar ekranına gider,
+  izin verilip dönülürse kurulum kendiliğinden sürer.
+- Köprü: `DZAndroid.version()`, `pendingUpdate()`, `checkUpdate()` (Ayarlar > Güncellemeleri denetle; sonuç `DZUpdate.status`),
+  `installUpdate()`.
 
 ## Yükleme
 
@@ -47,4 +71,4 @@ macOS'ta `adb connect` "No route to host" verirse: `adb kill-server` sonra tekra
 | PROG_RED | `ColorF0Red` / 403 (oynatıcıda kaynak bozuk bildir, dışında arama) |
 | PROG_YELLOW, CAPTIONS | `ColorF2Yellow` / 405 (altyazı) |
 
-JS köprüsü: `window.DZAndroid.exit()`.
+JS köprüsü: `window.DZAndroid.exit()`, güncelleme için `version()`, `pendingUpdate()`, `checkUpdate()`, `installUpdate()`.

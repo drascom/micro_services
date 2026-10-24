@@ -12,6 +12,7 @@ Only what an admin has saved lives in the file. Everything else falls back to th
 * ``INGEST_SITES`` (comma list)  -> per-site ``enabled``
 * ``INGEST_INTERVAL`` (seconds)  -> per-site ``interval_hours`` (0 disables)
 * ``SCRAPER_HEAL_AUTOAPPLY``     -> ``heal_autoapply`` (unset = on)
+* ``SCRAPER_HEAL_PROVIDER``      -> ``heal_provider`` (unset = ``pi_agent``; one of ``HEAL_PROVIDERS``)
 * ``TMDB_ENRICH_TYPES`` (comma)  -> ``tmdb_types`` (``config.TMDB_ENRICH_TYPES``, read at call time)
 * ``tmdb_auto`` has no env twin: default on (it is inert while no TMDB key is configured)
 * ``LIVE_TV_AUTO``               -> ``live_tv_auto`` (hourly live TV channel scan, library/live.py; unset = on)
@@ -40,6 +41,7 @@ MIN_INTERVAL_HOURS = 0.25
 MAX_INTERVAL_HOURS = 168.0
 DEFAULT_INTERVAL_HOURS = 6.0
 
+HEAL_PROVIDERS = ("pi_agent", "codex_cli", "pi", "openai_compatible")   # first = default (pi repair agent)
 TMDB_KINDS = ("movie", "series")  # canonical order of the selectable TMDB types
 
 _lock = threading.RLock()
@@ -73,6 +75,11 @@ def _env_heal_autoapply() -> bool:
     ``SCRAPER_HEAL_AUTOAPPLY`` (0 / false / no / off / anything not truthy) turns it off."""
     raw = (os.environ.get("SCRAPER_HEAL_AUTOAPPLY") or "").strip().lower()
     return raw in _TRUTHY if raw else True
+
+
+def _env_heal_provider() -> str:
+    raw = (os.environ.get("SCRAPER_HEAL_PROVIDER") or "").strip()
+    return raw if raw in HEAL_PROVIDERS else HEAL_PROVIDERS[0]
 
 
 def _env_tmdb_types() -> list[str]:
@@ -123,6 +130,8 @@ def _load() -> dict[str, Any]:
             out["sites"] = clean
     if isinstance(raw.get("heal_autoapply"), bool):
         out["heal_autoapply"] = raw["heal_autoapply"]
+    if raw.get("heal_provider") in HEAL_PROVIDERS:
+        out["heal_provider"] = raw["heal_provider"]
     if isinstance(raw.get("tmdb_auto"), bool):
         out["tmdb_auto"] = raw["tmdb_auto"]
     if isinstance(raw.get("live_tv_auto"), bool):
@@ -203,6 +212,12 @@ def heal_autoapply() -> bool:
     return _env_heal_autoapply()
 
 
+def heal_provider() -> str:
+    """Heal backend (read on every heal): admin choice, else ``SCRAPER_HEAL_PROVIDER``, else ``pi_agent``."""
+    saved = _load()
+    return saved.get("heal_provider") or _env_heal_provider()
+
+
 def tmdb_auto() -> bool:
     """Whether ingest enriches new items from TMDB in the background (read on every ingest)."""
     saved = _load()
@@ -229,7 +244,8 @@ def tmdb_settings() -> dict[str, Any]:
 
 
 def snapshot() -> dict[str, Any]:
-    return {"sites": all_sites(), "heal_autoapply": heal_autoapply(), "tmdb": tmdb_settings(),
+    return {"sites": all_sites(), "heal_autoapply": heal_autoapply(), "heal_provider": heal_provider(),
+            "tmdb": tmdb_settings(),
             "live_tv": {"enabled": live_tv_auto()}}
 
 
@@ -238,7 +254,7 @@ def snapshot() -> dict[str, Any]:
 def _validate_patch(patch: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(patch, dict):
         raise SettingsError("body must be an object")
-    extra = set(patch) - {"sites", "heal_autoapply", "tmdb", "live_tv"}
+    extra = set(patch) - {"sites", "heal_autoapply", "heal_provider", "tmdb", "live_tv"}
     if extra:
         raise SettingsError(f"unknown setting(s): {', '.join(sorted(extra))}")
     clean: dict[str, Any] = {}
@@ -246,6 +262,10 @@ def _validate_patch(patch: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(patch["heal_autoapply"], bool):
             raise SettingsError("heal_autoapply must be a boolean")
         clean["heal_autoapply"] = patch["heal_autoapply"]
+    if patch.get("heal_provider") is not None:
+        if patch["heal_provider"] not in HEAL_PROVIDERS:
+            raise SettingsError(f"heal_provider must be one of {', '.join(HEAL_PROVIDERS)}")
+        clean["heal_provider"] = patch["heal_provider"]
     live = patch.get("live_tv")
     if live is not None:
         if not isinstance(live, dict) or set(live) - {"enabled"}:
@@ -340,7 +360,7 @@ def update(patch: dict[str, Any]) -> dict[str, Any]:
             eff = site_settings(name)
             merged = {"enabled": eff["enabled"], "interval_hours": eff["interval_hours"], **item}
             data.setdefault("sites", {})[name] = merged
-        for name in ("heal_autoapply", "tmdb_auto", "tmdb_types", "live_tv_auto"):
+        for name in ("heal_autoapply", "heal_provider", "tmdb_auto", "tmdb_types", "live_tv_auto"):
             if name in clean:
                 data[name] = clean[name]
         if clean:

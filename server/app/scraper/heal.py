@@ -1,13 +1,14 @@
 """Self-heal via an LLM that rewrites broken selectors — never at parse time.
 
-Default provider is the **codex CLI** (subscription-authed; no SDK, no API key).
+Default provider is ``pi_agent`` (the pi repair agent, subscription-authed via ``~/.pi/agent/auth.json``; no SDK, no
+API key). ``codex_cli`` / ``pi`` (one-shot prompts) remain selectable; the codex CLI is NOT installed by default.
 Any proposal is validated against the SAME HTML in a sandbox before it can be
 saved: parse -> schema validate -> re-check drift against baseline. Only a
 proposal that clears the baseline is versioned and (optionally) activated.
 
 Every failure path degrades gracefully: the caller keeps serving the old config.
 
-``SCRAPER_HEAL_PROVIDER=pi_agent`` hands the same drift to an agent instead (``heal_agent.drift_generate``: the onboarding
+The provider is ``provider_name()`` (admin ``heal_provider`` > ``SCRAPER_HEAL_PROVIDER`` > ``pi_agent``); ``pi_agent`` hands the same drift to an agent instead (``heal_agent.drift_generate``: the onboarding
 skill in repair mode, sandbox tools, ``submit_repair``); its answer goes through the SAME gates below. ``heal_site_playback``
 is the other entry of the agent: repeating playback failures / a site without episode sources (``playheal.py``), where the
 agent may also fix the provider library (``heal_agent.py`` has the gates).
@@ -29,6 +30,12 @@ from . import drift, parse, schema
 
 #: Model used with the ``pi`` provider when SCRAPER_HEAL_MODEL is unset.
 PI_DEFAULT_MODEL = "openai-codex/gpt-5.6-terra"
+
+
+def provider_name() -> str:
+    """Active heal backend: admin setting (``ops_settings.json`` heal_provider) > ``SCRAPER_HEAL_PROVIDER`` > ``pi_agent``."""
+    from .. import settings
+    return settings.heal_provider()
 
 
 def _env(name: str, default: str) -> str:
@@ -208,7 +215,7 @@ def _call_codex(prompt: str, timeout: int) -> dict:
             timeout=timeout,
         )
     except FileNotFoundError:
-        return _fail("codex CLI not found on PATH")
+        return _fail("codex CLI not installed (heal provider codex_cli); install codex or switch the heal provider to pi_agent")
     except subprocess.TimeoutExpired:
         return _fail(f"codex timed out after {timeout}s")
     except Exception as exc:  # pragma: no cover - defensive
@@ -284,7 +291,7 @@ def _call_pi_agent(cfg, page, html, reasons, timeout) -> dict:
 
 
 def _provider_generate(cfg, page, html, reasons, timeout) -> dict:
-    provider = _env("SCRAPER_HEAL_PROVIDER", "codex_cli")
+    provider = provider_name()
     if provider == "pi_agent":
         return _call_pi_agent(cfg, page, html, reasons, timeout)
     prompt = _build_prompt(cfg, page, html, reasons)
@@ -312,7 +319,7 @@ def _heal_impl(cfg: scfg.SiteConfig, *, page: str, html: str, reasons: list[str]
         timeout = _int_env("SCRAPER_HEAL_TIMEOUT", 120)
         if trigger != "manual":
             timeout = min(timeout, _int_env("SCRAPER_HEAL_AUTO_TIMEOUT", 60))
-        if _env("SCRAPER_HEAL_PROVIDER", "codex_cli") == "pi_agent":   # an agent run takes minutes: its own limit, any trigger
+        if provider_name() == "pi_agent":   # an agent run takes minutes: its own limit, any trigger
             timeout = agent_timeout()
         gen = _provider_generate(cfg, page, html, reasons, timeout)
         agent = gen.pop("agent", None) if isinstance(gen, dict) else None   # the agent log (heal_agent): ops record only
@@ -467,7 +474,7 @@ def _heal_tracked(cfg: scfg.SiteConfig, *, page: str, html: str, reasons: list[s
     from . import state
 
     site = cfg.site_id
-    provider = _env("SCRAPER_HEAL_PROVIDER", "codex_cli")
+    provider = provider_name()
     base = {"site": site, "trigger": trigger, "reasons": list(reasons), "provider": provider,
             "model": _env("SCRAPER_HEAL_MODEL", "") or None, "page": page}
 

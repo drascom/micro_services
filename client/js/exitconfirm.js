@@ -1,7 +1,8 @@
 /* exitconfirm.js - kok ekranlarda (ana ekran menu basi, soguk acilis profil secimi, ilk acilis sunucu adresi) Geri:
    cam "Uygulamadan çıkılsın mı?" onayi. Hayir (varsayilan odak) / Evet; ←→ gez, OK sec, Geri = Hayir.
    Evet: Android kabugu `DZAndroid.exit()`, Tizen `tizen.application.getCurrentApplication().exit()`, tarayici: yalniz kapanir.
-   DZP.exitConfirm = { open(host, opts?), key(k) -> true, close(), active(), quit() } ; opts: {mat(cls, x, y) -> cam katmani, onClose()} */
+   DZP.exitConfirm = { open(host, opts?), key(k) -> true, close(), active(), quit() } ; opts: {mat(cls, x, y) -> cam katmani, onClose(),
+   title?, labels? [hayir, evet], onYes? (verilirse Evet cikis yerine bunu cagirir; ör. "Güncelleme hazır" Sonra / Şimdi kur)} */
 (function (g) {
   'use strict';
   var DZP = g.DZP = g.DZP || {}, doc = g.document;
@@ -33,8 +34,8 @@
     var box = el('div', 'xq');
     box.style.left = X + 'px'; box.style.top = Y + 'px'; box.style.width = W + 'px'; box.style.height = H + 'px';
     if (opts.mat) { try { box.appendChild(opts.mat('xq-mat', X, Y)); } catch (e) {} }
-    box.appendChild(el('div', 'xq-t', 'Uygulamadan çıkılsın mı?'));
-    var row = el('div', 'xq-row'), btns = [], labels = ['Hayır', 'Evet'];
+    box.appendChild(el('div', 'xq-t', opts.title || 'Uygulamadan çıkılsın mı?'));
+    var row = el('div', 'xq-row'), btns = [], labels = opts.labels || ['Hayır', 'Evet'];
     for (var i = 0; i < labels.length; i++) {
       var b = el('div', 'xq-b', labels[i]);
       b.onclick = (function (k) { return function () { if (C) { C.btn = k; key('ok'); } }; })(i);
@@ -44,7 +45,7 @@
     var dim = el('div', 'xq-dim');
     host.appendChild(dim);
     host.appendChild(box);
-    C = { box: box, dim: dim, btns: btns, btn: 0, onClose: opts.onClose };
+    C = { box: box, dim: dim, btns: btns, btn: 0, onClose: opts.onClose, onYes: opts.onYes };
     paint();
     void box.offsetWidth;
     box.className = 'xq on'; dim.className = 'xq-dim on';
@@ -62,7 +63,7 @@
     if (k === 'left' && C.btn > 0) { C.btn--; paint(); }
     else if (k === 'right' && C.btn < C.btns.length - 1) { C.btn++; paint(); }
     else if (k === 'back') close();
-    else if (k === 'ok') { var yes = C.btn === 1; close(); if (yes) quit(); }
+    else if (k === 'ok') { var yes = C.btn === 1, onYes = C.onYes; close(); if (yes) { if (onYes) onYes(); else quit(); } }
     return true;
   }
   DZP.exitConfirm = { open: open, key: key, close: close, active: function () { return !!C; }, quit: quit };
