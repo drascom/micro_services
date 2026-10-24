@@ -11,6 +11,7 @@ var PRESETS=[[0.25,'15 dk'],[1,'1 saat'],[3,'3 saat'],[6,'6 saat'],[12,'12 saat'
 var built=false,sites=null,sFail=false,sLoading=false,ui={rename:null},M=null,tickN=0,timer=null;
 var lives=[];   /* GET /api/ops/sites/manage live_sources: Canlı TV kaynakları (scraper sitesi değil; heal/YAML yok) */
 var BUSY={scan:'tarama',heal:'düzeltme',archive:'arşiv partisi',finder:'kaynak arama'};
+var LIVEST={success:['ok','Başarılı'],no_change:['','Değişiklik yok'],error:['bad','Hata']};
 var RUNST={success:['ok','Başarılı'],ok:['ok','Başarılı'],partial:['warn','Kısmi'],error:['bad','Hata'],failed:['bad','Hata'],running:['run','Çalışıyor']};
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -185,7 +186,15 @@ function drawSites(){
   var lim=sMeta.limits;
   var hint='<div class="hint obscanh">Kontrol '+esc(sMeta.tick_seconds||60)+' sn’de bir yapılır; değişiklikler yeniden başlatma gerektirmez.'+
     (lim?' Aralıklar '+esc(hoursText(lim.min_interval_hours))+' – '+esc(hoursText(lim.max_interval_hours))+' arasındadır.':'')+'</div>';
-  el.innerHTML=warn+'<ul class="obsl">'+sites.map(siteRow).join('')+lives.map(liveRow).join('')+'</ul>'+hint;
+  el.innerHTML=warn+'<ul class="obsl">'+sites.map(function(s){return safeRow(siteRow,s,s&&s.site_id)}).join('')+
+    lives.map(function(l){return safeRow(liveRow,l,l&&l.source)}).join('')+'</ul>'+hint;
+}
+/* bir satırın render hatası tüm listeyi boşaltmasın */
+function safeRow(fn,x,id){
+  try{return fn(x)}catch(e){
+    try{console.error('sites: satır çizilemedi',id,e)}catch(_){}
+    return '<li class="obs"><div class="obsm"><b class="obsname">'+esc(id||'?')+'</b></div><div class="note bad">Satır çizilemedi: '+esc(msgOf(e))+'</div></li>';
+  }
 }
 function scanEditing(){var a=document.activeElement,r=$('ob-sites');return !!(a&&r&&r.contains(a)&&a.matches('select,input[type=number]'))}
 function renderSites(){if(ui.rename||scanEditing())return;drawSites()}
