@@ -950,7 +950,7 @@
   }
   function renderHome(reuse) {
     S.homeAt = Date.now();
-    if (reuse && HC && HC.sig === homeSig() && HC.entries === S.entries && !!HC.v.cont === !!S.cont.items.length) {
+    if (reuse && HC && HC.root && HC.v && HC.v.peek && HC.v.peek.el.parentNode === HC.root && HC.sig === homeSig() && HC.entries === S.entries && !!HC.v.cont === !!S.cont.items.length) {
       screenEl.innerHTML = '';
       screenEl.appendChild(HC.root);
       HV = HC.v;
@@ -2323,6 +2323,12 @@
     screenEl.className = 'is-out';
     if (swapTimer) g.clearTimeout(swapTimer);
     swapTimer = g.setTimeout(function () {
+      swapTimer = null;
+      try { renderScreen(screen); }
+      finally { void screenEl.offsetWidth; screenEl.className = ''; }   /* render hata verse de ekran gorunmez (is-out) kalmaz */
+    }, 140);
+  }
+  function renderScreen(screen) {
       applyClasses();
       HV = null; GV = null; SECV = null; SV = null; PV = null; PEV = null; SRV = null;
       if (screen === 'home') renderHome(true);
@@ -2335,9 +2341,6 @@
       else if (screen === 'server') renderServer();
       else if (screen === 'profiles') renderProfiles();
       else if (screen === 'pedit') renderPedit();
-      void screenEl.offsetWidth;
-      screenEl.className = '';
-    }, 140);
   }
   function goHome() { go('home'); }
   /* kok ekranlarda (ana ekran menu basi, profil secimi, ilk sunucu adresi) Geri: cam "Uygulamadan çıkılsın mı?" onayi

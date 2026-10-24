@@ -17,9 +17,11 @@ body { font-family: 'Manrope', system-ui, Arial, sans-serif; color: var(--ink); 
 
 /* ---------- arka plan ---------- */
 .bg, .bg-layer, .bg-dim, .bg-shade { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
-.bg { overflow: hidden; background: #0E0E0E; }
-/* will-change yalniz gecis sirasinda (JS): kalici tam ekran katman TV GPU bellegini doldurur, donuste takilma yapar */
-.bg-layer { opacity: 0; background-size: cover; background-position: 50% 50%; }
+.bg { overflow: hidden; background: #0E0E0E; z-index: 0; }
+/* will-change yalniz gecis sirasinda (JS): kalici tam ekran katman TV GPU bellegini doldurur, donuste takilma yapar.
+   KATMAN BAGLAMI ZORUNLU: .bg z-index:0 + .bg-layer isolate. Yoksa gecis bitince (opacity 1, will-change yok) katman baglam
+   olusturmaz, .fd-fr (z 1/2) ve .poster-scrim (z 3) #screen'in USTUNE cikar -> menuler kaybolur, yalniz arka plan gorunur. */
+.bg-layer { opacity: 0; background-size: cover; background-position: 50% 50%; isolation: isolate; }
 .bg-shade { transition: opacity 240ms linear; }
 /* koyu gradyan: gorsel yok (Afisler'de afis + Gorsellerim yok, Gorsellerim bos) */
 .bg-grad .bg { background: radial-gradient(ellipse 1500px 1000px at 72% 22%, #2A2520 0%, #16140F 55%, #0B0B0C 100%); }
