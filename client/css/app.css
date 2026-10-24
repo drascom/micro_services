@@ -198,6 +198,7 @@ body { font-family: 'Manrope', system-ui, Arial, sans-serif; color: var(--ink); 
 .dz-ptr .gt:hover .ch-del { display: block; }
 .dz-ptr .ch-del:hover { background: rgba(214,48,48,.88); }
 .grid-empty { position: absolute; left: 140px; top: 300px; font-size: 34px; opacity: .6; }
+.sec-empty { top: 214px; }
 
 /* ---------- ayar/eylem satirlari (tasarim: Appearance) ---------- */
 .sr { position: absolute; left: 108px; width: 700px; height: 90px; padding: 0 22px 0 32px; border-radius: 26px; display: -webkit-flex; display: flex;
@@ -252,11 +253,14 @@ body { font-family: 'Manrope', system-ui, Arial, sans-serif; color: var(--ink); 
 .sec-info { position: absolute; left: 140px; top: 204px; width: 1640px; font-size: 26px; line-height: 34px; font-weight: 500; opacity: .66; }
 /* sabit mercek odagi: odak satiri wrap'te y=30'da durur, mercek ilk yuvada (x=140); ←→ serit, ↑↓ satirlar kayar.
    Kart 360x312 (izgara kartinin 1.2 kati), odaktaki kart mercek altinda scale(1.11). Yalniz transform/opacity animasyonu. */
-.sec-wrap { position: absolute; left: 0; top: 214px; width: 1920px; height: 866px; overflow: hidden; }
+.sec-wrap { position: absolute; left: 0; top: 128px; width: 1920px; height: 952px; overflow: hidden; }
 .sec-in { position: absolute; left: 0; top: 0; width: 1920px; transition: transform 300ms var(--ease); will-change: transform; }
 .srw { position: absolute; left: 0; width: 1920px; height: 400px; opacity: .6; transition: opacity 200ms linear; }
 .srw.on { opacity: 1; }
-.srw-title { position: absolute; left: 140px; top: 0; font-size: 38px; line-height: 46px; font-weight: 600; letter-spacing: -.8px; }
+.srw-title { position: absolute; left: 140px; top: 0; font-size: 38px; line-height: 46px; font-weight: 600; letter-spacing: -.8px;
+  transition: transform 280ms var(--ease); }
+/* odak satiri: mercek karti buyuttugu icin baslik yukari, mercek ust kenarina ~19px nefes */
+.sec-wrap .srw.on .srw-title { -webkit-transform: translateY(-18px); transform: translateY(-18px); }
 .srw-strip { position: absolute; left: 0; top: 72px; height: 312px; width: 1920px; transition: transform 280ms var(--ease); will-change: transform; }
 .sec-in.rep, .srw-strip.rep { transition-duration: 140ms; transition-timing-function: linear; }
 .gt.sc { width: 360px; height: 312px; border-radius: 36px; transition: transform 260ms var(--ease), opacity 160ms linear; }

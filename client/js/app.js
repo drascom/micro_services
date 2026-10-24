@@ -1202,9 +1202,10 @@
     var wrap = el('div', 'sec-wrap'), inner = el('div', 'sec-in');
     /* mercek: arka cam plaka (seridin altinda) + on kenar isigi (ustunde); yeri sabit, odak satirinin ilk yuvasi */
     var lensB = el('div', 'lens lens-b'), lensF = el('div', 'lens lens-f');
-    var empty = el('div', 'grid-empty', '');
+    var empty = el('div', 'grid-empty sec-empty', '');
     wrap.appendChild(lensB); wrap.appendChild(inner); wrap.appendChild(lensF);
-    screenEl.appendChild(back); screenEl.appendChild(el('div', 'h-title nowrap', P.entry.title));
+    /* bolum adi menude secili; buyuk sayfa basligi yok, seritler yukari */
+    screenEl.appendChild(back);
     screenEl.appendChild(wrap); screenEl.appendChild(empty);
     SECV = { wrap: wrap, inner: inner, lensB: lensB, lensF: lensF, empty: empty, rows: {} };
     renderSectionWindow();
@@ -1218,8 +1219,8 @@
     V.lensF.className = 'lens lens-f' + (n ? ' on' : '');
     V.inner.className = 'sec-in' + (keyRep ? ' rep' : '');
     setT(V.inner, 'translateY(' + (-P.row * SECL.stride) + 'px)');
-    setMask(V.wrap, 'linear-gradient(180deg, ' + (P.row > 0 ? 'rgba(0,0,0,0) 0px, #000 26px' : '#000 0px') +
-      ', #000 836px, rgba(0,0,0,0) 866px)');
+    setMask(V.wrap, 'linear-gradient(180deg, ' + (P.row > 0 ? 'rgba(0,0,0,0) 0px, #000 8px' : '#000 0px') +
+      ', #000 922px, rgba(0,0,0,0) 952px)');
     /* sanal pencere: odak satiri +-1 (ve alttaki bir sonraki) DOM'da */
     var from = Math.max(0, P.row - 1), to = Math.min(n, P.row + 3);
     for (k in V.rows) if (+k < from || +k >= to) { V.inner.removeChild(V.rows[k].el); delete V.rows[k]; }
