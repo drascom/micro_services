@@ -278,7 +278,7 @@ def _fetch_collection(cfg: scfg.SiteConfig, collection: dict, limit: int, topup:
         row_selector = collection.get("row_selector") or cfg.row_selector
         fields = collection.get("fields") or cfg.list_fields
         html = fetch.page(cfg, urljoin(cfg.base_url, path), wait_for=row_selector, **post)
-        raw = parse.parse_list(html, row_selector, fields)
+        raw = scollections.apply_series_link(html, collection, parse.parse_list(html, row_selector, fields))   # yaml ``series_link:``
     # optional ``schema: <name>`` on the collection (e.g. HomepageItem: keeps season / episode / today of episode cards)
     model = collection.get("schema") if collection.get("schema") in schema.SCHEMAS else cfg.schema
     valid, metrics = schema.validate_items(model, raw)

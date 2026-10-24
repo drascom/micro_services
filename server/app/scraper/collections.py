@@ -366,3 +366,65 @@ def json_rows(body: str, spec: dict) -> list[dict]:
     fields = spec["fields"]
     return [{name: json_field(node, fspec) for name, fspec in fields.items()}
             for node in nodes if isinstance(node, dict)][:MAX_JSON_ROWS]
+
+
+# --- optional series page lookup (yaml ``series_link:`` on a collection) -------------------------------------------------
+# For "latest episodes" cards that link ONLY the episode page while the site's series pages have their own slugs (dizibox:
+# ``/lupin-4-sezon-1-bolum-izle/`` vs ``/diziler/lupin/``, ``/severance-1-sezon-1-bolum-izle/`` vs ``/diziler/severance-hd/``): the key of a
+# series cannot come from the episode URL. The same page carries the site's full series index (a menu of every series: name -> page);
+# the card's series name is looked up there and ``detail_url`` becomes that series page (the episode URL is kept as ``episode_url``).
+# No extra request. A card whose name is not in the index (or matches several pages) is dropped.
+#
+#   series_link:
+#     index_selector: 'ul.alphabetical-category-list a[href*="/diziler/"]'   # REQUIRED  one <a href> per series of the index
+#     title_field: title                                                      # optional  card field with the series name (default title)
+#     name_attr: title                                                        # optional  index name from this attribute (default: link text)
+SERIES_LINK_KEYS = {"index_selector", "title_field", "name_attr"}
+
+
+def series_link_of(spec: object) -> Optional[dict]:
+    """The ``series_link`` block of a collection when it is usable (``index_selector`` given), else None."""
+    raw = spec.get("series_link") if isinstance(spec, dict) else None
+    return raw if isinstance(raw, dict) and isinstance(raw.get("index_selector"), str) and raw["index_selector"].strip() else None
+
+
+def check_series_link(spec: object) -> list[str]:
+    """Problems of the ``series_link`` block (``[]`` = fine / absent)."""
+    raw = spec.get("series_link") if isinstance(spec, dict) else None
+    if raw is None:
+        return []
+    if not isinstance(raw, dict):
+        return ["series_link: must be a mapping {index_selector, title_field?, name_attr?}"]
+    errors = [f"series_link: unknown key {k!r}" for k in raw if k not in SERIES_LINK_KEYS]
+    if not (isinstance(raw.get("index_selector"), str) and raw["index_selector"].strip()):
+        errors.append("series_link.index_selector: required (CSS of the index links, one <a href> per series)")
+    for key in ("title_field", "name_attr"):
+        if key in raw and not (isinstance(raw[key], str) and raw[key].strip()):
+            errors.append(f"series_link.{key}: must be a non-empty string")
+    return errors
+
+
+def apply_series_link(html: str, spec: dict, rows: list[dict]) -> list[dict]:
+    """``rows`` with ``detail_url`` rewritten to the series page of the page's index (see ``series_link``); unmatched rows are dropped.
+    Without a ``series_link`` block the rows are returned unchanged."""
+    link = series_link_of(spec)
+    if link is None:
+        return rows
+    from selectolax.parser import HTMLParser
+    from ..library.normalize import clean_title, fold
+    attr = link.get("name_attr")
+    index: dict[str, set] = {}
+    for node in HTMLParser(html or "").css(link["index_selector"]):
+        href = (node.attributes.get("href") or "").strip()
+        name = (node.attributes.get(attr) if attr else None) or node.text(strip=True)
+        key = fold(clean_title(name or ""))
+        if href and key:
+            index.setdefault(key, set()).add(href)
+    field = link.get("title_field") or "title"
+    out: list[dict] = []
+    for row in rows:
+        hits = index.get(fold(clean_title(str(row.get(field) or ""))))
+        if not hits or len(hits) != 1:
+            continue
+        out.append({**row, "episode_url": row.get("detail_url"), "detail_url": next(iter(hits))})
+    return out

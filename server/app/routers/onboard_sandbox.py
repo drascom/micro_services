@@ -1626,6 +1626,7 @@ def _check_collection(index: int, c: Any, base: str, fetch_mode: str = "http") -
         if urlsplit(url).scheme not in ("http", "https") or _host_key(url) != _host_key(base):
             errors.append(f"path: {path!r} must stay on the site's own host ({urlsplit(base).hostname})")
     errors += site_collections.check_request(spec)
+    errors += site_collections.check_series_link(spec)
     if site_collections.method_of(spec) == "POST" and fetch_mode == "browser":
         errors.append("method: POST needs fetch_mode: http (the browser engine cannot send a POST body)")
     if spec.get("row_selector") is not None:
@@ -1738,7 +1739,7 @@ def _parse_collection(cfg, spec: dict, html: str, limit: int, all_out: Optional[
     ``item_limit`` / required / sort rules (the series directory is built from whole pages)."""
     from ..library import ingest
     fields = spec.get("fields") or cfg.list_fields
-    raw = parse.parse_list(html, spec.get("row_selector") or cfg.row_selector, fields)
+    raw = site_collections.apply_series_link(html, spec, parse.parse_list(html, spec.get("row_selector") or cfg.row_selector, fields))
     valid, _metrics = schema.validate_items(cfg.schema, raw)
     if all_out is not None:
         all_out.extend(valid)
