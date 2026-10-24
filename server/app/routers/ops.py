@@ -27,7 +27,8 @@ ADMIN_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 _ASSETS = {"app.js": "text/javascript", "library.js": "text/javascript", "settings.js": "text/javascript",
            "errors.js": "text/javascript",
            "categories.js": "text/javascript", "backgrounds.js": "text/javascript",
-           "sites.js": "text/javascript", "style.css": "text/css"}
+           "sites.js": "text/javascript", "live.js": "text/javascript", "media.js": "text/javascript",
+           "style.css": "text/css"}
 
 
 # --- pages ------------------------------------------------------------------

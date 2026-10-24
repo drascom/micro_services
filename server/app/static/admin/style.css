@@ -443,3 +443,81 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 @media (max-width:980px){.accp .layout{grid-template-columns:1fr}.accinfo{margin-left:0}}
 @media (max-width:640px){.acct{min-width:0}.accc{flex-wrap:wrap}}
 .evh .grow{flex:1;min-width:0}
+/* Ayarlar: alt menü + kompakt satırlar (etiket solda, kontrol sağda) */
+.setw{display:grid;grid-template-columns:170px minmax(0,1fr);gap:20px;align-items:start;max-width:1040px}
+.setnav{display:flex;flex-direction:column;gap:2px;position:sticky;top:12px}
+.setnav button{font:600 13.5px var(--font);text-align:left;padding:7px 12px;min-height:36px;border:0;border-left:2px solid transparent;background:none;color:var(--muted);cursor:pointer;border-radius:0 8px 8px 0}
+.setnav button:hover{color:var(--text);background:var(--surface2)}
+.setnav button[aria-selected=true]{color:var(--text);border-left-color:var(--accent);background:var(--surface2)}
+.setmain{min-width:0}
+.setmain .sset,.setmain .catw,.setmain .sysev{max-width:none;margin-top:0}
+.sset{gap:18px}
+.sset section>h2{margin-bottom:4px}
+.srow2{display:flex;align-items:center;justify-content:space-between;gap:6px 14px;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--line);font-size:13.5px;min-height:42px}
+.srow2.off{opacity:.6}
+.srow2 .sk{flex:1 1 160px;min-width:0;font-weight:600}
+.srow2 .sv{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;min-width:0}
+.srow2 .sv .dim{font-size:12.5px}
+.srow2 .sv .bar{width:90px;flex:none;margin:0}
+.srow2 select{font:inherit;font-size:13px;min-height:32px;padding:3px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);max-width:100%}
+.srow2 .btn{min-height:32px;padding:4px 12px}
+.srow2 .seg button{min-height:30px;padding:4px 10px}
+.srow2 .chk{min-height:30px;font-size:13px}
+.srow2 .bad{color:var(--bad);font-size:12.5px}
+.sset .evn code{font-family:var(--mono);font-size:12px}
+.sprev{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:8px}
+.setmain .catadd{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+@media (max-width:760px){
+  .setw{grid-template-columns:1fr;gap:10px}
+  .setnav{flex-direction:row;position:static;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--line)}
+  .setnav::-webkit-scrollbar{display:none}
+  .setnav button{border-left:0;border-bottom:2px solid transparent;border-radius:0;white-space:nowrap;background:none}
+  .setnav button[aria-selected=true]{border-bottom-color:var(--accent);background:none}
+}
+/* Canlı TV sekmesi */
+.livew{display:flex;flex-direction:column;gap:6px}
+.lvhead .acch{background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.lvbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.lvbar input,.lvform input[type=text],.lvform input[type=url]{font:inherit;font-size:13.5px;min-height:34px;padding:4px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);min-width:0}
+.lvbar input{flex:1 1 200px}
+.lvform{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.lvform input[type=text]{width:160px}
+.lvform .grow{flex:1 1 240px}
+.lvlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+.lvch{display:flex;gap:8px 10px;align-items:flex-start;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:13px}
+.lvch .grow{flex:1;min-width:0;overflow-wrap:anywhere}
+.lvch>.num{min-width:2.2em;padding-top:1px}
+.lvst{font-size:11.5px;margin-top:2px}
+.lvst .ok{color:var(--ok)} .lvst .bad{color:var(--bad)}
+.act.sm button.obdanger{color:var(--bad);border-color:var(--bad)}
+/* Kütüphane: yan panel media.js'te, liste tek sütun */
+.layout.single,.accp .layout.single{grid-template-columns:minmax(0,1fr)}
+/* Yapım yan paneli */
+.mp{position:fixed;inset:0;z-index:20}
+.mpb{position:absolute;inset:0;background:rgba(0,0,0,.35)}
+.mpbox{position:absolute;top:0;right:0;bottom:0;width:min(560px,100%);background:var(--bg);border-left:1px solid var(--line);box-shadow:-12px 0 40px rgba(0,0,0,.25);overflow:auto;padding:12px 16px 24px;outline:none}
+body.mpopen{overflow:hidden}
+.mptop{display:flex;align-items:center;gap:8px;position:sticky;top:-12px;background:var(--bg);padding:4px 0;z-index:1}
+.mph{display:flex;gap:12px;align-items:flex-start;margin:4px 0 6px}
+.mph h3{font:600 20px/1.2 var(--serif);margin:0 0 2px;overflow-wrap:anywhere}
+.mph .grow{flex:1;min-width:0;font-size:13px}
+.mpp{width:64px;height:96px;object-fit:cover;border-radius:6px;flex:none;background:var(--surface2);border:1px solid var(--line)}
+span.mpp{display:flex;align-items:center;justify-content:center;font:600 24px var(--serif);color:var(--muted)}
+.mpt{display:flex;gap:4px 6px;flex-wrap:wrap;align-items:center;margin-top:4px;font-size:12.5px}
+.mpsum{margin-top:4px;font-size:12.5px}
+.mps{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:14px 0 6px;font-weight:600}
+.msl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+.msr{display:flex;gap:6px 8px;align-items:flex-start;flex-wrap:wrap;padding:5px 8px;border:1px solid var(--line);border-left:3px solid var(--line);border-radius:6px;background:var(--surface);font-size:12.5px}
+.msr.st-broken{border-left-color:var(--bad)} .msr.st-suspect{border-left-color:var(--warn)} .msr.st-healthy{border-left-color:var(--ok)}
+.msr .grow{flex:1;min-width:140px;overflow-wrap:anywhere}
+.msre{display:block;color:var(--bad);font-size:12px}
+.mpe{font-size:12.5px;padding:4px 0}
+.mpss{margin:6px 0;flex-wrap:wrap}
+.mpss button{min-height:30px;padding:3px 10px}
+.mpel{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.mpeb{all:unset;box-sizing:border-box;display:flex;gap:8px;align-items:center;width:100%;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:13px}
+.mpeb:hover,.mpe1.open>.mpeb{background:var(--surface2)}
+.mpeb:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.mpeb .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mpe1 .msl{margin:3px 0 6px 12px}
+@media (max-width:640px){.mpbox{width:100%;border-left:0;padding:10px 12px 24px}}

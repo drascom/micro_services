@@ -1,15 +1,14 @@
 /* "Siteler" sekmesi (#onboard): site AKORDİYONU. Kapalı satır = durum noktası · ad · son tarama · içerik · otomatik tarama
    (anahtar + aralık; PUT /api/ops/settings sites.<site>) · Tara · ⋯ menüsü (YAML / Devir notu / Ad değiştir / Heal / Geri al /
    Arşivden bir parti al / Sil). Açılınca alt sekmeler: Olaylar (GET /api/ops/events?site=), Kütüphane (library.js dzLib.mount,
-   site süzgeçli), Oynatıcılar (providers + son çözümleme/oynatma sağlığı, /api/ops/overview). Canlı TV kaynağı ve "Tüm kütüphane"
-   ayrı satırlar. window.dzOpenMedia = olay bağlantılarının tek hedefi. Sekme gizliyken ağ isteği yok. */
+   site süzgeçli), Oynatıcılar (providers + son çözümleme/oynatma sağlığı, /api/ops/overview). "Tüm kütüphane" ayrı satır.
+   Canlı TV ayrı sekmede (live.js); yapım bağlantıları yan panelde (media.js). Sekme gizliyken ağ isteği yok. */
 (function(){
 'use strict';
 var $=function(i){return document.getElementById(i)};
 var SITES='/api/ops/sites';
 var PRESETS=[[0.25,'15 dk'],[1,'1 saat'],[3,'3 saat'],[6,'6 saat'],[12,'12 saat'],[24,'24 saat']],customOpen={},sMeta={};
 var built=false,sites=null,sFail=false,sLoading=false,ui={rename:null,menu:null},M=null,tickN=0,timer=null;
-var lives=[];   /* GET /api/ops/sites/manage live_sources: Canlı TV kaynakları (scraper sitesi değil; heal/YAML yok) */
 var LIB='__lib';   /* "Tüm kütüphane" satırı */
 var acc={open:null,sub:{}},evl=null,evlSite=null;
 var BUSY={scan:'tarama',heal:'düzeltme',archive:'arşiv partisi',finder:'kaynak arama'};
@@ -52,7 +51,6 @@ function copyText(t){
   return Promise.reject(new Error('kopyalanamadı'));
 }
 function siteById(id){var l=sites||[];for(var i=0;i<l.length;i++)if(l[i].site_id===id)return l[i];return null}
-function liveById(id){for(var i=0;i<lives.length;i++)if(lives[i].source===id)return lives[i];return null}
 function ovSite(id){return window.dzEv?window.dzEv.siteOf(id):null}
 
 /* ---- iskelet ---- */
@@ -145,24 +143,12 @@ function headSite(s){
   }
   return h;
 }
-function headLive(l){
-  var c=l.counts||{},le=l.last_event,id=l.source,open=acc.open===id;
-  var d=l.running?['run','Taranıyor']:!le?['','Hiç taranmadı']:le.status==='error'?['bad','Hata']:['ok','Başarılı'];
-  return '<div class="acch">'+
-    '<button class="acct" data-ob="toggle" data-site="'+esc(id)+'" aria-expanded="'+open+'">'+dot(d)+'<b>'+esc(l.label||'Canlı TV')+'</b><span class="dim mono">'+esc(id)+'</span></button>'+
-    '<span class="accm"><span title="'+esc(le?'Son tarama '+when(le.at):'')+'"'+(le&&le.status==='error'?' class="bad"':'')+'>'+esc(le?ago(le.at):'hiç taranmadı')+'</span>'+
-      '<span>'+esc(num(c.visible)+' görünür kanal')+'</span></span>'+
-    '<span class="accc"><span class="dim">'+esc(l.enabled?'her '+(l.interval_minutes||60)+' dk'+(l.next_scan_at&&!l.running?' · '+until(l.next_scan_at):''):'otomatik kapalı')+'</span></span>'+
-    '<button class="btn" data-ob="lscan" data-site="'+esc(id)+'"'+(l.running?' disabled':'')+'>Tara</button>'+
-    menuHtml(id,[mi('lsettings',id,'Ayarlar › Canlı TV')])+
-  '</div>';
-}
 function headLib(){
   return '<div class="acch"><button class="acct" data-ob="toggle" data-site="'+LIB+'" aria-expanded="'+(acc.open===LIB)+'">'+dot(['lib','Tüm siteler'])+'<b>Tüm kütüphane</b></button>'+
     '<span class="accm"><span>tüm sitelerin yapımları</span></span></div>';
 }
 /* ---- açık satır gövdesi ---- */
-function subsOf(id){return id===LIB?[['library','Kütüphane']]:liveById(id)?[['events','Olaylar'],['channels','Kanallar']]:[['events','Olaylar'],['library','Kütüphane'],['players','Oynatıcılar']]}
+function subsOf(id){return id===LIB?[['library','Kütüphane']]:[['events','Olaylar'],['library','Kütüphane'],['players','Oynatıcılar']]}
 function bodyHtml(id){
   var subs=subsOf(id),cur=acc.sub[id]||subs[0][0],s=siteById(id);
   var meta=s?'<div class="accinfo dim"><span class="mono">'+esc(id)+'</span>'+(s.base_url?' · '+esc(hostOf(s.base_url)):'')+' · v'+esc(s.version==null?'?':s.version)+
@@ -189,8 +175,6 @@ function fillPanel(id,opt){
     if(window.dzLib)window.dzLib.mount(p,id===LIB?null:id,opt||{});
   } else if(cur==='players'){
     p.innerHTML=safeHtml(function(){return playersHtml(id)});
-  } else if(cur==='channels'){
-    p.innerHTML=safeHtml(function(){return channelsHtml(liveById(id))});
   }
 }
 function safeHtml(fn){try{return fn()}catch(e){try{console.error('sites: panel çizilemedi',e)}catch(_){}return '<div class="note bad">Çizilemedi: '+esc(msgOf(e))+'</div>'}}
@@ -207,26 +191,14 @@ function playersHtml(id){
   }
   return h;
 }
-function channelsHtml(l){
-  if(!l)return '';
-  var c=l.counts||{},le=l.last_event;
-  return '<dl class="obsd">'+
-    '<dt>Ülke</dt><dd>'+esc((l.countries||[]).join(', ').toUpperCase()||'-')+(l.languages&&l.languages.length?' <span class="dim">· dil '+esc(l.languages.join(', '))+'</span>':'')+'</dd>'+
-    '<dt>Son tarama</dt><dd>'+(le?esc(ago(le.at))+' <span class="dim">'+esc(le.status==='error'?(le.error||''):num(le.new)+' yeni · '+num(le.updated)+' güncellendi · '+num(le.deactivated)+' pasif')+'</span>':'<span class="dim">yok</span>')+'</dd>'+
-    '<dt>Kanallar</dt><dd>'+esc(num(c.active)+' aktif · '+num(c.visible)+' görünür · '+num(c.hidden)+' gizli · '+num(c.inactive)+' pasif')+'</dd>'+
-    '<dt>Sağlık</dt><dd>'+esc(num(c.ok)+' sağlıklı (m3u8) · '+num(c.youtube_only)+' yalnız YouTube · '+num(c.hidden)+' oynatılamaz')+'</dd>'+
-  '</dl>';
-}
-
 /* ---- liste (anahtarlı DOM: yenilemede yalnız başlıklar değişir, açık gövde/Kütüphane korunur) ---- */
 function entries(){
   var out=[];
   (sites||[]).forEach(function(s){out.push({id:s&&s.site_id,kind:'site',x:s})});
-  lives.forEach(function(l){out.push({id:l&&l.source,kind:'live',x:l})});
   if(sites&&sites.length)out.push({id:LIB,kind:'lib',x:null});
   return out;
 }
-function headOf(en){return en.kind==='site'?headSite(en.x):en.kind==='live'?headLive(en.x):headLib()}
+function headOf(en){return en.kind==='site'?headSite(en.x):headLib()}
 function drawSites(){
   var el=$('ob-sites'),w=$('ob-warn');if(!el)return;
   if(!sites){
@@ -244,7 +216,7 @@ function drawSites(){
     var li=el.querySelector('li[data-acc="'+cssq(id)+'"]');
     if(!li){li=document.createElement('li');li.className='acc';li.setAttribute('data-acc',id);li.innerHTML='<div class="acchw"></div><div class="accb hidden"></div>'}
     el.appendChild(li);   // sırayı korur
-    var busy=en.kind==='site'?!!(en.x&&(en.x.busy||(en.x.auto_scan&&en.x.auto_scan.running))):en.kind==='live'?!!(en.x&&en.x.running):false;
+    var busy=en.kind==='site'?!!(en.x&&(en.x.busy||(en.x.auto_scan&&en.x.auto_scan.running))):false;
     li.classList.toggle('isbusy',busy);li.classList.toggle('open',acc.open===id);
     li.firstChild.innerHTML=safeRow(headOf,en,id);
     var b=li.lastChild,isOpen=acc.open===id;
@@ -265,7 +237,7 @@ function scanEditing(){var a=document.activeElement,r=$('ob-sites');return !!(a&
 function renderSites(){if(ui.rename||scanEditing())return;drawSites()}
 function loadSites(){
   sLoading=true;
-  return call(SITES+'/manage').then(function(d){sites=(d&&d.sites)||[];lives=(d&&d.live_sources)||[];sMeta={any_enabled:d&&d.any_enabled,limits:d&&d.limits,tick_seconds:d&&d.tick_seconds};sFail=false}).catch(function(e){sFail=msgOf(e)})
+  return call(SITES+'/manage').then(function(d){sites=(d&&d.sites)||[];sMeta={any_enabled:d&&d.any_enabled,limits:d&&d.limits,tick_seconds:d&&d.tick_seconds};sFail=false}).catch(function(e){sFail=msgOf(e)})
     .then(function(){sLoading=false;renderSites()});
 }
 function toggle(id,force,sub,opt){
@@ -311,13 +283,6 @@ function healNow(site){
     toast(r.started===false?site+': '+(r.reason==='already_running'?'zaten çalışıyor':r.reason):site+': heal başlatıldı',r.started===false?'bad':'');
     return loadSites();
   }).catch(function(e){toast('Başlatılamadı: '+msgOf(e),'bad')});
-}
-function liveScanNow(b){
-  b.disabled=true;
-  call('/api/ops/live/scan',{method:'POST'}).then(function(r){
-    toast(r&&r.started===false?'Canlı TV: zaten çalışıyor':'Canlı TV taraması başladı',r&&r.started===false?'bad':'');
-    setTimeout(loadSites,1500);
-  }).catch(function(e){toast('Başlatılamadı: '+msgOf(e),'bad');b.disabled=false});
 }
 function doRename(site){
   var dn=$('ob-rn').value.trim();
@@ -453,8 +418,6 @@ function bind(){
     else if(a==='srollback'){drawSites();rollbackSite(site)}
     else if(a==='sheal'){drawSites();healNow(site)}
     else if(a==='sscan'){scanNow(site,b)}
-    else if(a==='lscan'){liveScanNow(b)}
-    else if(a==='lsettings'){var tb=$('tab-btn-settings');if(tb)tb.click()}
     else if(a==='sarchive'){drawSites();archiveNow(site,b)}
     else if(a==='syaml'){drawSites();openYaml(site)}
     else if(a==='shandoff'){drawSites();openHandoff(site)}
@@ -477,32 +440,6 @@ document.addEventListener('dz:overview',function(){
   if(!visible()||!acc.open)return;
   if((acc.sub[acc.open]||'')==='players')fillPanel(acc.open);
 });
-
-/* ---- olay bağlantılarının TEK hedefi: yapımı Siteler › Kütüphane'de aç (Adım 2: yapım yan paneli) ----
-   ref = {id, title, site}. id varsa yapımın sitelerinden (olayın sitesi önce, yoksa ilki) açılır; yoksa başlık aranır. */
-function openMedia(ref){
-  ref=ref||{};
-  var tb=$('tab-btn-onboard');if(tb&&$('tab-onboard').classList.contains('hidden'))tb.click();
-  build();
-  var go=function(site,opt){
-    var p=sites?Promise.resolve():loadSites();
-    p.then(function(){
-      if(site!==LIB&&!siteById(site))site=LIB;
-      toggle(site,true,'library',opt);
-      var li=$('ob-sites').querySelector('li[data-acc="'+cssq(site)+'"]');
-      if(li&&li.scrollIntoView)li.scrollIntoView({block:'start',behavior:'smooth'});
-    });
-  };
-  if(ref.id){
-    call('/api/ops/library?facets=0&limit=1&id='+enc(ref.id)).then(function(d){
-      var it=d&&d.items&&d.items[0];
-      if(!it){go(ref.site||LIB,{q:ref.title||ref.id});return}
-      var src=it.sources||[];
-      go(ref.site&&src.indexOf(ref.site)>=0?ref.site:(src[0]||LIB),{id:ref.id});
-    }).catch(function(){go(ref.site||LIB,{q:ref.title||''})});
-  } else go(ref.site||LIB,{q:ref.title||''});
-}
-window.dzOpenMedia=openMedia;
 
 /* ---- sekme kancası ---- */
 function onShow(){

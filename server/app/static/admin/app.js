@@ -3,7 +3,7 @@
 'use strict';
 var $=function(i){return document.getElementById(i)};
 /* Ortak olay modülü (window.dzEv): olay rozeti/başlık/ayrıntı + üst sistem çubuğu/banner + /api/ops/active yoklaması.
-   Olay listeleri Siteler (site olayları), Hatalar ve Ayarlar (sistem olayları) sekmelerinde dzEv.list ile çizilir. */
+   Olay listeleri Siteler (site olayları), Hatalar, Canlı TV, Ayarlar › Sistem olayları ve yapım yan panelinde dzEv.list ile çizilir. */
 var sites=[], liveSrc=[], lastKey=null, activeNow=[], lastHeal=null;
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -181,7 +181,7 @@ function detailHtml(e,extra){
       if(e.probed!=null)h+=line('Yoklama',[B(num(e.probe_ok))+' / '+num(e.probed)+' akış yanıt verdi',cnt(e.no_cors,'CORS yok (vekil)')]);
     }
     h+=line('Kaynak',[cnt(e.total,'kanal'),cnt(e.kept,'dil süzgecinden geçen')]);
-    a='<button data-goto="onboard">Siteler</button><button data-goto="settings">⚙ Canlı TV</button>';
+    a='<button data-goto="live">◉ Canlı TV</button>';
   } else if(e.kind==='blocked_page'){
     h+=line('Engel',[tv('',esc(e.site||'')),tv('neden',esc(BV[e.via]||e.via||'')),tv('sayfa',esc(e.page_kind||'')),e.until?'yeniden denenir '+B(esc(when(e.until))):''])+
       (e.reason?nt('warn',esc(e.reason)):'')+
@@ -270,7 +270,7 @@ function mediaLink(ref,html){
   if(!ref)return html;
   return '<a href="#" class="mlink" data-media="'+esc(ref.id||'')+'" data-mtitle="'+esc(ref.title||'')+'" data-msite="'+esc(ref.site||'')+'">'+html+'</a>';
 }
-/* tek hedef: Siteler › Kütüphane (Adım 2'de yapım yan paneli). Uygulama sites.js'te (window.dzOpenMedia). */
+/* tek hedef: yapım yan paneli (media.js window.dzOpenMedia). */
 function openMedia(ref){if(window.dzOpenMedia)window.dzOpenMedia(ref)}
 document.addEventListener('click',function(ev){
   var a=ev.target&&ev.target.closest&&ev.target.closest('[data-media]');if(!a)return;

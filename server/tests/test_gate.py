@@ -455,6 +455,10 @@ class PlaybackTests(GateBase):
         detail = ops_library.library_videos(self.cid, limit=200)
         self.assertEqual((detail["summary"]["blocked"], detail["summary"]["total"], detail["summary"]["broken"]), (1, 3, 0))
         self.assertEqual(detail["summary"]["label"], "0/3")
+        panel = ops_library.library_detail(self.cid)   # admin yapım yan paneli: same counters + episode list without the blocked one
+        self.assertEqual((panel["item"]["id"], panel["summary"]["label"]), (self.cid, "0/3"))
+        self.assertEqual({(e["season"], e["episode"]): e["sources"] for e in panel["episodes"]}.get((2, 1), 0), 0)
+        self.assertTrue(any(e["sources"] for e in panel["episodes"]))
 
     def test_the_source_finder_never_runs_a_repair_for_it(self):
         row = self.source(2, 1)

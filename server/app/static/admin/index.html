@@ -15,9 +15,8 @@
   <nav class="tabs" role="tablist" aria-label="Bölümler">
     <button role="tab" id="tab-btn-onboard" data-tab="onboard" aria-selected="true" aria-controls="tab-onboard">Siteler</button>
     <button role="tab" id="tab-btn-errors" data-tab="errors" aria-selected="false" aria-controls="tab-errors">Hatalar</button>
-    <button role="tab" id="tab-btn-categories" data-tab="categories" aria-selected="false" aria-controls="tab-categories">Kategoriler</button>
+    <button role="tab" id="tab-btn-live" data-tab="live" aria-selected="false" aria-controls="tab-live">Canlı TV</button>
     <button role="tab" id="tab-btn-settings" data-tab="settings" aria-selected="false" aria-controls="tab-settings">Ayarlar</button>
-    <button role="tab" id="tab-btn-backgrounds" data-tab="backgrounds" aria-selected="false" aria-controls="tab-backgrounds">Arka planlar</button>
   </nav>
   <div id="banner" class="banner" aria-live="polite"></div>
   <div id="tab-onboard" role="tabpanel" aria-labelledby="tab-btn-onboard">
@@ -26,19 +25,23 @@
   <div class="hidden" id="tab-errors" role="tabpanel" aria-labelledby="tab-btn-errors">
     <div id="err-root" class="errw"><div class="empty">Yükleniyor…</div></div>
   </div>
-  <div class="hidden" id="tab-categories" role="tabpanel" aria-labelledby="tab-btn-categories">
-    <div id="cat-root" class="catw"><div class="empty">Yükleniyor…</div></div>
+  <div class="hidden" id="tab-live" role="tabpanel" aria-labelledby="tab-btn-live">
+    <div id="live-root" class="livew"><div class="empty">Yükleniyor…</div></div>
   </div>
   <div class="hidden" id="tab-settings" role="tabpanel" aria-labelledby="tab-btn-settings">
-    <div id="set-root" class="sset"><div class="empty">Yükleniyor…</div></div>
-    <section id="sysev-root" class="sysev" aria-label="Sistem olayları"></section>
-  </div>
-  <div class="hidden" id="tab-backgrounds" role="tabpanel" aria-labelledby="tab-btn-backgrounds">
-    <div id="bg-root" class="catw"><div class="empty">Yükleniyor…</div></div>
+    <div class="setw">
+      <nav id="set-nav" class="setnav" role="tablist" aria-label="Ayar bölümleri"></nav>
+      <div class="setmain">
+        <div id="sec-general"><div id="set-root" class="sset"><div class="empty">Yükleniyor…</div></div></div>
+        <div id="sec-look" class="hidden"><div id="bg-root" class="catw"><div class="empty">Yükleniyor…</div></div></div>
+        <div id="sec-categories" class="hidden"><div id="cat-root" class="catw"><div class="empty">Yükleniyor…</div></div></div>
+        <div id="sec-system" class="hidden"><section id="sysev-root" class="sysev" aria-label="Sistem olayları"></section></div>
+      </div>
+    </div>
   </div>
   <!-- Kütüphane görünümü: Siteler › (site) › Kütüphane alt sekmesine taşınır (library.js dzLib.mount); kullanılmadığında burada park eder -->
   <div id="lib-park" class="hidden">
-    <div class="layout" id="lib-layout">
+    <div class="layout single" id="lib-layout">
       <main>
         <div class="lbar">
           <input id="lq" type="search" placeholder="Başlık ara…" aria-label="Başlık ara" autocomplete="off">
@@ -58,10 +61,10 @@
         <div id="litems" class="lgrid" aria-label="Kütüphane öğeleri"></div>
         <div class="lmore" id="lmorew"><button id="lmore" class="btn">Daha fazla</button></div>
       </main>
-      <aside id="ldetail" class="detail" aria-label="Öğe detayı" tabindex="-1"></aside>
     </div>
   </div>
 </div>
+<div id="mp" class="mp hidden" aria-hidden="true"><div class="mpb" data-mpclose></div><aside class="mpbox" id="mp-box" role="dialog" aria-modal="true" aria-label="Yapım" tabindex="-1"></aside></div>
 <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
 <script src="/admin/app.js"></script>
 <script src="/admin/library.js"></script>
@@ -70,5 +73,7 @@
 <script src="/admin/backgrounds.js"></script>
 <script src="/admin/sites.js"></script>
 <script src="/admin/errors.js"></script>
+<script src="/admin/live.js"></script>
+<script src="/admin/media.js"></script>
 </body>
 </html>

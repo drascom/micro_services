@@ -1,4 +1,4 @@
-/* Kategoriler sekmesi: ana ekranda gösterilen kategorileri yapılacaklar listesi gibi yönetir
+/* Ayarlar › Kategoriler: ana ekranda gösterilen kategorileri yapılacaklar listesi gibi yönetir
    (/api/ops/categories: ekle, sil, başlık düzenle, aç/kapat, "en az öğe", sürükleyip sırala).
    Ana ekranın sabit (iskelet) satırları da listede kilitli görünür: silinmez/gizlenmez/adı değişmez, yalnız sırası değişir.
    "Varsayılan sıraya döndür" kilitli satırları varsayılan sıraya dizer (POST /api/ops/categories-order/reset).
@@ -64,14 +64,13 @@ function rowHtml(c,i,n){
 function render(){
   var root=$('cat-root');if(!root)return;
   var keep=$('cat-new')?$('cat-new').value:'';
-  var h='<section><h2>Ana ekran satırları</h2>'+
-    '<p class="catlead">Burada eklediğiniz kategoriler ana ekranda bu sırayla satır olarak görünür. Sırayı değiştirmek için ⋮⋮ tutamacını sürükleyin.</p>'+
-    '<p class="catlead">Kilitli satırlar silinemez, yalnız sırası değişir. <button class="btn" id="cat-reset" title="Kilitli satırları varsayılan sıraya dizer; kategoriler bulundukları satırın arkasında kalır">Varsayılan sıraya döndür</button></p>'+
-    '<div class="catadd"><input id="cat-new" type="text" maxlength="60" placeholder="Yeni kategori adı (örn. Kore Dizileri)" aria-label="Yeni kategori adı" autocomplete="off">'+
-    '<button class="btn" id="cat-add">Kategori ekle</button></div>';
-  if(failed&&!C)h+='<div class="empty">Yüklenemedi: '+esc(failed)+'</div>';
-  else if(!C)h+='<div class="empty">Yükleniyor…</div>';
-  else if(!C.some(function(c){return c.kind!=='system'&&!c.locked}))h+='<div class="empty">Henüz kategori yok. Yukarıdan ilkini ekleyin.</div>'+(C.length?'<ol class="catlist" id="cat-list">'+C.map(function(c,i){return rowHtml(c,i,C.length)}).join('')+'</ol>':'');
+  var h='<section><div class="catadd" title="Kategoriler ana ekranda bu sırayla satır olarak görünür; ⋮⋮ ile sürükleyin. Kilitli satırlar silinemez, yalnız sırası değişir">'+
+    '<input id="cat-new" type="text" maxlength="60" placeholder="Yeni kategori adı (örn. Kore Dizileri)" aria-label="Yeni kategori adı" autocomplete="off">'+
+    '<button class="btn" id="cat-add">Ekle</button>'+
+    '<button class="btn" id="cat-reset" title="Kilitli satırları varsayılan sıraya dizer; kategoriler bulundukları satırın arkasında kalır">Varsayılan sıra</button></div>';
+  if(failed&&!C)h+='<div class="note bad">Yüklenemedi: '+esc(failed)+'</div>';
+  else if(!C)h+='<div class="empty sm">Yükleniyor…</div>';
+  else if(!C.some(function(c){return c.kind!=='system'&&!c.locked}))h+='<div class="empty sm">Henüz kategori yok.</div>'+(C.length?'<ol class="catlist" id="cat-list">'+C.map(function(c,i){return rowHtml(c,i,C.length)}).join('')+'</ol>':'');
   else h+='<ol class="catlist" id="cat-list">'+C.map(function(c,i){return rowHtml(c,i,C.length)}).join('')+'</ol>';
   root.innerHTML=h+'</section>';
   var inp=$('cat-new');if(inp&&keep)inp.value=keep;
@@ -177,6 +176,6 @@ document.addEventListener('keydown',function(ev){
 function onShow(){render();load()}
 window.dzTabHooks=window.dzTabHooks||{};
 window.dzTabHooks.categories=onShow;
-var tab=$('tab-categories');
-if(tab&&!tab.classList.contains('hidden'))onShow();
+var tab=$('tab-settings'),sec=$('sec-categories');
+if(tab&&sec&&!tab.classList.contains('hidden')&&!sec.classList.contains('hidden'))onShow();
 })();

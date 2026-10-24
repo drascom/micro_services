@@ -6,6 +6,9 @@
 `GET /api/ops/library/{id}/videos`  bir öğenin video kaynakları (durum, host, son hata/deneme, `diagnosis` = son oynatma
                                     hatasının sunucu yoklaması + vekil durumu); diziyse
                                     `seasons[]` = sezon şeridi (TMDB sezon posteri var mı, bölüm/still sayısı)
+`GET /api/ops/library/{id}/detail`  admin yapım yan paneli tek istekte (yalnız okuma): `item` (liste satırı + tür/özet/puan),
+                                    `videos/summary/seasons` (= /videos), `episodes[]` (sezon/bölüm + kaynak sayıları),
+                                    `finder[]` (kaynak bulucu geçmişi), `events[]` (bu yapımla ilişkili olay defteri kayıtları)
 
 K/T tanımı (öğe başına, `video_sources` tablosundan; oynatma sağlığı `library/videos.py`):
   T = devre dışı (`disabled`) ve engelli (`blocked`) olmayan tüm video kaynakları (film, bölüm, fragman)
@@ -391,6 +394,68 @@ def library_videos(item_id: str, limit: int = Query(500, ge=1, le=2000)) -> dict
         "truncated": int(agg["n"]) > len(rows),
         "seasons": strip,
     }
+
+
+def _episodes(conn: sqlite3.Connection, item_id: str) -> list[dict[str, Any]]:
+    """Sezon/bölüm listesi: ``library_episodes`` (TMDB/site bölüm adları) + bölüm video kaynakları (sayılar)."""
+    eps: dict[tuple[int, int], dict[str, Any]] = {}
+    try:
+        for r in conn.execute("SELECT season, episode, title FROM library_episodes WHERE canonical_id = ?", (item_id,)):
+            eps[(int(r["season"]), int(r["episode"]))] = {"season": int(r["season"]), "episode": int(r["episode"]),
+                                                        "title": r["title"], "sources": 0, "broken": 0, "suspect": 0, "healthy": 0}
+    except sqlite3.OperationalError:
+        pass
+    for r in conn.execute(
+            "SELECT season, episode, MAX(episode_title) AS t, COUNT(*) AS n, COALESCE(SUM(status = 'broken'), 0) AS k, "
+            "COALESCE(SUM(status = 'suspect'), 0) AS s, COALESCE(SUM(status = 'healthy'), 0) AS h FROM video_sources "
+            "WHERE canonical_id = ? AND kind = 'episode' AND season IS NOT NULL AND episode IS NOT NULL "
+            "AND status NOT IN ('disabled', 'blocked') GROUP BY season, episode", (item_id,)):
+        e = eps.setdefault((int(r["season"]), int(r["episode"])),
+                           {"season": int(r["season"]), "episode": int(r["episode"]), "title": None})
+        e.update({"title": e.get("title") or r["t"], "sources": int(r["n"]), "broken": int(r["k"]),
+                  "suspect": int(r["s"]), "healthy": int(r["h"])})
+    return [eps[k] for k in sorted(eps)]
+
+
+def _related_events(item_id: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """(finder jobs, other feed events) of one title, newest first; never fails the panel."""
+    finder: list[dict[str, Any]] = []
+    other: list[dict[str, Any]] = []
+    try:
+        from . import ops
+        for e in ops._collect_events(None):
+            if e.get("kind") == "finder":
+                if e.get("canonical_id") == item_id and len(finder) < 50:
+                    finder.append({**e, "source": ops._event_source(e)})
+                continue
+            hit = e.get("canonical_id") == item_id or any(
+                isinstance(x, dict) and x.get("canonical_id") == item_id for x in (e.get("episodes") or []))
+            if hit and len(other) < 50:
+                other.append({**e, "source": ops._event_source(e)})
+    except Exception:  # pragma: no cover - optional part of the panel
+        pass
+    return finder, other
+
+
+@router.get("/api/ops/library/{item_id}/detail")
+def library_detail(item_id: str) -> dict[str, Any]:
+    """Admin yapım yan paneli: liste satırı + /videos + bölüm listesi + kaynak bulucu geçmişi + ilişkili olaylar."""
+    from ..sources.library import _genres
+    listing = library(site=None, broken="", kind="", tmdb="", q="", id=item_id, sort="recent", limit=1, offset=0, facets=False)
+    if not listing["items"]:
+        raise ApiError(404, "not_found", "kütüphane öğesi bulunamadı")
+    item = dict(listing["items"][0])
+    vids = library_videos(item_id, limit=2000)
+    with closing(db.connect()) as conn:
+        row = conn.execute("SELECT genres, overview, rating, runtime, country FROM library_items WHERE id = ?",
+                           (item_id,)).fetchone()
+        episodes = _episodes(conn, item_id) if item.get("type") == "series" else []
+    if row:
+        item.update({"genres": _genres(row["genres"]), "overview": row["overview"], "rating": row["rating"],
+                     "runtime": row["runtime"], "country": row["country"]})
+    finder, events = _related_events(item_id)
+    return {"item": item, "summary": vids["summary"], "videos": vids["videos"], "truncated": vids["truncated"],
+            "seasons": vids["seasons"], "episodes": episodes, "finder": finder, "events": events}
 
 
 class ResetBody(BaseModel):

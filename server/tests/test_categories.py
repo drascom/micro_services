@@ -238,8 +238,11 @@ class AdminApi(Base):
         self.assertEqual(c.delete("/api/ops/categories/komedi").status_code, 404)
 
     def test_admin_asset_served(self):
-        self.assertEqual(self.client.get("/admin/categories.js").status_code, 200)
-        self.assertIn('id="tab-categories"', self.client.get("/admin").text)
+        for name in ("categories.js", "live.js", "media.js"):
+            self.assertEqual(self.client.get("/admin/" + name).status_code, 200)
+        page = self.client.get("/admin").text
+        for part in ('id="sec-categories"', 'id="tab-live"', 'id="mp-box"'):
+            self.assertIn(part, page)
 
 
 if __name__ == "__main__":

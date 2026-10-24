@@ -1,6 +1,6 @@
 /* "Hatalar" sekmesi (#errors): sunucu hataları (GET /api/ops/errors?source=&since=, tüm siteler + Canlı TV + sistem)
    ve cihaz logları (GET /api/ops/debug-log, istemci hata ayıklama modu). Her iki bölümde "Kopyala" (düz metin).
-   Ayrıca Ayarlar sekmesinin altındaki "Sistem olayları" listesi (GET /api/ops/events?system=1). Gizliyken ağ isteği yok. */
+   Ayrıca Ayarlar › "Sistem olayları" listesi (GET /api/ops/events?system=1; kanca dzTabHooks.sysevents). Gizliyken ağ isteği yok. */
 (function(){
 'use strict';
 var $=function(i){return document.getElementById(i)};
@@ -112,18 +112,18 @@ var sys=null;
 function sysShow(){
   var root=$('sysev-root');if(!root)return;
   if(!sys){
-    root.innerHTML='<h2>Sistem olayları</h2><div id="sysev-list"></div>';
+    root.innerHTML='<div id="sysev-list"></div>';
     sys=E.list($('sysev-list'),{empty:'Sistem olayı yok.',fetch:function(before){
       return call('/api/ops/events?system=1&limit=20'+(before?'&before='+enc(before):''))}});
     sys.reset();
   } else sys.load(false);
 }
-document.addEventListener('dz:ops-changed',function(){var t=$('tab-settings');if(sys&&t&&!t.classList.contains('hidden'))sys.load(false)});
+function sysVisible(){var t=$('tab-settings'),s=$('sec-system');return !!(t&&s&&!t.classList.contains('hidden')&&!s.classList.contains('hidden'))}
+document.addEventListener('dz:ops-changed',function(){if(sys&&sysVisible())sys.load(false)});
 
 window.dzTabHooks=window.dzTabHooks||{};
 window.dzTabHooks.errors=onShow;
-var prevSettings=window.dzTabHooks.settings;
-window.dzTabHooks.settings=function(){if(prevSettings)prevSettings();sysShow()};
+window.dzTabHooks.sysevents=sysShow;
 if(!$('tab-errors').classList.contains('hidden'))onShow();
-if(!$('tab-settings').classList.contains('hidden'))sysShow();
+if(sysVisible())sysShow();
 })();

@@ -1,4 +1,4 @@
-/* Arka planlar sekmesi: istemcinin ana ekran arka plan görselleri (/api/backgrounds).
+/* Ayarlar › Görünüm (arka planlar): istemcinin ana ekran arka plan görselleri (/api/backgrounds).
    Yükle (çoklu seçim, jpg/png/webp ≤ 15 MB; sunucu 1920x1080'e küçültür + bulanık önizleme üretir), ızgara, sil. */
 (function(){
 'use strict';
@@ -25,13 +25,12 @@ function load(){
 }
 function render(){
   var root=$('bg-root');if(!root)return;
-  var h='<section><h2>Arka planlar</h2>'+
-    '<p class="catlead">İstemcinin ana ekran arka planları. JPG, PNG ya da WEBP (en çok 15 MB); sunucu 1920×1080\'e küçültür ve cam paneller için bulanık önizleme üretir.</p>'+
-    '<div class="catadd"><input id="bg-file" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>'+
-    '<button class="btn primary" id="bg-pick"'+(busy?' disabled':'')+'>'+(busy?'Yükleniyor… ('+busy+')':'Görsel yükle')+'</button></div>';
-  if(failed&&!B)h+='<div class="empty">Yüklenemedi: '+esc(failed)+'</div>';
-  else if(!B)h+='<div class="empty">Yükleniyor…</div>';
-  else if(!B.length)h+='<div class="empty">Henüz arka plan yok. Yukarıdan ilkini yükleyin.</div>';
+  var h='<section><div class="srow2" title="JPG, PNG ya da WEBP (en çok 15 MB); sunucu 1920×1080\'e küçültür ve cam paneller için bulanık önizleme üretir"><span class="sk">Ana ekran arka planları'+(B&&B.length?' <span class="dim">'+B.length+'</span>':'')+'</span>'+
+    '<span class="sv"><input id="bg-file" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>'+
+    '<button class="btn" id="bg-pick"'+(busy?' disabled':'')+'>'+(busy?'Yükleniyor… ('+busy+')':'Görsel yükle')+'</button></span></div>';
+  if(failed&&!B)h+='<div class="note bad">Yüklenemedi: '+esc(failed)+'</div>';
+  else if(!B)h+='<div class="empty sm">Yükleniyor…</div>';
+  else if(!B.length)h+='<div class="empty sm">Henüz arka plan yok.</div>';
   else h+='<ul class="bggrid">'+B.map(function(b){
     return '<li class="bgcard"><a href="'+esc(b.url)+'" target="_blank" rel="noopener"><img src="'+esc(b.blur_url)+'" data-full="'+esc(b.url)+'" alt="" loading="lazy"></a>'+
       '<span class="bgmeta">'+b.width+'×'+b.height+'</span>'+
@@ -74,5 +73,5 @@ document.addEventListener('change',function(ev){
 function onShow(){load()}
 window.dzTabHooks=window.dzTabHooks||{};
 window.dzTabHooks.backgrounds=onShow;
-var panel=$('tab-backgrounds');if(panel&&!panel.classList.contains('hidden'))load();
+var tab=$('tab-settings'),panel=$('sec-look');if(tab&&panel&&!tab.classList.contains('hidden')&&!panel.classList.contains('hidden'))load();
 })();
