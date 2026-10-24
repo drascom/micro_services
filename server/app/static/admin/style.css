@@ -406,9 +406,30 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .aeve{font-weight:400;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .aevw{font-size:12px;color:var(--muted);white-space:nowrap}
 .aevs{font-size:12px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--surface2);white-space:nowrap}
-.aevd{padding:4px 12px 12px;border-top:1px dashed var(--line)}
-.aevd h3{font:600 18px/1.2 var(--serif);margin:8px 0 2px}
-.aevd .sub{color:var(--muted);font-size:13px;margin-bottom:10px}
+.aevr{padding-top:4px;padding-bottom:4px;min-height:32px}
+.aevd{padding:6px 12px 10px;border-top:1px dashed var(--line);font-size:13px}
+/* kompakt olay ayrıntısı: meta + sağ üst düğmeler, "Bölüm  değerler" satırları */
+.evh{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;margin-bottom:4px}
+.evm{flex:1;min-width:140px;color:var(--muted);font-size:12.5px;font-variant-numeric:tabular-nums}
+.act.sm{margin:0;gap:4px;justify-content:flex-end}
+.act.sm button,.evl .act button{font-size:12px;font-weight:600;padding:2px 8px;min-height:26px;border-radius:6px}
+.evl .act{display:inline-flex;margin:0 0 0 4px;gap:4px;vertical-align:middle}
+.evl{display:flex;gap:10px;padding:3px 0;line-height:1.45;font-size:13px}
+.evk{flex:none;width:118px;color:var(--muted);font-size:12px;padding-top:1px}
+.evv{flex:1;min-width:0;overflow-wrap:anywhere}
+.evv b{font-weight:650;font-variant-numeric:tabular-nums}
+.aevd b.bad,.aevd .bad{color:var(--bad)} .aevd .ok{color:var(--ok)}
+.evv .spark{width:90px;vertical-align:middle;display:inline-block}
+.evn{display:flex;gap:6px;align-items:baseline;font-size:12.5px;color:var(--muted);padding:2px 0;line-height:1.4}
+.evni{flex:none;width:1.1em;text-align:center;font-size:11px}
+.evn.warn .evni{color:var(--warn)} .evn.bad .evni,.evn.bad{color:var(--bad)} .evn.ok .evni{color:var(--ok)}
+.evt{color:var(--muted);font-weight:400}
+.evu{overflow-wrap:anywhere;word-break:break-all}
+.evs{font-size:12px;color:var(--muted);margin:6px 0 2px}
+.evr{font-size:12px;padding:1px 0;overflow-wrap:anywhere}
+.evq{white-space:pre-wrap;font-size:12.5px;color:var(--muted);border-left:2px solid var(--line);padding:2px 8px;margin:4px 0}
+.aevd .diff code{padding:3px 7px;font-size:12px;margin:2px 0}
+@media (max-width:480px){.evk{width:88px}}
 .mlink{color:var(--accent);text-decoration:none}
 .mlink:hover{text-decoration:underline}
 /* Hatalar */
@@ -421,3 +442,4 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .sysev{margin-top:24px;max-width:920px}
 @media (max-width:980px){.accp .layout{grid-template-columns:1fr}.accinfo{margin-left:0}}
 @media (max-width:640px){.acct{min-width:0}.accc{flex-wrap:wrap}}
+.evh .grow{flex:1;min-width:0}

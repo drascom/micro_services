@@ -197,12 +197,12 @@ function safeHtml(fn){try{return fn()}catch(e){try{console.error('sites: panel �
 function playersHtml(id){
   var s=siteById(id)||{},o=ovSite(id),h='';
   var list=(s.providers||[]);
-  h+='<div class="srow">'+(list.length?list.map(function(p){return '<span class="obchip">'+esc(p)+'</span>'}).join(' '):
-    s.providers_all?'<span class="obchip dim" title="yaml’da providers: listesi yok; tüm oynatıcılara izin verilir">Tümü</span>':'<span class="dim">oynatıcı listesi yok</span>')+'</div>';
+  var ph0=o&&o.playback_health,hb=o&&ph0&&ph0.failed>0?'<div class="act sm"><button data-pdo="heal-playback" data-site="'+esc(id)+'"'+(o.healing?' disabled':'')+'>▶ Oynatma heal</button></div>':'';
+  h+='<div class="evh"><div class="srow grow">'+(list.length?list.map(function(p){return '<span class="obchip">'+esc(p)+'</span>'}).join(' '):
+    s.providers_all?'<span class="obchip dim" title="yaml’da providers: listesi yok; tüm oynatıcılara izin verilir">Tümü</span>':'<span class="dim">oynatıcı listesi yok</span>')+'</div>'+hb+'</div>';
   if(o&&window.dzEv){
     h+=window.dzEv.resolverHtml(o)+window.dzEv.playbackHtml(o);
     var ph=o.playback_health;
-    h+='<div class="act">'+(ph&&ph.failed>0?'<button class="btn" data-pdo="heal-playback" data-site="'+esc(id)+'"'+(o.healing?' disabled':'')+'>Oynatma heal</button>':'')+'</div>';
     if(!o.last_resolver&&!(ph&&(ph.window_n||ph.last_trigger_at||(ph.issues&&ph.issues.open))))h+='<div class="dim" style="margin-top:8px">Henüz oynatma verisi yok.</div>';
   }
   return h;

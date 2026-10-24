@@ -89,16 +89,19 @@ function evidenceLine(ev){
 }
 function evidenceHtml(ev){
   if(!ev)return '';
-  return '<h2 class="sec">Oynatma kanıtı</h2><div class="note" style="border-color:var(--muted)"><b>'+esc(evidenceLine(ev))+'</b>'+
-    (ev.errors&&ev.errors.length?'<br>'+ev.errors.map(function(x){return '<span class="mono">'+esc(x.name)+' ×'+esc(x.count)+'</span>'}).join('<br>'):'')+
-    (ev.ok_examples?'<br><small>çalışan örnek: '+num(ev.ok_examples)+'</small>':'')+'</div>';
+  var p=[cnt(ev.sources,'kaynak')];
+  if(ev.window_n!=null)p.push('pencere '+B(num(ev.window_failed)+'/'+num(ev.window_n),+ev.window_failed>0));
+  if(ev.stages&&ev.stages.length)p.push('aşama '+esc(namedList(ev.stages)));
+  if(ev.hosts&&ev.hosts.length)p.push('host '+esc(namedList(ev.hosts)));
+  p.push(cnt(ev.ok_examples,'çalışan örnek'));
+  return line('Kanıt',p)+(ev.errors&&ev.errors.length?line('Hatalar',ev.errors.map(function(x){return '<span class="mono">'+esc(x.name)+' ×'+esc(x.count)+'</span>'})):'');
 }
 function agentHtml(a){
   if(!a)return '';
   var tools=Object.keys(a.tools||{}).map(function(k){return k+' ×'+a.tools[k]}).join(' · ');
-  return '<h2 class="sec">Ajan günlüğü</h2><div class="kv">'+kv(num(a.turns),'tur')+kv(num(a.events),'olay')+kv(num(a.tests),'test_config')+kv(num(a.errors),'hata')+'</div>'+
-    (tools?'<div class="note" style="border-color:var(--muted)"><span class="mono">'+esc(tools)+'</span></div>':'')+
-    (a.last_say?'<div class="note" style="white-space:pre-wrap">'+esc(a.last_say)+'</div>':'');
+  return line('Ajan',[cnt(a.turns,'tur'),cnt(a.events,'olay'),cnt(a.tests,'test_config'),cnt(a.errors,'hata',1)])+
+    (tools?line('Araçlar',['<span class="mono">'+esc(tools)+'</span>']):'')+
+    (a.last_say?'<div class="evq">'+esc(a.last_say)+'</div>':'');
 }
 /* ---- üst: sistem + canlı çubuk ---- */
 function renderSys(){
@@ -131,125 +134,130 @@ function renderBanner(){
   el.innerHTML=h;
 }
 /* ---- detay ---- */
-function actions(site,extra,pb){
+/* ---- kompakt olay ayrıntısı: meta satırı + "Bölüm  değer · değer" satırları; sıfır/boş değer gösterilmez ---- */
+function B(v,bad){return '<b'+(bad?' class="bad"':'')+'>'+v+'</b>'}
+function cnt(v,l,bad){return v==null||v===''||isNaN(+v)||+v===0?'':B(num(v),bad)+(l?' '+esc(l):'')}
+function tv(l,v){return v==null||v===''||v==='-'?'':(l?esc(l)+' ':'')+B(v)}
+function dv(s){return s==null||isNaN(+s)||+s===0?'':dur(s)}
+function line(label,parts){parts=(parts||[]).filter(Boolean);return parts.length?'<div class="evl"><span class="evk">'+esc(label)+'</span><span class="evv">'+parts.join(' · ')+'</span></div>':''}
+function nt(tone,html,title){var ic={bad:'✕',warn:'⚠',ok:'✓'}[tone]||'ℹ';return '<div class="evn '+(tone||'')+'"'+(title?' title="'+esc(title)+'"':'')+'><span class="evni" aria-hidden="true">'+ic+'</span><span>'+html+'</span></div>'}
+function tech(s){return ' <span class="evt">('+esc(s)+')</span>'}
+function btns(site,extra,pb){
   var s=siteOf(site)||{},ph=s.playback_health;
-  return '<div class="act">'+(extra||'')+
-    '<button data-do="scan" data-site="'+esc(site)+'"'+(s.scanning?' disabled':'')+'>Tara</button>'+
-    '<button data-do="heal" data-site="'+esc(site)+'"'+(s.healing?' disabled':'')+'>Heal</button>'+
-    (pb||(ph&&ph.failed>0)?'<button data-do="heal-playback" data-site="'+esc(site)+'"'+(s.healing?' disabled':'')+'>Oynatma heal</button>':'')+'</div>';
+  return (extra||'')+
+    '<button data-do="scan" data-site="'+esc(site)+'"'+(s.scanning?' disabled':'')+'>⟳ Tara</button>'+
+    '<button data-do="heal" data-site="'+esc(site)+'"'+(s.healing?' disabled':'')+'>✦ Heal</button>'+
+    (pb||(ph&&ph.failed>0)?'<button data-do="heal-playback" data-site="'+esc(site)+'"'+(s.healing?' disabled':'')+'>▶ Oynatma heal</button>':'');
 }
-function kv(v,l){return '<div><b>'+v+'</b><span>'+esc(l)+'</span></div>'}
+function actions(site,extra,pb){return '<div class="act">'+btns(site,extra,pb)+'</div>'}
 function enrichHtml(t){
   if(!t||typeof t!=='object')return '';
-  var map=[['matched','eşleşti'],['unmatched','eşleşmedi'],['review','inceleme'],['skipped','atlandı']],cells='';
-  map.forEach(function(m){if(t[m[0]]!=null)cells+=kv(num(t[m[0]]),'TMDB '+m[1])});
   var d=t.seconds!=null?t.seconds:t.duration!=null?t.duration:t.duration_seconds;
-  if(d!=null)cells+=kv(dur(d),'TMDB süresi');
-  return cells?'<h2 class="sec">TMDB zenginleştirme</h2><div class="kv">'+cells+'</div>':'';
+  return line('TMDB',[cnt(t.matched,'eşleşti'),cnt(t.unmatched,'eşleşmedi'),cnt(t.review,'inceleme'),cnt(t.skipped,'atlandı'),dv(d)]);
 }
 function crawlOn(t){return !!(t&&typeof t==='object'&&(t.due||t.series||t.errors))}
 function crawlHtml(t){
   if(!crawlOn(t))return '';
-  var cells=kv(num(t.series),'dizi tarandı')+kv(num(t.seasons),'sezon')+kv(num(t.episodes),'bölüm')+kv(num(t.new_episodes),'yeni bölüm')+
-    kv(num(t.errors),'hata')+kv(num(t.deferred),'ertelendi')+kv(dur(t.seconds),'süre');
-  var note='';
-  if(t.stopped)note='<div class="note" style="border-color:var(--warn)">Tarama '+(t.stopped==='budget'?'dizi bütçesi (SERIES_CRAWL_BUDGET)':t.stopped==='time'?'süre bütçesi (SERIES_CRAWL_SECONDS)':'art arda hatalar')+' nedeniyle durdu; kalan '+num(t.deferred)+' dizi sonraki taramada.</div>';
-  else if(t.incomplete||t.fallback)note='<div class="note" style="border-color:var(--muted)">'+(t.incomplete?num(t.incomplete)+' dizi envanteri eksik (sonra yeniden denenir)':'')+(t.incomplete&&t.fallback?' · ':'')+(t.fallback?num(t.fallback)+' dizi seçici yerine URL taramasıyla okundu':'')+'</div>';
-  return '<h2 class="sec">Dizi bölüm envanteri</h2><div class="kv">'+cells+'</div>'+note;
+  var h=line('Bölüm envanteri',[cnt(t.series,'dizi'),cnt(t.seasons,'sezon'),
+    t.episodes?B(num(t.episodes))+' bölüm'+(t.new_episodes?' ('+num(t.new_episodes)+' yeni)':''):cnt(t.new_episodes,'yeni bölüm'),
+    cnt(t.errors,'hata',1),cnt(t.deferred,'ertelendi'),dv(t.seconds)]);
+  if(t.stopped)h+=nt('warn','Tarama '+(t.stopped==='budget'?'dizi bütçesi'+tech('SERIES_CRAWL_BUDGET'):t.stopped==='time'?'süre bütçesi'+tech('SERIES_CRAWL_SECONDS'):'art arda hatalar')+' nedeniyle durdu; kalan '+num(t.deferred)+' dizi sonraki taramada.');
+  else if(t.incomplete||t.fallback)h+=nt('',[t.incomplete?num(t.incomplete)+' dizi envanteri eksik (sonra yeniden denenir)':'',t.fallback?num(t.fallback)+' dizi seçici yerine URL taramasıyla okundu':''].filter(Boolean).join(' · '));
+  return h;
 }
-function detailHtml(e){
-  var h='',s=siteOf(e.site)||{};
+function sec(t){return '<div class="evs">'+esc(t)+'</div>'}
+function rows(a){return a.map(function(x){return '<div class="evr mono">'+x+'</div>'}).join('')}
+/* detailHtml(e, extraButtons): üstte meta satırı + sağda eylem düğmeleri; altta kompakt satırlar */
+function detailHtml(e,extra){
+  var h='',m=[when(e.at)],a='',s=siteOf(e.site)||{};
   if(e.kind==='live'){
     var TG={auto:'otomatik',manual:'elle',cli:'komut satırı'};
-    h+=evPill(e)+' '+pill('heal','Canlı TV')+'<h3>'+esc(e.site)+' · '+esc((e.countries||[]).join(', ').toUpperCase()||'-')+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+' · '+esc(TG[e.trigger]||e.trigger||'')+'</div>';
-    if(e.status==='error')h+='<div class="note" style="border-color:var(--bad)">'+esc(e.error||'hata')+'</div>';
+    m.push(TG[e.trigger]||e.trigger,dv(e.duration),(e.countries||[]).join(', ').toUpperCase());
+    if(e.status==='error')h+=nt('bad',esc(e.error||'hata'));
     else{
-      if(e.status==='no_change')h+='<div class="note" style="border-color:var(--muted)">Kaynak listesi değişmedi (ETag 304); kanal kaydı yazılmadı'+(e.probed!=null?', yalnız sağlık yoklaması yapıldı':'')+'.</div>';
-      else h+='<h2 class="sec">Kanal değişiklikleri</h2><div class="kv">'+kv(num(e.new),'yeni')+kv(num(e.updated),'güncellendi')+kv(num(e.deactivated),'pasifleşti')+kv(num(e.unchanged),'aynı')+'</div>';
-      h+='<h2 class="sec">Sağlık</h2><div class="kv">'+kv(num(e.ok),'sağlıklı (m3u8)')+kv(num(e.youtube_only),'yalnız YouTube')+kv(num(e.hidden),'gizli (oynatılamaz)')+kv(num(e.visible),'görünür')+kv(num(e.active),'aktif')+kv(num(e.inactive),'pasif')+'</div>';
-      if(e.probed!=null)h+='<div class="note" style="border-color:var(--muted)">Yoklama: '+num(e.probe_ok)+' / '+num(e.probed)+' akış yanıt verdi'+(e.no_cors?' · '+num(e.no_cors)+' CORS yok (vekil)':'')+'</div>';
+      if(e.status==='no_change')h+=nt('','Kaynak listesi değişmedi (ETag 304); kanal kaydı yazılmadı'+(e.probed!=null?', yalnız sağlık yoklaması yapıldı':'')+'.');
+      else h+=line('Kanallar',[cnt(e.new,'yeni'),cnt(e.updated,'güncellendi'),cnt(e.deactivated,'pasifleşti'),cnt(e.unchanged,'aynı')]);
+      h+=line('Sağlık',[cnt(e.ok,'sağlıklı (m3u8)'),cnt(e.youtube_only,'yalnız YouTube'),cnt(e.hidden,'gizli'),cnt(e.visible,'görünür'),cnt(e.active,'aktif'),cnt(e.inactive,'pasif')]);
+      if(e.probed!=null)h+=line('Yoklama',[B(num(e.probe_ok))+' / '+num(e.probed)+' akış yanıt verdi',cnt(e.no_cors,'CORS yok (vekil)')]);
     }
-    h+='<div class="kv">'+kv(dur(e.duration),'Süre')+kv(num(e.total),'kaynaktaki kanal')+kv(num(e.kept),'dil süzgecinden geçen')+'</div>'+
-      '<div class="act"><button data-goto="onboard">Siteler sekmesi</button><button data-goto="settings">Ayarlar › Canlı TV</button></div>';
+    h+=line('Kaynak',[cnt(e.total,'kanal'),cnt(e.kept,'dil süzgecinden geçen')]);
+    a='<button data-goto="onboard">Siteler</button><button data-goto="settings">⚙ Canlı TV</button>';
   } else if(e.kind==='blocked_page'){
-    h+=evPill(e)+'<h3>'+esc(e.source_key||e.url)+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+'</div>'+
-      '<div class="kv">'+kv(esc(e.site||'-'),'Site')+kv(esc(BV[e.via]||e.via||'-'),'Neden')+kv(esc(e.page_kind||'-'),'Sayfa türü')+kv(e.until?esc(full(e.until)):'-','Yeniden denenir')+'</div>'+
-      '<div class="note" style="border-color:var(--warn)">'+esc(e.reason||'')+'</div>'+
-      '<div class="note" style="border-color:var(--muted)"><span class="mono" style="overflow-wrap:anywhere">'+esc(e.url)+'</span><br>Engel yalnız bu sitedeki bu sayfa içindir; aynı yapım başka siteden gelebilir.</div>'+
-      '<div class="act"><button data-unblock="'+esc(e.url)+'" data-site="'+esc(e.site)+'">Engeli kaldır</button></div>';
+    h+=line('Engel',[tv('',esc(e.site||'')),tv('neden',esc(BV[e.via]||e.via||'')),tv('sayfa',esc(e.page_kind||'')),e.until?'yeniden denenir '+B(esc(when(e.until))):''])+
+      (e.reason?nt('warn',esc(e.reason)):'')+
+      line('URL',['<span class="mono evu">'+esc(e.url)+'</span>'])+
+      nt('','Engel yalnız bu sitedeki bu sayfa içindir; aynı yapım başka siteden gelebilir.');
+    a='<button data-unblock="'+esc(e.url)+'" data-site="'+esc(e.site)+'">⊘ Engeli kaldır</button>';
   } else if(e.kind==='hydrate'){
-    h+=evPill(e)+'<h3>'+mediaLink(mediaRef(e),esc(e.title||e.canonical_id||'?'))+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+'</div>'+
-      '<div class="kv">'+kv(esc(e.site||'-'),'Site')+kv(esc(e.status||'-'),'Durum')+kv('<span class="mono">'+esc(e.source_key||'-')+'</span>','Kaynak anahtarı')+'</div>'+
-      '<div class="note" style="border-color:var(--'+(e.status==='error'?'bad':'warn')+')">'+esc(e.reason||'')+'</div>'+
-      (e.url?'<div class="note" style="border-color:var(--muted)"><span class="mono" style="overflow-wrap:anywhere">'+esc(e.url)+'</span></div>':'');
+    h+=line('Kaynak',[tv('',esc(e.site||'')),tv('durum',esc(e.status||'')),e.source_key?'<span class="mono">'+esc(e.source_key)+'</span>':''])+
+      (e.reason?nt(e.status==='error'?'bad':'warn',esc(e.reason)):'')+
+      (e.url?line('URL',['<span class="mono evu">'+esc(e.url)+'</span>']):'');
   } else if(e.kind==='reset'){
-    h+=evPill(e)+'<h3>Kütüphane sıfırlandı</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+'</div>'+
-      '<div class="kv">'+kv(num((e.cleared||[]).length),'temizlenen tablo')+kv(Object.keys(e.kept||{}).map(esc).join(', ')||'-','korunan')+kv(e.cache?num(e.cache_files):'-','önbellek dosyası')+kv(dur(e.seconds),'Süre')+'</div>'+
-      '<div class="note" style="border-color:var(--muted)">Yedek: <span class="mono">'+esc(e.backup||'-')+'</span></div>';
+    m.push(dv(e.seconds));
+    h+=line('Sıfırlama',[cnt((e.cleared||[]).length,'tablo temizlendi'),Object.keys(e.kept||{}).length?'korunan '+B(Object.keys(e.kept||{}).map(esc).join(', ')):'',e.cache?cnt(e.cache_files,'önbellek dosyası'):''])+
+      line('Yedek',['<span class="mono evu">'+esc(e.backup||'-')+'</span>']);
   } else if(e.kind==='playback_issue'){
-    h+=evPill(e)+' '+pill('heal','Oynatma sorunu')+'<h3>'+esc(e.site)+(e.host?' · <span class="mono">'+esc(e.host)+'</span>':'')+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+' · ilk: '+esc(ago(e.first_at))+'</div>'+
-      '<div class="kv">'+kv(esc(e.label||e.code||'?'),'Sorun')+kv(num(e.sources),'kaynak (bölüm)')+kv(num(e.reports),'rapor')+kv(e.http?esc(e.http):'-','HTTP')+'</div>';
-    if(e.note)h+='<div class="note" style="border-color:var(--'+(e.heal_class?'bad':'muted')+')">'+esc(e.note)+'</div>';
-    h+='<div class="note" style="border-color:var(--muted)">Sağlayıcı: <b>'+esc(e.provider||'-')+'</b> · akış: '+esc(e.stream_type||'-')+' · sınıf: <span class="mono">'+esc(e.code)+'</span>'+
-      (e.heal_class?'':' (heal tetiklemez: kaynağın hatası değil)')+(e.triggered_at?'<br>Bu sınıf için heal başlatıldı: '+esc(ago(e.triggered_at)):'')+'</div>';
+    m.push('ilk '+ago(e.first_at));
+    h+=line('Sorun',[B(esc(e.label||e.code||'?'),!!e.heal_class),cnt(e.sources,'kaynak'),cnt(e.reports,'rapor'),e.http?'HTTP '+B(esc(e.http)):''])+
+      line('Sağlayıcı',[tv('',esc(e.provider||'')),tv('akış',esc(e.stream_type||'')),e.code?'sınıf <span class="mono">'+esc(e.code)+'</span>':'',e.triggered_at?'heal başlatıldı '+esc(ago(e.triggered_at)):''])+
+      (e.note?nt(e.heal_class?'bad':'',esc(e.note)):'')+
+      (e.heal_class?'':nt('','Heal tetiklemez: kaynağın hatası değil; ajan düzeltmesi anlamlı olmayabilir.'));
     if(e.host_rule){var hr=e.host_rule;
-      h+='<div class="note" style="border-color:var(--'+(hr.active?'ok':'muted')+')">Host kuralı (<span class="mono">'+esc(hr.host)+'</span>): '+(hr.reason==='referer'?'Referer '+esc((hr.headers||{}).Referer||''):'sunucu vekili (IP\'ye bağlı)')+
-        ' · '+(hr.active?'etkin':'askıda/süresi dolmuş')+' · öğrenildi: '+esc(ago(new Date(hr.learned_at*1000).toISOString()))+(hr.last_ok_at?' · son çalıştı: '+esc(ago(new Date(hr.last_ok_at*1000).toISOString())):'')+' · hata: '+num(hr.fail_count)+
-        '<div class="act"><button data-hostrule="suspend" data-host="'+esc(hr.host)+'">Askıya al</button><button data-hostrule="delete" data-host="'+esc(hr.host)+'">Sil</button></div></div>';}
-    h+='<h2 class="sec">Bölümler</h2>'+((e.episodes||[]).map(function(x){
-      return '<div class="mono" style="margin-top:4px">'+mediaLink(x.canonical_id||x.title?{id:x.canonical_id||'',title:x.title||'',site:e.site||''}:null,esc(pbiLabel(x)))+' · '+num(x.reports)+' rapor · '+esc(x.client_code||'')+' · '+esc(ago(x.at))+(x.locator?'<br><span style="color:var(--muted);overflow-wrap:anywhere">'+esc(x.locator)+'</span>':'')+'</div>'}).join('')||'<div class="note" style="border-color:var(--muted)">Bölüm kaydı yok.</div>');
-    h+='<div class="act"><button data-do="heal-playback" data-site="'+esc(e.site)+'"'+(s.healing?' disabled':'')+'>Ajan düzeltsin</button></div>'+
-      (e.heal_class?'':'<div class="note" style="border-color:var(--muted)">Bu sınıf için ajan düzeltmesi anlamlı olmayabilir; yine de oynatma kanıtıyla çalıştırılabilir.</div>');
+      h+=line('Host kuralı',['<span class="mono">'+esc(hr.host)+'</span>',hr.reason==='referer'?'Referer '+esc((hr.headers||{}).Referer||''):'sunucu vekili (IP\'ye bağlı)',
+        hr.active?'<span class="ok">etkin</span>':'askıda/süresi dolmuş','öğrenildi '+esc(ago(new Date(hr.learned_at*1000).toISOString())),
+        hr.last_ok_at?'son çalıştı '+esc(ago(new Date(hr.last_ok_at*1000).toISOString())):'',cnt(hr.fail_count,'hata',1),
+        '<span class="act"><button data-hostrule="suspend" data-host="'+esc(hr.host)+'">Askıya al</button><button data-hostrule="delete" data-host="'+esc(hr.host)+'">Sil</button></span>']);}
+    var eps=(e.episodes||[]).map(function(x){
+      return mediaLink(x.canonical_id||x.title?{id:x.canonical_id||'',title:x.title||'',site:e.site||''}:null,esc(pbiLabel(x)))+' · '+num(x.reports)+' rapor'+(x.client_code?' · '+esc(x.client_code):'')+' · '+esc(ago(x.at))+(x.locator?' <span class="evt evu">'+esc(x.locator)+'</span>':'')});
+    h+=eps.length?sec('Bölümler')+rows(eps):'';
+    a='<button data-do="heal-playback" data-site="'+esc(e.site)+'"'+(s.healing?' disabled':'')+'>✦ Ajan düzeltsin</button>';
   } else if(e.kind==='finder'){
-    h+=evPill(e)+' '+pill('heal','Kaynak bulucu')+'<h3>'+mediaLink(mediaRef(e),esc(finLabel(e)))+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+(e.trigger?' · '+esc(({heal_rerun:'heal sonrası yeniden deneme',playback_failed:'oynatma hatası',play:'oynatma'})[e.trigger]||e.trigger):'')+'</div>'+
-      '<div class="kv">'+kv(esc(FL[e.state]||e.state||'?'),'Sonuç')+kv(e.method?esc(FM[e.method]||e.method):'-','Yöntem')+kv(e.site?esc(e.site):'-','Site')+kv(dur(e.seconds),'Süre')+'</div>';
-    if(e.error)h+='<div class="note" style="border-color:var(--bad)">'+esc(e.error)+'</div>';
-    h+='<h2 class="sec">Adımlar</h2>'+((e.steps||[]).map(function(st){
-      return '<div class="mono" style="margin-top:4px"><span style="color:var(--'+(st.ok?'ok':'muted')+')">'+(st.ok?'bulundu':'yok')+'</span> · '+esc(st.name)+' · '+dur((+st.ms||0)/1000)+(st.note?' · '+esc(st.note):'')+'</div>'}).join('')||'<div class="note" style="border-color:var(--muted)">Adım kaydı yok.</div>');
-    if(e.source_id)h+='<div class="note" style="border-color:var(--muted)">Kaynak: <span class="mono">'+esc(e.source_id)+'</span></div>';
+    m.push(e.trigger?({heal_rerun:'heal sonrası yeniden deneme',playback_failed:'oynatma hatası',play:'oynatma'})[e.trigger]||e.trigger:'',dv(e.seconds));
+    h+=line('Sonuç',[B(esc(FL[e.state]||e.state||'?'),e.state!=='found'),e.method?esc(FM[e.method]||e.method):'',tv('',esc(e.site||''))]);
+    if(e.error)h+=nt('bad',esc(e.error));
+    var st=(e.steps||[]).map(function(x){return '<span class="'+(x.ok?'ok':'evt')+'">'+(x.ok?'bulundu':'yok')+'</span> · '+esc(x.name)+' · '+dur((+x.ms||0)/1000)+(x.note?' · '+esc(x.note):'')});
+    h+=st.length?sec('Adımlar')+rows(st):'';
+    if(e.source_id)h+=line('Kaynak',['<span class="mono evu">'+esc(e.source_id)+'</span>']);
   } else if(e.kind==='tmdb'){
     var seas=e.scope==='seasons';
-    h+=evPill(e)+'<h3>'+(seas?'TMDB sezon ve bölüm görselleri':'TMDB zenginleştirme · '+esc(e.media_type==='series'?'dizi':'film'))+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+' · '+esc(e.trigger||'')+
-      (e.dry_run?' · yazmadan önizleme':e.from_preview?' · önizlemeden uygulandı':' · canlı uygulama')+'</div>'+
-      '<div class="kv">'+(seas?kv(num(e.series),'dizi')+kv(num(e.seasons),'sezon')+kv(num(e.episodes),'bölüm')+kv(num(e.posters),'sezon posteri')+kv(num(e.stills),'bölüm görseli')+kv(num(e.empty),'TMDB’de yok')
-        :kv(num(e.matched),'otomatik eşleşme')+kv(num(e.review),'inceleme')+kv(num(e.unmatched),'eşleşmedi'))+kv(num(e.skipped),'atlandı')+
-      (e.dry_run?'':kv(num(e.written),seas?'sezon yazıldı':'yazıldı'))+kv(num(e.errors),'hata')+kv(dur(e.duration),'Süre')+kv(num(e.lookup),seas?'sorgulanan dizi':'sorgulanan')+'</div>';
-    if(e.aborted)h+='<div class="note" style="border-color:var(--warn)">TMDB ulaşılamadı; iş erken durduruldu.</div>';
-    if(e.error)h+='<div class="note" style="border-color:var(--bad)">'+esc(e.error)+'</div>';
-    h+='<div class="act"><button data-goto="settings">Ayarlar › TMDB</button></div>';
+    m.push(e.trigger,e.dry_run?'yazmadan önizleme':e.from_preview?'önizlemeden uygulandı':'canlı uygulama',dv(e.duration));
+    h+=line('TMDB',(seas?[cnt(e.series,'dizi'),cnt(e.seasons,'sezon'),cnt(e.episodes,'bölüm'),cnt(e.posters,'sezon posteri'),cnt(e.stills,'bölüm görseli'),cnt(e.empty,'TMDB’de yok')]
+        :[cnt(e.matched,'otomatik eşleşme'),cnt(e.review,'inceleme'),cnt(e.unmatched,'eşleşmedi')]).concat([cnt(e.skipped,'atlandı'),
+        e.dry_run?'':cnt(e.written,seas?'sezon yazıldı':'yazıldı'),cnt(e.errors,'hata',1),cnt(e.lookup,seas?'dizi sorgulandı':'sorgulandı')]));
+    if(e.aborted)h+=nt('warn','TMDB ulaşılamadı; iş erken durduruldu.');
+    if(e.error)h+=nt('bad',esc(e.error));
+    a='<button data-goto="settings">⚙ TMDB</button>';
   } else if(e.kind==='scan'){
     var rec=(s.recent||[]);
-    h+=evPill(e)+'<h3>'+esc(e.site)+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+(e.trigger?' · '+esc(e.trigger):'')+'</div>'+
-      '<div class="kv">'+kv(dur(e.duration),'Süre')+kv(e.rate==null?'-':e.rate,'öğe/sn')+kv(num(e.scraped)+(e.ingested!=null?' <small style="font-size:12px;font-weight:400">('+num(e.ingested)+' aktarıldı)</small>':''),'öğe')+kv(e.pages==null?'-':e.pages,'sayfa')+'</div>';
-    if(rec.length>1)h+='<h2>Süre trendi (son '+rec.length+' tarama)</h2>'+spark(rec.map(function(r){return r.duration}),css('--accent'),300,54)+
-      '<h2 style="margin-top:12px">Öğe sayısı trendi</h2>'+spark(rec.map(function(r){return r.scraped}),css('--ok'),300,54);
-    if(e.error)h+='<div class="note" style="border-color:var(--bad)">'+esc(e.error)+'</div>';
-    if(e.collection_errors)h+='<div class="note" style="border-color:var(--warn)">'+esc(e.collection_errors)+' koleksiyon hatası</div>';
-    if(s.drift&&s.drift_reasons&&s.drift_reasons.length)h+='<div class="note" style="border-color:var(--warn)"><b>Drift nedenleri</b><br>'+s.drift_reasons.map(esc).join('<br>')+'</div>';
-    h+=crawlHtml(e.series_crawl)+enrichHtml(e.tmdb_enrich)+actions(e.site);
+    m.push(e.trigger,dv(e.duration));
+    h+=line('Tarama',[e.scraped!=null?B(num(e.scraped))+' öğe'+(e.ingested!=null?' ('+num(e.ingested)+' aktarıldı)':''):'',cnt(e.pages,'sayfa'),e.rate?B(esc(e.rate))+' öğe/sn':'',cnt(e.collection_errors,'koleksiyon hatası',1)]);
+    if(e.error)h+=nt('bad',esc(e.error));
+    if(s.drift&&s.drift_reasons&&s.drift_reasons.length)h+=nt('warn','<b>Drift:</b> '+s.drift_reasons.map(esc).join(' · '));
+    h+=crawlHtml(e.series_crawl)+enrichHtml(e.tmdb_enrich);
+    if(rec.length>1)h+=line('Trend',['süre '+spark(rec.map(function(r){return r.duration}),css('--accent'),90,18),'öğe '+spark(rec.map(function(r){return r.scraped}),css('--ok'),90,18)]);
+    a=btns(e.site);
   } else if(e.kind==='rollback'){
-    h+=evPill(e)+'<h3>'+esc(e.site)+'</h3><div class="sub">'+esc(full(e.at))+'</div>'+
-      '<div class="note">Config v'+esc(e.new_version)+' sürümüne geri dönüldü.</div>'+actions(e.site);
+    h+=nt('','Config v'+esc(e.new_version)+' sürümüne geri dönüldü.');
+    a=btns(e.site);
   } else if(e.kind==='cooldown'){
-    h+=evPill(e)+'<h3>'+esc(e.site)+'</h3><div class="sub">'+esc(full(e.at))+'</div>'+
-      '<div class="note">Otomatik heal cooldown nedeniyle atlandı. Bitiş: <b>'+esc(full(e.cooldown_until))+'</b> ('+esc(until(e.cooldown_until))+')</div>'+
-      ((e.reasons||[]).length?'<h2>Drift nedenleri</h2><div class="note">'+e.reasons.map(esc).join('<br>')+'</div>':'')+
-      '<div class="note" style="border-color:var(--muted)">Elle Heal cooldown\'u yok sayar.</div>'+actions(e.site);
+    h+=nt('warn','Otomatik heal cooldown nedeniyle atlandı; bitiş <b>'+esc(when(e.cooldown_until))+'</b> ('+esc(until(e.cooldown_until))+'). Elle Heal cooldown\'u yok sayar.')+
+      ((e.reasons||[]).length?line('Drift',e.reasons.map(esc)):'');
+    a=btns(e.site);
   } else {
-    h+=evPill(e)+(e.playback?' '+pill('heal','Oynatma tetikli'):'')+'<h3>'+esc(e.site)+(e.diff&&e.diff[0]?' · <span class="mono">'+esc(e.diff[0].path)+'</span>':'')+'</h3>'+
-      '<div class="sub">'+esc(full(e.at))+' · '+esc(e.provider||'-')+(e.model?' / '+esc(e.model):'')+' · '+dur(e.duration)+' · '+esc(trigLabel(e))+'</div>';
-    if((e.reasons||[]).length)h+='<h2>'+(e.playback?'Nedenler':'Drift nedenleri')+'</h2><div class="note">'+e.reasons.map(esc).join('<br>')+'</div>';
+    m.push((e.provider||'-')+(e.model?' / '+e.model:''),dv(e.duration),trigLabel(e));
+    h+=line('Sonuç',[B(esc(HL[e.outcome]||e.outcome||'?'),HC[e.outcome]==='bad'),e.new_version?'config '+B('v'+esc(e.new_version)):'',e.playback?'oynatma tetikli':'']);
+    if((e.reasons||[]).length)h+=line(e.playback?'Nedenler':'Drift',e.reasons.map(esc));
     h+=evidenceHtml(e.evidence_summary);
+    if(e.error)h+=nt('bad',esc(e.error));
     if(e.diff&&e.diff.length){
-      h+='<h2 class="sec">Önce / sonra</h2><div class="diff">'+e.diff.map(function(d){
-        return '<div class="mono" style="color:var(--muted);margin-top:6px">'+esc(d.path)+'</div><code class="b">− '+esc(d.before==null?'(yok)':d.before)+'</code><code class="a">+ '+esc(d.after==null?'(yok)':d.after)+'</code>'}).join('')+'</div>';
-    } else h+='<div class="note" style="border-color:var(--muted)">Selector değişikliği yok.</div>';
-    if(e.error)h+='<div class="note" style="border-color:var(--bad)">'+esc(e.error)+'</div>';
-    h+='<div class="kv">'+kv(esc(HL[e.outcome]||e.outcome),'Sonuç')+kv(e.new_version?'v'+esc(e.new_version):'-','Yeni config')+'</div>';
+      h+=sec('Önce / sonra')+'<div class="diff">'+e.diff.map(function(d){
+        return '<div class="mono evt">'+esc(d.path)+'</div><code class="b">− '+esc(d.before==null?'(yok)':d.before)+'</code><code class="a">+ '+esc(d.after==null?'(yok)':d.after)+'</code>'}).join('')+'</div>';
+    } else h+=nt('','Selector değişikliği yok.');
     h+=agentHtml(e.agent_summary);
-    h+=actions(e.site,e.can_rollback?'<button data-rollback="'+esc(e.site)+'">Bu düzeltmeyi geri al</button>':'',!!e.playback);
+    a=btns(e.site,e.can_rollback?'<button data-rollback="'+esc(e.site)+'">↶ Geri al</button>':'',!!e.playback);
   }
-  return h;
+  m=m.filter(function(x){return x&&x!=='-'}).map(esc).join(' · ');
+  return '<div class="evh"><div class="evm" title="'+esc(full(e.at))+'">'+m+'</div><div class="act sm">'+a+(extra||'')+'</div></div>'+h;
 }
 /* ---- yapım bağlantısı: olay bir dizi/film/bölümle ilişkiliyse {id, title, site} ---- */
 function mediaRef(e){
@@ -417,8 +425,8 @@ EvList.prototype.row=function(e){
     (o.source?'<span class="aevs">'+esc(srcLabel(e.source||e.site))+'</span>':'')+
     '<span class="aevt">'+titleHtml(e)+(o.err&&errLine(e)?'<span class="aeve">'+esc(oneLine(errLine(e)))+'</span>':'')+'</span>'+
     evPill(e)+(o.time?'':'<span class="aevw" title="'+esc(full(e.at))+'">'+esc(ago(e.at))+'</span>')+'</div>';
-  if(open)h+='<div class="aevd">'+safe(function(){return detailHtml(e)},function(x){return '<div class="note bad">Ayrıntı çizilemedi: '+esc(x&&x.message||x)+'</div>'})+
-    '<div class="act"><button class="btn" data-evcopy="'+esc(k)+'">Kopyala</button></div></div>';
+  var cp='<button data-evcopy="'+esc(k)+'" title="Olayı panoya kopyala">⧉ Kopyala</button>';
+  if(open)h+='<div class="aevd">'+safe(function(){return detailHtml(e,cp)},function(x){return '<div class="evh"><div class="evm"></div><div class="act sm">'+cp+'</div></div><div class="note bad">Ayrıntı çizilemedi: '+esc(x&&x.message||x)+'</div>'})+'</div>';
   return h+'</li>';
 };
 EvList.prototype.render=function(){
@@ -438,10 +446,10 @@ EvList.prototype.copyAll=function(){
 };
 EvList.prototype.copyOne=function(k){
   var e=this.find(k);if(!e)return;
-  var d=this.el.querySelector('.aevd'),txt=lineText(e)+(d?'\n\n'+oneLines(d.innerText||d.textContent||''):'');
+  var d=this.el.querySelector('.aevd');if(d){d=d.cloneNode(true);[].forEach.call(d.querySelectorAll('.act'),function(x){x.parentNode.removeChild(x)})}var txt=lineText(e)+(d?'\n\n'+oneLines(d.innerText||d.textContent||''):'');
   copyText(txt).then(function(){toast('Kopyalandı')}).catch(function(){toast('Kopyalanamadı','bad')});
 };
-function oneLines(s){return String(s).split('\n').map(function(x){return x.trim()}).filter(function(x){return x&&x!=='Kopyala'}).join('\n')}
+function oneLines(s){return String(s).split('\n').map(function(x){return x.trim()}).filter(function(x){return x&&x!=='Kopyala'&&x!=='⧉ Kopyala'}).join('\n')}
 function when(t){return T(t)?new Date(t).toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'-'}
 
 /* ---- veri ---- */
