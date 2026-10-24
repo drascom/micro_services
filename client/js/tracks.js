@@ -1,4 +1,4 @@
-/* tracks.js - tizen-client/js/tracks.js KOPYASI (degistirilmedi; ui-proto oynaticisi DZ.api.profileId / DZ.player.isEmbedStream saglar).
+/* tracks.js - eski istemcinin js/tracks.js KOPYASI (degistirilmedi; client oynaticisi DZ.api.profileId / DZ.player.isEmbedStream saglar).
    ses / altyazi SECIM MODELI (saf mantik, DOM yok): sunucunun streams[] + subtitles[] + audio[] alanlarindan
    Netflix tarzi secenekler, varsayilan secim, kalici tercih, akis gecisi karari. ES2017, opsiyonel zincir YOK.
 

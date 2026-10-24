@@ -19,10 +19,9 @@ raises, so the play answer is not delayed; it only reports ``{"state": ...}`` fo
 
 A stream that resolves but is refused by its host (``streamdiag.quick_check`` <= 3 s: HTTP 401/403, an error page, also for the server's
 own probe; ``SOURCEFINDER_PROBE=0`` skips it, an unclear answer counts as found) is NOT found: the step note says "akış çözüldü ama
-erişilemiyor (HTTP 403)", there is no notification, and the heal step gets ``stream_blocked`` evidence (also noted in the playback heal window).
+erişilemiyor (HTTP 403)", and the heal step gets ``stream_blocked`` evidence (also noted in the playback heal window).
 
-A found source becomes a ``notifications`` row (kind ``source_found``) for the profile that asked and is already stored the
-usual way (``video_sources`` row + resolved payload with ``valid_until``), so the next play answers from it. Every finished job
+A found source is already stored the usual way (``video_sources`` row + resolved payload with ``valid_until``), so the next play answers from it. Every finished job
 is a ``finder_jobs`` row (admin event ``kind=finder``, found or not); a job without result tells the user nothing
 (``GET /api/source-finder/<id>`` says ``not_found``).
 
@@ -49,8 +48,6 @@ log = logging.getLogger("diziflix.sourcefinder")
 STEPS = ("retry", "search", "heal")
 MAX_STEPS = 6        # steps handed out by the status endpoint
 NOTE_CHARS = 140
-NOTIFY_LIMIT = 50    # notifications per GET
-KIND_FOUND = "source_found"
 METHODS = ("retry", "search", "heal")
 
 _lock = threading.Lock()
@@ -136,8 +133,6 @@ def _request(cid: str, ep: str, profile_id: str, trigger: str, *, force: bool = 
     with _lock:
         running = _inflight.get(key)
         if running:
-            if profile_id not in running["profiles"]:
-                running["profiles"].append(profile_id)   # another profile hit the same dead end: it gets the notification too
             return _state("searching", reason="running", job_id=running["job_id"])
         cooldown = app_config.SOURCEFINDER_COOLDOWN
         last = db.query_one("SELECT state,finished_at FROM finder_jobs WHERE canonical_id=? AND episode_id=? "
@@ -149,7 +144,7 @@ def _request(cid: str, ep: str, profile_id: str, trigger: str, *, force: bool = 
         db.execute("INSERT INTO finder_jobs(canonical_id,episode_id,profile_id,state,trigger,started_at) VALUES (?,?,?,?,?,?)",
                    (cid, ep, profile_id, "searching", trigger[:20], _now()))
         job_id = int(db.query_one("SELECT MAX(id) AS id FROM finder_jobs WHERE canonical_id=? AND episode_id=?", (cid, ep))["id"])
-        job = {"job_id": job_id, "key": key, "cid": cid, "ep": ep, "profile": profile_id, "profiles": [profile_id], "title": item["title"],
+        job = {"job_id": job_id, "key": key, "cid": cid, "ep": ep, "profile": profile_id, "title": item["title"],
                "type": item["type"], "steps": [], "started": time.monotonic(), "updated_at": _now(), "only": only}
         numbers = _episode_numbers(cid, ep) if ep else None
         job["season"], job["episode"] = numbers if numbers else (None, None)
@@ -206,7 +201,7 @@ def _save_steps(job: dict) -> None:
 
 
 def _finish(job: dict, *, found: Optional[dict], error: str = "") -> None:
-    """Close the job row, notify the profile of a found source, drop the single-flight entry. Never raises."""
+    """Close the job row, drop the single-flight entry. Never raises."""
     try:
         db.execute("UPDATE finder_jobs SET state=?,finished_at=?,steps=?,source_id=?,method=?,error=? WHERE id=?",
                    ("found" if found else "not_found", _now(), json.dumps(job["steps"][:MAX_STEPS], ensure_ascii=False),
@@ -214,25 +209,8 @@ def _finish(job: dict, *, found: Optional[dict], error: str = "") -> None:
                     job["job_id"]))
     except Exception as exc:
         log.warning("source finder: job row not closed: %s", exc)
-    if found:
-        try:
-            _notify(job, found)
-        except Exception as exc:
-            log.warning("source finder: notification not written: %s", exc)
     with _lock:
         _inflight.pop(job["key"], None)
-
-
-def _notify(job: dict, found: dict) -> None:
-    payload = {"title": job["title"], "season": job.get("season"), "episode": job.get("episode"),
-               "site": found.get("site") or "", "method": found.get("method") or "", "source_id": found.get("source_id") or ""}
-    if found.get("recipe"):
-        payload["recipe"] = found["recipe"]
-    with _lock:
-        profiles = list(job.get("profiles") or [job["profile"]])
-    for profile in profiles:
-        db.execute("INSERT INTO notifications(profile_id,kind,canonical_id,episode_id,payload,created_at) VALUES (?,?,?,?,?,?)",
-                   (profile, KIND_FOUND, job["cid"], job["ep"], json.dumps(payload, ensure_ascii=False), _now()))
 
 
 # --- helpers shared by the steps --------------------------------------------------------------------------------
@@ -586,7 +564,7 @@ def _wait_for_heal(job: dict, site: str) -> bool:
 def rerun_for_site(site: str) -> int:
     """A repair was APPLIED for ``site``: the finder jobs of that site that ended "not found" within ``SOURCEFINDER_RERUN_HOURS`` (the latest job of each
     title + episode; a running job waits for the repair itself) are run again, the cooldown ignored: the ``retry`` step resolves their sources
-    afresh and a found one becomes a ``source_found`` notification for the profile that asked (trigger ``heal_rerun``, at most
+    afresh (trigger ``heal_rerun``, at most
     ``SOURCEFINDER_RERUN_MAX`` per repair, one after the other in one background thread). Returns how many were queued. Never raises."""
     try:
         from . import playissues
@@ -708,7 +686,7 @@ def _step_heal(job: dict) -> dict:
     return {"note": _short("; ".join(notes) or "ajan çalışmadı")}
 
 
-# --- reading side: status, notifications, admin events ----------------------------------------------------------
+# --- reading side: status, admin events ----------------------------------------------------------
 
 def _steps_of(text: Any) -> list[dict]:
     try:
@@ -736,34 +714,6 @@ def status(canonical_id: str, episode_id: Optional[str] = None) -> dict:
     if row is None or row["state"] not in ("found", "not_found"):   # no job, or one that was cut off by a restart
         return {"state": "idle", "steps": [], "updated_at": 0}
     return {"state": row["state"], "steps": _steps_of(row["steps"]), "updated_at": int(row["finished_at"] or row["started_at"])}
-
-
-def notifications(profile_id: str, since: int = 0) -> dict:
-    """Unread notifications of a profile newer than ``since`` (oldest first, at most ``NOTIFY_LIMIT``): ``{"items": [...],
-    "last_id": int}``; ``last_id`` = the newest id handed out (``since`` when there is none)."""
-    since = max(0, int(since or 0))
-    rows = db.query("SELECT * FROM notifications WHERE profile_id=? AND id>? AND read_at IS NULL ORDER BY id LIMIT ?",
-                    (str(profile_id or ""), since, NOTIFY_LIMIT))
-    items = []
-    for row in rows:
-        try:
-            payload = json.loads(row["payload"] or "{}")
-        except ValueError:
-            payload = {}
-        items.append({"id": row["id"], "kind": row["kind"], "canonical_id": row["canonical_id"] or "",
-                      "episode_id": row["episode_id"] or "", "title": str(payload.get("title") or ""),
-                      "season": payload.get("season"), "episode": payload.get("episode"), "site": str(payload.get("site") or ""),
-                      "method": str(payload.get("method") or ""), "created_at": int(row["created_at"])})
-    return {"items": items, "last_id": items[-1]["id"] if items else since}
-
-
-def mark_read(profile_id: str, upto: int) -> int:
-    """Mark the profile's notifications up to id ``upto`` as read; returns how many were still unread."""
-    upto = max(0, int(upto or 0))
-    before = db.query_one("SELECT COUNT(*) AS n FROM notifications WHERE profile_id=? AND id<=? AND read_at IS NULL",
-                          (str(profile_id or ""), upto))["n"]
-    db.execute("UPDATE notifications SET read_at=? WHERE profile_id=? AND id<=? AND read_at IS NULL", (_now(), str(profile_id or ""), upto))
-    return int(before)
 
 
 def _iso(epoch: Any) -> str:

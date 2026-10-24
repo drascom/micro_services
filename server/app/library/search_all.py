@@ -71,14 +71,6 @@ def _parked(site: str) -> bool:
         return bool(state and state["until"] > time.monotonic())
 
 
-def breaker_state() -> dict[str, dict]:
-    """{site: {"fails", "parked": bool, "retry_in": seconds}} for the sites with failures on record (admin/debug)."""
-    now = time.monotonic()
-    with _lock:
-        return {s: {"fails": v["fails"], "parked": v["until"] > now, "retry_in": max(0, round(v["until"] - now))}
-                for s, v in _breaker.items()}
-
-
 def reset() -> None:
     """Forget breaker state and running searches (tests)."""
     with _lock:

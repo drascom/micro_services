@@ -1,7 +1,7 @@
-// ui-proto player (js/player.js) headless test: engine choice (hls -> hls.js in a desktop browser, AVPlay when webapis.avplay
+// client player (js/player.js) headless test: engine choice (hls -> hls.js in a desktop browser, AVPlay when webapis.avplay
 // exists), fallback to the next stream on failure (+ playback-report), progress POSTs, Back exits, all-failed -> finder screen.
 // Real api.js / tracks.js / subs.js / player.js in a vm against a fake DOM, fake timers and a FAKE XMLHttpRequest (no server, no DB).
-// Run: node ui-proto/tests/player.js
+// Run: node client/tests/player.js
 const fs = require('fs'), path = require('path'), vm = require('vm'), assert = require('assert');
 const { el, findAll, timers } = require('./_fake_dom');
 

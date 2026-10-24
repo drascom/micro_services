@@ -140,6 +140,7 @@ Reads provider URLs from JSON embedded in the page itself (no extra request): a 
 |---|---|---|---|
 | `vidmolly` | code | `vidmoly.*`, `vidmolly.*` | VidMolly embedded player: resolves /dl, /w, /v and embed-<code> links to HLS/MP4 streams with soft subtitle tracks, using a cookie fallback for challenge pages. |
 | `okru` | code | `ok.ru` | OK.ru video player: reads the player metadata API (MP4 qualities, HLS fallback) for /videoembed/<id> links. |
+| `vidstack_p2p` | code | `*.uns.bio`, `*.rpmplay.xyz`, `*.p2pplay.pro` | White-label '#id' HLS players (uns.bio, rpmplay.xyz, p2pplay.pro; any sub-domain): reads the AES-encrypted /api/v1/video answer, HLS streams served through the stream proxy (Referer-bound). |
 <!-- END GENERATED resolvers-catalog -->
 
 ## Examples (validated by the test-suite)

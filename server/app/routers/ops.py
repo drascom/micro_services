@@ -26,7 +26,7 @@ router = APIRouter()
 ADMIN_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "admin")
 _ASSETS = {"app.js": "text/javascript", "library.js": "text/javascript", "settings.js": "text/javascript",
            "categories.js": "text/javascript", "backgrounds.js": "text/javascript",
-           "onboard.js": "text/javascript", "style.css": "text/css"}
+           "sites.js": "text/javascript", "style.css": "text/css"}
 
 
 # --- pages ------------------------------------------------------------------
@@ -249,7 +249,7 @@ def _top(counter: Counter, n: int = 3) -> list[dict[str, Any]]:
 
 
 def _agent_summary(h: dict[str, Any]) -> Optional[dict[str, Any]]:
-    """Boiled-down agent log of a heal (``h["agent"]["events"]`` in the onboarding event format: kind
+    """Boiled-down agent log of a heal (``h["agent"]["events"]`` in the agent event format: kind
     tool|tool_result|say|error|retry|user): counts, tool usage and the agent's last words. None without a log."""
     agent = h.get("agent")
     if not isinstance(agent, dict):
@@ -298,7 +298,7 @@ def events(site: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=20
            before: Optional[str] = Query(None)) -> dict[str, Any]:
     """Merged run + heal feed, newest first. ``before``: ISO time cursor (exclusive).
 
-    Each event: ``kind`` scan|heal|cooldown|rollback|tmdb|onboard|finder|reset, ``at``, plus the raw record.
+    Each event: ``kind`` scan|heal|cooldown|rollback|tmdb|finder|reset, ``at``, plus the raw record.
     ``live`` events (site ``"famelack"``) are live TV channel scans (``scraper/state.py`` ``record_ops_live``): status
     success | no_change | error, ``trigger`` auto | manual | cli, ``countries``, new/updated/deactivated, health counts.
     ``reset`` events (site ``"library"``) are admin library resets: ``backup, cleared, kept, cache, cache_files, seconds``.
@@ -306,8 +306,6 @@ def events(site: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=20
     canonical_id, episode_id, season, episode, state`` (found | not_found), ``method`` (retry | search | heal), ``site``,
     ``steps`` (``[{name, ok, ms, note}]``), ``source_id, error, trigger, seconds``.
     ``tmdb`` events (site ``"tmdb"``) are finished admin backfills/previews (counters flat).
-    ``onboard`` events (site ``"onboard"``, ``?site=`` also matches their ``site_id``) are finished site-onboarding
-    pi runs / saved sites: ``draft_id, url, site_id?, status, seconds, turns, passed, notes``.
     ``playback_issue`` events are the playback problems clients reported / the server diagnosed (``library/playissues.py``): ``id, at,
     first_at, site, code`` (issue class), ``label, host, provider, stream_type, note, http, sources, reports, heal_class, triggered_at``
     (a playback heal was started for it), ``episodes[{source_id, title, season, episode, locator, reports, client_code, at}]``; the
@@ -344,9 +342,6 @@ def events(site: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=20
         rows.append({**lv, "kind": "live", "at": lv.get("at") or lv.get("started_at")})
     for t in sstate.list_ops("tmdb", site, 1000):
         rows.append({**t, "kind": "tmdb", "at": t.get("started_at")})
-    for o in sstate.list_ops("onboard", None, 1000):
-        if not site or site in (o.get("site"), o.get("site_id")):
-            rows.append({**o, "kind": "onboard", "at": o.get("at")})
     if not site or site == "library":   # admin library resets (library/libreset.py)
         rows.extend({**m, "kind": m.get("kind") or "reset"} for m in sstate.list_ops("maintenance", None, 200))
     for hy in sstate.list_ops("hydrate", site, 200):   # detail hydrates that read no episodes (routers/detail.py)

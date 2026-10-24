@@ -311,10 +311,6 @@ def _signature(folder: str) -> tuple:
     return tuple(sig)
 
 
-def load_count() -> int:
-    return _loads
-
-
 def load_all() -> list[RecipeProvider]:
     """Every valid active recipe, sorted by name. The directory is only read again when a recipe file was added, removed or
     changed; a broken file (unreadable, invalid) is logged once and skipped, it never takes the other providers down."""

@@ -269,15 +269,8 @@ sudo server/tools/install_obscura.sh
 
 ## Categories (`app/rows.py`)
 
-Under the real (`library`) layout `/api/boot` emits rows in order:
-`continue` → `yakinda` (Yakında Vizyonda / upcoming) → `new` (Yeni Eklenenler)
-→ `top10` → `mylist` → **21 real sinemalar genres** (membership from the real
-`/filmler/<tür>` list pages, e.g. aksiyon, komedi, dram, korku, bilim-kurgu,
-gerilim, romantik, animasyon, belgesel, macera, suç, fantastik, aile, savaş,
-tarih, müzikal, western, gizem, biyografi, spor, gençlik). `continue` and
-`mylist` are omitted when empty. **Staged load**: only `continue` and `new`
-arrive `loaded: true` with items; genres and `yakinda` are lazy (`loaded:false`,
-fetched via `/api/row/{id}`).
+The home rows and their order are decided in one place, `app/homelayout.py` (see `../API.md`, "Ana ekran düzeni"); the
+client reads them through `/api/sections`, `/api/section/{id}` and `/api/row/{id}` (`/api/boot` was removed 2026-10-24).
 
 ## Admin (`/admin`)
 
@@ -372,7 +365,7 @@ Testler: `tests/test_ops_library.py`.
 `SCRAPER_HEAL_PROVIDER` selects the backend:
 `codex_cli` (subscription codex CLI, default) | `pi` (pi CLI, one-shot spawn per
 heal, subscription-authed via `~/.pi/agent/auth.json`, no API key) |
-`pi_agent` (the onboarding skill in **repair mode**: a pi agent with the sandbox tools
+`pi_agent` (the repair skill `pi/skills/diziflix-site-onboarding/`: a pi agent with the sandbox tools
 inspects the pages, tests yaml / provider recipes and hands in a proposal with `submit_repair`;
 serves the list-drift heal AND the playback-triggered heal / "no sources" repair of
 `scraper/heal_agent.py`; every proposal passes the same gates: no field dropping, baseline, the
@@ -547,7 +540,7 @@ ingest (after the write, before the TMDB season pass) and on demand.
   announced but not aired (`not_yet` rows) are not written; `_series_inventory.next_air` remembers the date. Trailer ->
   existing `trailer_url` / `kind=trailer` (`embed`). Extra facts kept in `normalized` only: `cast_photos`
   (name + photo URL; TMDB credits will be the real source), `overview_en` (the English half of the site summary),
-  `genres_unmapped`. Genres map to the central labels (`app/genres.py`, same dictionary as `/api/genres`).
+  `genres_unmapped`. Genres map to the central labels (`app/genres.py`, same dictionary as the `genres` of `/api/catalog`).
   Existing rows are only updated (COALESCE: an empty value never blanks a known one, a real title is never
   replaced by "N. Bölüm"); nothing is deleted; status/failures/`playback_attempts` are untouched.
 - **First/last episode check.** The site's "Dizinin İlk/Son Bölümünü İzle" links must equal the first/last listed
@@ -595,7 +588,6 @@ Copy `.env.example` → `.env`. Relative paths resolve against `server/`.
 | `CACHE_TTL` | `900` | seconds between catalogue snapshot refreshes (`0` off) |
 | `INGEST_REFRESH_MIN_INTERVAL` | `20` | minimum seconds between two **mid-scan** snapshot refreshes (`0` = no debounce); see "Periodic refresh" |
 | `IMG_QUALITY` / `IMG_MAX_AGE` | `82` / `86400` | JPEG quality · artwork `max-age` |
-| `ROW_LIMIT` | `20` | max items in an eagerly loaded `/api/boot` row |
 | `HOME_LAYOUT` | `continue,new_episodes,latest_movies,trending_series,trending_movies,must_watch,series,movies` | tv-v1 home rows, top to bottom (row ids; a row with an empty pool is left out; `mylist` is no home row, the client opens it as a page) |
 | `HERO_SERIES` / `HERO_MOVIES` | `3` / `3` | slider size per type (best `trend_score` titles with a backdrop, alternating series/movie) |
 | `HOME_ONLY_READY` | `1` | home rows + slider list only playable (`availability.state=ready`) titles; search/catalogue unaffected |
@@ -656,10 +648,7 @@ Copy `.env.example` → `.env`. Relative paths resolve against `server/`.
 | `PLAYHEAL_COVERAGE_RATIO` / `PLAYHEAL_COVERAGE_MIN_SERIES` | `0.5` / `5` | share of series items without episode sources (and least number of series) that is a "no sources" signal: warning in the scan record + a repair run |
 | `SCRAPER_HEAL_TIMEOUT` | `120` | seconds to wait for the LLM |
 | `SCRAPER_HEAL_AUTOAPPLY` | `true` (unset = on) | **default only** (admin Ayarlar wins once saved): version + activate a heal that passed its gates |
-| `ONBOARD_ENABLED` | `0` | site onboarding agent (FROZEN, to be removed): `0` = start/message/save + sandbox `discover_site`/`submit` answer 403 `onboard_disabled`, admin Siteler hides "Yeni site"/Taslaklar/Düzenle (`/api/ops/sites/manage` `onboard_enabled`); heal, heal-playback, site list, Olay defteri keep working. `1` = on |
 | `SCRAPER_HEAL_MODEL` / `SCRAPER_HEAL_PI_BIN` | — | pi model / binary override |
-| `ONBOARD_AUTO_ROUNDS` | `2` | admin "Siteler" onboarding agent: how many AUTOMATIC correction rounds the same pi session gets when it hands in a draft that fails the acceptance criteria (the server sends the failing criteria + hints + diagnostics back before the admin sees the draft); `0` = off, at most `5`. Read at call time, not at start-up. An EDIT of a registered site and a draft with a pending question never get one |
-| `ONBOARD_HARDEN` | `1` | admin "Siteler" onboarding: the hardening criteria of a NEW site (`availability_gate_defined`, `series_signal_collection`, `series_full_inventory`, `home_path_is_canonical`, `collection_poster_fill`, `detail_info_defined`; `removed_fields` warning) that stop an agent from passing with the easy yaml; `0` / `false` / `off` = kill switch (older criteria only). Never applies to repair or edit runs. Read at call time |
 | `SCRAPER_HEAL_BASE_URL` / `SCRAPER_HEAL_API_KEY` | — | `openai_compatible` only (future) |
 
 ## API summary
@@ -671,7 +660,7 @@ errors `{"error": {"code": ..., "message": ...}}`.
 |--------|------|-------|
 | GET | `/api/health` | status, source, item count, cache age |
 | GET | `/api/profiles` | list · `POST` create · `DELETE /api/profiles/{id}` |
-| GET | `/api/boot?profile=` | tier 1 — hero + row skeleton |
+| GET | `/api/sections?profile=` · `/api/section/{id}` | home menu (vitrins) · one section page (heroes + rows) |
 | GET | `/api/row/{row_id}?profile=&offset=&limit=` | tier 2 — lazy row paging |
 | GET | `/api/detail/{item_id}?profile=` | tier 3 — seasons, cast, similar, resume |
 | GET | `/api/streams/{item_id}?episode=&profile=` | resolved MP4/HLS, subtitles, resume |
@@ -700,7 +689,7 @@ server/
 │       │               resolve.py drift.py heal.py state.py
 │       └── configs/    <site>.yaml (+ <site>.baseline.json)
 ├── data/               fixture.json · diziflix.db · imgcache/ · scraper_state/ · site_handoffs/<site>.md (devir notu)
-├── tools/              gen_fixture.py ingest.py homepage_probe.py scraper_smoke.py
+├── tools/              gen_fixture.py ingest.py homepage_probe.py
 └── requirements.txt · install.sh · diziflix.service · .env.example
 ```
 

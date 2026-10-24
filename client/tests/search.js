@@ -1,6 +1,6 @@
-// ui-proto search controller (js/search.js + api.js) headless test: < 2 chars clears without requests, 2 chars = library only,
+// client search controller (js/search.js + api.js) headless test: < 2 chars clears without requests, 2 chars = library only,
 // >= 3 chars = library + live /api/search, ~300 ms debounce, stale responses ignored / aborted, sites row drops library items,
-// unresponsive sites -> note. Fake XHR + fake timers (no server, no DB). Run: node ui-proto/tests/search.js
+// unresponsive sites -> note. Fake XHR + fake timers (no server, no DB). Run: node client/tests/search.js
 const fs = require('fs'), path = require('path'), vm = require('vm'), assert = require('assert');
 const { timers } = require('./_fake_dom');
 

@@ -6,7 +6,7 @@
     # <site> devir notu
     <!-- meta: {"scans": n, "last_scan_at": ts, "last_sig": "..."} -->
     ## Güncel durum                      deterministic: version, playback, list, collections, players, search ...
-    ## Bulgular ve çözümler             the AGENT's text (``submit_draft(handoff=...)``), <= NARRATIVE_MAX
+    ## Bulgular ve çözümler             the AGENT's text (legacy: the removed onboarding's ``submit_draft(handoff=...)``), <= NARRATIVE_MAX
     ## Kullanıcı talimatları ve kararları   deterministic: the admin's messages, ask_user questions + answers, skipped fields
     ## Sonuçlar                         deterministic: criteria summary + the measured lines of the first scans
     ## Değişiklik geçmişi               dated entries (<= CHANGE_MAX each), newest first; at most HISTORY_MAX, older ones one line each

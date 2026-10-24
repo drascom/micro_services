@@ -1,7 +1,8 @@
-"""Site-onboarding sandbox: the back end of the pi agent's tools (``/api/onboard/sandbox/*``).
+"""Repair sandbox: the back end of the heal repair agent's pi tools (``/api/onboard/sandbox/*``; the site-onboarding
+agent that once used it too was removed 2026-10-24, the path stays for the pi extension).
 
-The agent fetches pages, tries selectors, tests a DRAFT site yaml (list parse, schema, normalize, detail fields),
-tries the resolver chain on a detail page and finally hands the draft in. Nothing here writes ``scraper/configs`` or a
+The agent fetches pages, tries selectors, tests a proposed site yaml (list parse, schema, normalize, detail fields),
+tries the resolver chain on a detail page and finally records the proposal (``submit_repair``). Nothing here writes ``scraper/configs`` or a
 baseline: pages and drafts live in ``DATA_DIR/onboard`` (``scraper/onboard_store.py``).
 
 Access (every endpoint): the client must be localhost (``127.0.0.1`` / ``::1``) AND send an ``X-Onboard-Token`` header
@@ -33,7 +34,7 @@ are small on purpose (they go to an LLM): text is clipped, lists are capped.
                                                                       + ``search`` {query, count, samples[], found_known, ...} and the
                                                                       criterion ``search_ok``, when ``playable`` is true AND the yaml has a
                                                                       ``search:`` block; no block = a warning, no criterion)
-                                                                      Report fields added for the agent (``test_config`` and ``submit``):
+                                                                      Report fields added for the agent (``test_config``):
                                                                       * ``diagnostics`` = ``{list, detail, series, collections, search, player}``,
                                                                         each a (possibly empty) list of ``{where, problem, ...}`` entries: how
                                                                         many rows a selector matched, what each field extracted from the FIRST
@@ -49,14 +50,6 @@ are small on purpose (they go to an LLM): text is clipped, lists are capped.
                                                                       * ``failing`` (only when ``passed`` is false) = ``[{criterion, value,
                                                                         bound, hint}]``: every failed criterion with one sentence on why / what
                                                                         to try.
-                                                                      * NEW-site hardening (``_hardening``; not repair / edit mode;
-                                                                        ``ONBOARD_HARDEN=0`` switches it off): criteria ``availability_gate_defined``,
-                                                                        ``series_signal_collection``, ``series_full_inventory``,
-                                                                        ``home_path_is_canonical``, ``collection_poster_fill``,
-                                                                        ``detail_info_defined`` where they apply; ``exempt`` = what the admin's "Sitede
-                                                                        yok, atla" answers (draft ``skipped_fields``) covered, ``redirect_hint``,
-                                                                        ``detail_info {good, missing, required}``, ``removed_fields`` (a field that
-                                                                        gave values in the draft's previous submission is gone).
                                                                       * ``site_quality`` = ``{grade standart|karışık|zayıf|bilinmiyor, reasons[], note, hosts{}, known_ratio, resolved_ratio,
                                                                         mixed_ratio, challenge_ratio, ...}`` (``playable`` runs; ``scraper/sitequality.py``; informs only, NOT a criterion).
                                                                       * ``blocked`` = ``{count, rules, samples[{url, reason}]}`` (``playable``
@@ -74,17 +67,6 @@ are small on purpose (they go to an LLM): text is clipped, lists are capped.
                                                                         while its iframe looks like a block placeholder (telif / copyright /
                                                                         blocked / unavailable / restricted) gets a warning advising a ``blocked:``
                                                                         rule (``references/blocked.md``).
-``POST /test_search``    {yaml_text, query?, page_id?, detail_page_id?}
-                                                                      -> valid, errors, warnings, query, count, samples[{title, detail_url,
-                                                                      poster_url, year}] (<= 5), found_known (the list item the query was
-                                                                      taken from is among the results: its detail_url or normalize key),
-                                                                      normalize_ok_ratio, ms: the draft's yaml ``search:`` block run on ONE
-                                                                      live query in memory (``scraper/search_generic.py``; nothing is written)
-``POST /discover_site``  {url}                                       -> yaml_text, found, missing[{field, tried, ...}], confidence, pages_fetched, pages[{role, page_id,
-                                                                      ...}], notes, errors: the DRAFT site yaml built by code from <= 8 pages of the
-                                                                      site (``scraper/discover.py``: home sections + roles, list, series page,
-                                                                      detail fields, episode page, player candidates, normalize); it judges nothing:
-                                                                      what it is unsure of is in ``missing``; the pages are stored (``page_id``)
 ``POST /match_providers`` {player_url, referer?, detail_url?}         -> matches[{provider, kind, host_match, ok, stream_type, stream_host, ms}],
                                                                       page, recommendation {action: use_provider | add_host | new_recipe |
                                                                       needs_code, recipe_yaml?, host_regex?}: every provider of the library dry-run on
@@ -100,18 +82,10 @@ are small on purpose (they go to an LLM): text is clipped, lists are capped.
                                                                       for ``detail_url``, plus ``pages[]``: every page tried (``detail_urls``,
                                                                       else up to 2 more sampled from the list page of the draft yaml), one
                                                                       after the other; ``status`` resolved (all) / partial (some)
-``POST /submit``         {draft_id, yaml_text, site_id_suggestion, notes, handoff?, page_id?, detail_page_id?, provider_recipes?}
-                                                                      -> test_config again (always with collections AND playable), written
-                                                                      to the draft, status=ready
 ``provider_recipes`` = ``[{name, yaml, mode?}]`` (at most 3): new provider recipes for the library; ``mode: "update"`` = a NEW VERSION of a recipe
-that is in the library, allowed to widen ``match.host_regex`` only (``recipes.update_problems``; the yaml comes from ``match_providers``). ``test_config`` / ``test_resolvers`` /
-``submit`` take them (the draft's stored ones are always included) and add them IN MEMORY to the providers the site yaml may name in
-``providers:``; nothing is written to ``configs/providers`` here (only ``onboard.save`` does).
-
-Edit mode (an admin changes a REGISTERED site, ``onboard.start(mode="edit")``; the draft has ``mode: "edit"`` + ``edit_site_id``): the
-same tools, plus ``GET /site_config/{site_id}`` for THAT site only. ``submit`` locks ``site_id_suggestion`` to the edited site (whatever
-the agent sends), ``test_config`` / ``submit`` check the collection ids against it (``site_hint``) and look the site's code modules up by
-its real id (``module_site``), so a hand-built site's own extractor is found.
+that is in the library, allowed to widen ``match.host_regex`` only (``recipes.update_problems``; the yaml comes from ``match_providers``). ``test_config`` / ``test_resolvers``
+take them (the job's recorded ones are always included) and add them IN MEMORY to the providers the site yaml may name in
+``providers:``; nothing is written to ``configs/providers`` here (only the heal applies a proposal).
 
 Repair mode (the heal agent, ``scraper/heal_agent.py``; the token belongs to a repair job ``rp_...``, not a draft):
 ``GET  /site_config/{site_id}?recipe=``                              -> the ACTIVE yaml text + version + baseline of a registered site and
@@ -127,13 +101,11 @@ Repair mode (the heal agent, ``scraper/heal_agent.py``; the token belongs to a r
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import contextvars
 import functools
 import hmac
 import json
 import logging
-import os
 import re
 import secrets
 import subprocess
@@ -167,7 +139,6 @@ MAX_DUPLICATE_KEY_RATIO = 0.1                                 # duplicated norma
 MIN_COLLECTION_COUNT = 3                                      # items a collection (home section) must yield (``collections: true``)
 MAX_COLLECTIONS = 8                                           # yaml ``collections:`` entries accepted
 MAX_PROVIDER_RECIPES = 3                                      # provider recipes one draft may carry
-DISCOVER_SECONDS = 60.0                                       # discover_site: longest one call (page requests stop NEED_SECONDS before it)
 # playability (``playable: true`` / always in submit): a few normalized items are followed from their playback page to a stream
 MIN_PLAYABLE_RATIO = 0.67                                     # resolved / checked samples (``skipped`` excluded; at least 1 resolved)
 MIN_SERIES_SOURCE_RATIO = 0.9                                 # series items that carry episode ``video_sources`` / series items
@@ -184,20 +155,6 @@ SERIES_SPARES = 2                                             # more series page
 SERIES_SAMPLE_SECONDS = 25.0                                  # longest one series page may take (fetch + parse)
 MIN_SERIES_INVENTORY_RATIO = 1.0                              # checked series pages that must give at least one episode
 SERIES_HINT = "cards link to series pages: add series_page (see references/series-page.md)"
-# the ingest sample (``harden``, new site): up to INGEST_SAMPLE_ITEMS distinct series items of the list + the collections go through the
-# production identity / series-page resolution (key + title cleanup, ``library/series_dir.py``) in memory and up to SERIES_READS of their
-# series pages are read; ``ingest_sample_ok`` = the share that resolves to a series page with a non-empty episode inventory
-SERIES_READS = 5                                              # series pages read when the ingest sample runs (SERIES_SAMPLES otherwise)
-INGEST_SAMPLE_ITEMS = 10                                      # distinct series items judged by the ingest sample
-MIN_INGEST_SAMPLE_OK = 0.8                                    # ``ingest_sample_ok`` bound
-# live search (``search:`` block, Faz 6): ONE query is run with the draft's spec (``scraper/search_generic.py``) in ``test_search`` and in
-# the search stage of ``test_config(playable: true)`` / ``submit`` (always); criterion ``search_ok`` exists only when the yaml has ``search:``
-SEARCH_LIMIT = 20             # results asked for (the engine caps at 20)
-SEARCH_NEED = 14.0            # seconds of the call that must be left to start the search stage (engine: 10 s per request), else ``skipped``
-SEARCH_SAMPLES = 5            # results listed in the answer
-SEARCH_QUERY_MAX = 100        # characters of a query (the engine's own cap)
-NO_SEARCH_WARNING = ("no search block: this site will not be searchable (add `search:` when the site has a search form; "
-                     "see notes `search-hint`)")
 MAX_EPISODE_LINKS = 5        # outline: episode-link groups listed
 EPISODE_LINK_MIN = 3          # outline: links of one shape that make a group
 # roles onboarding writes: sections of the home page / the site's "trending" and "newest" pages. ``new`` / ``catalog`` /
@@ -209,27 +166,6 @@ COLLECTION_KEYS = frozenset({"id", "title", "path", "role", "row_selector", "fie
                              "min_keep", "min_keep_relax"})
 NO_COLLECTIONS_WARNING = ("no collections: ana ekran satırları (trendler/yeni/dikkate değer) bu siteden dolmayacak; "
                           "ana sayfada ilgili bölümler varsa ekle")
-# Hardening criteria of a NEW site's onboarding (``_analyze(harden=True)``: ``test_config`` / ``submit`` / ``onboard.save`` of a new
-# site, never repair or edit mode, so registered / hand-built sites are untouched). The rules live here, not only in the skill text:
-# an agent that took the easy way (list_url "/", one collection, no series_page, no availability_gate) gets ``passed: false`` and the
-# automatic correction round (``onboard._begin_auto_round``) sends it back with ``failing[].hint``.
-SERIES_SIGNAL_ROLES = ("trending", "latest_series")           # collection roles that carry SERIES: ``series_signal_collection`` needs one
-SKIP_HOME_SERIES = "home_series_section"                      # draft ``skipped_fields`` entry (admin: "Sitede yok, atla") exempting series_signal_collection
-SKIP_SERIES_INVENTORY = "series_inventory"                    # same, exempting series_full_inventory
-SKIP_COLLECTION_POSTER = "collection_poster"                  # same, exempting collection_poster_fill
-HARDEN_CRITERIA = ("availability_gate_defined", "series_signal_collection", "series_full_inventory", "home_path_is_canonical",
-                   "collection_poster_fill", "detail_info_defined", "ingest_sample_ok")
-POSTER_ROLES = ("trending", "latest_series", "latest_movies", "noteworthy_movies", "noteworthy_series", "featured", "category")   # collections whose cards need a poster
-MIN_COLLECTION_POSTER_FILL = 0.8                              # ``poster_url`` fill of every such collection (``collection_poster_fill``)
-#: the information a detail page gives a title (``detail_info_defined``): group -> the detail field names that count for it (and that an
-#: admin's "Sitede yok, atla: <name>" may name). A group is GOOD when one of its fields is defined AND filled in the sample pages.
-INFO_FIELDS = {"synopsis": ("synopsis", "overview", "description", "summary", "plot"), "year": ("year", "release_year"),
-               "cast": ("cast", "actors"), "genres": ("genres", "genre"), "rating": ("rating", "imdb", "score"),
-               "trailer_url": ("trailer_url", "trailer"), "poster_url": ("poster_url", "poster")}
-MIN_DETAIL_INFO = 3           # good info groups a detail page must give (fewer when the admin said the site lacks some)
-DETAIL_SAMPLES = 2            # detail pages parsed for ``detail_info_defined`` (the stored one + one more list item); a field must fill in all of them
-DETAIL_SAMPLE_NEED = 8.0      # seconds of the call that must be left to fetch the second detail page
-MAX_REMOVED = 6               # ``removed_fields`` entries kept
 HINT_CLIP = 700               # characters of one ``failing[].hint`` (the hardening hints are several sentences long)
 MAX_BLOCKS = 16               # outline: repeating home blocks listed (``blocks``)
 BLOCK_MIN_CARDS = 3           # outline: cards of one repeating group that make a block
@@ -263,9 +199,6 @@ TRIAL_STREAMS = 8             # test_resolvers: streams listed per page
 TRIAL_TYPE_STAGE = "player_page.type: "   # trace stage prefix of a player_page warning (a URL that contradicts its declared type)
 LOCAL_HOSTS = frozenset({"127.0.0.1", "::1"})
 DRAFT_SITE_ID = "onboard_draft"   # site id of the in-memory draft config (never a real site)
-# the id the SITE CODE MODULES (``site_extractors/<id>.py``: discover / resolve_candidate / series_inventory) are looked up by: the draft
-# id, or in an edit run the real id of the edited site (``module_site``; a ContextVar because the helpers are called deep inside the stages)
-_MODULE_SITE: contextvars.ContextVar = contextvars.ContextVar("onboard_module_site", default=DRAFT_SITE_ID)
 SITE_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
 _ESCALATE = ("challenge_blocked", "http_401", "http_403", "http_429", "http_503", "empty response", "timeout")
 _SKIP_TAGS = frozenset({"html", "head", "body", "script", "style", "svg", "path", "br", "meta", "link", "noscript", "use"})
@@ -356,40 +289,6 @@ def _compact(item: dict) -> dict:
 
 def _text(node) -> str:
     return re.sub(r"\s+", " ", node.text(strip=True) or "").strip()
-
-
-def _module_site() -> str:
-    return _MODULE_SITE.get()
-
-
-@contextlib.contextmanager
-def module_site(site_id: str):
-    """Within the block the site code modules are looked up by ``site_id`` (an edit run: the registered site being edited)."""
-    token = _MODULE_SITE.set(site_id or DRAFT_SITE_ID)
-    try:
-        yield
-    finally:
-        _MODULE_SITE.reset(token)
-
-
-def _scoped(fn, site_id: str):
-    """``fn`` run inside ``module_site(site_id)`` (the pool threads do not inherit the context); ``fn`` itself without a site."""
-    if not site_id:
-        return fn
-
-    def run(*args, **kwargs):
-        with module_site(site_id):
-            return fn(*args, **kwargs)
-    return run
-
-
-def _edit_site(job_id: Optional[str]) -> str:
-    """The registered site an EDIT draft (``od_...`` with ``mode: "edit"``) belongs to, else ``""`` (a new-site draft, a repair job)."""
-    if not onboard_store.valid_draft_id(job_id):
-        return ""
-    draft = onboard_store.get_draft(job_id) or {}
-    site = draft.get("edit_site_id")
-    return site if draft.get("mode") == "edit" and isinstance(site, str) and SITE_ID_RE.match(site) else ""
 
 
 def _check(url: str) -> str:
@@ -706,69 +605,19 @@ def _failing_hint(name: str, c: dict, out: dict) -> str:
         why = next((((s.get("diagnostics") or {}).get("first_rows") or [{}])[0].get("rejected_by") for s in series.get("samples") or []
                     if not s.get("episodes") and not s.get("skipped") and not s.get("blocked")), None)
         return "dizi sayfasından bölüm okunamadı" + (f": {_clip(why, 450)}" if why else ": series_page.row_selector / fields.url / episode_url_regex'i diagnostics.series'e göre düzelt")
-    if name == "ingest_sample_ok":
-        sample = series.get("ingest_sample") or {}
-        reasons = {k: n for k, n in (sample.get("reasons") or {}).items() if k != "key_mismatch"}
-        top = max(reasons, key=reasons.get) if reasons else ""
-        mismatch = (sample.get("reasons") or {}).get("key_mismatch")
-        return (f"ingest örneğinde {sample.get('ok', 0)}/{sample.get('judged', 0)} dizi okunabilir bir dizi sayfasına çözülüp bölüm listesi veriyor "
-                f"(en az %{round(MIN_INGEST_SAMPLE_OK * 100)}); nedenler: {', '.join(f'{n}x {why}' for why, n in reasons.items()) or '?'}. "
-                + (_INGEST_ADVICE.get(top, "") + ". " if top else "")
-                + ("Kartın anahtarı dizi sayfasınınkinden farklı (key_mismatch): normalize.key.regex'i dizi slug'ına göre düzelt. " if mismatch else "")
-                + "Atlanamaz: bölüm kartlarından gelen diziler de okunabilmeli (diagnostics.series, where=ingest_sample)")
-    if name == "search_ok":
-        return "canlı arama sonuç vermedi ya da listedeki başlığı bulamadı: search.url / row_selector / fields'i diagnostics.search'e göre düzelt"
     if name.startswith("collections_"):
-        unknown = sorted({str(e.get("unknown_category")) for e in out.get("collections") or [] if isinstance(e, dict) and e.get("unknown_category")})
-        if unknown:
-            return f"kategori(ler) {', '.join(unknown)}: {UNKNOWN_CATEGORY_HINT}"
         return "bir koleksiyon yeterli öğe vermedi: collections[].path / row_selector'ı diagnostics.collections'a göre düzelt ya da koleksiyonu çıkar"
     if name == "baseline_ok":
         return "öneri mevcut yaml'ın alanlarını düşürüyor ya da doluluğu belirgin azaltıyor: report.baseline.reasons'a bak"
-    if name == "availability_gate_defined":
-        return ("`availability_gate: {probe: 2, require: player}` yaz (references/blocked.md): oynatıcısı bulunamayan / telif engelli "
-                "diziler ve filmler alınmasın. Atlanamaz: kullanıcıya sorulmaz")
-    if name == "series_signal_collection":
-        return ("ana sayfada / menüde dizi bölümü yok ya da en az 3 öğe vermiyor (trending ya da latest_series): ana sayfa / menü bölüm "
-                "bağlantılarını aç (outline_page `blocks`, `nav_links`, `sections`): 'Son Eklenen Diziler', 'Trendler', ... Sitede gerçekten "
-                f"yoksa ask_user (field `{SKIP_HOME_SERIES}`) ile sor")
-    if name == "series_full_inventory":
-        cards = _episode_cards(out.get("normalize"), [(None, e) for e in out.get("collections") or [] if isinstance(e, dict)])
-        return (f"kartlar bölüm kartı ({cards} kart tek bir bölümün sayfasına gidiyor) ve series_page yok: her dizi kütüphanede kartın tek "
-                "bölümüyle kalır. Dizi arşivi / dizi sayfası bağlantısı bul (menü 'Diziler', alfabetik arşiv, bölüm sayfasındaki dizi "
-                "bağlantısı): list: dizi kartlarından, series_page: ile bölümler; bölüm kartı yalnız latest_episodes koleksiyonu olsun. "
-                f"Dizi sayfalarında bölümler gerçekten listelenmiyorsa ask_user (field `{SKIP_SERIES_INVENTORY}`) ile sor")
-    if name == "collection_poster_fill":
-        poor = [f"{e.get('role')} (%{round(float((e.get('field_fill') or {}).get('poster_url') or 0) * 100)})"
-                for e in out.get("collections") or []
-                if isinstance(e, dict) and e.get("role") in POSTER_ROLES and e.get("status") != "skipped" and int(e.get("valid_count") or 0) > 0
-                and float((e.get("field_fill") or {}).get("poster_url") or 0) < MIN_COLLECTION_POSTER_FILL]
-        return ("koleksiyon kartlarında poster_url yok ya da seyrek" + (f" ({', '.join(poor[:4])})" if poor else "") + ": kart içindeki <img> "
-                "(data-src / src) ile poster_url yaz (collections[].fields ya da liste alanları; query_html ile kartın outer_html'ine bak). "
-                f"Kartta gerçekten poster yoksa ask_user (field `{SKIP_COLLECTION_POSTER}`) ile sor")
-    if name == "detail_info_defined":
-        info = out.get("detail_info") or {}
-        names = ", ".join(info.get("missing") or []) or "?"
-        return (f"dizi / film sayfasından yalnız {value} bilgi alanı alınıyor (en az {c.get('min')}): eksik gruplar: {names} (synopsis, year, cast, "
-                "genres, rating, trailer_url, poster_url). Alan etiketleri sayfada geçiyorsa ('Özet', 'Yıl', 'Oyuncular', 'Tür', 'IMDb', 'Fragman') "
-                "grep_page ile bulup o bloktan selector / regex ile detail.fields'a yaz; sayfada gerçekten yoksa ask_user (field = alan adı, "
-                "alan alan) ile sor: kullanıcı 'sitede yok' demeden alanı atlama")
-    if name == "home_path_is_canonical":
-        target = (out.get("redirect_hint") or {}).get("target") or "?"
-        return (f"site ana sayfası aslında {target}: list_url ve koleksiyon path'lerini bu adrese yaz (tarayıcı yönlendirmesi motorda "
-                "görünmez); yönlendirmeyi fetch_page(url) sonucundaki redirect_hint / canonical_url gösterir")
     return f"{name}: değer {value}, sınır {c.get('min', c.get('max'))}"
 
 
 def _failing(out: dict) -> list[dict]:
     """``report.failing``: every criterion that did not pass as ``{criterion, value, bound, hint}`` (only when ``passed`` is false)."""
     rows = []
-    removed = out.get("removed_fields")
     for name, c in (out.get("criteria") or {}).items():
         if isinstance(c, dict) and c.get("ok") is False:
             hint = _failing_hint(name, c, out)
-            if removed and name in ("detail_info_defined", "collection_poster_fill", "collections_valid_count"):
-                hint = f"{_removed_warning(removed)}. {hint}"   # a failing field criterion that follows a removed field: say so first
             rows.append({"criterion": name, "value": c.get("value"), "bound": c.get("min", c.get("max")),
                          "hint": _clip(hint, HINT_CLIP)})
     return rows
@@ -1009,21 +858,6 @@ def _page_signals(html: str, requested: str, final: str = "") -> dict:
     return out
 
 
-def _post_base(draft_id: str) -> str:
-    """The site origin a POST of this draft may go to: the registered site of an edit draft, else the URL the onboarding started from."""
-    if not onboard_store.valid_draft_id(draft_id):
-        return ""
-    site = _edit_site(draft_id)
-    if site:
-        try:
-            return scfg.load_site(site).base_url
-        except Exception:
-            return ""
-    start = str((onboard_store.get_draft(draft_id) or {}).get("url") or "")
-    parts = urlsplit(start)
-    return f"{parts.scheme}://{parts.netloc}" if parts.scheme in ("http", "https") and parts.netloc else ""
-
-
 def _do_fetch(body, draft_id: str = "", *, deadline: float) -> dict:
     method = (body.method or "GET").upper()
     if method == "POST" or body.data is not None:
@@ -1032,7 +866,7 @@ def _do_fetch(body, draft_id: str = "", *, deadline: float) -> dict:
             raise ApiError(400, "bad_post", "; ".join(problems))
     post = method == "POST"
     got = _fetch_store(body.url, body.mode, body.wait_for or "", deadline, body.referer or "", method,
-                       body.data if post else None, _post_base(draft_id) if post else "")
+                       body.data if post else None, "")
     meta, html = got["meta"], got["html"]
     out = {"page_id": meta["page_id"], "final_url": meta["final_url"], "fetch_mode": meta["fetch_mode"],
            "status": meta["status"], "bytes": meta["bytes"], "title": _title_of(html),
@@ -1766,11 +1600,7 @@ def _url_params_errors(data: dict) -> list[str]:
 # --- collections (home sections) ---------------------------------------------------------------------------------
 
 _GENRE_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
-UNKNOWN_CATEGORY_HINT = ("kategori listede yok: kullanıcıya sor (ask_user, field `category:<slug>`): admin'de eklensin mi? "
-                         "Başlangıç mesajındaki kategorilerden birini kullan; kategori icat etme")
-
-
-def _check_collection(index: int, c: Any, base: str, strict_categories: bool = False, fetch_mode: str = "http") -> tuple[dict, dict]:
+def _check_collection(index: int, c: Any, base: str, fetch_mode: str = "http") -> tuple[dict, dict]:
     """Syntax of one yaml ``collections:`` entry (no network: the page goes through the SSRF guard when it is fetched)."""
     spec = c if isinstance(c, dict) else {}
     entry: dict[str, Any] = {"id": str(spec.get("id") or f"#{index}"), "role": str(spec.get("role") or ""),
@@ -1826,10 +1656,6 @@ def _check_collection(index: int, c: Any, base: str, strict_categories: bool = F
         problem = site_collections.check_category_slug(slug)
         if problem:
             errors.append(problem)
-        elif strict_categories and not site_collections.category_exists(slug.strip()):
-            # a NEW site only (at run time a deleted category keeps its lists): the agent asks the user, never invents the category
-            entry["unknown_category"] = slug.strip()
-            errors.append(f"category: {slug.strip()!r} is not a registered category ({UNKNOWN_CATEGORY_HINT})")
         if isinstance(slug, str):
             entry["category"] = slug.strip()
     elif spec.get("category") is not None:
@@ -1837,7 +1663,7 @@ def _check_collection(index: int, c: Any, base: str, strict_categories: bool = F
     return spec, entry
 
 
-def _check_collections(data: dict, site_hint: str, strict_categories: bool = False) -> tuple[list[tuple[dict, dict]], list[str], list[str]]:
+def _check_collections(data: dict, site_hint: str) -> tuple[list[tuple[dict, dict]], list[str], list[str]]:
     """Every ``collections:`` entry of the yaml checked (syntax; ids = ``collections.list_id(role, site_id)``).
 
     Returns ([(spec, entry)], errors, warnings); the errors are also in each entry's own ``errors`` (unprefixed)."""
@@ -1859,7 +1685,7 @@ def _check_collections(data: dict, site_hint: str, strict_categories: bool = Fal
                         f"the collection ids must end in the site id that is saved")
     base = str(data.get("base_url") or "")
     mode = str(data.get("fetch_mode") or "http")
-    pairs = [_check_collection(i, c, base, strict_categories, mode) for i, c in enumerate(raw)]
+    pairs = [_check_collection(i, c, base, mode) for i, c in enumerate(raw)]
     seen: dict[str, int] = {}
     derived: set[str] = set()
     for spec, entry in pairs:
@@ -2102,11 +1928,8 @@ def _normalize_stage(cfg, items: list, errors: list, warnings: Optional[list] = 
     return report
 
 
-def _detail_stage(cfg, items: list, detail_page_id: Optional[str], deadline: float, warnings: list,
-                  extra_sample: bool = False) -> Optional[dict]:
-    """The detail fields parsed on ONE detail page (the stored ``detail_page_id``, else the first list item's). ``extra_sample`` (a hardened
-    new site, ``detail_info_defined``): a SECOND page (another list item) is parsed too when time allows; the block then carries
-    ``samples`` = ``[{url, fill}]`` of every page parsed."""
+def _detail_stage(cfg, items: list, detail_page_id: Optional[str], deadline: float, warnings: list) -> Optional[dict]:
+    """The detail fields parsed on ONE detail page (the stored ``detail_page_id``, else the first list item's)."""
     fields = cfg.detail_fields
     if not fields:
         return None
@@ -2132,19 +1955,6 @@ def _detail_stage(cfg, items: list, detail_page_id: Optional[str], deadline: flo
         return None
     fill = {k: (1.0 if _filled(v) else 0.0) for k, v in parsed.items()}
     block = {"page_id": page_id, "url": url, "fields": {k: _clip(v) for k, v in parsed.items()}, "fill": fill}
-    if extra_sample:
-        samples = [{"url": url, "fill": fill}]
-        first = _norm_path(url)
-        target = next((i["detail_url"] for i in items if i.get("detail_url")
-                       and _norm_path(urljoin(cfg.base_url, i["detail_url"])) != first), None)
-        if target and deadline - time.monotonic() >= DETAIL_SAMPLE_NEED:
-            try:
-                got = _fetch_store(urljoin(cfg.base_url, target), cfg.fetch_mode, "", deadline)
-                more = parse.parse_detail(got["html"], fields)
-                samples.append({"url": got["meta"]["final_url"], "fill": {k: (1.0 if _filled(v) else 0.0) for k, v in more.items()}})
-            except Exception as exc:   # the second sample is a bonus: its absence only means the first one decides
-                warnings.append(f"detail: second sample page not parsed ({type(exc).__name__})")
-        block["samples"] = samples
     return block
 
 
@@ -2206,7 +2016,7 @@ class _GateRun:
             html = got["bundle"].get("initial_html") or got["html"]
             extra = [got["html"]] if got["html"] and got["html"] != html else None
             verdict = gate.judge_html(self.cfg, html, got["meta"]["final_url"], kind="episode", require=self.require, htmls=extra,
-                                      module_site=_module_site())
+                                      module_site=DRAFT_SITE_ID)
         self.verdicts[url] = verdict
         return verdict
 
@@ -2353,8 +2163,6 @@ def _follow_playback(cfg, locator: str, deadline: float, site_id: str = DRAFT_SI
     dict never carries them."""
     from ..library import videos
     from ..scraper import site_extractors
-    if site_id == DRAFT_SITE_ID:
-        site_id = _module_site()   # an edit run: the real id of the edited site
     started = time.monotonic()
     out: dict[str, Any] = {"ok": False, "streams": [], "error": "", "candidates": 0, "timeout": False, "providers": []}
     html = ""
@@ -2578,7 +2386,7 @@ def _series_candidates(cfg, items: list, directory=None) -> list[dict]:
             continue
         seen.add(key)
         card_url = urljoin(base, str(norm.get("source_url") or key))
-        resolution = series_dir.ensure(cfg, norm, directory, site_id=_module_site()) if directory is not None else "n/a"
+        resolution = series_dir.ensure(cfg, norm, directory, site_id=DRAFT_SITE_ID) if directory is not None else "n/a"
         found = series_dir.card_resolution(norm) or {}
         out.append({"key": key, "url": urljoin(base, str(norm.get("source_url") or key)), "sources": bool(norm.get("video_sources")),
                     "card_url": card_url, "resolution": resolution, "how": found.get("how"), "page_key": found.get("key")})
@@ -2610,7 +2418,7 @@ def _series_sample(cfg, spec: dict, pick: dict, deadline: float, warnings: list,
             if hit:
                 sample.update(blocked=True, reason=hit["reason"], via="rule")
                 return sample, []
-        inventory = site_extractors.series_inventory(_module_site(), got["html"], got["meta"]["final_url"], spec)
+        inventory = site_extractors.series_inventory(DRAFT_SITE_ID, got["html"], got["meta"]["final_url"], spec)
     except ApiError as exc:
         if exc.status_code == 504 and sample_deadline >= deadline - 0.01:   # the CALL ran out, not the sample's own time
             sample.update(skipped=True, error="not checked: the call ran out of time")
@@ -2631,8 +2439,7 @@ def _series_sample(cfg, spec: dict, pick: dict, deadline: float, warnings: list,
 
 
 def _series_stage(cfg, items: list, spec_errors: list, deadline: float, warnings: list,
-                  gate: Optional["_GateRun"] = None, extra_rows: Optional[list] = None, directory=None,
-                  ingest_sample: bool = False) -> tuple[Optional[dict], list]:
+                  gate: Optional["_GateRun"] = None, extra_rows: Optional[list] = None, directory=None) -> tuple[Optional[dict], list]:
     """Read the series pages of up to SERIES_SAMPLES DIFFERENT normalized series items with the yaml ``series_page`` (the
     engine of the real crawl, ``site_extractors.series_inventory``; in memory, nothing is written). Returns ``(block,
     inventories)``: ``block`` = ``{checked, with_episodes, skipped, samples[{key, series_url, episodes, seasons, structured,
@@ -2643,8 +2450,7 @@ def _series_stage(cfg, items: list, spec_errors: list, deadline: float, warnings
 
     ``extra_rows`` (raw rows of the collections) join the list's as candidates; ``directory`` (``_series_directory``) resolves a card that
     links an EPISODE page to its series page like a scan does (a sample then carries ``resolution`` / ``how`` / ``card_url``; a card with no
-    series page known is not read). ``ingest_sample`` (a hardened new site): up to SERIES_READS pages are read and the block gets
-    ``ingest_sample`` = ``{items, judged, ok, read, resolved, unknown, reasons{}, samples[]}`` (``_ingest_sample_block``).
+    series page known is not read).
 
     ``gate`` (the draft has ``blocked:`` rules / an ``availability_gate:``): each series is judged like production does (a
     ``series_page`` rule on its page; the first aired episode pages against the ``episode_page`` rules / the gate): a BLOCKED
@@ -2726,7 +2532,7 @@ def _series_stage(cfg, items: list, spec_errors: list, deadline: float, warnings
             inventories.append({"key": pick["key"], "url": pick["url"], "ok_page": ok_page, "episodes": [
                 {"season": e.get("season"), "episode": e.get("episode"), "url": e["url"]} for e in entries]})
 
-    order = _spread(readable, SERIES_READS if ingest_sample else SERIES_SAMPLES)
+    order = _spread(readable, SERIES_SAMPLES)
     for pick in order:
         read(pick)
     if gated:   # blocked series are replaced by other series (the playable ratio is judged over series that would be taken)
@@ -2735,9 +2541,7 @@ def _series_stage(cfg, items: list, spec_errors: list, deadline: float, warnings
         while spares and used < SERIES_SPARES and block.get("blocked", 0) > used:
             read(spares.pop(0), spare=True)
             used += 1
-    if ingest_sample:
-        block["ingest_sample"] = _ingest_sample_block(candidates, block, warnings)
-    elif candidates and not readable:
+    if candidates and not readable:
         warnings.append(f"series_page: none of the {len(candidates)} series card(s) links a series page and none resolves to one "
                         "(series_page_unknown): see references/series-page.md, 'Series directory'")
     if block["skipped"]:
@@ -2756,82 +2560,6 @@ def _why_empty(sample: dict) -> str:
     if "bu diziye ait sayılmadı" in warns or "başka diziye ait" in warns:
         return "same_series"
     return "empty_inventory"
-
-
-def _ingest_sample_block(candidates: list, block: dict, warnings: list) -> dict:
-    """The ingest sample of ``_series_stage``: up to INGEST_SAMPLE_ITEMS distinct series items (list + collections, episode-card ones
-    included), each as production would write it (key + title cleanup, series page resolved through the directory) and, when its series
-    page was read in this call, whether the page gave an inventory. Per item ``state``: ``ok`` (page read, episodes found) | ``resolvable``
-    (resolves to a series page; the page was not among the reads) | ``fail`` + ``reason`` (``series_page_unknown`` | ``not a series page`` |
-    ``same_series`` | ``empty_inventory`` | ``page_error``) | ``skipped`` / ``blocked`` (not judged). ``key_mismatch`` = the card's key
-    differs from the series page's own key (the two records are one title only through TMDB). ``judged`` / ``ok`` feed ``ingest_sample_ok``."""
-    picks = _spread(candidates, INGEST_SAMPLE_ITEMS)
-    reads = {s["series_url"]: s for s in block["samples"]}
-    out: dict[str, Any] = {"items": len(picks), "judged": 0, "ok": 0, "read": 0, "resolved": 0, "unknown": 0, "reasons": {}, "samples": []}
-    for c in picks:
-        row: dict[str, Any] = {"key": c["key"], "series_url": _clip(c["url"], 150), "resolution": c["resolution"]}
-        if c["url"] != c["card_url"]:
-            row["card_url"] = _clip(c["card_url"], 150)
-        if c["how"]:
-            row["how"] = c["how"]
-        if c["page_key"] and c["page_key"] != c["key"]:
-            row["key_mismatch"] = _clip(c["page_key"], 100)
-            out["reasons"]["key_mismatch"] = out["reasons"].get("key_mismatch", 0) + 1
-        sample = reads.get(c["url"])
-        reason = None
-        if c["resolution"] == "unknown":
-            reason = "series_page_unknown"
-            out["unknown"] += 1
-        elif sample is not None and (sample.get("skipped") or sample.get("blocked")):
-            row["state"] = "skipped" if sample.get("skipped") else "blocked"
-            out["samples"].append(row)
-            continue
-        elif sample is not None:
-            out["read"] += 1
-            if sample.get("error"):
-                reason = "page_error"
-            elif not sample.get("episodes"):
-                reason = _why_empty(sample)
-        if c["resolution"] == "resolved":
-            out["resolved"] += 1
-        out["judged"] += 1
-        if reason is None:
-            out["ok"] += 1
-            row["state"] = "ok" if sample is not None else "resolvable"
-        else:
-            row["state"], row["reason"] = "fail", reason
-            out["reasons"][reason] = out["reasons"].get(reason, 0) + 1
-        out["samples"].append(row)
-    failing = [r for r in out["samples"] if r.get("state") == "fail"]
-    if failing:
-        shown = failing[0]
-        warnings.append(f"series: {len(failing)} of {out['judged']} series item(s) of the ingest sample have no readable series page "
-                        f"({', '.join(f'{n}x {why}' for why, n in out['reasons'].items() if why != 'key_mismatch')}); e.g. {shown['key']!r}: "
-                        f"{shown['reason']} ({shown.get('card_url') or shown['series_url']})")
-        for row in failing[:4]:
-            _diag("series", {"where": "ingest_sample", "problem": row["reason"], "key": row["key"], "card_url": row.get("card_url") or row["series_url"],
-                             "series_url": row["series_url"], "key_mismatch": row.get("key_mismatch"),
-                             "advice": _INGEST_ADVICE.get(row["reason"], "")})
-    return out
-
-
-_INGEST_ADVICE = {
-    "series_page_unknown": ("bu kart bir BÖLÜM sayfasına gidiyor ve sitenin dizi listesinde (list / koleksiyon satırları) karşılığı bulunamadı: "
-                            "dizi arşivini (alfabetik liste, 'Diziler' menüsü) list_url ya da bir koleksiyon yap, ya da kart başlığı / "
-                            "normalize.key.regex'i arşivdeki dizi adı / slug'ıyla eşleşecek şekilde düzelt"),
-    "not a series page": "series_page.series_url_regex bu sayfayı dizi sayfası saymıyor: regex'i dizi sayfalarının yoluna göre düzelt",
-    "same_series": "satırların hepsi 'başka diziye ait' sayıldı: series_page.series_slug_regex / same_series_regex'i bölüm bağlantılarının biçimine göre düzelt",
-    "empty_inventory": "dizi sayfasında bölüm bulunamadı: series_page.row_selector / fields.url / episode_url_regex'i bu sayfaya göre düzelt",
-    "page_error": "dizi sayfası okunamadı (ağ / engel): fetch_mode'u ve adresi kontrol et",
-}
-
-
-def _ingest_sample_criterion(sample: Optional[dict]) -> dict:
-    """``ingest_sample_ok`` (hardened new site, a generic ``series_page`` + series items): the share of the judged series items of the ingest
-    sample that resolve to a series page with a non-empty episode inventory (>= MIN_INGEST_SAMPLE_OK). Nothing judged = no criterion."""
-    if not isinstance(sample, dict) or not sample.get("judged"):
-        return {}
-    return {"ingest_sample_ok": _criterion(_ratio(sample["ok"], sample["judged"]), MIN_INGEST_SAMPLE_OK, "min")}
 
 
 def _series_criteria(block: Optional[dict], has_spec: bool) -> dict:
@@ -2870,89 +2598,6 @@ def _check_search(data: dict) -> list[str]:
     return [m if str(m).startswith("search") else f"search: {m}" for m in problems]
 
 
-def _url_key(base: str, url: Any) -> Optional[tuple]:
-    """A detail URL in comparable form (host without ``www.``, path without the trailing slash, query); None when unusable."""
-    if not isinstance(url, str) or not url.strip():
-        return None
-    try:
-        part = urlsplit(urljoin(base, url.strip()))
-    except ValueError:
-        return None
-    host = (part.hostname or "").lower()
-    return (host[4:] if host.startswith("www.") else host, part.path.rstrip("/") or "/", part.query)
-
-
-def _norm_keys(data: dict, items: list) -> Optional[list]:
-    """``source_key`` of every item under the draft's ``normalize`` rules (None for a rejected one); None when the draft has no
-    usable normalize block (the list part of the draft reports that)."""
-    rules = data.get("normalize")
-    if not isinstance(rules, dict) or not rules:
-        return None
-    try:
-        from ..library import normalize as nrm
-        if nrm.validate_rules(rules):
-            return None
-        out = []
-        for item in items:
-            try:
-                norm = nrm.generic_normalize(rules, item, base_url=str(data.get("base_url") or ""))
-            except Exception:
-                norm = None
-            out.append((norm or {}).get("source_key") or None)
-        return out
-    except Exception:
-        return None
-
-
-def _known_item(items: list, query: Optional[str]) -> tuple[Optional[dict], Optional[str]]:
-    """(the list item the search is judged against, the query). No ``query``: the first list item with a usable title and its
-    title is the query. A given ``query``: the first item whose title contains it (None when there is none: not judged)."""
-    usable = [i for i in items if isinstance(i, dict) and _filled(i.get("title")) and _filled(i.get("detail_url"))]
-    if query is None:
-        for item in usable:
-            title = " ".join(str(item["title"]).split())[:SEARCH_QUERY_MAX]
-            if len(title) >= 3:
-                return item, title
-        return None, None
-    wanted = " ".join(query.split()).casefold()
-    return next((i for i in usable if wanted and wanted in " ".join(str(i["title"]).split()).casefold()), None), query
-
-
-#: episode / season phrases a card title carries that a SERIES search must not (the site's search finds the series by its name): the title is
-#: cut at the first of them. ("Final" only after other words: ``Final Destination`` stays.)
-_QUERY_CUTS = tuple(re.compile(p, re.I) for p in (
-    r"\s*\b\d+\s*\.?\s*b[öo]l[üu]m\b.*$",       # 37.Bölüm, 37. Bölüm Full izle
-    r"\s*\bs\d+\s*e\d+\b.*$",                    # S04E10
-    r"\s*\b\d+\s*\.?\s*sezon\b.*$",             # 2. Sezon
-    r"\s+final(?:i)?\b.*$",                         # ... Final / Finali
-))
-
-
-def search_query(title: Any, site_names=()) -> str:
-    """The live-search query of a list item title (``test_config`` / ``test_search`` only; a runtime user query goes as typed): the SERIES name
-    without episode / season phrases (``Halef 37.Bölüm`` -> ``Halef``, ``Dizi S04E10`` -> ``Dizi``), site litter (`` izle``, `` HD``, ``| Site``
-    when the part after the bar is one of ``site_names``) and a trailing number + bölüm gone; the title itself when less than 3 characters
-    would be left."""
-    from ..library import normalize as nrm
-    text = " ".join(str(title or "").split())
-    out = nrm.clean_title(text, series=True, site_names=site_names)
-    for cut in _QUERY_CUTS:
-        out = cut.sub("", out)
-    out = " ".join(out.split()).strip(" -\u2013\u2014:|,.")
-    return (out if len(out) >= 3 else text)[:SEARCH_QUERY_MAX]
-
-
-def _site_names_of(data: dict) -> list:
-    """The folded names the draft's site goes by (``normalize.clean_title`` strips a ``| <Site>`` suffix that names it)."""
-    from ..library import normalize as nrm
-    rules = data.get("normalize")
-    return nrm._site_names(str(data.get("base_url") or ""), rules.get("host") if isinstance(rules, dict) else None)
-
-
-def _first_words(query: str, n: int = 2) -> str:
-    return " ".join(query.split()[:n])
-
-
 def _series_directory(data: dict, rows: list):
     """The series-page directory (``library/series_dir.py``) of the draft out of raw list / collection rows, in memory; None when it does
     not apply (no generic ``series_page`` with ``series_url_regex``, a site with a code module, no usable ``normalize``)."""
@@ -2960,7 +2605,7 @@ def _series_directory(data: dict, rows: list):
     rules = data.get("normalize")
     try:
         cfg = _draft_cfg(data)
-        if series_dir.spec_of(cfg, _module_site()) is None or not isinstance(rules, dict) or nrm.validate_rules(rules):
+        if series_dir.spec_of(cfg, DRAFT_SITE_ID) is None or not isinstance(rules, dict) or nrm.validate_rules(rules):
             return None
         norms = []
         for raw in rows:
@@ -2970,210 +2615,9 @@ def _series_directory(data: dict, rows: list):
                 norm = None
             if norm:
                 norms.append(norm)
-        return series_dir.build(cfg, norms, _module_site())
+        return series_dir.build(cfg, norms, DRAFT_SITE_ID)
     except Exception:
         return None
-
-
-def _resolved_to_series(data: dict, results: list, directory) -> int:
-    """How many search results are a series page (or a card the directory resolves to one)."""
-    from ..library import normalize as nrm, series_dir
-    cfg = _draft_cfg(data)
-    count = 0
-    for raw in results:
-        try:
-            norm = nrm.generic_normalize(data["normalize"], raw, base_url=cfg.base_url)
-        except Exception:
-            norm = None
-        if norm and norm.get("type") == "series" and series_dir.ensure(cfg, norm, directory, site_id=_module_site()) in ("ok", "resolved"):
-            count += 1
-    return count
-
-
-def _run_search(data: dict, query: str, known: Optional[dict], extra_providers: Optional[list] = None, directory=None) -> dict:
-    """ONE query with the draft's ``search:`` spec, in memory (nothing is written; the engine checks every URL with netguard and
-    keeps to the site's host). ``{query, count, samples, found_known, known, normalize_ok_ratio, ms, error?}`` + ``resolved_to_series``
-    (results that are a series page or resolve to one through ``directory``; None without a directory)."""
-    base = str(data.get("base_url") or "")
-    block: dict[str, Any] = {"query": query, "count": 0, "samples": [], "found_known": None, "known": None,
-                             "normalize_ok_ratio": None, "ms": 0, "resolved_to_series": None}
-    if known is not None:
-        block["known"] = {"title": _clip(known.get("title")), "detail_url": _clip(known.get("detail_url"), 300)}
-    started = time.monotonic()
-    results: list = []
-    try:
-        got = _search_mod().search(_draft_cfg(data, extra_providers), query, SEARCH_LIMIT)
-        results = [r for r in (got or []) if isinstance(r, dict) and _filled(r.get("title")) and _filled(r.get("detail_url"))]
-    except Exception as exc:   # SearchError (short text) or anything else: the stage reports it, the call goes on
-        block["error"] = _clip(" ".join(str(exc).split()) or type(exc).__name__, 300)
-    block["ms"] = int((time.monotonic() - started) * 1000)
-    host = _url_key(base, base)
-    if host:   # the engine keeps to the site's host; a result that does not is not counted (defence in depth)
-        results = [r for r in results if (_url_key(base, r["detail_url"]) or ("",))[0] == host[0]]
-    block["count"] = len(results)
-    block["samples"] = [{k: (_clip(r.get(k), 300) if _filled(r.get(k)) else None) for k in ("title", "detail_url", "poster_url", "year")}
-                        for r in results[:SEARCH_SAMPLES]]
-    keys = _norm_keys(data, results) if results else None
-    if keys:
-        block["normalize_ok_ratio"] = _ratio(sum(1 for k in keys if k), len(keys))
-    if known is not None:
-        want = _url_key(base, known.get("detail_url"))
-        found = any(want is not None and _url_key(base, r["detail_url"]) == want for r in results)
-        if not found and results:   # the same title may be linked by another URL shape: compare the normalize keys
-            known_key = (_norm_keys(data, [known]) or [None])[0]
-            found = bool(known_key) and known_key in (keys or [])
-        block["found_known"] = bool(found)
-    if directory is not None and results:
-        try:
-            block["resolved_to_series"] = _resolved_to_series(data, results, directory)
-        except Exception:
-            block["resolved_to_series"] = None
-    return block
-
-
-def _search_with_fallback(data: dict, query: str, known: Optional[dict], extra_providers: Optional[list] = None, directory=None) -> dict:
-    """``_run_search`` and, when it gave 0 results for a query of more than two words, ONE more run with its first two words (a site search
-    often matches the start of a name only). ``query_used`` = the query the answer is from, ``fallback_used`` = it is the second one."""
-    block = _run_search(data, query, known, extra_providers, directory)
-    block["query_used"], block["fallback_used"] = query, False
-    short = _first_words(query)
-    if not block.get("error") and not block["count"] and len(query.split()) > 2 and len(short) >= 3:
-        second = _run_search(data, short, known, extra_providers, directory)
-        if not second.get("error"):
-            second["query"], second["query_used"], second["fallback_used"] = query, short, True
-            return second
-    return block
-
-
-def _search_stage(data: dict, items: list, deadline: float, errors: list, warnings: list,
-                  extra_providers: Optional[list] = None, directory=None) -> dict:
-    """The search stage of ``test_config(playable: true)`` / ``submit``: ONE query (the SERIES name of the first list item: a card title
-    like ``Halef 37.Bölüm`` is cut to ``Halef``, ``search_query``; 0 results = one more try with its first two words) against the live
-    search of the draft. A failed query is an error; no time left / no list item = ``skipped`` (a warning, not judged). ``directory`` =
-    the series-page directory (``_series_directory``): the block's ``resolved_to_series`` counts the results that resolve to a series page."""
-    known, query = _known_item(items, None)
-    if query is None:
-        warnings.append("search: not checked (no list item with a title to take the query from)")
-        return {"skipped": "no list item to take a query from"}
-    if deadline - time.monotonic() < SEARCH_NEED:
-        warnings.append("search: not checked (the call ran out of time); call test_config again (playable: true) or test_search")
-        return {"skipped": "the call ran out of time"}
-    query = search_query(query, _site_names_of(data))
-    block = _search_with_fallback(data, query, known, extra_providers, directory)
-    if block.get("error"):
-        errors.append(f"search: query {query!r} failed ({block['error']})")
-    elif not block["count"]:
-        warnings.append(f"search: query {query!r} gave no result")
-    elif block["found_known"] is False:
-        warnings.append(f"search: {block['count']} result(s) for {query!r} but not the title of the list item "
-                        f"({block['known']['detail_url']}); check the result selectors / the detail_url of the search")
-    _search_diagnostic(data, block)
-    return block
-
-
-def _search_diagnostic(data: dict, block: dict) -> None:
-    """``report.diagnostics.search``: a live query that failed, gave nothing or did not find the known title, with the spec in play
-    (url / method / format / row selector) and what the results looked like."""
-    if not (block.get("error") or not block.get("count") or block.get("found_known") is False):
-        return
-    spec = data.get("search") if isinstance(data.get("search"), dict) else {}
-    entry: dict[str, Any] = {"where": "search", "query": block.get("query"),
-                             "spec": {k: spec.get(k) for k in ("url", "method", "format", "fetch", "row_selector", "results_path") if spec.get(k)}}
-    if block.get("error"):
-        entry["problem"] = block["error"]
-        entry["advice"] = "aynı sorguyu sitenin arama sayfasında elle dene (fetch_page); URL / method / form alanları ve yanıt biçimi (html|json) doğru mu?"
-    elif not block.get("count"):
-        entry["problem"] = "sorgu 0 sonuç verdi"
-        entry["advice"] = ("yanıt geldi ama satırlar okunamadı olabilir: row_selector / results_path'i bir arama yanıtına göre doğrula; "
-                           "ya da sorgu sitede gerçekten sonuçsuz")
-    else:
-        entry["problem"] = "sonuçlar var ama listedeki başlık bulunamadı"
-        entry["known_detail_url"] = (block.get("known") or {}).get("detail_url")
-        entry["results"] = [s.get("detail_url") for s in (block.get("samples") or [])[:3]]
-        entry["advice"] = "sonuç bağlantısı (detail_url) biçimi listedekinden farklı olabilir: fields.detail_url'i karşılaştır"
-    _diag("search", entry)
-
-
-def _search_criteria(data: dict, block: Optional[dict]) -> dict:
-    """``search_ok`` (only when the yaml has ``search:``): the live query gave at least one result and the title it was taken from
-    is among them (``found_known`` not false). An invalid block counts 0; a stage that was skipped is not judged."""
-    if not _has_search(data):
-        return {}
-    if _check_search(data):
-        return {"search_ok": _criterion(0, 1, "min")}
-    if block is None or block.get("skipped"):
-        return {}
-    ok = not block.get("error") and block.get("count", 0) >= 1 and block.get("found_known") is not False
-    return {"search_ok": _criterion(int(ok), 1, "min")}
-
-
-def _do_test_search(body, *, deadline: float) -> dict:
-    """``POST /test_search``: the draft's ``search:`` run on ONE query, in memory. ``query`` omitted = the first title of the draft's list
-    page (``page_id`` or fetched); that list item's ``detail_url`` (or its normalize key) must be among the results (``found_known``)."""
-    errors: list[str] = []
-    warnings: list[str] = []
-    out: dict[str, Any] = {"valid": False, "errors": errors, "warnings": warnings, "query": None, "count": 0, "samples": [],
-                           "found_known": None, "known": None, "normalize_ok_ratio": None, "ms": 0,
-                           "query_used": None, "fallback_used": False, "resolved_to_series": None}
-    data, problem = _load_yaml(body.yaml_text)
-    if problem:
-        errors.append(problem)
-        return out
-    errors += [e for e in _check_core(data)[0] if e.startswith("base_url")]
-    if not _has_search(data):
-        errors.append("search: the yaml has no `search:` block (see references/search.md)")
-    errors += _check_search(data)
-    if errors:
-        return out
-    query = " ".join(str(body.query or "").split())[:SEARCH_QUERY_MAX] or None
-    if query is not None and len(query) < 3:
-        errors.append("query: at least 3 characters (the live search ignores shorter ones)")
-        return out
-    if query is not None:   # a given query is cleaned like a list title (episode / season phrases, site litter): a series is searched by its name
-        query = search_query(query, _site_names_of(data))
-    cfg = _draft_cfg(data)
-    items: list = []
-    if query is None or body.page_id:   # the known item: a stored list page, or (no query given) the draft's own list page
-        try:
-            html = _load_page(body.page_id)[0] if body.page_id else _fetch_store(
-                urljoin(cfg.base_url, cfg.list_url or "/"), cfg.fetch_mode, cfg.row_selector, deadline)["html"]
-            _block, items, _fill = _list_stage(cfg, html, [], [])
-        except ApiError as exc:
-            if query is None and not body.detail_page_id:
-                errors.append("query: none given and the list page is not available "
-                              f"({exc.detail.get('message') if isinstance(exc.detail, dict) else exc.detail}); pass a query or page_id")
-                return out
-            warnings.append("known title: the list page is not available")
-    if not items and body.detail_page_id:   # a stored detail page is a known title too (its own URL)
-        try:
-            html, meta = _load_page(body.detail_page_id)
-            tree = HTMLParser(html)
-            node = tree.css_first('meta[property="og:title"]')
-            title = (node.attributes.get("content") if node is not None else "") or ""
-            if not title.strip():
-                node = tree.css_first("h1") or tree.css_first("title")
-                title = _text(node) if node is not None else ""
-            items = [{"title": " ".join(title.split()), "detail_url": meta.get("final_url") or meta.get("url") or ""}]
-        except ApiError:
-            warnings.append("known title: the detail page is not available")
-    known, found_query = _known_item(items, query)
-    if found_query is None:
-        errors.append("query: none given and no list item with a title to take it from; pass a query")
-        return out
-    if query is None:
-        found_query = search_query(found_query, _site_names_of(data))
-    _check_deadline(deadline)
-    out.update(_search_with_fallback(data, found_query, known, None, _series_directory(data, items)))
-    if out.get("error"):
-        errors.append(f"search: query {found_query!r} failed ({out['error']})")
-    elif not out["count"]:
-        warnings.append(f"search: query {found_query!r} gave no result")
-    elif known is None:
-        warnings.append("found_known: not judged (no list item whose title contains the query); try the title of a list item")
-    elif out["found_known"] is False:
-        warnings.append(f"found_known: false: the list item {out['known']['detail_url']} is not among the {out['count']} result(s)")
-    out["valid"] = not errors
-    return out
 
 
 def _collection_criteria(pairs: list) -> dict:
@@ -3185,226 +2629,6 @@ def _collection_criteria(pairs: list) -> dict:
     return {"collections_valid_count": _criterion(min(e["valid_count"] for e in checked), MIN_COLLECTION_COUNT, "min"),
             "collections_normalize_ok_ratio": _criterion(min(e["normalize_ok_ratio"] for e in checked),
                                                          MIN_NORMALIZE_OK_RATIO, "min")}
-
-
-# --- hardening criteria of a new site (``harden``) ----------------------------------------------------------------
-
-def harden_enabled() -> bool:
-    """Are the hardening criteria on? ``ONBOARD_HARDEN`` (default on; ``0`` / ``false`` / ``no`` / ``off`` = a kill switch: a new site is then
-    judged by the older criteria only); read at call time. The test sandbox (``tests/_sandbox.py``) switches it off so the older suites keep
-    exercising their own subject; ``tests/test_onboard_harden.py`` switches it on."""
-    return os.environ.get("ONBOARD_HARDEN", "1").strip().lower() not in ("0", "false", "no", "off")
-
-
-def _skip_names(skipped: Any) -> set:
-    """``skipped`` (the draft's ``skipped_fields``: what the admin answered "Sitede yok, atla" for) as lower-case names."""
-    return {str(f).strip().lower() for f in (skipped if isinstance(skipped, (list, tuple, set)) else []) if str(f).strip()}
-
-
-def _draft_memory(draft_id: Optional[str]) -> tuple[list, Optional[dict]]:
-    """What a stored draft remembers for the hardening criteria: (its ``skipped_fields`` = the admin's "Sitede yok, atla" answers, the report
-    of its LAST submission, for ``removed_fields``); ``([], None)`` for a repair job / unknown draft."""
-    draft = onboard_store.get_draft(draft_id) if draft_id and onboard_store.valid_draft_id(draft_id) else None
-    raw = (draft or {}).get("skipped_fields")
-    report = (draft or {}).get("report")
-    return ([str(f).strip().lower() for f in (raw if isinstance(raw, list) else []) if str(f).strip()],
-            report if isinstance(report, dict) else None)
-
-
-def _produces_series(data: dict, norm: Optional[dict]) -> bool:
-    """Does the yaml make SERIES titles: a normalized series item on the list, else ``normalize.type`` that can say ``series``."""
-    if ((norm or {}).get("types") or {}).get("series"):
-        return True
-    rules = data.get("normalize")
-    kind = rules.get("type") if isinstance(rules, dict) else None
-    if kind == "series":
-        return True
-    if isinstance(kind, dict):
-        mapping = kind.get("map")
-        return kind.get("default") == "series" or (isinstance(mapping, dict) and "series" in mapping.values())
-    return False
-
-
-def _episode_cards(norm: Optional[dict], pairs: list) -> int:
-    """Cards of the list and of the checked collections that ARE one episode's page (``normalize.preview`` ``episode_cards``)."""
-    return int((norm or {}).get("episode_cards") or 0) + sum(int(entry.get("episode_cards") or 0) for _spec, entry in pairs)
-
-
-def _home_path_criterion(data: dict, html: Optional[str], meta: dict) -> tuple[dict, Optional[dict]]:
-    """``home_path_is_canonical``: the page the yaml's ``list_url`` names is really another path of the site (``_page_signals``:
-    ``redirect_hint``, certain: same host, another path), yet ``list_url`` AND every collection ``path`` still name the redirecting
-    path. Returns ({criterion: ...} | {}, the hint | None); no hint, or a ``list_url`` that already names another page = no criterion."""
-    if not html or not meta.get("url"):
-        return {}, None
-    hint = _page_signals(html, str(meta.get("url") or ""), str(meta.get("final_url") or "")).get("redirect_hint")
-    if not hint:
-        return {}, None
-    base = str(data.get("base_url") or "")
-    asked = _norm_path(str(meta["url"]))
-    if _norm_path(urljoin(base, str(data.get("list_url") or "/"))) != asked:
-        return {}, hint
-    paths = [c.get("path") for c in data.get("collections") or [] if isinstance(c, dict)]
-    stale = all(isinstance(p, str) and _norm_path(urljoin(base, p.strip() or "/")) == asked for p in paths)
-    return {"home_path_is_canonical": _criterion(0 if stale else 1, 1, "min")}, hint
-
-
-def _group_of(name: str) -> Optional[str]:
-    """The ``INFO_FIELDS`` group a field name belongs to (``overview`` -> ``synopsis``), None for any other field."""
-    low = str(name).strip().lower()
-    return next((g for g, names in INFO_FIELDS.items() if low in names), None)
-
-
-def _detail_info(data: dict, detail: Optional[dict], skip: set) -> dict:
-    """``detail_info_defined``'s facts: ``{state, good[], missing[], required}`` over the info groups the admin did NOT skip. A group is
-    good when one of its fields is defined in ``detail.fields`` AND filled in every parsed detail page (``detail.samples``; one page =
-    that page). ``required`` = ``MIN_DETAIL_INFO`` (fewer when the admin said the site lacks some groups). ``state``: ``judged``;
-    ``unjudged`` (fields are defined but no detail page could be read); ``exempt`` (the admin skipped every group)."""
-    groups = [g for g in INFO_FIELDS if not (skip & {g, *INFO_FIELDS[g]})]
-    if not groups:
-        return {"state": "exempt", "good": [], "missing": [], "required": 0}
-    block = data.get("detail") if isinstance(data.get("detail"), dict) else {}
-    fields = block.get("fields") if isinstance(block.get("fields"), dict) else {}
-    if fields and detail is None:
-        return {"state": "unjudged", "good": [], "missing": groups, "required": 0}
-    samples = [x for x in (detail or {}).get("samples") or [] if isinstance(x, dict)] or (
-        [{"fill": (detail or {}).get("fill") or {}}] if detail else [])
-    good = []
-    for group in groups:
-        names = [n for n in INFO_FIELDS[group] if n in fields]
-        if names and samples and all(any(float((x.get("fill") or {}).get(n) or 0) > 0 for n in names) for x in samples):
-            good.append(group)
-    return {"state": "judged", "good": good, "missing": [g for g in groups if g not in good],
-            "required": min(MIN_DETAIL_INFO, len(groups))}
-
-
-def _effective_fields(data: dict, collection_id: Any) -> Optional[set]:
-    """The field names collection ``collection_id`` of the yaml reads (its own ``fields``, else the list's); None when it has no such collection."""
-    for spec in data.get("collections") or []:
-        if isinstance(spec, dict) and spec.get("id") == collection_id:
-            own = spec.get("fields")
-            list_block = data.get("list") if isinstance(data.get("list"), dict) else {}
-            names = own if isinstance(own, dict) and own else list_block.get("fields")
-            return set(names) if isinstance(names, dict) else set()
-    return None
-
-
-def _removed_fields(data: dict, previous: Any, skip: set) -> list[dict]:
-    """Detail / collection fields that produced values in the draft's PREVIOUS submission (``previous`` = its report) but are gone from
-    this yaml, plus the ones an earlier run already flagged that are still gone (sticky: the entry stays until the field is put back or
-    the admin says the site lacks it). ``[{where, field}]``; a field the admin skipped ("Sitede yok, atla") is never flagged."""
-    if not isinstance(previous, dict):
-        return []
-    detail = data.get("detail") if isinstance(data.get("detail"), dict) else {}
-    detail_fields = set(detail.get("fields") or {}) if isinstance(detail.get("fields"), dict) else set()
-
-    def gone(where: str, field: str) -> bool:
-        if field.lower() in skip or ((_group_of(field) or "") in skip):
-            return False
-        if where != "detail" and SKIP_COLLECTION_POSTER in skip and _group_of(field) == "poster_url":
-            return False   # "Varsa al, yoksa atla: collection_poster": a poster field that is gone is the admin's call
-        if where == "detail":
-            return field not in detail_fields
-        names = _effective_fields(data, where[len("collections["):-1])
-        return names is not None and field not in names
-
-    out: list[dict] = []
-
-    def add(where: str, field: str) -> None:
-        if gone(where, field) and not any(x["where"] == where and x["field"] == field for x in out):
-            out.append({"where": where, "field": field})
-
-    for name, value in ((previous.get("detail") or {}).get("fill") or {}).items():
-        if isinstance(value, (int, float)) and value > 0:
-            add("detail", str(name))
-    for entry in previous.get("collections") or []:
-        if isinstance(entry, dict):
-            for name, value in (entry.get("field_fill") or {}).items():
-                if isinstance(value, (int, float)) and value > 0:
-                    add(f"collections[{entry.get('id')}]", str(name))
-    for entry in previous.get("removed_fields") or []:
-        if isinstance(entry, dict) and isinstance(entry.get("where"), str) and isinstance(entry.get("field"), str):
-            add(entry["where"], entry["field"])
-    return out[:MAX_REMOVED]
-
-
-def _removed_warning(removed: list[dict]) -> str:
-    """The warning / hint text for ``removed_fields`` (Turkish, like the failing hints)."""
-    names = ", ".join(f"{x['field']} ({x['where']})" for x in removed[:4])
-    return (f"alan kaldırıldı: {names}: önceki gönderimde değer üretiyordu. Sitede gerçekten yoksa kullanıcıya sor (ask_user, "
-            "field = alan adı), değilse geri koy")
-
-
-def _hardening(data: dict, norm: Optional[dict], pairs: list, collections_ran: bool, skipped: Any, html: Optional[str],
-               meta: dict, detail: Optional[dict] = None) -> tuple[dict, list, Optional[dict], Optional[dict]]:
-    """The hardening criteria of a NEW site's onboarding, only where they apply (``HARDEN_CRITERIA``):
-
-    * ``availability_gate_defined`` (``playback: video``): the yaml must have an ``availability_gate`` that is on (probe >= 1), so a series /
-      film whose player cannot be found or is blocked is not taken. Never skippable.
-    * ``series_signal_collection`` (a site that makes series, ``collections: true``): at least one ``trending`` / ``latest_series``
-      collection that yields >= ``MIN_COLLECTION_COUNT`` items (an unchecked one is not judged). Exempt when the admin said "Sitede yok,
-      atla: home_series_section" (draft ``skipped_fields``).
-    * ``series_full_inventory`` (a site that makes series, ``playback: video``): cards that ARE an episode's page (list or collection)
-      need a ``series_page`` inventory, else every series stays in the library with only the one episode its card shows. Exempt for
-      ``series_inventory`` (the site's series pages do not list the episodes).
-    * ``home_path_is_canonical`` (the list page carries a certain ``redirect_hint``): ``list_url`` / collection ``path``s must not
-      still name the redirecting path.
-    * ``collection_poster_fill`` (``collections: true``): every checked collection of a ``POSTER_ROLES`` role fills ``poster_url`` in
-      >= ``MIN_COLLECTION_POSTER_FILL`` of its items (a collection that defines no poster field = 0). Exempt for ``collection_poster``.
-    * ``detail_info_defined``: the detail page gives >= ``MIN_DETAIL_INFO`` of the ``INFO_FIELDS`` groups (defined AND filled in every
-      parsed sample page); each group is exempt when the admin answered "Sitede yok, atla: <field>" (= "Varsa al, yoksa atla": the field is
-      NOT removed; a skipped field the yaml defines stays defined, is taken where the pages have it, and is listed in ``exempt`` as ``optional``).
-
-    Returns (criteria, exempt [{criterion, field}], the redirect hint | None, ``detail_info`` facts | None)."""
-    out: dict[str, dict] = {}
-    exempt: list[dict] = []
-    skip = _skip_names(skipped)
-    video = data.get("playback") == "video"
-    series = _produces_series(data, norm)
-    if video:
-        out["availability_gate_defined"] = _criterion(1 if sblocked.gate_of(data.get("availability_gate")) else 0, 1, "min")
-    if series and collections_ran:
-        if SKIP_HOME_SERIES in skip:
-            exempt.append({"criterion": "series_signal_collection", "field": SKIP_HOME_SERIES})
-        else:
-            entries = [entry for _spec, entry in pairs if entry.get("role") in SERIES_SIGNAL_ROLES]
-            judged = [entry for entry in entries if entry.get("status") != "skipped"]
-            if not entries or judged:   # none written = 0; written but never fetched (no time) = not judged
-                out["series_signal_collection"] = _criterion(max((int(e.get("valid_count") or 0) for e in judged), default=0),
-                                                             MIN_COLLECTION_COUNT, "min")
-    if series and video:
-        if SKIP_SERIES_INVENTORY in skip:
-            exempt.append({"criterion": "series_full_inventory", "field": SKIP_SERIES_INVENTORY})
-        else:
-            out["series_full_inventory"] = _criterion(1 if (data.get("series_page") or not _episode_cards(norm, pairs)) else 0, 1, "min")
-    if collections_ran:
-        if SKIP_COLLECTION_POSTER in skip:
-            item = {"criterion": "collection_poster_fill", "field": SKIP_COLLECTION_POSTER}
-            if any(_group_of(n) == "poster_url" for spec in data.get("collections") or [] if isinstance(spec, dict) and spec.get("role") in POSTER_ROLES
-                   for n in _effective_fields(data, spec.get("id")) or ()):
-                item["optional"] = True   # the poster field stays in the yaml: taken where the cards have it, empty where they do not
-            exempt.append(item)
-        else:
-            judged = [e for _spec, e in pairs if e.get("role") in POSTER_ROLES and e.get("status") != "skipped" and int(e.get("valid_count") or 0) > 0]
-            if judged:   # one that yields no items at all is collections_valid_count's problem, not the poster's
-                out["collection_poster_fill"] = _criterion(min(float((e.get("field_fill") or {}).get("poster_url") or 0.0) for e in judged),
-                                                           MIN_COLLECTION_POSTER_FILL, "min")
-    info = _detail_info(data, detail, skip)
-    if info["state"] == "judged":
-        out["detail_info_defined"] = _criterion(len(info["good"]), info["required"], "min")
-    # a skipped info group whose field the yaml DEFINES is "optional": kept in the yaml, taken where the pages have it, empty elsewhere
-    # (no fill requirement, no warning); ``exempt`` lists it as ``optional``
-    detail_block = data.get("detail") if isinstance(data.get("detail"), dict) else {}
-    defined = set(detail_block.get("fields") or ()) if isinstance(detail_block.get("fields"), dict) else set()
-    optional = sorted(n for g, names in INFO_FIELDS.items() if skip & {g, *names} for n in names if n in defined)
-    skipped_info = sorted(skip & {n for ns in INFO_FIELDS.values() for n in ns})
-    if info["state"] == "exempt" or optional:
-        item = {"criterion": "detail_info_defined", "field": ", ".join(optional or skipped_info)}
-        if optional:
-            item["optional"] = True
-        exempt.append(item)
-    home, hint = _home_path_criterion(data, html, meta)
-    out.update(home)
-    return out, exempt, hint, info
 
 
 # --- provider recipes of the draft (in memory) -------------------------------------------------------------------
@@ -3493,13 +2717,13 @@ def _is_repair(job_id: Optional[str]) -> bool:
 
 
 def _stored_recipes(draft_id: str) -> list[dict]:
-    """The recipes a draft already carries (or, for a repair job, the ones its last ``submit_repair`` recorded)."""
-    draft = (onboard_store.load_repair(draft_id) if _is_repair(draft_id) else onboard_store.get_draft(draft_id)) or {}
+    """The recipes the last ``submit_repair`` of a repair job recorded."""
+    draft = (onboard_store.load_repair(draft_id) if _is_repair(draft_id) else None) or {}
     return [r for r in _recipe_dicts(draft.get("provider_recipes")) if r["name"]]
 
 
 def _merge_recipes(draft_id: str, items: Any) -> list[dict]:
-    """The recipes of a test call: the ones the draft already carries (a former ``submit_draft``) plus the call's own (same
+    """The recipes of a test call: the ones the repair job recorded (a former ``submit_repair``) plus the call's own (same
     name: the call's wins)."""
     merged = {r["name"]: r for r in _stored_recipes(draft_id)}
     for item in _recipe_dicts(items):
@@ -3541,8 +2765,7 @@ def _analyze(*args, **kwargs) -> dict:
 
 def _analyze_report(yaml_text: str, page_id: Optional[str], detail_page_id: Optional[str], deadline: float,
                     collections: bool = False, site_hint: str = "", playable: bool = False,
-                    draft_recipes: Optional[_Recipes] = None, baseline: bool = False, search_stage: bool = False,
-                    harden: bool = False, skipped: Optional[list] = None, previous: Optional[dict] = None) -> dict:
+                    draft_recipes: Optional[_Recipes] = None, baseline: bool = False) -> dict:
     errors: list[str] = []
     warnings: list[str] = []
     out: dict[str, Any] = {"valid": False, "errors": errors, "warnings": warnings, "list": None, "normalize": None,
@@ -3552,8 +2775,6 @@ def _analyze_report(yaml_text: str, page_id: Optional[str], detail_page_id: Opti
     if playable:
         out["playable"] = None
         out["series"] = None
-    if search_stage:
-        out["search"] = None
     data, problem = _load_yaml(yaml_text)
     if problem:
         errors.append(problem)
@@ -3579,11 +2800,9 @@ def _analyze_report(yaml_text: str, page_id: Optional[str], detail_page_id: Opti
     if draft_recipes:
         errors += draft_recipes.errors
     warnings += core_warnings + play_warnings
-    if search_stage and not _has_search(data):
-        warnings.append(NO_SEARCH_WARNING)
     pairs: list = []
     if collections:
-        pairs, col_errors, col_warnings = _check_collections(data, site_hint, strict_categories=bool(harden and harden_enabled()))
+        pairs, col_errors, col_warnings = _check_collections(data, site_hint)
         errors += col_errors
         warnings += col_warnings
         if not pairs and not col_errors:
@@ -3595,28 +2814,25 @@ def _analyze_report(yaml_text: str, page_id: Optional[str], detail_page_id: Opti
     main: Optional[tuple[str, str, list, int]] = None   # the list page for the collections: (url, page id, items, rows)
     collection_rows: list = []   # raw rows of the collections read before the series stage (the series directory's other half)
     collections_done = False
-    list_html: Optional[str] = None   # the list page as the engine reads it + its meta (``harden``: home_path_is_canonical)
-    list_meta: dict = {}
     if not (core_errors or field_errors):
         cfg = _draft_cfg(data, extra)
         html: Optional[str] = None
         try:
             if page_id:
-                html, list_meta = _load_page(page_id)
+                html, _meta = _load_page(page_id)
             else:
                 got = _fetch_store(urljoin(cfg.base_url, cfg.list_url or "/"), cfg.fetch_mode, cfg.row_selector, deadline)
-                html, list_meta = got["html"], got["meta"]
+                html = got["html"]
                 out["list_page_id"] = got["meta"]["page_id"]
         except ApiError as exc:
             errors.append(f"list: page not available ({exc.detail.get('message') if isinstance(exc.detail, dict) else exc.detail})")
         if html is not None:
-            list_html = html
             out["list"], items, fill = _list_stage(cfg, html, errors, warnings)
             out["ingest"] = _ingest_block(data, len(items))
             if not norm_errors:
                 norm = _normalize_stage(cfg, items, errors, warnings)
             out["normalize"] = norm
-            out["detail"] = _detail_stage(cfg, items, detail_page_id, deadline, warnings, extra_sample=harden and harden_enabled())
+            out["detail"] = _detail_stage(cfg, items, detail_page_id, deadline, warnings)
             list_page = page_id or out.get("list_page_id")
             if list_page and out["list"] is not None:
                 main = (urljoin(cfg.base_url, cfg.list_url or "/"), list_page, items, out["list"]["count"])
@@ -3627,13 +2843,11 @@ def _analyze_report(yaml_text: str, page_id: Optional[str], detail_page_id: Opti
             if pairs and playable and series_spec.get("series_url_regex") and not (norm_errors or series_errors):
                 _collections_stage(cfg, pairs, main, deadline, not norm_errors, errors, warnings, collection_rows)
                 collections_done = True
-            directory = _series_directory(data, list(items) + collection_rows) if (playable or search_stage) and not norm_errors else None
-            if search_stage and _has_search(data) and not search_errors:   # one query, before the long playable stage
-                out["search"] = _search_stage(data, items, deadline, errors, warnings, extra, directory)
+            directory = _series_directory(data, list(items) + collection_rows) if playable and not norm_errors else None
             if playable and not (norm_errors or play_errors or url_errors or blocked_errors):   # before the collections: it has the call's time first
                 gate_run = _GateRun(cfg)   # blocked: / availability_gate: judged like production does
-                out["series"], inventories = _series_stage(cfg, items, series_errors, deadline, warnings, gate_run, collection_rows, directory,
-                                                           ingest_sample=bool(harden and harden_enabled() and directory is not None))   # its episode pages feed the playable stage
+                out["series"], inventories = _series_stage(cfg, items, series_errors, deadline, warnings, gate_run, collection_rows,
+                                                           directory)   # its episode pages feed the playable stage
                 out["playable"] = _playable_stage(cfg, items, deadline, warnings, inventories, gate_run)
                 if gate_run is not None:
                     out["blocked"] = gate_run.blocked_report()   # series / pages that would not be taken (count = rule + gate)
@@ -3653,8 +2867,6 @@ def _analyze_report(yaml_text: str, page_id: Optional[str], detail_page_id: Opti
         errors.append(SERIES_SOURCES_ERROR)
     out["criteria"] = _criteria(valid_count, fill, norm, len(errors))
     out["criteria"].update(play_criteria)
-    if search_stage:
-        out["criteria"].update(_search_criteria(data, out.get("search")))
     if baseline:   # repair mode: the yaml against the ACTIVE config of its site (fields kept, fill not clearly lower)
         out["baseline"] = _baseline_check(data, out)
         out["criteria"]["baseline_ok"] = _criterion(int(out["baseline"]["ok"]), 1, "min")
@@ -3666,20 +2878,6 @@ def _analyze_report(yaml_text: str, page_id: Optional[str], detail_page_id: Opti
             warnings.append("collections: not fetched (fix the list / config errors first)")
         out["collections"] = [entry for _spec, entry in pairs]
         out["criteria"].update(_collection_criteria(pairs))
-    if harden and harden_enabled():   # a NEW site only: the rules the agent may not skip by taking the easy way (see ``_hardening``)
-        extra_criteria, exempt, hint, info = _hardening(data, norm, pairs, collections, skipped, list_html, list_meta, out.get("detail"))
-        out["criteria"].update(extra_criteria)
-        if exempt:
-            out["exempt"] = exempt
-        if hint:
-            out["redirect_hint"] = hint
-        if info["state"] == "judged":
-            out["detail_info"] = {k: info[k] for k in ("good", "missing", "required")}
-        out["criteria"].update(_ingest_sample_criterion((out.get("series") or {}).get("ingest_sample")))
-        removed = _removed_fields(data, previous, _skip_names(skipped))
-        if removed:   # a field that gave values last time is gone: dropped silently to look better? the agent must say why
-            out["removed_fields"] = removed
-            warnings.insert(0, _removed_warning(removed))
     if draft_recipes and draft_recipes.entries:
         out["provider_recipes"] = _recipe_usage(draft_recipes.entries, out.get("playable"))
         if playable and (out.get("playable") or {}).get("checked"):
@@ -3727,15 +2925,12 @@ def _baseline_check(data: dict, out: dict) -> dict:
     return {"ok": not reasons, "site_id": site_id, "version": old.version, "reasons": [_clip(r, 300) for r in reasons[:8]]}
 
 
-def _do_test_config(body, *, deadline: float, repair: bool = False, site_hint: str = "", harden: bool = False,
-                    skipped: Optional[list] = None, previous: Optional[dict] = None) -> dict:
-    # the search stage rides with ``playable`` (one live query); a repair run never queries the live search of a registered site;
-    # ``site_hint`` = the edited site of an edit run (the collection ids are checked against it); ``harden`` = a NEW site's onboarding
-    # (the hardening criteria, ``_hardening``; ``skipped`` = the draft's "Sitede yok, atla" answers)
+def _do_test_config(body, *, deadline: float, repair: bool = False) -> dict:
+    # a repair run never queries the live search of a registered site; in a repair run a provider_recipes name that is in the
+    # library UPDATES that recipe
     return _analyze(body.yaml_text, body.page_id, body.detail_page_id, deadline, collections=body.collections,
-                    site_hint=site_hint, playable=body.playable, draft_recipes=_prepare_recipes(body.provider_recipes, replace=repair),
-                    baseline=bool(getattr(body, "baseline", False)), search_stage=bool(body.playable) and not repair,
-                    harden=harden, skipped=skipped, previous=previous)
+                    playable=body.playable, draft_recipes=_prepare_recipes(body.provider_recipes, replace=repair),
+                    baseline=bool(getattr(body, "baseline", False)))
 
 
 # --- resolvers --------------------------------------------------------------------------------------------------
@@ -3841,7 +3036,7 @@ def _trial_page(cfg, data: dict, url: str, stored_id: Optional[str], deadline: f
     if hit:   # a placeholder of content that is not public (``blocked:`` rule): not a broken resolver, nothing to resolve
         page.update(status="blocked", reason=hit["reason"], error=f"blocked: {hit['reason']}")
         return page, detail
-    module = _module_site()
+    module = DRAFT_SITE_ID
     candidates = site_extractors.discover(module, html, locator, cfg=cfg)
     page["candidates"] = detail["candidate_count"] = len(candidates)
     if not candidates:
@@ -4087,7 +3282,7 @@ def _do_test_provider(body, *, deadline: float, repair: bool = False) -> dict:
                fetch=data.get("fetch") or "http")
     taken = set(scfg.recipe_names())
     if provider.name in taken and not repair:
-        out["warnings"].append(f"a provider recipe named {provider.name!r} already exists in the library: submit_draft would refuse "
+        out["warnings"].append(f"a provider recipe named {provider.name!r} already exists in the library: the heal would refuse "
                                "this name (use another name, or reference the existing recipe in providers:)")
     url = _check(body.sample_url)
     referer = _clean_referer(body.referer)
@@ -4130,27 +3325,7 @@ def _do_test_provider(body, *, deadline: float, repair: bool = False) -> dict:
     return out
 
 
-# --- discover_site / match_providers ------------------------------------------------------------------------------
-
-def _do_discover_site(body, *, deadline: float) -> dict:
-    """The draft site yaml of ``body.url`` built by code (``scraper/discover.py``): <= 8 pages, each through the sandbox fetch (``netguard``,
-    page store: the answer's ``pages[].page_id`` can be used with query_html / grep_page). Nothing is written."""
-    from ..scraper import discover
-    _check(body.url)
-    limit = min(deadline, time.monotonic() + DISCOVER_SECONDS)
-
-    def getter(url: str, role: str) -> "discover.Page":
-        try:
-            got = _fetch_store(url, "auto", "", limit)
-        except ApiError as exc:
-            detail = exc.detail if isinstance(exc.detail, dict) else {}
-            raise discover.PageError(f"{detail.get('code', exc.status_code)}: {detail.get('message', '')}")
-        meta = got["meta"]
-        return discover.Page(url=url, final_url=meta["final_url"], html=got["html"], fetch_mode=meta["fetch_mode"], status=int(meta["status"]),
-                             page_id=meta["page_id"])
-
-    return discover.discover(body.url, getter, outline=_outline_of, deadline=limit)
-
+# --- match_providers ---------------------------------------------------------------------------------------------
 
 def _do_match_providers(body, *, deadline: float) -> dict:
     """Every provider of the library dry-run on ONE player page, host match ignored (``scraper/provider_match.py``); nothing is written."""
@@ -4159,95 +3334,6 @@ def _do_match_providers(body, *, deadline: float) -> dict:
     referer = _clean_referer(body.referer) or _clean_referer(body.detail_url)
     _check_deadline(deadline)
     return provider_match.match(url, referer=referer, deadline=time.monotonic() + max(5.0, min(provider_match.MAX_SECONDS, deadline - time.monotonic() - 5.0)))
-
-
-# --- submit -----------------------------------------------------------------------------------------------------
-
-def _edit_summary(site_id: str, data: Optional[dict]) -> dict:
-    """What an edit draft changes against the ACTIVE yaml of its site: ``{site_id, from_version, changed_keys[], changed_paths[]}``
-    (informational; the layer-scope advice of the skill is not enforced here)."""
-    out: dict[str, Any] = {"site_id": site_id, "from_version": None, "changed_keys": [], "changed_paths": []}
-    try:
-        from ..scraper import heal_agent
-        cfg = scfg.load_site(site_id)
-        out["from_version"] = cfg.version
-        if isinstance(data, dict):
-            keys, paths = heal_agent.touched(cfg.data, data)
-            out["changed_keys"], out["changed_paths"] = keys, paths[:20]
-    except Exception as exc:   # the summary never fails a submit
-        log.debug("edit summary of %s failed: %s", site_id, type(exc).__name__)
-    return out
-
-
-def _do_submit(body, *, deadline: float) -> dict:
-    draft = onboard_store.get_draft(body.draft_id)
-    if draft is None:
-        raise ApiError(404, "not_found", f"draft {body.draft_id!r} not found")
-    if draft.get("status") in ("cancelled", "saved"):
-        raise ApiError(409, "conflict", f"draft is {draft['status']}; it cannot take a new submission")
-    suggestion = (body.site_id_suggestion or "").strip()
-    edit = _edit_site(body.draft_id) if draft.get("mode") == "edit" else ""
-    locked_from = ""
-    if edit:   # an edit keeps the registered site: the agent cannot rename or re-id it
-        locked_from = suggestion if suggestion and suggestion != edit else ""
-        suggestion = edit
-    # omitted = the recipes the draft already carries stay; a list (even empty) replaces them
-    asked = _recipe_dicts(body.provider_recipes) if body.provider_recipes is not None else _stored_recipes(body.draft_id)
-    draft_recipes = _prepare_recipes(asked)
-    with module_site(edit):   # an edit run: the site's own code modules are found by its real id
-        report = _analyze(body.yaml_text, body.page_id, body.detail_page_id, deadline, collections=True, site_hint=suggestion,
-                          playable=True, draft_recipes=draft_recipes, search_stage=True,
-                          harden=not edit, skipped=_skip_names(draft.get("skipped_fields")) if not edit else None,
-                          previous=draft.get("report") if not edit and isinstance(draft.get("report"), dict) else None)
-    for problem in draft_recipes.errors:   # idempotent: _analyze already added them (a canned _analyze may not)
-        if problem not in report["errors"]:
-            report["errors"].append(problem)
-    if draft_recipes.entries and "provider_recipes" not in report:
-        report["provider_recipes"] = _recipe_usage(draft_recipes.entries, report.get("playable"))
-    if edit:
-        if locked_from:
-            report["warnings"].append(f"site_id_suggestion: {locked_from!r} ignored, this edit keeps the site id {edit!r}")
-        data, _problem = _load_yaml(body.yaml_text)
-        yaml_site = (data or {}).get("site_id")
-        if yaml_site is not None and yaml_site != edit:
-            report["errors"].append(f"site_id: the yaml says {yaml_site!r} but this edit keeps the site id {edit!r}")
-        report["edit"] = _edit_summary(edit, data)
-    elif suggestion and not SITE_ID_RE.match(suggestion):
-        report["errors"].append("site_id_suggestion: must match ^[a-z][a-z0-9_]{1,31}$")
-    elif suggestion and suggestion in scfg.list_sites():
-        report["errors"].append(f"site_id_suggestion: site {suggestion!r} already exists")
-    elif not suggestion:
-        report["warnings"].append("site_id_suggestion: empty (the admin must choose a site id)")
-    report["valid"] = not report["errors"]
-    report["criteria"]["config_errors"] = _criterion(len(report["errors"]), 0, "max")
-    report["passed"] = all(c["ok"] for c in report["criteria"].values())
-    if report["passed"]:
-        report.pop("failing", None)
-    else:
-        report["failing"] = _failing(report)   # the criteria changed above (config_errors): recompute
-    report["notes"] = (body.notes or "")[:4000]
-    extra = {"handoff": site_handoff.clip_agent_text(body.handoff)} if (body.handoff or "").strip() else {}   # omitted = an earlier one stays
-    onboard_store.update_draft(body.draft_id, status="ready", yaml_text=body.yaml_text, site_id_suggestion=suggestion,
-                               report=report, error=None, provider_recipes=asked, **extra)
-    onboard_store.append_event(body.draft_id, {"type": "submit", "passed": report["passed"],
-                                               "errors": len(report["errors"]), "warnings": len(report["warnings"])})
-    return {"draft_id": body.draft_id, "status": "ready", "passed": report["passed"], "valid": report["valid"],
-            "errors": report["errors"], "warnings": report["warnings"], "criteria": report["criteria"],
-            "playable": {k: (report.get("playable") or {}).get(k, 0) for k in ("checked", "resolved", "skipped")},
-            **({"series": {k: report["series"].get(k) for k in ("checked", "with_episodes", "skipped", "hint") if k in report["series"]}}
-               if report.get("series") else {}),
-            "ingest": report.get("ingest"),
-            **({"site_quality": {k: report["site_quality"].get(k) for k in ("grade", "reasons", "note", "hosts", "known_ratio", "resolved_ratio",
-                                                                              "mixed_ratio", "challenge_ratio")}} if report.get("site_quality") else {}),
-            **({"blocked": report["blocked"]} if report.get("blocked") else {}),
-            **({"gate": report["gate"]} if report.get("gate") else {}),
-            **({"failing": report["failing"]} if report.get("failing") else {}),
-            "diagnostics": report.get("diagnostics") or {},
-            **({"search": {k: report["search"].get(k) for k in ("query", "count", "found_known", "normalize_ok_ratio", "skipped", "error")
-                           if k in report["search"]}} if report.get("search") else {}),
-            "collections": [{k: e.get(k) for k in ("id", "role", "status", "count", "valid_count", "would_ingest", "normalize_ok", "errors")}
-                            for e in report.get("collections") or []],
-            "provider_recipes": [{k: e.get(k) for k in ("name", "valid", "used", "errors")} for e in report.get("provider_recipes") or []]}
 
 
 # --- request bodies / routes ------------------------------------------------------------------------------------
@@ -4294,12 +3380,8 @@ RECIPES_FIELD = dict(default=None, max_length=MAX_PROVIDER_RECIPES, description=
                      "the providers IN MEMORY: the site yaml may name them in providers:; the draft's stored recipes are always included")
 
 
-class DiscoverSiteBody(BaseModel):
-    url: str = Field(..., max_length=2048, description="the site's address (any page: the root page is read)")
-
-
 class MatchProvidersBody(BaseModel):
-    player_url: str = Field(..., max_length=2048, description="a player (embed / iframe) URL, e.g. a candidate url of test_resolvers / discover_site")
+    player_url: str = Field(..., max_length=2048, description="a player (embed / iframe) URL, e.g. a candidate url of test_resolvers")
     referer: Optional[str] = Field(None, max_length=2048, description="the detail / episode page that embeds the player")
     detail_url: Optional[str] = Field(None, max_length=2048, description="same as referer (used when referer is empty)")
 
@@ -4323,15 +3405,6 @@ class TestConfigBody(BaseModel):
                            "than the last good parse; adds baseline {ok, reasons} and the criterion baseline_ok")
 
 
-class TestSearchBody(BaseModel):
-    yaml_text: str = Field(..., max_length=100_000)
-    query: Optional[str] = Field(None, max_length=SEARCH_QUERY_MAX, description="search text (at least 3 characters); omitted = the title of the "
-                                 "first item of the draft's list page, which is then also the title that must be found (found_known)")
-    page_id: Optional[str] = Field(None, max_length=32, description="stored list page the known title is taken from (skips the fetch)")
-    detail_page_id: Optional[str] = Field(None, max_length=32, description="stored detail page: its title and URL are the known title "
-                                          "when the list gives none")
-
-
 class TestResolversBody(BaseModel):
     yaml_text: str = Field(..., max_length=100_000)
     detail_url: str = Field(..., max_length=2048)
@@ -4341,18 +3414,6 @@ class TestResolversBody(BaseModel):
         "title); omitted = up to 2 more are sampled from the list page of the yaml, [] = detail_url only")
     list_page_id: Optional[str] = Field(None, max_length=32, description="stored list page to sample the extra pages from "
                                         "(default: the yaml's list page is fetched)")
-    provider_recipes: Optional[list[RecipeBody]] = Field(**RECIPES_FIELD)
-
-
-class SubmitBody(BaseModel):
-    draft_id: str = Field(..., max_length=32)
-    yaml_text: str = Field(..., max_length=100_000)
-    site_id_suggestion: str = Field("", max_length=64)
-    notes: str = Field("", max_length=4000)
-    handoff: str = Field("", max_length=4000, description="site handoff note for the next edit / repair agent (new site: findings and "
-                         "solutions, <= 25 lines; edit: ONE change entry, <= 8 lines); stored with the draft, written by save")
-    page_id: Optional[str] = Field(None, max_length=32, description="stored list page (skips the re-fetch)")
-    detail_page_id: Optional[str] = Field(None, max_length=32)
     provider_recipes: Optional[list[RecipeBody]] = Field(**RECIPES_FIELD)
 
 
@@ -4376,34 +3437,10 @@ async def sandbox_outline(body: OutlineBody, _draft: str = Depends(_guard)) -> d
     return await _bounded(_do_outline, body)
 
 
-async def _remember(draft_id: str, kind: str, result: Any) -> None:
-    """Hand the latest answer of a test tool to the draft's ``live`` record (``onboard_store.save_live``: the admin's step view
-    ``scraper/onboard_pipeline`` reads it while the agent works). Skipped for a repair job's token (no draft); never raises."""
-    if not onboard_store.valid_draft_id(draft_id):
-        return
-    try:
-        await asyncio.get_running_loop().run_in_executor(None, onboard_store.save_live, draft_id, kind, result)
-    except Exception:
-        log.debug("live result of %s for %s not saved", kind, draft_id, exc_info=True)
-
-
 @router.post("/test_config")
-async def sandbox_test_config(body: TestConfigBody, draft_id: str = Depends(_guard)) -> dict:
-    body.provider_recipes = _merge_recipes(draft_id, body.provider_recipes)   # the draft's stored recipes join the call's own
-    edit = _edit_site(draft_id)   # an edit run tests the yaml as that registered site (collection ids, its code modules)
-    fn = (functools.partial(_do_test_config, repair=True) if _is_repair(draft_id)
-          else functools.partial(_do_test_config, site_hint=edit) if edit
-          else functools.partial(_do_test_config, harden=True, **dict(zip(("skipped", "previous"), _draft_memory(draft_id)))))   # a new site: hardening
-    result = await _bounded(_scoped(fn, edit), body)
-    await _remember(draft_id, "test_config", result)
-    return result
-
-
-@router.post("/test_search")
-async def sandbox_test_search(body: TestSearchBody, draft_id: str = Depends(_guard)) -> dict:
-    result = await _bounded(_do_test_search, body, hint="the site's search request is slow; try again or use fetch: http")
-    await _remember(draft_id, "test_search", result)
-    return result
+async def sandbox_test_config(body: TestConfigBody, job_id: str = Depends(_guard)) -> dict:
+    body.provider_recipes = _merge_recipes(job_id, body.provider_recipes)   # the job's recorded recipes join the call's own
+    return await _bounded(functools.partial(_do_test_config, repair=True), body)
 
 
 @router.get("/resolvers")
@@ -4412,25 +3449,9 @@ def sandbox_resolvers(_draft: str = Depends(_guard)) -> dict:
 
 
 @router.post("/test_provider")
-async def sandbox_test_provider(body: TestProviderBody, draft_id: str = Depends(_guard)) -> dict:
-    fn = functools.partial(_do_test_provider, repair=True) if _is_repair(draft_id) else _do_test_provider
-    result = await _bounded(fn, body, hint="a recipe with fetch: browser is slow; try fetch: http with a referer")
-    await _remember(draft_id, "test_provider", result)
-    return result
-
-
-def _require_onboard(draft_id: str) -> None:
-    """The onboarding-only calls (``discover_site``, ``submit``) are closed while ``ONBOARD_ENABLED=0``; a repair (heal) run is never stopped."""
-    if not config.ONBOARD_ENABLED and not _is_repair(draft_id):
-        raise ApiError(403, "onboard_disabled", "site onboarding is switched off (ONBOARD_ENABLED=0)")
-
-
-@router.post("/discover_site")
-async def sandbox_discover_site(body: DiscoverSiteBody, draft_id: str = Depends(_guard)) -> dict:
-    _require_onboard(draft_id)
-    if _is_repair(draft_id) or _edit_site(draft_id):
-        raise ApiError(403, "forbidden", "discover_site belongs to onboarding a NEW site (a repair / edit run works on a registered site)")
-    return await _bounded(_do_discover_site, body, hint="the site is slow: fetch_page its pages by hand")
+async def sandbox_test_provider(body: TestProviderBody, _job: str = Depends(_guard)) -> dict:
+    return await _bounded(functools.partial(_do_test_provider, repair=True), body,
+                          hint="a recipe with fetch: browser is slow; try fetch: http with a referer")
 
 
 @router.post("/match_providers")
@@ -4439,13 +3460,10 @@ async def sandbox_match_providers(body: MatchProvidersBody, draft_id: str = Depe
 
 
 @router.post("/test_resolvers")
-async def sandbox_test_resolvers(body: TestResolversBody, draft_id: str = Depends(_guard)) -> dict:
-    body.provider_recipes = _merge_recipes(draft_id, body.provider_recipes)
-    fn = functools.partial(_do_test_resolvers, repair=True) if _is_repair(draft_id) else _do_test_resolvers
-    result = await _bounded(_scoped(fn, _edit_site(draft_id)), body,
-                            hint="a resolver with fetch: browser is slow; try fewer resolver items or follow hops")
-    await _remember(draft_id, "test_resolvers", result)
-    return result
+async def sandbox_test_resolvers(body: TestResolversBody, job_id: str = Depends(_guard)) -> dict:
+    body.provider_recipes = _merge_recipes(job_id, body.provider_recipes)
+    return await _bounded(functools.partial(_do_test_resolvers, repair=True), body,
+                          hint="a resolver with fetch: browser is slow; try fewer resolver items or follow hops")
 
 
 # --- repair mode (heal agent): load_site_config / submit_repair --------------------------------------------------
@@ -4541,24 +3559,12 @@ def _do_submit_repair(job_id: str, body) -> dict:
 
 @router.get("/site_config/{site_id}")
 def sandbox_site_config(site_id: str, recipe: str = "", job_id: str = Depends(_guard)) -> dict:
-    """Read-only. A repair run may read the site it repairs; an EDIT draft only the site it edits; a new-site draft nothing."""
+    """Read-only; a repair run only."""
     if not _is_repair(job_id):
-        edit = _edit_site(job_id)
-        if not edit:
-            raise ApiError(403, "forbidden", "load_site_config belongs to edit and repair runs (a new-site draft has no registered site)")
-        if site_id != edit:
-            raise ApiError(403, "forbidden", f"this edit run may only read its own site {edit!r}")
+        raise ApiError(403, "forbidden", "load_site_config belongs to repair runs")
     return _do_site_config(site_id, recipe.strip())
 
 
 @router.post("/submit_repair")
 def sandbox_submit_repair(body: SubmitRepairBody, draft_id: str = Depends(_guard)) -> dict:
     return _do_submit_repair(draft_id, body)
-
-
-@router.post("/submit")
-async def sandbox_submit(body: SubmitBody, draft_id: str = Depends(_guard)) -> dict:
-    if body.draft_id != draft_id:
-        raise ApiError(403, "forbidden", "the token belongs to another draft")
-    _require_onboard(draft_id)
-    return await _bounded(_do_submit, body)

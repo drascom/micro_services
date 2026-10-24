@@ -3,10 +3,9 @@ from __future__ import annotations
 
 import datetime
 import re
-import zlib
 from typing import Any, Optional
 
-from . import config, db, catalog_view, images
+from . import db, catalog_view, images
 from .cache import Snapshot, fold, get as get_cache
 from .scraper.collections import HOME_ROLES
 
@@ -99,17 +98,6 @@ def unwatched_episode_progress(profile_id: str) -> dict[str, dict[str, Any]]:
         for r in db.query(
             "SELECT episode_id, position, duration FROM progress WHERE profile_id = ? AND watched = 0",
             (profile_id,),
-        )
-    }
-
-
-def watched_items(profile_id: str) -> set[str]:
-    if not profile_id:
-        return set()
-    return {
-        r["item_id"]
-        for r in db.query(
-            "SELECT DISTINCT item_id FROM progress WHERE profile_id = ?", (profile_id,)
         )
     }
 
@@ -448,97 +436,12 @@ def row_pool(snap: Snapshot, row_id: str, profile_id: str, pmap: dict) -> list[d
     return []
 
 
-def hero(snap: Snapshot, profile_id: str, pmap: dict) -> Optional[dict]:
-    seen = watched_items(profile_id)
-    pool = [
-        i
-        for i in snap.items
-        if i["id"] not in seen and (i.get("rating") or 0) >= 7.8
-    ]
-    if not pool:
-        pool = [i for i in snap.items if (i.get("rating") or 0) >= 7.8] or snap.items
-    pool = sorted(pool, key=lambda i: (-(i.get("rating") or 0), i["id"]))[:25]
-    if not pool:
-        return None
-    idx = (zlib.crc32((profile_id or "anon").encode("utf-8")) & 0xFFFFFFFF) % len(pool)
-    item = pool[idx]
-    out = item_json(item, pmap.get(item["id"]))
-    out["logo_text"] = item["title"]
-    out["tagline"] = item.get("tagline") or item["overview"].split(".")[0] + "."
-    return out
-
-
 def tv_boot(snap: Snapshot, profile_id: str, pmap: dict) -> dict:
     """The tv-v1 home: hero carousel + rows, all decided by :mod:`homelayout` (rows with an empty pool are left out)."""
     from . import homelayout
     home = homelayout.compose(snap, profile_id, pmap)
     return {"hero": home["heroes"][0] if home["heroes"] else None, "heroes": home["heroes"], "rows": home["rows"],
             "layout": "tv-v1", "catalog_total": len(snap.items), "source": ""}
-
-
-def boot(profile_id: str, source: str = "", layout: str = "") -> dict[str, Any]:
-    snap = catalog_view.select(get_cache(), source)
-    pmap = progress_map(profile_id)
-    if layout == "tv-v1":
-        return tv_boot(snap, profile_id, pmap)
-    rows: list[dict[str, Any]] = []
-
-    cont = continue_items(snap, pmap, profile_id)
-    if cont:
-        rows.append(
-            {
-                "id": "continue",
-                "title": ROW_TITLES["continue"],
-                "loaded": True,
-                "items": items_json(cont, pmap, config.ROW_LIMIT),
-            }
-        )
-
-    real = getattr(snap, "real_home", False)
-
-    # "Yakında Vizyonda" (real sinemalar upcoming list) — real layout only, lazy.
-    up = getattr(snap, "upcoming", None) if real else None
-    if up and up.get("items"):
-        rows.append(
-            {"id": up["id"], "title": up["title"], "loaded": False, "count": len(up["items"])}
-        )
-
-    new_items = snap.newest[:MAX_NEW]
-    rows.append(
-        {
-            "id": "new",
-            "title": NEW_TITLE_REAL if real else ROW_TITLES["new"],
-            "loaded": True,
-            "items": items_json(new_items, pmap, config.ROW_LIMIT),
-        }
-    )
-
-    # Legacy (mock): keep the top10 row. Real layout drops the fabricated
-    # "most watched" row in favour of real genre pages.
-    if not real:
-        rows.append(
-            {"id": "top10", "title": ROW_TITLES["top10"], "loaded": False, "count": len(snap.top10)}
-        )
-
-    mine = [iid for iid in mylist_ids(profile_id) if iid in snap.by_id]
-    if mine:
-        rows.append(
-            {"id": "mylist", "title": ROW_TITLES["mylist"], "loaded": False, "count": len(mine)}
-        )
-
-    # Real layout preserves the yaml collection order; legacy folds alphabetically.
-    genre_items = (
-        list(snap.genre_slug.items()) if real
-        else sorted(snap.genre_slug.items(), key=lambda kv: fold(kv[0]))
-    )
-    for name, slug in genre_items:
-        bucket = snap.by_genre.get(slug, [])
-        if bucket:
-            rows.append(
-                {"id": f"genre_{slug}", "title": name, "loaded": False, "count": len(bucket)}
-            )
-
-    return {"hero": hero(snap, profile_id, pmap), "rows": rows, "source": source, "sources": catalog_view.sources(get_cache())}
 
 
 def row(row_id: str, profile_id: str, offset: int, limit: int, source: str = "") -> dict[str, Any]:

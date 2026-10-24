@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import time
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from .. import cache, db, rows
-from ..deps import require_profile
+from .. import cache, db
 from ..errors import bad_request, not_found
 
 router = APIRouter(tags=["progress"])
@@ -94,23 +93,3 @@ def post_progress(body: ProgressIn) -> dict:
     return {"ok": True, "watched": bool(watched), "next_episode": next_episode}
 
 
-@router.delete("/api/continue/{item_id}")
-def hide_continue(item_id: str, profile: str = Depends(require_profile)) -> dict:
-    """Soft-remove an item from the profile's "İzlemeye Devam Et" row. ``progress`` rows stay (detail resume,
-    watched state); a newer progress write brings the item back. Idempotent: ``removed`` is true only when this
-    call hid something that was visible."""
-    item = cache.get().by_id.get(item_id)
-    item_id = item["id"] if item else item_id
-    prog = rows.progress_map(profile).get(item_id) if item else None
-    if not prog:
-        return {"ok": True, "removed": False}
-    hidden_at = rows.hidden_map(profile).get(item_id)
-    if rows.is_hidden(prog, hidden_at):
-        return {"ok": True, "removed": False}
-    now = max(int(time.time()), prog["updated_at"])
-    db.execute(
-        "INSERT INTO continue_hidden (profile_id,item_id,hidden_at) VALUES (?,?,?) "
-        "ON CONFLICT(profile_id, item_id) DO UPDATE SET hidden_at=excluded.hidden_at",
-        (profile, item_id, now),
-    )
-    return {"ok": True, "removed": True}

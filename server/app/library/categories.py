@@ -127,10 +127,6 @@ def title_of(slug: str) -> Optional[str]:
     return r["title"] if r else None
 
 
-def is_system(slug: str) -> bool:
-    return slug in SYSTEM_SLUGS
-
-
 def _locked(slug: str) -> CategoryError:
     return CategoryError(409, "locked", "Bu satır kilitli: silinemez, gizlenemez ve adı değişmez; yalnız sırası değişir")
 

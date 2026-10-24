@@ -1,14 +1,14 @@
 # Repair mode (heal)
 
 You are in repair mode when the first message starts with `REPAIR MODE` (instead of a site URL): a site diziflix already knows is broken (its pages
-or video host changed, or it plays nothing). This is NOT an onboarding: you write no new site, you do not call `submit_draft`, you change as little
+or video host changed, or it plays nothing). You write no new site, you change as little
 as possible. You hand in a PROPOSAL with `submit_repair`; the server tests it again (baseline, failing and working examples, other sites using a
 changed recipe) and applies it only when all of that passes.
 
 The repair-mode tools are `fetch_page`, `query_html`, `grep_page`, `outline_page`, `test_config`, `test_resolvers`, `test_provider`,
-`match_providers`, `list_resolvers`, `load_site_config` and `submit_repair`, plus `read`. There is no `submit_draft`.
+`match_providers`, `list_resolvers`, `load_site_config` and `submit_repair`, plus `read`.
 `match_providers(player_url, referer?)` dry-runs EVERY library provider on one player page: `recommendation.action` `add_host` gives the existing
-recipe with the new host added (`recipe_yaml`: hand it in as `provider_recipes` with the same name); `new_recipe` / `needs_code` as in onboarding.
+recipe with the new host added (`recipe_yaml`: hand it in as `provider_recipes` with the same name); `new_recipe` = write a library recipe (`providers.md`, `player-authoring.md`); `needs_code` = `needs code: <host>` in `notes`.
 
 ## Input (the task message)
 

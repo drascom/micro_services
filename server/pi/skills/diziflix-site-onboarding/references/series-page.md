@@ -7,9 +7,8 @@ a time) and whenever a series is opened, and writes every season / episode into 
 only holds the episode PAGE URL; the player is found on that page at play time, so `resolvers:` must find the player on an EPISODE page.
 
 Cards that are EPISODE pages (`-3-sezon-5-bolum`) have no series page behind them: find the series archive (menu "Diziler", an alphabetical
-archive, the series link on an episode page), read SERIES cards from it in `list:` and write `series_page:` (`series_full_inventory` fails a draft
-with episode-page cards and no `series_page:`); ask (`ask_user`, field `series_inventory`) only when the series pages really do not list the
-episodes. Cards that already are EPISODE pages use `normalize.episode_source` instead (`normalize.md`, "Playable chain"); never both.
+archive, the series link on an episode page), read SERIES cards from it in `list:` and write `series_page:` (episode-page cards without
+`series_page:` leave every series with one episode); say so in `notes` only when the series pages really do not list the episodes. Cards that already are EPISODE pages use `normalize.episode_source` instead (`normalize.md`, "Playable chain"); never both.
 
 ## Series directory (cards that link EPISODE pages)
 

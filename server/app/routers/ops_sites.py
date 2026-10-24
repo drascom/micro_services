@@ -4,7 +4,7 @@
                                           ``site_id, display_name, base_url, version, hand_built, heal_cooldown_until,
                                           auto_scan{enabled, interval_hours, next_scan_at, source, running, last_run_at}, last_run{at, status, scraped,
                                           ingested}|null, counts{titles, series, movies, episodes, with_sources}, search,
-                                          providers[], providers_all, can_rollback, busy`` (``busy`` = scan | heal | onboard | finder | null)
+                                          providers[], providers_all, can_rollback, busy`` (``busy`` = scan | heal | archive | finder | null)
 `GET    /api/ops/sites/{site}/config`     ``{site_id, version, yaml_text, versions[{version, updated_at, active}], baseline}``
                                           (secret-looking values masked; 404 for a site that is not registered)
 `GET    /api/ops/sites/{site}/handoff`    ``{site_id, text, bytes}``: the site's handoff note (``scraper/site_handoff.py``; Markdown, read-only; 404 for
@@ -35,14 +35,14 @@ import yaml
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-from .. import autoscan, config, db, settings
+from .. import autoscan, db, settings
 from ..errors import ApiError
 from ..library import archive as larchive, purge
 from ..scraper import config as scfg, site_handoff, site_search, state as sstate
 
 router = APIRouter(prefix="/api/ops/sites")
 
-BUSY_ORDER = ("scan", "heal", "archive", "onboard", "finder")
+BUSY_ORDER = ("scan", "heal", "archive", "finder")
 YAML_MAX = 200_000
 _SECRET_LINE = re.compile(r"(?im)^(\s*(?:cookie|authorization|proxy-authorization|x-api-key|api[_-]?key|token|secret|password)\s*:\s*).+$")
 
@@ -68,21 +68,12 @@ def _redact(text: str) -> str:
 
 
 def _busy_map() -> dict[str, str]:
-    """``{site: running job kind}`` (scan | heal | onboard | finder; the first of that order when several run)."""
+    """``{site: running job kind}`` (scan | heal | archive | finder; the first of that order when several run)."""
     kinds: dict[str, set[str]] = {}
     active = sstate.activity_list()
     for job in active:
         if job["kind"] in ("scan", "heal", "archive"):
             kinds.setdefault(job["site"], set()).add(job["kind"])
-    for job in active:   # an onboarding run that EDITS a registered site
-        if job["site"] == "_onboard" and job["kind"] == "onboard" and job.get("draft_id"):
-            try:
-                from ..scraper import onboard_store
-                draft = onboard_store.get_draft(str(job["draft_id"])) or {}
-            except Exception:
-                draft = {}
-            if draft.get("edit_site_id"):
-                kinds.setdefault(str(draft["edit_site_id"]), set()).add("onboard")
     try:   # a source-finder job running for a title this site serves may still write / repair its sources
         from ..library import sourcefinder
         with sourcefinder._lock:
@@ -206,7 +197,7 @@ def manage() -> dict[str, Any]:
         live_sources = []
     return {"sites": rows, "live_sources": live_sources, "any_enabled": any(r["auto_scan"]["enabled"] for r in rows),
             "limits": {"min_interval_hours": settings.MIN_INTERVAL_HOURS, "max_interval_hours": settings.MAX_INTERVAL_HOURS},
-            "tick_seconds": autoscan.TICK_SECONDS, "onboard_enabled": bool(config.ONBOARD_ENABLED)}
+            "tick_seconds": autoscan.TICK_SECONDS}
 
 
 def _iso(value: Any, path: str) -> Optional[str]:
@@ -292,7 +283,7 @@ def rename(site: str, body: RenameBody) -> dict[str, Any]:
     if not name:
         raise ApiError(422, "invalid_name", "display_name is empty")
     kind = _busy_map().get(site)
-    if kind in ("heal", "onboard"):   # they write the config themselves
+    if kind == "heal":   # it writes the config itself
         raise ApiError(409, "busy", f"site is busy ({kind})")
     data = copy.deepcopy(cfg.data)
     data["display_name"] = name

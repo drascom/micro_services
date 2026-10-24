@@ -1,4 +1,4 @@
-"""diziflix — catalogue/playback API for the Tizen TV client.
+"""diziflix — catalogue/playback API for the web client (`client/`: browser, Tizen wgt, Android WebView).
 
 See API.md for the contract this server implements.
 """
@@ -32,7 +32,6 @@ from .routers import (
     ops_categories,
     ops_library,
     ops_live,
-    ops_onboard,
     ops_settings,
     ops_sites,
     ops_tmdb,
@@ -57,11 +56,6 @@ async def lifespan(app: FastAPI):
     snap = cache.get()
     log.info("catalogue loaded: source=%s items=%d", snap.source, len(snap.items))
     try:
-        from .scraper import onboard
-        onboard.recover_stale()  # a site-onboarding run that was live when the server stopped can only be failed now
-    except Exception:
-        log.exception("onboarding: stale drafts not recovered")
-    try:
         yield
     finally:
         cache.stop()
@@ -70,7 +64,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="diziflix",
     version="1.0.0",
-    description="Catalogue and playback API for the diziflix Tizen TV client.",
+    description="Catalogue and playback API for the diziflix client (client/).",
     lifespan=lifespan,
 )
 
@@ -163,7 +157,6 @@ for module in (
     ops_categories,
     ops_library,
     ops_live,
-    ops_onboard,
     ops_settings,
     ops_sites,
     ops_tmdb,

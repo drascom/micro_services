@@ -83,8 +83,7 @@ Bu geçiş için TV paketi bir kez güncellenmelidir: yeni hata bildirimi eski
 istemcide yoktur. Sonraki scraper eklemeleri bu ortak sözleşme içinde client
 sürümü gerektirmez.
 
-Doğrulama: `venv/bin/python -m unittest discover -s tests -q` (server klasöründe),
-`node tests/player_health.js` (proje kökünde).
+Doğrulama: `venv/bin/python -m unittest discover -s tests -q` (server klasöründe).
 
 ## Catalogue enrichment verification (2026-09-05)
 

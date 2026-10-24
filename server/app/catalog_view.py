@@ -4,15 +4,6 @@ from .errors import bad_request
 from .scraper import config
 
 
-def sources(snap):
-    result = []
-    for sid in config.list_sites():
-        cfg = config.load_site(sid)
-        result.append({"id": sid, "name": cfg.data.get("display_name", sid),
-                       "count": sum(sid in i.get("sources", []) for i in snap.items)})
-    return result
-
-
 def select(snap, source=""):
     if not source:
         return snap

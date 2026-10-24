@@ -1,7 +1,7 @@
-"""Regenerate the machine-derived parts of the pi onboarding skill references (no network, no real data touched).
+"""Regenerate the machine-derived parts of the pi skill references (the heal's repair agent) (no network, no real data touched).
 
     venv/bin/python -m tools.gen_onboard_refs          # rewrite the generated blocks
-    venv/bin/python -m tools.gen_onboard_refs --check  # exit 1 when a file is out of date (tests/test_onboard_refs.py)
+    venv/bin/python -m tools.gen_onboard_refs --check  # exit 1 when a file is out of date 
 
 Everything else in ``server/pi/skills/diziflix-site-onboarding/references/`` is written by hand. A generated block sits
 between ``<!-- BEGIN GENERATED <name> ... -->`` and ``<!-- END GENERATED <name> -->`` markers:
@@ -14,8 +14,6 @@ between ``<!-- BEGIN GENERATED <name> ... -->`` and ``<!-- END GENERATED <name> 
   them onboarding writes (``onboard_sandbox.ONBOARD_ROLES``) and the id convention (``collections.list_id``).
 * ``series-page-keys`` in ``series-page.md``: the keys of the yaml ``series_page:`` block (``series_generic.SPEC_KEYS``, each
   with its meaning from ``SERIES_KEY_DOCS`` below; a key without a doc line is an error here, so the table is never stale).
-* ``edit-tools`` / ``edit-layers`` in ``edit.md``: the edit-mode tool list (``pi_agent.EDIT_TOOLS``) and the layers an edit request may touch
-  (``heal_agent.LAYERS`` keys + ``EDIT_LAYER_DOCS`` below: what the request is about; a layer without a doc line is an error here).
 * ``search-keys`` in ``search.md``: the keys of the yaml ``search:`` block (``search_generic.SPEC_KEYS``, each with its meaning from
   ``SEARCH_KEY_DOCS`` below; same rule: an undocumented key is an error).
 """
@@ -32,7 +30,7 @@ REFS_DIR = os.path.join(_SERVER, "pi", "skills", "diziflix-site-onboarding", "re
 #: file (relative to REFS_DIR) -> generated block names it must contain
 TARGETS = {"resolvers.md": ("resolvers-catalog",), "quality.md": ("quality-criteria",),
            "collections.md": ("collection-roles",), "series-page.md": ("series-page-keys",), "search.md": ("search-keys",),
-           "heal.md": ("repair-layers", "repair-gates"), "edit.md": ("edit-tools", "edit-layers")}
+           "heal.md": ("repair-layers", "repair-gates")}
 #: key of the yaml ``series_page:`` block -> (required?, meaning); the keys must be exactly ``series_generic.SPEC_KEYS``
 SERIES_KEY_DOCS = {
     "row_selector": ("yes", "CSS, one match per episode row (`<li>` / `<tr>` / `<div>` holding the episode link) or the episode links themselves (`a[href]`)"),
@@ -66,25 +64,6 @@ SEARCH_KEY_DOCS = {
     "results_path": ("no", "json: dotted path of the result LIST (`data.result`); empty = the answer is the list"),
     "limit": ("no", "most results kept, 1..20 (default 20)"),
     "cache_ttl": ("no", "seconds a query is remembered, 0..3600 (default 300; 0 = never)"),
-}
-
-
-#: layer -> what an EDIT request about it sounds like; the layers are ``heal_agent.LAYERS`` (the same scope vocabulary as a repair, keys
-#: from there) plus ``EDIT_EXTRA_LAYERS`` (parts of a site a repair never changes but an admin may ask to)
-EDIT_LAYER_DOCS = {
-    "list": "the list page or a home section (`collections:`): other / more titles, a new or changed section, title / poster / year selectors",
-    "detail": "the fields of a detail page: synopsis, genres, cast, trailer, player address",
-    "series_page": "the episode list of a series page: rows, season pages, episode dates",
-    "normalize": "how a title is keyed and typed, where episode sources come from (`normalize.episode_source`)",
-    "resolvers": "how the player is found on a page (`resolvers:`) and which providers the site may use",
-    "provider": "a video HOST that changed or is new: its recipe lives in the provider LIBRARY (`provider_recipes`); the site yaml only names it in `providers`",
-    "fetch": "how a page is fetched: plain http or the browser",
-    "archive": "the whole-catalogue pass (`archive:`): the series index / film list pages, batch sizes, on/off",
-}
-EDIT_EXTRA_LAYERS = {
-    "search": (("search",), "the live search of the site (`search:`)"),
-    "catalogue": (("list_url", "item_limit", "playback"), "the main list page, how many titles a scan takes, `video` or only a trailer"),
-    "images": (("image_hosts",), "the hosts the artwork may come from"),
 }
 
 
@@ -194,39 +173,14 @@ def render_quality() -> str:
              ("collections_normalize_ok_ratio", ">= %g" % sb.MIN_NORMALIZE_OK_RATIO,
               "same: the LOWEST normalized / usable share over the collections"),
              ("playable_ratio", ">= %g" % sb.MIN_PLAYABLE_RATIO,
-              "with `playable: true` / `submit_draft` (always): up to %d DIFFERENT normalized titles are followed from their playback page "
+              "with `playable: true`: up to %d DIFFERENT normalized titles are followed from their playback page "
               "to a stream; resolved / checked (`skipped` not counted; at least one must resolve)" % sb.PLAYABLE_SAMPLES),
              ("series_have_episode_sources", ">= %g" % sb.MIN_SERIES_SOURCE_RATIO,
               "same, series items only: those carrying episode `video_sources` / all, OR (the better) the share of series pages the yaml "
               "`series_page` gave episodes for"),
-             ("search_ok", ">= 1",
-              "same AND a `search:` block: ONE live query gives >= 1 result AND the list item is among them (`found_known` not false); "
-              "no block = only a warning"),
-             ("availability_gate_defined", ">= 1",
-              "NEW `playback: video` site: an `availability_gate` that is on (`probe` >= 1) (`blocked.md`); never skippable, never asked about"),
-             ("series_signal_collection", ">= %d" % sb.MIN_COLLECTION_COUNT,
-              "NEW series site, `collections: true`: the most usable items any `trending` / `latest_series` collection yields. "
-              "Exempt after \"Sitede yok, atla: `%s`\"" % sb.SKIP_HOME_SERIES),
-             ("series_full_inventory", ">= 1",
-              "NEW series site, `playback: video`: a `series_page:` inventory OR no card is ONE EPISODE's page. "
-              "Exempt after \"Sitede yok, atla: `%s`\"" % sb.SKIP_SERIES_INVENTORY),
-             ("home_path_is_canonical", ">= 1",
-              "NEW site with a CERTAIN `redirect_hint` on the `list_url` page: 0 while `list_url` or a collection `path` still names the redirecting path"),
-             ("collection_poster_fill", ">= %g" % sb.MIN_COLLECTION_POSTER_FILL,
-              "NEW site, `collections: true`: the LEAST `poster_url` fill over the collections of the roles %s. Exempt after \"Sitede yok, atla: `%s`\" (the poster field STAYS: taken where cards have it; `exempt[].optional`)"
-              % (", ".join("`%s`" % r for r in sb.POSTER_ROLES), sb.SKIP_COLLECTION_POSTER)),
-             ("detail_info_defined", ">= %d" % sb.MIN_DETAIL_INFO,
-              "NEW site: how many of the info groups %s the DETAIL fields define AND fill on EVERY parsed detail page (the `detail_page_id` page + "
-              "a second one). Each group the admin answered \"Sitede yok, atla: <field>\" for (\"Varsa al, yoksa atla\") leaves the bar but its field is KEPT in the yaml (taken on the pages that have it, empty on the rest; listed in `exempt` as `optional`); the agent never skips on its own"
-              % ", ".join("`%s`" % g for g in sb.INFO_FIELDS)),
              ("series_inventory_ok", ">= %g" % sb.MIN_SERIES_INVENTORY_RATIO,
               "with `playable: true` AND a `series_page:` block: the series pages of up to %d DIFFERENT series are read (`series{}`); every one must "
-              "give an episode (`skipped` not counted, none read = 0)" % sb.SERIES_SAMPLES),
-             ("ingest_sample_ok", ">= %g" % sb.MIN_INGEST_SAMPLE_OK,
-              "NEW series site with a `series_page:` that has `series_url_regex`: up to %d DIFFERENT series items of the list AND the collections (episode "
-              "cards included) go through the production key / title cleanup and the series-page directory (`series-page.md`), up to %d of their pages are "
-              "read; the share that resolves to a series page with a non-empty inventory. Never skippable"
-              % (sb.INGEST_SAMPLE_ITEMS, sb.SERIES_READS))]
+              "give an episode (`skipped` not counted, none read = 0)" % sb.SERIES_SAMPLES)]
     out = ["| criterion | must be | meaning |", "|---|---|---|"]
     out += ["| `%s` | %s | %s |" % row for row in rows]
     out += ["", "`passed` is true only when every criterion is met."]
@@ -321,37 +275,10 @@ def render_repair_gates() -> str:
     return "\n".join(out)
 
 
-def render_edit_tools() -> str:
-    from app.scraper import pi_agent
-
-    return "Edit-mode tools: " + ", ".join("`%s`" % name for name in pi_agent.EDIT_TOOLS) + " (+ `read`)."
-
-
-def render_edit_layers() -> str:
-    """The layers an edit request may touch: the repair layers (``heal_agent.LAYERS``) with the wording of a REQUEST, plus the extras."""
-    from app.scraper import heal_agent
-
-    missing = sorted(set(heal_agent.LAYERS) - set(EDIT_LAYER_DOCS))
-    extra = sorted(set(EDIT_LAYER_DOCS) - set(heal_agent.LAYERS))
-    clash = sorted(set(EDIT_EXTRA_LAYERS) & set(heal_agent.LAYERS))
-    if missing or extra or clash:
-        raise ValueError("EDIT_LAYER_DOCS and heal_agent.LAYERS differ (undocumented: %s; unknown: %s; extra layers that clash: %s)"
-                         % (", ".join(missing) or "-", ", ".join(extra) or "-", ", ".join(clash) or "-"))
-    out = ["| layer | the request is about | top-level yaml keys you may change |", "|---|---|---|"]
-    for name, (keys, _doc) in heal_agent.LAYERS.items():
-        out.append("| `%s` | %s | %s |" % (name, _cell(EDIT_LAYER_DOCS[name]), ", ".join("`%s`" % k for k in keys)))
-    for name, (keys, doc) in EDIT_EXTRA_LAYERS.items():
-        out.append("| `%s` | %s | %s |" % (name, _cell(doc), ", ".join("`%s`" % k for k in keys)))
-    out += ["", "`version`, `updated_at` and `site_id` are set by the server and never count as a change. Identity keys (`schema`, `base_url`, "
-                "`normalize.key`, `display_name`) only change when the request names them (rule 3)."]
-    return "\n".join(out)
-
-
 RENDERERS = {"resolvers-catalog": render_resolvers, "quality-criteria": render_quality,
              "collection-roles": render_collection_roles, "series-page-keys": render_series_page_keys,
              "search-keys": render_search_keys,
-             "repair-layers": render_repair_layers, "repair-gates": render_repair_gates,
-             "edit-tools": render_edit_tools, "edit-layers": render_edit_layers}
+             "repair-layers": render_repair_layers, "repair-gates": render_repair_gates}
 
 
 def _markers(name: str) -> tuple:

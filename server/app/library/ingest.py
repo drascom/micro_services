@@ -320,14 +320,6 @@ def parses_main_list(cfg: scfg.SiteConfig, collection: dict) -> bool:
     return not ((row_selector and row_selector != cfg.row_selector) or (fields and fields != cfg.list_fields))
 
 
-def load_collection(cfg: scfg.SiteConfig, collection: dict, main_items: list[dict], limit: int) -> list[dict]:
-    """Items of one collection: filtered from ``main_items`` (the main list's valid items) when it parses the main
-    page the main way (``parses_main_list``), else fetched and parsed on its own (``_fetch_collection``)."""
-    if parses_main_list(cfg, collection):
-        return _collection_items(main_items, collection, limit)
-    return _fetch_collection(cfg, collection, limit)
-
-
 def empty_series_page(result: dict, norm: dict) -> bool:
     """A series page that was read fine but lists no episode at all: no aired / announced episode, no episode link anywhere on the page
     (``anchors``: URL pattern, selector-independent, so a selector drift is not "empty"), not a ``blocked:`` page, no failed season

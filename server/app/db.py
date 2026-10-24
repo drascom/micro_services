@@ -223,8 +223,8 @@ SCHEMA += [
         started_at INTEGER NOT NULL, finished_at INTEGER, steps TEXT NOT NULL DEFAULT '[]',
         source_id TEXT, method TEXT, error TEXT)""",
     "CREATE INDEX IF NOT EXISTS idx_finder_item ON finder_jobs(canonical_id, episode_id, id DESC)",
-    # Per-profile notifications (GET /api/notifications?since=<id>): ``kind`` source_found, ``payload`` = JSON with the
-    # display fields (title, season, episode, site, method), ``read_at`` set by POST /api/notifications/read.
+    # Per-profile notifications (legacy: the source finder wrote ``source_found`` rows for GET /api/notifications, removed
+    # 2026-10-24; the table stays so old databases keep their shape, purge / reset still clear it).
     """CREATE TABLE IF NOT EXISTS notifications (
         id INTEGER PRIMARY KEY AUTOINCREMENT, profile_id TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL,
         canonical_id TEXT, episode_id TEXT, payload TEXT NOT NULL DEFAULT '{}',

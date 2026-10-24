@@ -230,7 +230,7 @@ def activity_list() -> list[dict[str, Any]]:
     return sorted(items, key=lambda i: i["started_at"])
 
 
-_OPS_KEYS = ("runs", "heals", "tmdb", "onboard", "maintenance", "hydrate", "live")
+_OPS_KEYS = ("runs", "heals", "tmdb", "maintenance", "hydrate", "live")
 
 
 def _ops_read() -> dict[str, list]:
@@ -281,13 +281,6 @@ def record_ops_tmdb(entry: dict[str, Any]) -> dict[str, Any]:
     return _ops_append("tmdb", entry)
 
 
-def record_ops_onboard(entry: dict[str, Any]) -> dict[str, Any]:
-    """One site-onboarding outcome (event ``kind=onboard`` in the admin feed): a finished pi run (status ready /
-    needs_input / failed / cancelled) or a saved site. ``{draft_id, url, site_id?, site, status, at, seconds, turns,
-    passed, notes}``; ``site`` is the fixed ``"onboard"`` (the ``?site=`` filter), ``site_id`` the real one."""
-    return _ops_append("onboard", entry)
-
-
 def record_ops_maintenance(entry: dict[str, Any]) -> dict[str, Any]:
     """One admin maintenance action (event ``kind=reset``: library reset, ``library/libreset.py``)."""
     return _ops_append("maintenance", entry)
@@ -307,6 +300,6 @@ def record_ops_live(entry: dict[str, Any]) -> dict[str, Any]:
 
 
 def list_ops(key: str, site: Optional[str] = None, limit: int = 50) -> list[dict[str, Any]]:
-    """Newest first. key: 'runs' | 'heals' | 'tmdb' | 'onboard' | 'maintenance' | 'hydrate' | 'live'."""
+    """Newest first. key: 'runs' | 'heals' | 'tmdb' | 'maintenance' | 'hydrate' | 'live'."""
     rows = [r for r in _ops_read()[key] if not site or r.get("site") == site]
     return rows[::-1][:limit]

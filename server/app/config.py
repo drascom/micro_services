@@ -74,8 +74,6 @@ IMG_PREWARM_CONCURRENCY = _int("IMG_PREWARM_CONCURRENCY", 4)
 IMG_PREWARM_STILLS = (os.environ.get("IMG_PREWARM_STILLS", "0") or "0").strip().lower() in ("1", "true", "yes", "on")
 IMG_NEG_TTL = _int("IMG_NEG_TTL", 60)
 
-ROW_LIMIT = _int("ROW_LIMIT", 20)
-
 # Home screen of the tv-v1 boot (app/homelayout.py): rows top to bottom (comma-separated row ids; a row whose pool is
 # empty is left out; `mylist` is no row, the clients open it as a page), hero carousel size per type, and whether the home screen
 # (rows + hero) lists only playable titles (availability.state == "ready"; search/catalogue still list everything).
@@ -291,21 +289,14 @@ TRAILER_CHECK_BUDGET = max(0.0, _float("TRAILER_CHECK_BUDGET", 2.5))
 TRAILER_OK_TTL = max(1.0, _float("TRAILER_OK_TTL", 86400.0))
 TRAILER_DEAD_TTL = max(1.0, _float("TRAILER_DEAD_TTL", 21600.0))
 
-# Site-onboarding sandbox (routers/onboard_sandbox.py, scraper/onboard_store.py): ONBOARD_TOOL_TIMEOUT = longest one sandbox
+# Repair sandbox of the heal agent (routers/onboard_sandbox.py, scraper/onboard_store.py): ONBOARD_TOOL_TIMEOUT = longest one sandbox
 # call may take (s; 504 after that), ONBOARD_MAX_PAGE_BYTES = cap of one stored page, ONBOARD_RETENTION_DAYS = age after
-# which stored pages and drafts (except saved ones) are deleted.
+# which stored pages and repair records are deleted. ONBOARD_PI_BIN = pi binary of the repair agent (scraper/pi_agent.py; falls back
+# to SCRAPER_HEAL_PI_BIN, then "pi"). (Site onboarding itself was removed 2026-10-24.)
 ONBOARD_TOOL_TIMEOUT = max(5.0, _float("ONBOARD_TOOL_TIMEOUT", 120.0))
 ONBOARD_MAX_PAGE_BYTES = max(100_000, _int("ONBOARD_MAX_PAGE_BYTES", 3_000_000))
 ONBOARD_RETENTION_DAYS = max(1, _int("ONBOARD_RETENTION_DAYS", 7))
-# Site-onboarding job manager (scraper/onboard.py, routers/ops_onboard.py): ONBOARD_ENABLED = 0 (DEFAULT, frozen: scrapers are written
-# by hand, the heal repairs them) turns the feature off: start / message / save + sandbox discover_site / submit answer 403
-# ``onboard_disabled``, the admin hides "Yeni site" / Taslaklar / Düzenle; heal / heal-playback / sites / events keep working,
-# ONBOARD_TIMEOUT = longest one pi run may take (s), ONBOARD_PI_BIN = pi binary (falls back to SCRAPER_HEAL_PI_BIN, then
-# "pi"), ONBOARD_MODEL = model of the agent ("" = the heal model, SCRAPER_HEAL_MODEL).
-ONBOARD_ENABLED = _int("ONBOARD_ENABLED", 0) != 0
-ONBOARD_TIMEOUT = max(1.0, _float("ONBOARD_TIMEOUT", 900.0))
 ONBOARD_PI_BIN = (os.environ.get("ONBOARD_PI_BIN") or os.environ.get("SCRAPER_HEAL_PI_BIN") or "pi").strip()
-ONBOARD_MODEL = (os.environ.get("ONBOARD_MODEL") or "").strip()
 # Playback-triggered heal (scraper/playheal.py): when the sources of one site keep failing the same way, a heal run is
 # started (it still needs SCRAPER_HEAL_ENABLED; applying the result follows the admin "heal_autoapply" setting).
 # PLAYHEAL_ENABLED = 0 turns the trigger off, PLAYHEAL_WINDOW = how many different sources of a site the sliding window
@@ -348,9 +339,9 @@ SEARCH_TOTAL_TIMEOUT = max(0.5, _float("SEARCH_TOTAL_TIMEOUT", 12.0))
 SEARCH_BREAKER_FAILS = max(1, _int("SEARCH_BREAKER_FAILS", 3))
 SEARCH_BREAKER_COOLDOWN = max(1.0, _float("SEARCH_BREAKER_COOLDOWN", 300.0))
 
-# Source finder (library/sourcefinder.py, GET /api/notifications, GET /api/source-finder/<id>): a play request that ends
+# Source finder (library/sourcefinder.py, GET /api/source-finder/<id>): a play request that ends
 # without a playable stream starts a background job (re-resolve the known sources by force -> search the title on other
-# sites -> repair agent) and a found source becomes a notification. SOURCEFINDER_ENABLED = 0 turns it off,
+# sites -> repair agent); a found source is stored for the next play. SOURCEFINDER_ENABLED = 0 turns it off,
 # SOURCEFINDER_COOLDOWN = seconds before the same title+episode may start another job (also after a found one),
 # SOURCEFINDER_MAX_JOBS = jobs running at once, SOURCEFINDER_MAX_SITES = other sites searched per job,
 # SOURCEFINDER_DAILY_BUDGET = repair-agent runs the finder may start per 24 h (0 = the agent step never runs).
@@ -360,7 +351,7 @@ SOURCEFINDER_MAX_JOBS = max(1, _int("SOURCEFINDER_MAX_JOBS", 2))
 SOURCEFINDER_MAX_SITES = max(1, _int("SOURCEFINDER_MAX_SITES", 4))
 SOURCEFINDER_DAILY_BUDGET = max(0, _int("SOURCEFINDER_DAILY_BUDGET", 10))
 # SOURCEFINDER_PROBE = 0 skips the quick look (<= 3 s) at a freshly resolved stream: with it on, a stream its host refuses (HTTP 403 /
-# an error page, also for the server's own probe) is NOT "found" (no notification), it is evidence for the repair step instead.
+# an error page, also for the server's own probe) is NOT "found", it is evidence for the repair step instead.
 # A finder job whose repair step finds the site's heal already RUNNING waits for it (SOURCEFINDER_HEAL_WAIT seconds at most, polled every
 # SOURCEFINDER_HEAL_POLL) and then resolves its sources again; a heal that is APPLIED for a site re-runs the finder jobs of that site that ended
 # "not found" within SOURCEFINDER_RERUN_HOURS (cooldown ignored, at most SOURCEFINDER_RERUN_MAX per heal).

@@ -122,7 +122,6 @@
     deleteProfile: function (id, cb) { request('DELETE', '/api/profiles/' + enc(id), null, cb); },
     sections: function (pid, cb) { request('GET', '/api/sections?profile=' + enc(pid), null, cb); },
     section: function (id, pid, cb) { request('GET', '/api/section/' + enc(id) + '?profile=' + enc(pid), null, cb); },
-    boot: function (pid, cb) { request('GET', '/api/boot?profile=' + enc(pid) + '&layout=tv-v1', null, cb); },
     row: function (id, pid, offset, limit, cb) {
       request('GET', '/api/row/' + enc(id) + '?profile=' + enc(pid) + '&offset=' + (offset || 0) + '&limit=' + (limit || 40), null, cb);
     },

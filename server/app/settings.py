@@ -195,14 +195,6 @@ def all_sites() -> dict[str, dict[str, Any]]:
     return {s: site_settings(s) for s in known_sites()}
 
 
-def enabled_sites() -> list[str]:
-    return [s for s, v in all_sites().items() if v["enabled"]]
-
-
-def interval_seconds(site: str) -> float:
-    return site_settings(site)["interval_hours"] * 3600.0
-
-
 def heal_autoapply() -> bool:
     """Whether a validated heal proposal is applied automatically (read on every heal)."""
     saved = _load()

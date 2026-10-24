@@ -1,4 +1,4 @@
-/* app.js - diziflix ui-proto ana ekran (ES5, build yok).
+/* app.js - diziflix client ana ekran (ES5, build yok).
    Tasarim: MagicPath "Google TV Home - C - Clean Frame" (List/Dock ana ekran, Appearance, All apps, LaunchVeil);
    fikirler CleanFrame'den (MIT). Ekranlar: server (ilk acilis sunucu adresi) -> profiles (her soguk acilista) -> home ->
    section/grid -> detail -> player (js/player.js; Devam Et karti da dogrudan oynaticiya); settings (Gorunum); pedit (profil ekle/duzenle). */
@@ -2260,7 +2260,7 @@
     else if (S.screen === 'pedit') peditKey(k);
   }
   var KEYMAP = { 37: 'left', 38: 'up', 39: 'right', 40: 'down', 13: 'ok', 32: 'ok', 27: 'back', 8: 'back', 10009: 'back', 461: 'back',
-    /* Tizen medya/renk tuslari (tizen-client keys.js ile ayni kodlar); masaustu: F1 = Kirmizi, Y = Sari, G = Yesil (oynaticida hata ayiklama paneli) */
+    /* Tizen medya/renk tuslari (eski istemcinin keys.js'i ile ayni kodlar); masaustu: F1 = Kirmizi, Y = Sari, G = Yesil (oynaticida hata ayiklama paneli) */
     10252: 'playpause', 415: 'play', 19: 'pause', 413: 'stop', 417: 'ff', 412: 'rew', 403: 'red', 112: 'red', 405: 'yellow', 89: 'yellow', 404: 'green', 71: 'green',
     /* Canli TV: Tizen ChannelUp/Down (427/428), masaustu PageUp/PageDown; rakamlar (ust sira + sayi tus takimi) = kanal numarasi */
     427: 'chup', 428: 'chdown', 33: 'chup', 34: 'chdown' };

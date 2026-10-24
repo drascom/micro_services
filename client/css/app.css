@@ -1,4 +1,4 @@
-/* diziflix ui-proto - "Google TV Home - C - Clean Frame" (MagicPath, CleanFrame) tasarimindan uyarlama.
+/* diziflix client - "Google TV Home - C - Clean Frame" (MagicPath, CleanFrame) tasarimindan uyarlama.
    1920x1080 sabit sahne, olcekli. Canli backdrop-filter YOK: cam = onceden bulaniklastirilmis gorsel + ton katmani. */
 @font-face { font-family: 'Manrope'; src: url(../assets/manrope.woff2) format('woff2'); font-weight: 200 800; font-display: swap; }
 

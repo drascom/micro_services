@@ -14,8 +14,3 @@ def catalogue(profile: str=Depends(require_profile), type: Literal['','movie','s
     return catalog.list_items(cache.get(),profile,type,genre,year,availability,sort,q,mine,offset,limit)
 
 
-@router.get('/api/genres')
-def genres(type: Literal['','movie','series']=''):
-    snap=cache.get()
-    return {'genres':[{'id':k,'name':v} for k,v in catalog.GENRES.items()
-        if any((not type or i['type']==type) and v in i.get('genres',[]) for i in snap.items)]}

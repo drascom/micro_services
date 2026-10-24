@@ -58,7 +58,7 @@ that is part of a list item's title is judged the same way; any other query is n
 | `count >= 1` but `found_known: false` | the results are other pages (`row_selector` also matches "related" blocks: narrow it) or their links have another shape than the list cards (a `template` / the real `href` selector): compare `samples[].detail_url` with the list item's |
 | `normalize_ok_ratio` low | the results link to URLs `normalize.key.regex` rejects (search shows series pages, the list episode pages): the key must name the same title in both |
 
-`test_config(playable: true)` and `submit_draft` run this query once more as the criterion `search_ok` (>= 1 result and `found_known` not
+`test_config(playable: true)` and `submit_repair` run this query once more as the criterion `search_ok` (>= 1 result and `found_known` not
 false); a yaml without `search:` has no such criterion, only a warning.
 
 ## Examples

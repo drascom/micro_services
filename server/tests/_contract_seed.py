@@ -139,14 +139,11 @@ def seed():
         conn.execute("INSERT INTO progress VALUES ('p1',?,?,600,2700,0,?)", (SERIES, SERIES + ":s2:e1", NOW - 60))
         conn.execute("INSERT INTO progress VALUES ('p1',?,?,3000,6480,0,?)", (FILM, FILM, NOW - 30))
         conn.execute("INSERT INTO mylist VALUES ('p1',?,?)", (FILM, NOW - 100))
-        # source finder: one finished job that found a source by re-resolving it + its (unread) notification for p1
+        # source finder: one finished job that found a source by re-resolving it
         conn.execute("INSERT INTO finder_jobs(canonical_id,episode_id,profile_id,state,trigger,started_at,finished_at,steps,source_id,method) "
                      "VALUES (?,?,?,?,?,?,?,?,?,?)",
                      (FILM, "", "p1", "found", "play", NOW - 90, NOW - 85,
                       json.dumps([{"name": "retry", "ok": True, "ms": 4200, "note": "1/1 kaynak çözüldü"}]), "vs_sample", "retry"))
-        conn.execute("INSERT INTO notifications(profile_id,kind,canonical_id,episode_id,payload,created_at) VALUES (?,?,?,?,?,?)",
-                     ("p1", "source_found", FILM, "", json.dumps({"title": "Gece Yarısı Treni", "season": None, "episode": None,
-                                                                   "site": "yabancidizi", "method": "retry"}), NOW - 85))
 
 
 FILM, NOPOSTER, DEADTRAILER, METAONLY = "film-gece", "film-liman", "film-sahil", "film-defter"
@@ -194,7 +191,6 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 SAMPLE_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "docs", "api-samples"))
 
 SAMPLES = {
-    "boot.json": "/api/boot?profile=p1&layout=tv-v1",
     "sections.json": "/api/sections?profile=p1",
     "section-series.json": "/api/section/series?profile=p1",
     "row-new_episodes.json": "/api/row/new_episodes?profile=p1&offset=0&limit=20",
@@ -210,7 +206,6 @@ SAMPLES = {
     "catalog.json": "/api/catalog?profile=p1&type=series&limit=2",
     "search.json": "/api/search?q=ka&profile=p1&limit=3",
     "mylist.json": "/api/mylist?profile=p1",
-    "notifications.json": "/api/notifications?profile=p1",
     "source-finder.json": "/api/source-finder/%s" % FILM,
     "error-not-found.json": "/api/detail/yok?profile=p1",
 }

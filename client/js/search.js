@@ -1,5 +1,5 @@
 /* search.js - arama denetleyicisi (ES5, DOM yok; gorunum js/app.js renderSearch).
-   Eski istemciyle (tizen-client/js/screens/catalog.js runSearch) ayni kural: < 2 karakter = temizle; >= 2 yerel kutuphane
+   Eski istemciyle (git gecmisi: screens/catalog.js runSearch) ayni kural: < 2 karakter = temizle; >= 2 yerel kutuphane
    (/api/catalog?q=) hemen; >= 3 ayrica canli site aramasi (/api/search). Yazarken ~300 ms debounce, Enter/Done hemen.
    Her yeni sorgu oncekilerin istegini iptal eder (abort) ve sira numarasiyla bayat yaniti yok sayar.
    Gorunum: local = kutuphane sonuclari, sites = canli sonuclardan kutuphane listesinde OLMAYANLAR (id ile, tekrarsiz). */

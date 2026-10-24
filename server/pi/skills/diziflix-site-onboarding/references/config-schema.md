@@ -1,10 +1,10 @@
 # Site yaml reference
 
-The result of onboarding is ONE yaml document (the `yaml_text` of the tools). The server runs it deterministically on every scan and play
+A site config is ONE yaml document (the `yaml_text` of the tools). The server runs it deterministically on every scan and play
 request (no LLM): selectors must be stable and correct, not clever.
 
-Plain yaml, no anchors / aliases (`&x`, `*x`: the sandbox refuses them). Do not write `version`, `updated_at` or `site_id`: the server owns
-them (`site_id` is chosen at save time, you only suggest one in `submit_draft`).
+Plain yaml, no anchors / aliases (`&x`, `*x`: the sandbox refuses them). Do not change `version`, `updated_at` or `site_id`: the server owns
+them.
 
 ## Top-level keys
 
@@ -20,7 +20,7 @@ them (`site_id` is chosen at save time, you only suggest one in `submit_draft`).
 | `detail` | recommended | `fields`: how to read one detail page (synopsis, genres, trailer, ...) |
 | `normalize` | yes | rules turning a parsed item into the canonical title (key, type, ...): `normalize.md`. A new site has no code normalizer |
 | `resolvers` | for `playback: video` | ordered chain that finds player candidates on a detail page: `resolvers.md` |
-| `providers` | no | allowed providers: code modules (`vidmolly`, `okru`) and library recipes, including the NEW ones you hand in with `submit_draft(provider_recipes=...)`; omit = all. Only names of the catalog (`list_resolvers`) or your own recipes |
+| `providers` | no | allowed providers: code modules (`vidmolly`, `okru`) and library recipes, including the NEW ones you hand in with `submit_repair(provider_recipes=...)`; omit = all. Only names of the catalog (`list_resolvers`) or your own recipes |
 | `image_hosts` | no | extra poster hosts when they differ from the `base_url` host (`[img.example-cdn.com]`; the `base_url` host is already allowed): look at the real poster URLs |
 | `collections` | recommended | the notable home / menu sections (`[{id, title, path, role}]`, `id` = `<role>_<site_id>`; each may carry its own `row_selector` / `fields`). Needs `site_id`. Add them after the list works: `collections.md`; never a full catalogue |
 | `item_limit` | no | items a scan takes from EACH list and EACH collection: a whole number 1..200, default 30 (else an error). The engine reads one page per list / collection and has NO pagination: this caps that page, it never takes "all N titles". `test_config` reports `ingest: {item_limit, list_items_on_page, would_ingest}` (per collection too with `collections: true`); never promise more titles than it says. Set it only when a home section really shows more than 30 titles that belong on the home screen |

@@ -611,11 +611,6 @@ _lock = threading.RLock()
 _cache: dict[tuple, tuple[float, list[dict]]] = {}
 
 
-def clear_cache() -> None:
-    with _lock:
-        _cache.clear()
-
-
 def _cache_key(cfg, spec: dict, query: str) -> tuple:
     digest = hashlib.sha1(json.dumps(spec, sort_keys=True, default=str).encode()).hexdigest()
     return (str(getattr(cfg, "site_id", "")), str(getattr(cfg, "base_url", "")), digest, query.casefold())

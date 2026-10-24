@@ -11,7 +11,7 @@ player costs nothing.
 | part | where it lives |
 |---|---|
 | where on the DETAIL page the player URL stands (an iframe, links, a token): selector, attribute | the site yaml, `resolvers:` (`iframe`, `anchor_host`, `data_attr_token`, ...) |
-| what a player URL of host X means: how to fetch it, which referer, where the media URL is | a **provider**: an existing one (`providers: [name]`) or a NEW recipe (`submit_draft(provider_recipes=[...])`) |
+| what a player URL of host X means: how to fetch it, which referer, where the media URL is | a **provider**: an existing one (`providers: [name]`) or a NEW recipe (`submit_repair(provider_recipes=[...])`) |
 
 Do NOT put a `player_page` resolver into the site yaml for a player host another site could embed too: write a recipe (a site-embedded `player_page`
 is only for a player meaningless anywhere else; say why in `notes`).
@@ -66,7 +66,7 @@ are errors.
    titles before you trust the recipe.
 2. End to end: `test_resolvers(yaml_text, detail_url, provider_recipes=[{name, yaml}])` and `test_config(..., playable: true,
    provider_recipes=[...])`: the recipe joins the providers in memory, so `providers: [<name>]` in the draft yaml is accepted.
-3. `submit_draft(..., provider_recipes=[{name, yaml}])` (at most 3 per draft). The report lists each recipe (valid? playable samples resolved
+3. `submit_repair(..., provider_recipes=[{name, yaml}])` (at most 3 per draft). The report lists each recipe (valid? playable samples resolved
    through it, example streams); the admin saves the recipes into the library with the site. Recipes the draft already carries are kept when you
    submit again without `provider_recipes`; a list replaces them.
 

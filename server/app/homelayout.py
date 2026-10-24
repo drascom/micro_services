@@ -57,7 +57,7 @@ LEGACY_IDS = ("spotlight", "noteworthy_series", "noteworthy_movies")
 # ids `rows.row_pool` hands to :func:`pool`
 POOL_IDS = ("latest_movies", "trending_series", "trending_movies", "must_watch", "series", "movies") + LEGACY_IDS
 
-# ---- sections (the menu of the new home, ui-proto: `/api/sections`, `/api/section/<id>`) -------------------------------
+# ---- sections (the menu of the home, client/: `/api/sections`, `/api/section/<id>`) ----------------------------------
 # (id, title) in menu order; a "soon" section has no source yet (no rows, no heroes) but is listed
 SECTIONS = (("featured", "Öne Çıkanlar"), ("series", "Diziler"), ("movies", "Filmler"), ("live_tv", "Canlı TV"),
             ("anime", "Animeler"), ("dvr", "DVR"))

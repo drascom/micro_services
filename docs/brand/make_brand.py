@@ -1,12 +1,12 @@
-# DiziFlix marka gorselleri: docs/brand/logo-a.png + logo-b.png -> tizen-client/img/*.png + tizen-client/icon.png
+# DiziFlix marka gorselleri: docs/brand/logo-a.png + logo-b.png -> client/img/*.png + client/icon.png
 #                                                                -> android/app/src/main/res/** (ikon, TV afisi, uygulama ici logolar)
-# Calistir (repo kokunden, Pillow gerekir):  Q=1 server/venv/bin/python docs/brand/make_brand.py [all|tizen|android]   (Q=1: 256 renk paletli, < 150 KB)
-#   tizen   -> yalniz Tizen ciktilari      android -> yalniz Android ciktilari (Tizen dosyalarina DOKUNMAZ)      all (varsayilan) -> ikisi
+# Calistir (repo kokunden, Pillow gerekir):  Q=1 server/venv/bin/python docs/brand/make_brand.py [all|client|android]   (Q=1: 256 renk paletli, < 150 KB)
+#   client  -> yalniz client/ ciktilari    android -> yalniz Android ciktilari (client/ dosyalarina DOKUNMAZ)      all (varsayilan) -> ikisi
 import os, sys
 from PIL import Image, ImageDraw, ImageChops, ImageFilter
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
-OUT = ROOT + '/tizen-client/img'
+OUT = ROOT + '/client/img'
 A = Image.open(ROOT + '/docs/brand/logo-a.png').convert('RGBA')
 B = Image.open(ROOT + '/docs/brand/logo-b.png').convert('RGBA')
 
@@ -49,7 +49,7 @@ W_WIDE = int(os.environ.get('W_WIDE', 720))
 H_SQ = int(os.environ.get('H_SQ', 640))
 Q = os.environ.get('Q', '0') == '1'
 
-if variant in ('all', 'tizen'):
+if variant in ('all', 'client', 'tizen'):
     # tam logolar
     save(resize_w(trim(B), W_WIDE), 'logo-wide.png', Q)
     save(resize_h(trim(A), H_SQ), 'logo-square.png', Q)
@@ -72,15 +72,15 @@ if variant in ('all', 'tizen'):
     bg.alpha_composite(ch, (x, y))
     icon = bg.convert('RGB')
     icon = icon.quantize(colors=256, method=Image.MEDIANCUT, dither=Image.FLOYDSTEINBERG) if Q else icon
-    icon.save(ROOT + '/tizen-client/icon.png', optimize=True)
-    print('icon.png', icon.size, round(os.path.getsize(ROOT + '/tizen-client/icon.png') / 1024, 1), 'KB')
+    icon.save(ROOT + '/client/icon.png', optimize=True)
+    print('icon.png', icon.size, round(os.path.getsize(ROOT + '/client/icon.png') / 1024, 1), 'KB')
     fav = icon.convert('RGB').resize((128, 128), Image.LANCZOS)
     fav.save(OUT + '/favicon.png', optimize=True)
     print('favicon.png', fav.size, round(os.path.getsize(OUT + '/favicon.png') / 1024, 1), 'KB')
 
 
 # =====================================================================================================================
-# ANDROID (android/app/src/main/res): uygulama (launcher) ikonu, TV afisi, uygulama ici logolar. Yoksayilan: Tizen ciktilari.
+# ANDROID (android/app/src/main/res): uygulama (launcher) ikonu, TV afisi, uygulama ici logolar. Yoksayilan: client/ ciktilari.
 # =====================================================================================================================
 if variant in ('all', 'android'):
     RES = ROOT + '/android/app/src/main/res'

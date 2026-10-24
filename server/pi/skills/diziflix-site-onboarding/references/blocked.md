@@ -50,7 +50,7 @@ availability_gate:
 
 ## How to check it
 
-`test_config(..., playable: true)` (or `submit_draft`) shows `blocked` = `{count, rules, samples[{url, reason}]}` (what would not be taken) and, with an
+`test_config(..., playable: true)` (or `submit_repair`) shows `blocked` = `{count, rules, samples[{url, reason}]}` (what would not be taken) and, with an
 `availability_gate`, `gate` = `{probed, passed, skipped, retry, samples}`. Blocked samples are LEFT OUT of `playable_ratio` (not broken players) and
 replaced by another series (at most 2 spares); every sample blocked = the ratio fails: the site offers (almost) nothing public, say so in `notes`
 instead of weakening the rule. Keep a `blocked:` rule only when `blocked.samples` shows it matches exactly the placeholder pages.

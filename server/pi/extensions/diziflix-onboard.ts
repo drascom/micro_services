@@ -1,30 +1,18 @@
 /**
- * diziflix-onboard: the pi extension of the diziflix site-onboarding agent.
+ * diziflix-onboard: the pi extension of the diziflix heal REPAIR agent (the file keeps its old name; site onboarding, its
+ * other user, was removed 2026-10-24).
  *
  * Narrow tools, each a thin HTTP call to the sandbox endpoints of the diziflix server
  * (server/app/routers/onboard_sandbox.py). The agent never touches the network or the server code: it only sees what
- * these endpoints answer, the only thing it can write is a DRAFT yaml (`submit_draft`) or, in repair mode, a repair
- * PROPOSAL (`submit_repair`: nothing is applied by the call), and the only files it can read are the skill's own (the
- * `read` guard below). The skill that tells the agent how to use them is server/pi/skills/diziflix-site-onboarding/SKILL.md
- * (onboarding) and its references/heal.md (repair mode).
- *
- * Onboarding runs get thirteen tools (discover_site, fetch_page ... match_providers, test_search, ask_user, submit_draft). Edit runs
- * (DIZIFLIX_MODE=edit, `onboard.start(mode="edit")`: an admin asks to change a registered site) get those minus `discover_site` plus the
- * read-only `load_site_config`; the server locks their draft to
- * the edited site (site id suggestion, `load_site_config` reads only that site). Repair runs (DIZIFLIX_MODE=repair, started by
- * server/app/scraper/heal_agent.py through the shared runner server/app/scraper/pi_agent.py) get the page / test tools
- * plus `load_site_config` and `submit_repair`, and no `submit_draft` and no `ask_user` (nobody is there to answer); the pi `--tools`
- * allow-list says the same.
- *
- * `ask_user` is the one tool that makes NO sandbox call (`local`): it only checks its arguments and tells the model to stop. The server
- * reads the question from pi's tool-call event (scraper/pi_agent.py `EventParser.ask`), ends the run `needs_input` and shows the admin a
- * card with buttons; the answer comes back as the next user message.
+ * these endpoints answer, the only thing it can write is a repair PROPOSAL (`submit_repair`: nothing is applied by the
+ * call), and the only files it can read are the skill's own (the `read` guard below). The skill that tells the agent how to
+ * use them is server/pi/skills/diziflix-site-onboarding/SKILL.md and its references/heal.md. Runs are started by
+ * server/app/scraper/heal_agent.py through server/app/scraper/pi_agent.py; the pi `--tools` allow-list names the same tools.
  *
  * Environment (set by server/app/scraper/pi_agent.py for every pi run):
  *   DIZIFLIX_SANDBOX_URL  base URL, default http://127.0.0.1:8090/api/onboard/sandbox
  *   DIZIFLIX_ONBOARD_TOKEN secret sent as `X-Onboard-Token` (one job, valid while the run lasts)
- *   DIZIFLIX_DRAFT_ID     the draft (od_...) or repair job (rp_...) this run belongs to; `submit_draft` adds it itself
- *   DIZIFLIX_MODE         `repair` for the heal's repair agent, `edit` for the edit of a registered site, else onboarding (which tools are registered)
+ *   DIZIFLIX_DRAFT_ID     the repair job (rp_...) this run belongs to
  *   DIZIFLIX_SKILL_DIR    the skill directory: the ONLY place pi's built-in `read` tool may open (see the guard below)
  *   DIZIFLIX_TOOL_TIMEOUT_MS  optional, per-call timeout in ms (default 150000; tests lower it)
  *
@@ -33,7 +21,7 @@
  * the whole file system, so a `tool_call` handler blocks every path that does not resolve (`..`, symlinks, relative paths
  * included) to a file inside DIZIFLIX_SKILL_DIR. No DIZIFLIX_SKILL_DIR = every `read` is blocked.
  *
- * Verified against pi 0.99.1 in the Faz 2b spike (docs/plans/site-onboarding/pi-spike-notes.md, run on server 61):
+ * Verified against pi 0.99.1 in the Faz 2b spike (notes in git history: docs/plans/site-onboarding/pi-spike-notes.md):
  *   - pi loads this .ts directly (jiti, no build step); the type import is erased, its package is
  *     `@earendil-works/pi-coding-agent`;
  *   - `pi.registerTool({ name, label, description, parameters, execute })`, `execute(toolCallId, params, signal, ...)`,
@@ -46,7 +34,7 @@
  * UNVERIFIED (Faz 2b): that pi fires `signal` when a tool is cancelled (the spike's SIGTERM kills the whole process, so
  * the handler never ran); the code only relies on it for a nicer error text, the run ends the same way without it.
  * Only erasable TypeScript syntax is used (no enums/namespaces/parameter properties), so the file also runs under
- * `node` type stripping, which is how tests/test_onboard_refs.py exercises it against a fake sandbox and a fake `pi`.
+ * `node` type stripping.
  */
 import { realpathSync } from "node:fs";
 import { resolve, sep } from "node:path";
@@ -68,17 +56,6 @@ interface ToolSpec {
   method: "GET" | "POST";
   path: string | ((params: Json) => string); // a function builds the path (and query) from the parameters
   body?: (params: Json) => Json;
-  local?: (params: Json) => string; // answered by the extension itself, no sandbox call (ask_user)
-  modes?: string[]; // runs the tool belongs to (default: every mode); see DIZIFLIX_MODE
-}
-
-/**
- * `repair` = the heal's repair agent (load_site_config / submit_repair, no submit_draft); `edit` = an admin changes a REGISTERED
- * site (the onboarding tools + load_site_config; submit_draft is locked to that site by the server); anything else = onboarding.
- */
-function mode(): string {
-  const value = process.env.DIZIFLIX_MODE;
-  return value === "repair" || value === "edit" ? value : "onboard";
 }
 
 // --- helpers ----------------------------------------------------------------------------------------------------
@@ -190,7 +167,7 @@ async function call(spec: ToolSpec, params: Json, outer?: AbortSignal): Promise<
 // --- the tools --------------------------------------------------------------------------------------------------
 
 const YAML_TEXT = str("The complete site yaml (plain text, no aliases).");
-const HANDOFF = str("Handoff note (Markdown). New site: problem, how found, solution (<= 25 lines). Edit / repair: ONE entry: change, why, result (<= 8 lines).");
+const HANDOFF = str("Handoff note (Markdown): ONE entry: change, why, result (<= 8 lines).");
 const PAGE_ID = str("page_id from fetch_page or test_config.");
 /** New provider recipes for the library (see the skill's providers reference); they join the providers IN MEMORY for the call. */
 const PROVIDER_RECIPES: Json = {
@@ -204,23 +181,10 @@ const PROVIDER_RECIPES: Json = {
     },
     ["name", "yaml"],
   ),
-  description: "New provider recipes [{name, yaml}] (at most 3) for the library; the site yaml may name them in providers:. Recipes the draft already has are kept.",
+  description: "New provider recipes [{name, yaml}] (at most 3) for the library; the site yaml may name them in providers:. Recipes recorded by an earlier submit_repair are kept.",
 };
 
 const TOOLS: ToolSpec[] = [
-  {
-    name: "discover_site",
-    label: "Discover site",
-    description:
-      "Build a DRAFT site yaml from the site's own pages by code (<= 8 page requests): home sections and roles, list, series page, detail " +
-      "fields, player candidates, normalize. Returns yaml_text, found, missing[] (not found, with what was tried), confidence, pages[] " +
-      "(page_id to reuse), notes, errors. Verify with test_config; ask_user about the gaps.",
-    parameters: obj({ url: str("The site's address (any page; its root page is read).") }, ["url"]),
-    method: "POST",
-    path: "/discover_site",
-    body: (p) => pick(p, ["url"]),
-    modes: ["onboard"],
-  },
   {
     name: "fetch_page",
     label: "Fetch page",
@@ -299,12 +263,12 @@ const TOOLS: ToolSpec[] = [
     name: "test_config",
     label: "Test site yaml",
     description:
-      "Run a draft site yaml against stored pages exactly as the server will: errors[], warnings[], failing[], diagnostics, criteria{...}, " +
+      "Run a site yaml against stored pages exactly as the server will: errors[], warnings[], failing[], diagnostics, criteria{...}, " +
       "passed. Call it after every change; pass page_id (and detail_page_id) so nothing is fetched again. " +
       "collections: true also fetches every collections: entry (collections[]). playable: true follows up to 3 DIFFERENT titles from their " +
       "playback page to a stream (playable{checked, resolved, skipped, samples[]}; criteria playable_ratio, for series " +
       "series_have_episode_sources), first reads up to 3 series pages with the yaml series_page: block (series{checked, with_episodes, " +
-      "skipped, hint?, samples[]}; series_inventory_ok) and runs one search: query (search_ok). Run it with playable: true before submit_draft.",
+      "skipped, hint?, samples[]}; series_inventory_ok). Run it with playable: true before submit_repair.",
     parameters: obj(
       {
         yaml_text: YAML_TEXT,
@@ -367,7 +331,7 @@ const TOOLS: ToolSpec[] = [
       "Validate ONE provider recipe and run it on a player URL like a play request: its match must cover sample_url, then fetch / referer / " +
       "follow / extract read the player page. Returns valid, errors[], matched, status (resolved | no_stream | no_match | invalid), " +
       "streams[], trace, warnings. Nothing is written. Call it with SEVERAL player URLs of different titles before " +
-      "submit_draft(provider_recipes).",
+      "submit_repair(provider_recipes).",
     parameters: obj(
       {
         recipe_yaml: str("The complete provider recipe yaml."),
@@ -398,114 +362,21 @@ const TOOLS: ToolSpec[] = [
     body: (p) => pick(p, ["player_url", "referer"]),
   },
   {
-    name: "test_search",
-    label: "Test site search",
-    description:
-      "Run the draft yaml's `search:` block (the site's live search) on ONE query, as the server will. Nothing is written. Returns valid, " +
-      "errors[], warnings[], count, samples[], found_known (the query is the first list item's title unless you give one; true = its " +
-      "detail_url or normalize key is among the results; null = not judged), normalize_ok_ratio. Pass the list page_id. Also part of " +
-      "test_config(playable: true) and submit_draft (criterion search_ok).",
-    parameters: obj(
-      {
-        yaml_text: YAML_TEXT,
-        query: str("At least 3 characters (default: the first list item's title)."),
-        page_id: str("Stored list page the known title is taken from."),
-        detail_page_id: str("Stored detail page whose title is the known title when the list gives none."),
-      },
-      ["yaml_text"],
-    ),
-    method: "POST",
-    path: "/test_search",
-    body: (p) => pick(p, ["yaml_text", "query", "page_id", "detail_page_id"]),
-    modes: ["onboard", "edit"],
-  },
-  {
-    name: "ask_user",
-    label: "Ask the admin",
-    description:
-      "Ask the admin ONE question and END YOUR TURN. Only after you tried with evidence (two or more pages, grep_page for the label, the " +
-      "diagnostics). kind 'missing_info' (default): a piece of information you cannot find; the admin gets 'not on the site, skip it', " +
-      "'it exists, I will point at it' and, with a proposal, 'apply the proposal'. kind 'decision': a choice (options, at most 4) or " +
-      "something that CANNOT be skipped (playability, list fill). kind 'engine_gap': the engine / yaml schema cannot express what the site " +
-      "needs (no skip button). Write the question in Turkish, short and concrete. After this call write NO further tool call: the answer " +
-      "arrives as your next message (\"Sitede yok, atla: <field>\", \"Var: <hint>\", \"Önerini uygula\" or free text).",
-    parameters: obj(
-      {
-        kind: { type: "string", enum: ["missing_info", "decision", "engine_gap"], description: "Default missing_info." },
-        field: str("What it is about: overview, cast, genres, year, rating, trailer, poster_url, collection:trending, search, playable, ..."),
-        question: str("For the admin: Turkish, 1-3 sentences, plain words (no yaml keys)."),
-        tried: { type: "array", maxItems: 8, items: { type: "string" }, description: "What you tried, one short line each." },
-        proposal: str("Optional suggestion (button 'Önerilen: ...')."),
-        options: {
-          type: "array",
-          maxItems: 4,
-          description: "Only for kind 'decision': buttons [{id, label}].",
-          items: obj({ id: str("Short id (lower-case, digits, underscore)."), label: str("Button text (Turkish).") }, ["id", "label"]),
-        },
-      },
-      ["field", "question"],
-    ),
-    method: "POST",
-    path: "",
-    local: (p) => {
-      const question = typeof p.question === "string" ? p.question.trim() : "";
-      const field = typeof p.field === "string" ? p.field.trim() : "";
-      if (!question) throw new Error("ask_user: `question` is empty; write the question for the admin");
-      if (!field) throw new Error("ask_user: `field` is empty; name what the question is about");
-      return JSON.stringify({
-        recorded: true,
-        instruction:
-          "Your question is shown to the admin now. END YOUR TURN: call no further tool, write at most one short closing sentence. " +
-          "The answer arrives as your next message.",
-      });
-    },
-    modes: ["onboard", "edit"],
-  },
-  {
-    name: "submit_draft",
-    label: "Submit draft",
-    description:
-      "Hand the finished draft in: the server re-tests it and stores it for the admin. Call it once at the end, after a final test_config. " +
-      "Returns passed, errors, warnings, criteria. New provider recipes go in provider_recipes (saved with the site).",
-    parameters: obj(
-      {
-        yaml_text: YAML_TEXT,
-        site_id_suggestion: str("Lower-case letters, digits, underscore, starts with a letter, 2-32 chars."),
-        notes: str("What was found, failing criteria, open problems."),
-        handoff: HANDOFF,
-        page_id: str("Stored list page of the last test_config."),
-        detail_page_id: str("Stored detail page of the last test_config."),
-        provider_recipes: PROVIDER_RECIPES,
-      },
-      ["yaml_text", "site_id_suggestion"],
-    ),
-    method: "POST",
-    path: "/submit",
-    body: (p) => {
-      const draftId = process.env.DIZIFLIX_DRAFT_ID || "";
-      if (!draftId) throw new Error("submit_draft: DIZIFLIX_DRAFT_ID is not set");
-      return { draft_id: draftId, ...pick(p, ["yaml_text", "site_id_suggestion", "notes", "handoff", "page_id", "detail_page_id", "provider_recipes"]) };
-    },
-    modes: ["onboard", "edit"],
-  },
-  // --- repair mode (the heal's repair agent; load_site_config also in edit mode): registered only when DIZIFLIX_MODE says so -------
-  {
     name: "load_site_config",
     label: "Load site config",
     description:
       "Read-only: the ACTIVE yaml (secrets masked), version, baseline, provider recipes and the HANDOFF note (earlier findings, the admin's " +
-      "decisions) of the REGISTERED site being repaired or edited. Call it FIRST in repair and edit mode: read the note, submit this yaml " +
-      "with only the broken / requested part changed. In edit mode only the edited site can be read.",
+      "decisions) of the REGISTERED site being repaired. Call it FIRST: read the note, submit this yaml " +
+      "with only the broken part changed.",
     parameters: obj(
       {
-        site_id: str("The registered site id (in edit mode the site being edited)."),
+        site_id: str("The registered site id being repaired."),
         recipe: str("Optional provider recipe name whose yaml you want too."),
       },
       ["site_id"],
     ),
     method: "GET",
     path: (p) => `/site_config/${encodeURIComponent(String(p.site_id ?? ""))}` + (p.recipe ? `?recipe=${encodeURIComponent(String(p.recipe))}` : ""),
-    modes: ["repair", "edit"],
   },
   {
     name: "submit_repair",
@@ -529,7 +400,6 @@ const TOOLS: ToolSpec[] = [
     method: "POST",
     path: "/submit_repair",
     body: (p) => pick(p, ["site_id", "yaml_text", "provider_recipes", "notes", "handoff"]),
-    modes: ["repair"],
   },
 ];
 
@@ -568,9 +438,7 @@ export default function (pi: ExtensionAPI) {
     return reason === null ? undefined : { block: true, reason };
   });
 
-  const current = mode();
   for (const spec of TOOLS) {
-    if (spec.modes && !spec.modes.includes(current)) continue; // e.g. no submit_draft in a repair run, no submit_repair when onboarding
     // verified (Faz 2b, pi 0.99.1): registerTool shape, execute signature, result shape (see the header)
     pi.registerTool({
       name: spec.name,
@@ -578,7 +446,7 @@ export default function (pi: ExtensionAPI) {
       description: spec.description,
       parameters: spec.parameters,
       async execute(_toolCallId: string, params: Json, signal?: AbortSignal) {
-        const text = spec.local ? spec.local(params ?? {}) : await call(spec, params ?? {}, signal);
+        const text = await call(spec, params ?? {}, signal);
         return { content: [{ type: "text", text }], details: {} };
       },
     } as never);

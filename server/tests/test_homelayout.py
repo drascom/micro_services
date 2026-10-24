@@ -571,7 +571,8 @@ class HttpTests(unittest.TestCase):
         return r.json()
 
     def test_every_boot_row_and_every_old_row_id_is_fetchable(self):
-        boot = self.get("/api/boot?profile=p1&layout=tv-v1")
+        from app import cache, rows as rws
+        boot = rws.tv_boot(cache.get(), "p1", rws.progress_map("p1"))
         for r in boot["rows"]:
             page = self.get("/api/row/%s?profile=p1&offset=0&limit=100" % r["id"])
             self.assertEqual((page["title"], page["total"]), (r["title"], r["total"]), r["id"])
@@ -591,7 +592,8 @@ class HttpTests(unittest.TestCase):
 
     def test_the_home_hides_titles_without_a_source_the_catalogue_keeps_them(self):
         s = self.seed
-        home = {i["id"] for r in self.get("/api/boot?profile=p1&layout=tv-v1")["rows"] if r["id"] not in ("continue", "mylist")
+        from app import cache, rows as rws
+        home = {i["id"] for r in rws.tv_boot(cache.get(), "p1", rws.progress_map("p1"))["rows"] if r["id"] not in ("continue", "mylist")
                 for i in self.get("/api/row/%s?profile=p1&limit=100" % r["id"])["items"]}
         catalogue = {i["id"] for i in self.get("/api/catalog?profile=p1&limit=50")["items"]}
         for hidden in (s.METAONLY, s.DEADTRAILER, s.NOSEASONS):

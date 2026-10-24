@@ -37,8 +37,8 @@ A collection id is `<role>_<site_id>` (`collections.list_id`), e.g. `trending_or
 The admin keeps home categories ("Kore Dizileri", "Anime", ...; the first message lists them as `Mevcut kategoriler: <slug> (<title>), ...`). Write a
 `role: category` collection ONLY when the user's note maps a section / link of the site to a category ("bu bağlantıdaki diziler -> Anime"). Key
 `category: <slug>` (a slug of that list), id `category_<slug>_<site_id>`, `path` + `row_selector` as any section. Several categories = several
-collections (the same `path` may repeat with other slugs); a title may be in several. A slug that is not listed: `ask_user` (field
-`category:<slug>`, "kategori listede yok, admin'de eklensin mi?"); never invent a category or write one without a note. A category collection is
+collections (the same `path` may repeat with other slugs); a title may be in several. A slug that is not listed: say so in `notes`
+(the admin adds the category); never invent a category or write one without a note. A category collection is
 no `trending` / `latest_series` signal, needs >= 3 items and `poster_url` like any section, and has its own row.
 
 ```yaml

@@ -269,12 +269,6 @@ def parse_token_ex(token: str, *, now: Optional[float] = None) -> TokenInfo:
     return TokenInfo(url, clean_headers(headers), kind, group if kind is not None else None, imp == 1)
 
 
-def parse_token(token: str, *, now: Optional[float] = None) -> tuple[str, dict]:
-    """``(url, headers)`` of a valid token (see :func:`parse_token_ex`)."""
-    info = parse_token_ex(token, now=now)
-    return info.url, info.headers
-
-
 # --- which streams are proxied -------------------------------------------------------------------------------------
 _IP_BOUND_HOST = "googlevideo.com"
 _IP_PARAMS = frozenset({"ip", "ipbits"})

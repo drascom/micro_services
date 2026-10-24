@@ -76,8 +76,6 @@ LEGACY_HERO = dict(ITEM, logo_text="str", tagline="str")
 HERO = dict(LEGACY_HERO, in_mylist="bool")             # the tv-v1 layout adds in_mylist
 ROW = {"id": "str", "title": "str", "loaded": "bool", "items": lst(ITEM)}
 BOOT_TV = {"hero": opt(HERO), "heroes": lst(HERO), "rows": lst(ROW), "catalog_total": "int", "layout": enum("tv-v1")}
-LAZY_ROW = {"id": "str", "title": "str", "loaded": "bool"}          # legacy boot: loaded:false rows carry ``count``
-BOOT_LEGACY = {"hero": opt(LEGACY_HERO), "rows": lst(LAZY_ROW), "source": "str", "sources": lst({"id": "str", "name": "str"})}
 SECTION_ENTRY = {"id": "str", "title": "str", "status": enum("ready", "soon"), "heroes": lst(HERO)}
 SECTIONS = {"sections": lst(SECTION_ENTRY)}                     # GET /api/sections
 SECTION = dict(SECTION_ENTRY, rows=lst(ROW))                    # GET /api/section/{id}
@@ -123,16 +121,10 @@ SEARCH = {"items": lst(SEARCH_ITEM), "total": "int", "remote": "bool", "remote_e
           "remote_sites": "dict"}               # {site id: REMOTE_SITE}
 MYLIST = {"items": lst(ITEM)}
 MYLIST_MUTATION = {"ok": "bool", "in_mylist": "bool"}
-CONTINUE_REMOVE = {"ok": "bool", "removed": "bool"}     # DELETE /api/continue/{item_id}
 PROGRESS_ACK = {"ok": "bool", "watched": "bool", "next_episode": opt("str")}
 ERROR = {"error": {"code": "str", "message": "str"}}
 
-# source finder (library/sourcefinder.py): what a client READS to tell the user "searching for a source" / "source found"
+# source finder (library/sourcefinder.py): what a client READS to tell the user "searching for a source"
 FINDER_STATE = {"state": enum("searching", "not_found")}   # the optional ``finder`` field of /api/streams (only when nothing plays)
 SOURCE_FINDER = {"state": enum("idle", "searching", "found", "not_found"),
                  "steps": lst({"name": "str", "ok": "bool", "ms": "int", "note": "str"}), "updated_at": "int"}
-NOTIFICATION = {"id": "int", "kind": enum("source_found"), "canonical_id": "str", "episode_id": "str", "title": "str",
-                "season": opt("int"), "episode": opt("int"), "site": "str", "method": enum("retry", "search", "heal"),
-                "created_at": "int"}
-NOTIFICATIONS = {"items": lst(NOTIFICATION), "last_id": "int"}
-NOTIFICATIONS_READ = {"ok": "bool", "marked": "int"}

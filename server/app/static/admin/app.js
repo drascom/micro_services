@@ -2,7 +2,7 @@
 'use strict';
 var $=function(i){return document.getElementById(i)};
 var sites=[], events=[], nextBefore=null, sel=null, srcFilter='', typeFilter='all';
-var lastKey=null, evLoaded=false, activeNow=[], lastHeal=null, onbHost={}, liveSrc=[];
+var lastKey=null, evLoaded=false, activeNow=[], lastHeal=null, liveSrc=[];
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function api(path,opt){return fetch(path,opt).then(function(r){return r.json()})}
@@ -25,19 +25,15 @@ var SL={success:'Başarılı',partial:'Kısmi',error:'Hata'};
 var HL={fixed:'Düzeltildi',not_applied:'Uygulanmadı',failed:'İşe yaramadı',skipped_cooldown:'Cooldown',rolled_back:'Geri alındı'};
 var HC={fixed:'heal',not_applied:'bad',failed:'bad',skipped_cooldown:'warn',rolled_back:'warn'};
 var HI={fixed:'✦',not_applied:'✕',failed:'✕',skipped_cooldown:'⏸',rolled_back:'↶'};
-/* "Site ekle" (onboarding) olayları */
-var OL={running:'Çalışıyor',needs_input:'Yanıt bekliyor',ready:'Hazır',failed:'Başarısız',cancelled:'İptal edildi',saved:'Kaydedildi',engine_gap:'Geliştirici desteği bekleniyor'};
 /* Kaynak bulucu (Faz 6): oynatma kaynağı yokken arka planda arama */
 var FL={found:'Bulundu',not_found:'Bulunamadı'};
 var FM={retry:'kaynak yeniden çözüldü',search:'başka sitede bulundu',heal:'ajan onarımı'};
 function finLabel(e){return (e.title||e.canonical_id||'?')+(e.season!=null&&e.episode!=null?' · S'+(e.season<10?'0':'')+e.season+' B'+(e.episode<10?'0':'')+e.episode:'')}
-function onbCls(e){return e.status==='failed'?'bad':e.status==='needs_input'||e.status==='engine_gap'||(e.passed===false&&e.status!=='cancelled')?'warn':e.status==='saved'||e.status==='ready'?'ok':''}
 /* engelli sayfa (blocked_pages): neden */
 var BV={gone:'Ölü sayfa',empty:'Bölümsüz',gate:'Oynatıcı yok',rule:'Telif/engel'};
 function pill(cls,txt){return '<span class="pill '+cls+'">'+esc(txt)+'</span>'}
 function pbiLabel(e){return (e.title||e.canonical_id||'?')+(e.season!=null&&e.episode!=null?' · S'+(e.season<10?'0':'')+e.season+' B'+(e.episode<10?'0':'')+e.episode:'')}
 function evPill(e){
-  if(e.kind==='onboard')return pill('heal','Site ekle');
   if(e.kind==='live')return e.status==='error'?pill('bad','✕ Hata'):e.status==='no_change'?pill('','Değişiklik yok'):pill('ok','✓ Başarılı');
   if(e.kind==='reset')return pill('warn','Sıfırlama');
   if(e.kind==='hydrate')return pill(e.status==='error'?'bad':'warn','! Bölüm yok');
@@ -129,18 +125,6 @@ function renderBanner(){
           '<div class="grow"><b>'+esc(j.label||'TMDB zenginleştirme')+'</b> <span class="mono" style="color:var(--muted)">'+(pct!=null?'%'+pct+' · ':'')+dur(j.elapsed)+' geçti · başladı '+esc(hhmm(j.started_at))+'</span>'+
           '<div class="bar"><i class="'+(pct==null?'pulse':'')+'" style="width:'+(pct==null?100:pct)+'%;'+(pct==null?'opacity:.5':'')+'"></i></div></div></div>';
       }
-      if(j.kind==='onboard'){
-        var oh=hostOf(j.url||j.host||'')||onbHost[j.draft_id]||'';
-        if(j.draft_id&&!(j.draft_id in onbHost)){ // aktif iş etiketi araç adına döner; host'u taslaktan bir kez al
-          onbHost[j.draft_id]='';
-          api('/api/ops/onboard/'+encodeURIComponent(j.draft_id)+'?events_after=1000000').then(function(d){
-            onbHost[j.draft_id]=hostOf(d&&d.draft&&d.draft.url);renderBanner()}).catch(function(){});
-        }
-        return '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;width:100%"><span class="pill heal"><span class="dot pulse"></span>Site ekle</span>'+
-          '<div class="grow"><b>Site ekleniyor'+(oh?': '+esc(oh):'')+'</b>'+(j.label?' · '+esc(j.label):'')+' <span class="mono" style="color:var(--muted)">'+dur(j.elapsed)+' geçti · başladı '+esc(hhmm(j.started_at))+'</span>'+
-          (j.draft_id?' <a class="ext" href="#onboard/'+esc(j.draft_id)+'">taslağı aç</a>':'')+
-          '<div class="bar heal"><i class="pulse" style="width:100%;opacity:.5"></i></div></div></div>';
-      }
       var heal=j.kind==='heal';
       return '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;width:100%"><span class="pill '+(heal?'heal':'run')+'"><span class="dot pulse"></span>'+(heal?'LLM düzeltiyor':'Tarıyor')+'</span>'+
         '<div class="grow"><b>'+esc(j.site)+'</b> <span class="mono" style="color:var(--muted)">'+dur(j.elapsed)+' geçti · '+esc(j.trigger||'')+' · başladı '+esc(hhmm(j.started_at))+'</span>'+
@@ -191,13 +175,12 @@ function liveChip(l){
 function visible(){
   return events.filter(function(e){
     if(typeFilter==='scan'&&e.kind!=='scan'&&e.kind!=='live')return false;
-    if(typeFilter==='onboard'&&e.kind!=='onboard')return false;
-    if(typeFilter==='heal'&&(e.kind==='scan'||e.kind==='live'||e.kind==='tmdb'||e.kind==='onboard'||e.kind==='finder'||e.kind==='playback_issue'||e.kind==='reset'||e.kind==='hydrate'||e.kind==='blocked_page'))return false;
+    if(typeFilter==='heal'&&(e.kind==='scan'||e.kind==='live'||e.kind==='tmdb'||e.kind==='finder'||e.kind==='playback_issue'||e.kind==='reset'||e.kind==='hydrate'||e.kind==='blocked_page'))return false;
     if(typeFilter==='issue'&&e.kind!=='playback_issue')return false;
     if(typeFilter==='blocked'&&e.kind!=='blocked_page')return false;
     if(typeFilter!=='blocked'&&typeFilter!=='all'&&e.kind==='blocked_page')return false;
     if(typeFilter==='tmdb'&&!(e.kind==='tmdb'||(e.kind==='scan'&&e.tmdb_enrich)))return false;
-    if(typeFilter==='bad'&&!(e.status==='error'||e.status==='partial'||e.outcome==='failed'||e.outcome==='not_applied'||e.kind==='cooldown'||e.kind==='rollback'||(e.kind==='onboard'&&(e.status==='failed'||e.passed===false))||(e.kind==='finder'&&e.state==='not_found')||(e.kind==='playback_issue'&&e.heal_class)||e.kind==='hydrate'))return false;
+    if(typeFilter==='bad'&&!(e.status==='error'||e.status==='partial'||e.outcome==='failed'||e.outcome==='not_applied'||e.kind==='cooldown'||e.kind==='rollback'||(e.kind==='finder'&&e.state==='not_found')||(e.kind==='playback_issue'&&e.heal_class)||e.kind==='hydrate'))return false;
     return true;
   });
 }
@@ -221,10 +204,6 @@ function evHtml(e){
     cls='scan warn';
     title='Kütüphane sıfırlandı '+evPill(e);
     meta=num((e.cleared||[]).length)+' tablo temizlendi'+(e.cache?' · '+num(e.cache_files)+' önbellek dosyası':'')+' · '+dur(e.seconds);
-  } else if(e.kind==='onboard'){
-    cls='scan '+onbCls(e);
-    title='Site ekle · '+esc(hostOf(e.url)||e.site_id||'?')+' '+evPill(e);
-    meta=esc(OL[e.status]||e.status||'?')+(e.site_id?' · '+esc(e.site_id):'')+(e.turns!=null?' · '+num(e.turns)+' tur':'')+(e.passed===false?' · kriterler sağlanmadı':'')+(e.seconds!=null?' · '+dur(e.seconds):'')+(e.site_quality&&e.site_quality.grade?' · kalite: '+esc(e.site_quality.grade):'');
   } else if(e.kind==='playback_issue'){
     cls='scan '+(e.heal_class?'bad':'warn');
     title='Oynatma sorunu · '+esc(e.site)+' '+evPill(e);
@@ -329,17 +308,6 @@ function renderDetail(){
     h+=evPill(e)+'<h3>Kütüphane sıfırlandı</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+'</div>'+
       '<div class="kv">'+kv(num((e.cleared||[]).length),'temizlenen tablo')+kv(Object.keys(e.kept||{}).map(esc).join(', ')||'-','korunan')+kv(e.cache?num(e.cache_files):'-','önbellek dosyası')+kv(dur(e.seconds),'Süre')+'</div>'+
       '<div class="note" style="border-color:var(--muted)">Yedek: <span class="mono">'+esc(e.backup||'-')+'</span></div>';
-  } else if(e.kind==='onboard'){
-    h+=evPill(e)+'<h3>'+esc(hostOf(e.url)||'Site ekle')+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+'</div>'+
-      '<div class="kv">'+kv(esc(OL[e.status]||e.status||'?'),'Durum')+kv(e.site_id?esc(e.site_id):'-','Site kimliği')+kv(num(e.turns),'tur')+kv(dur(e.seconds),'Süre')+'</div>';
-    if(e.url)h+='<div class="note" style="border-color:var(--muted)"><span class="mono" style="overflow-wrap:anywhere">'+esc(e.url)+'</span></div>';
-    if(e.passed===false)h+='<div class="note" style="border-color:var(--warn)">Kabul kriterleri sağlanmamıştı.</div>';
-    if(e.site_quality&&e.site_quality.grade){var q=e.site_quality,qb=q.grade==='standart'?'var(--ok)':q.grade==='bilinmiyor'?'var(--muted)':'var(--warn)';
-      h+='<h2 class="sec">Site kalitesi: '+esc(q.grade)+'</h2><div class="note" style="border-color:'+qb+'">'+(Array.isArray(q.reasons)?q.reasons.map(function(r){return '· '+esc(r)}).join('<br>'):'')+(q.note?'<br><b>'+esc(q.note)+'</b>':'')+
-        (q.hosts&&Object.keys(q.hosts).length?'<br><span class="mono">'+Object.keys(q.hosts).map(function(k){return esc(k)+' ×'+esc(q.hosts[k])}).join(' · ')+'</span>':'')+'</div>';}
-    if(e.error)h+='<div class="note" style="border-color:var(--bad)">'+esc(e.error)+'</div>';
-    if(e.notes)h+='<h2 class="sec">Ajan notları</h2><div class="note" style="white-space:pre-wrap">'+esc(typeof e.notes==='string'?e.notes:JSON.stringify(e.notes))+'</div>';
-    h+='<div class="act">'+(e.draft_id?'<a class="btn" href="#onboard/'+esc(e.draft_id)+'">Taslağı aç</a>':'<button data-goto="onboard">Siteler sekmesi</button>')+'</div>';
   } else if(e.kind==='playback_issue'){
     h+=evPill(e)+' '+pill('heal','Oynatma sorunu')+'<h3>'+esc(e.site)+(e.host?' · <span class="mono">'+esc(e.host)+'</span>':'')+'</h3><div class="sub">'+esc(full(e.at))+' · '+esc(ago(e.at))+' · ilk: '+esc(ago(e.first_at))+'</div>'+
       '<div class="kv">'+kv(esc(e.label||e.code||'?'),'Sorun')+kv(num(e.sources),'kaynak (bölüm)')+kv(num(e.reports),'rapor')+kv(e.http?esc(e.http):'-','HTTP')+'</div>';

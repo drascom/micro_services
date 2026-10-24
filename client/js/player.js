@@ -1,4 +1,4 @@
-/* player.js - ui-proto oynaticisi (ES5, build yok). Eski istemcinin (tizen-client/js/screens/player.js + playflow.js + finder.js)
+/* player.js - client oynaticisi (ES5, build yok). Eski istemcinin (git gecmisi: screens/player.js + playflow.js + finder.js)
    sahada dogrulanmis mantigi tasindi, gorunum yeni tasarima gore yeniden yazildi.
    - Motor karari `streams[].type`'a (hls|mp4|embed) gore, URL uzantisina DEGIL (uzanti yalniz type yoksa yedek).
      Tizen: varsayilan HTML5 <video> (eski istemci davranisi, sahada dogrulandi; dogal HLS). AVPlay yalniz Ayarlar > Oynatici = AVPlay
@@ -10,7 +10,7 @@
      30 sn, tampon olayinda bir kez +10 sn). Takilma: tek bekleme >15 sn ya da son 60 sn'de toplam >30 sn -> failure `stall` + siradaki akis. Hepsi basarisiz: son raporun yaniti (finder)
      <=2.5 sn beklenir; finder varsa "Kaynak araniyor" (5 sn yoklama, bulununca otomatik yeniden) yoksa "Oynatilamadi" (Geri / Yeniden dene).
    - Ilerleme: 20 sn'de bir + duraklat/seek/cikis/bitis POST /api/progress. Dizide son ~45 sn "Sonraki bolum" karti, bitince 5 sn geri sayim.
-   - Altyazi: js/subs.js (VTT, motor-bagimsiz DOM katmani), secim modeli js/tracks.js (ikisi tizen-client kopyasi).
+   - Altyazi: js/subs.js (VTT, motor-bagimsiz DOM katmani), secim modeli js/tracks.js (ikisi eski istemciden kopya).
    - Canli TV (streams yaniti `live:true`; opts.live): ilerleme/sure/±10/sonraki bolum/progress YOK; "CANLI" rozeti + `no · ad`.
      ↑ / chup (PageUp) = sonraki, ↓ / chdown (PageDown) = onceki kanal (opts.channels = acildigi satir {id, items, total}; gerekirse /api/row ile devami, uclarda
      sarar; hizli basista son secim 400 ms sonra acilir, eski yanitlar loadGen ile yok sayilir), OK (katman gizli) = kanal listesi,
@@ -22,7 +22,7 @@
   var DZP = g.DZP = g.DZP || {}, doc = g.document;
   var DZ = g.DZ = g.DZ || {};
   var PID = null;
-  /* tracks.js / subs.js (tizen-client kopyalari) DZ.api.profileId / DZ.api.img / DZ.player.isEmbedStream bekler */
+  /* tracks.js / subs.js (eski istemciden kopya) DZ.api.profileId / DZ.api.img / DZ.player.isEmbedStream bekler */
   DZ.api = DZ.api || {};
   DZ.api.profileId = function () { return PID; };
   DZ.api.img = function (u) { return DZP.api && DZP.api.img ? DZP.api.img(u) : String(u || ''); };
@@ -91,7 +91,7 @@
   }
   function hostOf(u) { var m = /^[a-z]+:\/\/([^\/?#:]+)/i.exec(String(u || '')); return m ? m[1] : ''; }
 
-  /* ================= motor (tizen-client player.js createEngine'den) ================= */
+  /* ================= motor (eski istemcinin player.js createEngine'inden) ================= */
   function hasAvplay() {
     try { return (typeof g.webapis !== 'undefined') && g.webapis && g.webapis.avplay ? true : false; } catch (e) { return false; }
   }
@@ -410,7 +410,7 @@
     return eng;
   }
 
-  /* ================= bolum bilgisi + sonraki bolum (tizen-client'tan) ================= */
+  /* ================= bolum bilgisi + sonraki bolum (eski istemciden) ================= */
   function todayIso() { var d = new Date(); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
   function sortedSeasons(detail) {
     var list = detail && detail.seasons && detail.seasons.slice ? detail.seasons.slice() : [];
@@ -459,7 +459,7 @@
     return null;
   }
 
-  /* ================= kaynak bulucu (tizen-client finder.js'ten) ================= */
+  /* ================= kaynak bulucu (eski istemcinin finder.js'inden) ================= */
   function finderState(f) { var s = f && typeof f === 'object' ? f.state : null; return s === 'searching' || s === 'not_found' ? s : null; }
   function finderMsg(f, isEp) {
     var s = finderState(f);
@@ -792,7 +792,7 @@
   }
   function goNext() { if (P && P.next) switchEpisode(P.next.id); }
 
-  /* ---------- ses / altyazi (tizen-client player.js'ten) ---------- */
+  /* ---------- ses / altyazi (eski istemcinin player.js'inden) ---------- */
   function subsTime() { var e = P && P.eng; if (!e || P.iframe) return NaN; return e.now ? e.now() : e.cur; }
   function applySubs() {
     if (!P || !P.subs) return;

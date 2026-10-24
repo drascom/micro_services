@@ -92,7 +92,7 @@ listesi tanımlanabilir.
 
 ## 5. TV sunum sözleşmesi
 
-Mevcut `/api/boot`, `/api/row/{id}`, `/api/detail/{id}`, `/api/streams/{id}` kalır.
+Mevcut `/api/sections`, `/api/section/{id}`, `/api/row/{id}`, `/api/detail/{id}`, `/api/streams/{id}` kalır (`/api/boot` 2026-10-24 kaldırıldı).
 Ek alanlar geriye uyumludur. Yeni client `capabilities` ile ekran desteğini öğrenir;
 eski client bilmediği alanları yok sayabilir. `source` eski istemci uyumluluğu için
 kalabilir; yeni istemci göndermez.
@@ -174,9 +174,9 @@ yükleme modalı açılır, akışlar sırayla ekran dışı denenir, akış ba�
 `onerror` / ~15 sn zaman aşımı) ve başarı (oynatma gerçekten başladığında) bildirilir; player ekranı yalnızca akış
 oynamaya başladıktan sonra açılır. Dizi sayfasında sezon posteri yalnızca `has_poster=true` iken gösterilir, bölüm
 görseli `still_url` (`has_still=false` iken yerel yer tutucu), yayın tarihi gelecekte ve kaynak `ready` değilse
-"Yakında" işareti `air_date` + `availability.state`'ten çıkarılır. Ayrıntı: `tizen-client/README.md`.
+"Yakında" işareti `air_date` + `availability.state`'ten çıkarılır. Ayrıntı: `client/README.md`.
 
-**TV istemcisi: detay eylemleri, bölüm kartları, sonraki bölüm, kalite (uygulandı, `tizen-client/README.md`).**
+**TV istemcisi: detay eylemleri, bölüm kartları, sonraki bölüm, kalite (uygulandı, eski istemci; git geçmişi).**
 - Detay düğmeleri `actions[]`'ten: `resume_movie`/`play_movie` → Devam Et / Oynat (`check_required`: Yeniden Dene),
   `resume_episode`/`play_episode` → "Devam Et · S04 B02" / "Oynat · S01 B01" (+ resume ise hedef ilk oynatılabilir bölüm değilse
   "İlk Bölümden Başla"), `play_trailer` → Fragmanı Oynat; `actions` alanı hiç yoksa eski alanlara (`resume`, `progress`, `playback`,
@@ -208,7 +208,7 @@ normalizasyonu, `data/subcache`, ölü kaynak 404.
 TV istemcisi (uygulandı): oynatıcıda "Ses ve Altyazılar" paneli (Sarı tuş / Aşağı ok; SES | ALTYAZI iki sütun, Kapalı, gömülü rozeti);
 soft iz motor-bağımsız DOM katmanıyla gösterilir (motor saati ~4 Hz), gömülü altyazılı akış = o dosyaya konum korunarak geçiş;
 varsayılan Türkçe soft > Türkçe gömülü akış > İngilizce soft > kapalı, tercih `dz_pref_sub_<profil>` / `dz_pref_audio_<profil>`
-(`localStorage`), oynatma akışı ilk akışı tercihe göre seçer; iz yüklenemezse sessizce Kapalı. Ayrıntı: `tizen-client/README.md`.
+(`localStorage`), oynatma akışı ilk akışı tercihe göre seçer; iz yüklenemezse sessizce Kapalı. Ayrıntı: `client/README.md`.
 
 Oynatıcı mevcut `attempt_token` raporlamasını kullanır. Akış yanıtında `duration`
 saniyedir; katalog `runtime_minutes` dakikadır. Birimleri dönüştürme normalizasyon

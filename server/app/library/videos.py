@@ -134,12 +134,6 @@ def _neg_set(cache,key,message):
         cache[key]=(time.monotonic()+ttl,str(message)[:250])
 
 
-def reset_caches():
-    """Forget the short-lived negative results and the background-refresh bookkeeping (tests, admin)."""
-    with _neg_lock:
-        _neg_sources.clear();_neg_candidates.clear();_refreshing.clear();_refresh_backoff.clear()
-
-
 _LANG_RANK={'tr':0,'en':2}  # candidates of the site's default (Turkish subtitle) tab first, then English, unknown in between
 
 

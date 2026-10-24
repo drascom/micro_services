@@ -61,17 +61,6 @@ def canonical_url(code: str, host: str = CANONICAL_HOST) -> str:
     return f"https://{host}/embed-{code}.html"
 
 
-def _player_url(url: str) -> str:
-    """Turn any VidMolly link (download, watch, view or embed spelling) into the canonical player URL.
-
-    Catalogue pages expose ``vidmoly.me/dl/<file-code>`` (challenge-protected) or other spellings of the
-    same file; the canonical embed host serves the file code directly.  This mapping is provider
-    knowledge and belongs here rather than in an individual catalogue scraper.
-    """
-    code = file_code(url)
-    return canonical_url(code) if code else url
-
-
 def _media_urls(page: str, base_url: str) -> list[str]:
     values = [node.attributes.get("src", "") for node in HTMLParser(page).css("video source[src], source[src]")]
     values.extend(_FILE.findall(page))

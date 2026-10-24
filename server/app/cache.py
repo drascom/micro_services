@@ -1,7 +1,7 @@
 """In-memory catalogue cache with a background refresher.
 
 The whole catalogue is small enough to keep in RAM; every request reads from
-the snapshot below so ``/api/boot`` never touches disk.
+the snapshot below so the home (``/api/sections``, ``/api/row``) never touches disk.
 """
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-/* subs.js - tizen-client/js/subs.js KOPYASI (ui-proto oynaticisi icin; tek fark: metin ic <span>'da, okunakli arka plan icin).
+/* subs.js - eski istemcinin js/subs.js KOPYASI (client oynaticisi icin; tek fark: metin ic <span>'da, okunakli arka plan icin).
    altyazi: WebVTT ayristirici, ikili aramayla anlik cue bulma ve MOTOR-BAGIMSIZ DOM katmani
    (div.pl-subs). AVPlay altyazi iziyle ugrasilmaz: metin motorun oynatma zamanindan (eng.now()/eng.cur, AVPlay ve
    HTML5 icin ayni) ~4 Hz ile secilir; seek/duraklat/devam zamanla dogal olarak senkron kalir. ES2017, opsiyonel zincir YOK.

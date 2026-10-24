@@ -60,8 +60,8 @@ ChannelUp/ChannelDown (masaüstü PageUp/PageDown) ve rakamlar.
 
 ## Oynatıcı (`js/player.js`)
 
-Eski istemcinin (`tizen-client/js/screens/player.js` + `playflow.js` + `finder.js`) mantığı taşındı; `js/tracks.js`, `js/subs.js`,
-`js/vendor/hls.min.js` tizen-client kopyası (subs: metin iç `<span>`'da). Görünüm yeni tasarım.
+Eski istemcinin (git geçmişi) oynatıcı/akış/kaynak bulucu mantığı taşındı; `js/tracks.js`, `js/subs.js`,
+`js/vendor/hls.min.js` oradan kopyalandı (subs: metin iç `<span>`'da; hls.js kökeni `THIRD_PARTY_NOTICES.md`). Görünüm yeni tasarım.
 - Giriş: Detay > İzle (bölüm kartında o bölüm, yoksa `actions[]`'in devam/ilk bölümü; film) / Fragman (`kind=trailer`), Devam Et kartı
   (`primary_action`). `GET /api/streams` → kaldığı yerden (`resume_position`). Akış gelene kadar afiş + "Açılıyor · <ad>" perdesi.
 - Motor `streams[].type`'a göre: varsayılan (TV dahil) `<video>` (eski istemcinin sahada doğrulanmış davranışı; Tizen doğal HLS oynatır);

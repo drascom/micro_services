@@ -1,27 +1,3 @@
-# Environment files (secrets) in all service directories
-**/.env
-
-# Virtual environments in all service directories
-**/venv/
-
-# Python cache
-**/__pycache__/
-**/*.pyc
-**/*.pyo
-**/*.pyd
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.claude/
-# macOS Finder metadata
-.DS_Store
-**/.DS_Store
-
-# --- project ---
 # --- secrets / env ---
 .env
 **/.env
@@ -31,6 +7,18 @@ server/data/stream_proxy.key
 venv/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# --- macOS / editors ---
+.DS_Store
+._*
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.claude/
 
 # --- runtime data (keep only the mock fixture) ---
 /server/data/*
@@ -57,15 +45,10 @@ node_modules/
 HANDOFF*.md
 /docs/handoff-reports/
 
-# --- macOS / editors ---
-._*
-.DS_Store
-.vscode/
-.idea/
-
 # --- site scraper configs: the SERVER (61) is the reference, the local dir is only a mirror (pull-configs / deploy); the provider library is code and stays tracked ---
 /server/app/scraper/configs/*.yaml
 /server/app/scraper/configs/*.baseline.json
+/server/app/scraper/configs/*.lock
 
 # --- archive / review notes: local only ---
 /docs/arch-review/

@@ -241,7 +241,3 @@ def execute(job: dict[str, Any]) -> dict[str, Any]:
     return event
 
 
-def run_now(kind: str, dry_run: bool, limit: Optional[int] = None, force: bool = False,
-            use_preview: bool = True, trigger: str = "manual", scope: str = "items") -> dict[str, Any]:
-    """``begin`` + ``execute`` in the calling thread (tests / scripts)."""
-    return execute(begin(kind, dry_run, limit, force, use_preview, trigger, scope))

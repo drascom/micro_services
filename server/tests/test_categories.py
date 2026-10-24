@@ -1,6 +1,6 @@
 """Admin "Kategoriler" (app/library/categories.py, routers/ops_categories.py) and the home rows ``cat_<slug>``
 (app/homelayout.py): CRUD, slug, order, min_items / disabled, row order, multi-site merge, multi-category titles,
-``/api/boot`` + ``/api/row``. No network, temp DB."""
+the home (``rows.tv_boot``) + ``/api/row``. No network, temp DB."""
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 import _sandbox  # noqa: F401,E402  throw-away DATA_DIR/DB + no TMDB key; must precede any `app` import
@@ -193,11 +193,11 @@ class HomeRows(Base):
         self.assertEqual(ids(kore), ["s1", "s4", "s2", "s3", "s5"])
         self.assertEqual(ids(komedi), ["s2", "s6"])                         # s2 is in both categories
 
-    def test_boot_and_row_endpoints(self):
+    def test_home_and_row_endpoint(self):
         cats.create("Kore Dizileri", "kore")
         self.member("kore", "siteA", *["s%d" % n for n in range(1, 8)])
         with patch.object(cache, "get", return_value=self.snap), patch.object(rows, "get_cache", return_value=self.snap):
-            boot = self.client.get("/api/boot", params={"profile": "p1", "layout": "tv-v1"}).json()
+            boot = rows.tv_boot(self.snap, "p1", rows.progress_map("p1"))
             got = [r["id"] for r in boot["rows"]]
             self.assertLess(got.index("cat_kore"), got.index("series"))
             self.assertEqual([r["title"] for r in boot["rows"] if r["id"] == "cat_kore"], ["Kore Dizileri"])

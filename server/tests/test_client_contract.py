@@ -3,7 +3,7 @@
 A seeded throw-away library (tests/_contract_seed.py: film / series with seasons + specials / series without episodes /
 poster-less film / dead or missing trailer / broken and announced episodes) is served by the real FastAPI app through
 TestClient; responses are validated against tests/_contract_schema.py (types, nulls, enums, additive fields allowed).
-Also: episode cards (`continue`, `new_episodes`), old-client compatibility (legacy boot, `new`, aliases), error envelopes,
+Also: episode cards (`continue`, `new_episodes`), old-client compatibility (`new`, aliases), error envelopes,
 image endpoints, mutation flows and the censored sample files under docs/api-samples/. No network.
 """
 import os as _os, sys as _sys
@@ -45,6 +45,11 @@ class Base(unittest.TestCase):
     def conforms(self, body, spec, what=""):
         self.assertEqual(S.problems(body, spec), [], what)
 
+    def home(self, profile="p1"):
+        """The tv-v1 home (``rows.tv_boot``: heroes + rows, decided by ``homelayout``); ``/api/boot`` itself was removed 2026-10-24."""
+        from app import cache, rows
+        return rows.tv_boot(cache.get(), profile, rows.progress_map(profile))
+
     def check_cards(self, items, where):
         """ITEM schema + card identity rules for a list of cards (rows, catalog, search, similar, mylist)."""
         self.conforms(items, S.lst(S.ITEM), where)
@@ -65,7 +70,7 @@ class Base(unittest.TestCase):
 
 class BootTests(Base):
     def test_tv_boot_shape_and_row_ids(self):
-        b = self.get("/api/boot?profile=p1&layout=tv-v1")
+        b = self.home()
         self.conforms(b, S.BOOT_TV)
         self.assertEqual([r["id"] for r in b["rows"]], ["continue", "new_episodes", "latest_movies", "trending_series",
                                                          "trending_movies", "must_watch", "series", "movies"])
@@ -84,7 +89,7 @@ class BootTests(Base):
             self.check_cards(r["items"], r["id"])
 
     def test_home_rows_hold_only_playable_titles_of_their_type(self):
-        rows = {r["id"]: [i["id"] for i in r["items"]] for r in self.get("/api/boot?profile=p1&layout=tv-v1")["rows"]}
+        rows = {r["id"]: [i["id"] for i in r["items"]] for r in self.home()["rows"]}
         self.assertEqual(set(rows["series"]), {SERIES, SERIES2, SERIES3, ONEEP, UNAIRED, BROKENLAST})   # NOSEASONS: trailer only
         self.assertEqual(set(rows["movies"]), {FILM, FILM2, FILM3, NOPOSTER, CLASSIC})                  # no source: not on the home
         self.assertEqual(rows["trending_series"][0], SERIES)
@@ -97,16 +102,12 @@ class BootTests(Base):
         self.assertTrue({NOSEASONS, DEADTRAILER, METAONLY} <= everything)
 
     def test_every_boot_row_can_be_paged_through_the_row_endpoint(self):
-        for layout in ("tv-v1", ""):
-            for r in self.get("/api/boot?profile=p1&layout=" + layout)["rows"]:
-                page = self.get("/api/row/%s?profile=p1&offset=0&limit=20" % r["id"])
-                self.conforms(page, S.ROW_PAGE, r["id"])
-                self.check_cards(page["items"], r["id"])
-                self.assertEqual(page["title"], r["title"])
-                if r.get("items"):
-                    self.assertEqual([i["card_key"] for i in page["items"]], [i["card_key"] for i in r["items"]])
-                else:
-                    self.assertEqual(page["total"], r["count"])
+        for r in self.home()["rows"]:
+            page = self.get("/api/row/%s?profile=p1&offset=0&limit=20" % r["id"])
+            self.conforms(page, S.ROW_PAGE, r["id"])
+            self.check_cards(page["items"], r["id"])
+            self.assertEqual(page["title"], r["title"])
+            self.assertEqual([i["card_key"] for i in page["items"]], [i["card_key"] for i in r["items"]])
 
     def test_row_paging_window(self):
         page = self.get("/api/row/series?profile=p1&offset=1&limit=2")
@@ -115,12 +116,10 @@ class BootTests(Base):
         self.get("/api/row/no_such_row?profile=p1", 404)
 
     def test_hero_less_boot_of_an_empty_library_is_valid(self):
-        with patch("app.rows.get_cache") as gc, patch("app.rows.catalog_view.select") as sel:
-            from types import SimpleNamespace
-            snap = SimpleNamespace(items=[], by_id={}, source="library", episodes={})
-            gc.return_value = snap
-            sel.return_value = snap
-            b = self.get("/api/boot?profile=p1&layout=tv-v1")
+        from types import SimpleNamespace
+        from app import rows
+        snap = SimpleNamespace(items=[], by_id={}, source="library", episodes={})
+        b = rows.tv_boot(snap, "p1", {})
         self.conforms(b, S.BOOT_TV)
         self.assertEqual((b["hero"], b["heroes"], b["rows"], b["catalog_total"]), (None, [], [], 0))
 
@@ -128,7 +127,7 @@ class BootTests(Base):
 class EpisodeCardTests(Base):
     def rows(self):
         """Home rows by id, plus the rows the home no longer shows (`new_episodes`, `new_series`) fetched by their id."""
-        out = {r["id"]: r for r in self.get("/api/boot?profile=p1&layout=tv-v1")["rows"]}
+        out = {r["id"]: r for r in self.home()["rows"]}
         for rid in ("new_episodes", "new_series"):
             out[rid] = self.get("/api/row/%s?profile=p1&offset=0&limit=20" % rid)
         return out
@@ -202,25 +201,7 @@ class EpisodeCardTests(Base):
 
 
 class CompatTests(Base):
-    """Old clients (before the episode cards) must keep working: legacy boot, `new` row, unchanged keys."""
-
-    def test_legacy_boot_keeps_its_rows(self):
-        b = self.get("/api/boot?profile=p1")
-        self.conforms(b, S.BOOT_LEGACY)
-        rows = {r["id"]: r for r in b["rows"]}
-        self.assertTrue(rows["continue"]["loaded"] and rows["new"]["loaded"])
-        self.assertFalse(rows["mylist"]["loaded"])
-        self.assertEqual(rows["mylist"]["count"], 1)
-        self.assertTrue(any(k.startswith("genre_") for k in rows))
-        self.assertNotIn("new_episodes", rows, "the new row id belongs to the tv layout only")
-        self.check_cards(rows["new"]["items"], "new")
-
-    def test_continue_series_card_keeps_the_old_progress_and_id_contract(self):
-        legacy = {r["id"]: r for r in self.get("/api/boot?profile=p1")["rows"]}["continue"]["items"]
-        card = next(i for i in legacy if i["type"] == "series")
-        self.assertEqual(card["id"], SERIES, "id stays the production id (old clients open /api/detail/<id>)")
-        self.assertEqual(card["progress"]["episode_id"], SERIES + ":s2:e1", "old clients resume from progress.episode_id")
-        self.assertIn(card["card_kind"], ("episode", "title"))
+    """Old clients (before the episode cards) must keep working: `new` row, unchanged keys."""
 
     def test_generic_new_row_endpoint_is_alive(self):
         page = self.get("/api/row/new?profile=p1")
@@ -230,8 +211,8 @@ class CompatTests(Base):
     def test_source_parameter_is_accepted_but_ignored_by_new_clients(self):
         self.get("/api/row/series?profile=p1&source=")
         self.get("/api/search?q=ka&profile=p1&source=")
-        self.get("/api/boot?profile=p1&source=&layout=tv-v1")
-        self.assertEqual(self.get("/api/boot?profile=p1&source=zzz", 400)["error"]["code"], "bad_request")
+        self.get("/api/sections?profile=p1&source=")
+        self.assertEqual(self.get("/api/sections?profile=p1&source=zzz", 400)["error"]["code"], "bad_request")
 
 
 class DetailTests(Base):
@@ -413,11 +394,6 @@ class ListEndpointTests(Base):
         self.conforms(empty, S.CATALOG)
         self.assertEqual((empty["items"], empty["total"]), ([], 0))
 
-    def test_genres_endpoint(self):
-        g = self.get("/api/genres?type=movie")
-        self.conforms(g, {"genres": S.lst({"id": "str", "name": "str"})})
-        self.assertTrue(g["genres"])
-
     def test_search_local_path(self):
         s = self.get("/api/search?q=ka&profile=p1&limit=3")
         self.conforms(s, S.SEARCH)
@@ -469,15 +445,9 @@ class ListEndpointTests(Base):
 
 
 class SourceFinderContractTests(Base):
-    """Notification + finder-state endpoints (additive, library/sourcefinder.py) and the optional ``finder`` stream field."""
+    """Finder-state endpoint (additive, library/sourcefinder.py) and the optional ``finder`` stream field."""
 
-    def test_notifications_and_state_conform(self):
-        n = self.get("/api/notifications?profile=p1")
-        self.conforms(n, S.NOTIFICATIONS)
-        self.assertEqual([(i["kind"], i["canonical_id"], i["method"]) for i in n["items"]], [("source_found", FILM, "retry")])
-        self.assertEqual(n["last_id"], n["items"][-1]["id"])
-        self.conforms(self.get("/api/notifications?profile=p1&since=%d" % n["last_id"]), S.NOTIFICATIONS)
-        self.assertEqual(self.get("/api/notifications?profile=p2")["items"], [])
+    def test_finder_state_conforms(self):
         st = self.get("/api/source-finder/%s" % FILM)
         self.conforms(st, S.SOURCE_FINDER)
         self.assertEqual((st["state"], [s["name"] for s in st["steps"]]), ("found", ["retry"]))
@@ -498,26 +468,11 @@ class SourceFinderContractTests(Base):
         self.conforms(s["finder"], S.FINDER_STATE)
         self.assertEqual(s["finder"], {"state": "searching"})
 
-    def test_read_marks_the_notification_and_validates(self):
-        from app import db
-        db.execute("INSERT INTO notifications(profile_id,kind,canonical_id,episode_id,payload,created_at) VALUES ('pr','source_found',?,?,?,1)",
-                   (SERIES, SERIES + ":s1:e1", '{"title": "Dizi", "season": 1, "episode": 1, "site": "x", "method": "search"}'))
-        got = self.get("/api/notifications?profile=pr")
-        self.assertEqual((len(got["items"]), got["items"][0]["season"], got["items"][0]["method"]), (1, 1, "search"))
-        self.post("/api/notifications/read?profile=pr", {"upto": 0})
-        self.assertEqual(len(self.get("/api/notifications?profile=pr")["items"]), 1)
-        out = self.post("/api/notifications/read?profile=pr", {"upto": got["last_id"]})
-        self.conforms(out, S.NOTIFICATIONS_READ)
-        self.assertEqual(out["marked"], 1)
-        self.assertEqual(self.get("/api/notifications?profile=pr")["items"], [])
-        self.post("/api/notifications/read?profile=pr", {"upto": "x"}, 422)
-
-
 class ErrorEnvelopeTests(Base):
     def test_every_error_class_uses_the_envelope(self):
-        for path, status in (("/api/boot", 400), ("/api/boot?profile=nobody", 400), ("/api/detail/yok", 404),
+        for path, status in (("/api/sections", 400), ("/api/sections?profile=nobody", 400), ("/api/detail/yok", 404),
                              ("/api/row/x?profile=p1", 404), ("/api/catalog?profile=p1&limit=0", 422),
-                             ("/api/boot?profile=p1&fail=1", 500), ("/img/yok/card", 404), ("/img/%s/bogus" % FILM, 404)):
+                             ("/api/sections?profile=p1&fail=1", 500), ("/img/yok/card", 404), ("/img/%s/bogus" % FILM, 404)):
             body = self.get(path, status)
             self.conforms(body, S.ERROR, path)
 
@@ -535,7 +490,7 @@ class ImageTests(Base):
         return r
 
     def test_every_url_a_card_or_episode_carries_is_servable(self):
-        boot = self.get("/api/boot?profile=p1&layout=tv-v1")
+        boot = self.home()
         urls = set()
         for r in boot["rows"]:
             for i in r["items"]:
@@ -579,7 +534,8 @@ class Fresh(unittest.TestCase):
         return r.json()
 
     def continue_cards(self):
-        rows = self.call("get", "/api/boot?profile=p1&layout=tv-v1")["rows"]
+        from app import cache, rows as rws
+        rows = rws.tv_boot(cache.get(), "p1", rws.progress_map("p1"))["rows"]
         return next(r["items"] for r in rows if r["id"] == "continue")
 
     def test_progress_updates_the_continue_row_with_episode_cards(self):
@@ -638,7 +594,7 @@ class Fresh(unittest.TestCase):
         self.call("put", "/api/profiles/yok", 404, json={"name": "x"})
         self.assertEqual(self.call("delete", "/api/profiles/" + p["id"]), {"ok": True})
         # the client keeps the deleted id in localStorage until it notices: the answer is a readable 400
-        e = self.call("get", "/api/boot?profile=%s&layout=tv-v1" % p["id"], 400)
+        e = self.call("get", "/api/sections?profile=%s" % p["id"], 400)
         self.assertEqual(S.problems(e, S.ERROR), [])
 
     def test_guest_profile_is_permanent_and_stores_nothing(self):
@@ -680,7 +636,7 @@ class SectionTests(Base):
         self.get("/api/section/no_such?profile=p1", 404)
 
     def test_section_rows_are_filtered_by_type_and_page_through_the_row_endpoint(self):
-        boot = self.get("/api/boot?profile=p1&layout=tv-v1")
+        boot = self.home()
         for sid, kind, ids in (("series", "series", ["featured_series", "new_episodes", "trending_series", "series"]),
                                ("movies", "movie", ["featured_movies", "latest_movies", "trending_movies", "movies"])):
             sec = self.get("/api/section/%s?profile=p1" % sid)
@@ -698,7 +654,7 @@ class SectionTests(Base):
         menu = {x["id"]: x["heroes"] for x in self.get("/api/sections?profile=p1")["sections"]}
         self.assertEqual(feat["heroes"], menu["featured"], "a section page shows the menu's vitrin")
         self.assertEqual(len({h["id"] for h in feat["heroes"]}), len(feat["heroes"]))
-        self.assertEqual(boot, self.get("/api/boot?profile=p1&layout=tv-v1"), "the boot is unchanged by the sections")
+        self.assertEqual(boot, self.home(), "the home is unchanged by the sections")
 
     def _vitrins(self, featured, n_extra):
         """Vitrins of a fake library: ``featured`` = one site's featured list (ids), plus ``n_extra`` titles per kind."""
@@ -785,13 +741,13 @@ class SampleFileTests(Base):
         return out
 
     def test_samples_exist_and_conform_to_the_client_schemas(self):
-        specs = {"boot.json": S.BOOT_TV, "row-new_episodes.json": S.ROW_PAGE, "detail-movie.json": S.DETAIL,
+        specs = {"row-new_episodes.json": S.ROW_PAGE, "detail-movie.json": S.DETAIL,
                  "detail-movie-no-source.json": S.DETAIL, "detail-series.json": S.DETAIL,
                  "detail-series-no-episodes.json": S.DETAIL, "streams-movie.json": S.STREAMS,
                  "streams-trailer.json": S.STREAMS, "streams-episode.json": S.STREAMS, "profiles.json": S.PROFILES,
                  "avatars.json": S.AVATARS, "catalog.json": S.CATALOG, "search.json": S.SEARCH,
                  "mylist.json": S.MYLIST, "error-not-found.json": S.ERROR,
-                 "notifications.json": S.NOTIFICATIONS, "source-finder.json": S.SOURCE_FINDER,
+                 "source-finder.json": S.SOURCE_FINDER,
                  "sections.json": S.SECTIONS, "section-series.json": S.SECTION}
         self.assertEqual(sorted(specs), sorted(seed.SAMPLES), "every sample has a schema")
         for name, spec in specs.items():

@@ -3,6 +3,11 @@
 Server: `http://<sunucu>:8090` (örn. `http://192.168.1.10:8090`; istemcide gömülü adres yok, ilk açılışta sorulur)  ·  Tüm yanıtlar JSON, `Access-Control-Allow-Origin: *`
 Hata: `{"error": {"code": "...", "message": "..."}}` + uygun HTTP status.
 
+> **2026-10-24 kaldırıldı** (hiçbir istemci çağırmıyordu): `GET /api/boot` (tv-v1 ve legacy yerleşim; ana ekran artık `/api/sections` +
+> `/api/section/{id}` + `/api/row/{id}`), `GET /api/sources`, `GET /api/genres` (tür listesi `/api/catalog` yanıtının `genres` alanında),
+> `GET /api/notifications` + `POST /api/notifications/read`, `DELETE /api/continue/{item_id}`. Aşağıdaki ana ekran satır kuralları
+> (`homelayout`) geçerlidir; `/api/section/{id}` ve `/api/row/{id}` aynı satırları verir.
+
 ## Ortak şemalar
 
 Kural (geriye uyum): yanıtlara ALAN EKLENİR, alan silinmez/yeniden adlandırılmaz/türü değişmez. İstemci bilmediği alanı
@@ -105,11 +110,8 @@ Bölüm kimliği `<yapım kimliği>:s<sezon>:e<bölüm>` biçimindedir; `/img/{k
 
 ### `DELETE /api/profiles/{id}`
 
-### `GET /api/boot?profile={pid}[&layout=tv-v1]`   ← **KADEME 1, <200ms**
-İki yerleşim vardır. TV istemcisi `layout=tv-v1` ister; `layout` yoksa ESKİ (legacy) yerleşim döner ve eski istemciler
-için aynen korunur.
-
-**`layout=tv-v1`** (güncel TV istemcisi ve Android). Ana ekran yukarıdan aşağı: slider (hero carousel) ->
+### Ana ekran düzeni (satırlar ve slider; `homelayout`)
+Eski `/api/boot?layout=tv-v1` yanıtının biçimi (uç kaldırıldı; `featured` bölümü ve `/api/row/{id}` bu satırları verir). Ana ekran yukarıdan aşağı: slider (hero carousel) ->
 "İzlemeye Devam Et" -> "Yeni Bölümler" -> "Yeni Filmler" -> "Trend Diziler" -> "Trend Filmler" ->
 "İzlenmesi Gereken Dizi ve Filmler" -> admin kategorileri (`cat_<slug>`) -> "Tüm Diziler" -> "Tüm Filmler" (dizi/film satırları
 dönüşümlü; varsayılan sıra, admin Kategoriler'den değişir). "Listem" ana ekranda SATIR DEĞİLDİR (istemcide ayrı sayfa;
@@ -171,43 +173,25 @@ dönüşümlü; varsayılan sıra, admin Kategoriler'den değişir). "Listem" an
   (tüm türler). `new_movies` = `movies` takma adıdır.
 - Her satır kimliği `/api/row/{id}` ile de çekilebilir (ana ekranla aynı havuz ve sıra, sayfalanır).
 
-**Legacy yerleşim** (`layout` yok):
-```json
-{
-  "hero": { "...Item...", "logo_text": "Kayıp Sinyal", "tagline": "..." },
-  "rows": [
-    {"id":"continue","title":"İzlemeye Devam Et","loaded":true,"items":[...]},
-    {"id":"new","title":"Yeni Eklenenler","loaded":true,"items":[...]},
-    {"id":"mylist","title":"Listem","loaded":false,"count":7},
-    {"id":"genre_drama","title":"Dram","loaded":false,"count":34}
-  ],
-  "source": "", "sources": [ {"id":"yabancidizi","name":"Yabancı Dizi","count":101} ]
-}
-```
-- `loaded:true` satırlar item'larıyla gelir (max 20 item).
-- `loaded:false` satırlar sadece başlık + `count` → client iskelet çizer, lazy çeker.
-- `continue` boşsa satır hiç gönderilmez. Genel `new` satırı eski istemciler için uyumluluk takma adıdır
-  (`new_movies` / `new_episodes` DATA-CONTRACT-V1 adlarıdır).
-
-### `GET /api/sections?profile={pid}` · `GET /api/section/{id}?profile={pid}`   ← yeni ana ekran menüsü (ui-proto; yalnız EKLEME)
+### `GET /api/sections?profile={pid}` · `GET /api/section/{id}?profile={pid}`   ← ana ekran menüsü (client/; yalnız EKLEME)
 `/api/sections` → `{"sections":[{"id","title","status":"ready"|"soon","heroes":[Hero...]}]}`, menü sırası:
 `featured` Öne Çıkanlar · `series` Diziler · `movies` Filmler · `live_tv` Canlı TV · `anime` Animeler · `dvr` DVR
 (`soon` = henüz kaynak yok: `heroes` ve `rows` boş, menüde görünür; şu an yalnız `dvr`, `live_tv` için aşağıdaki "Canlı TV"). `heroes` = o bölümün vitrini (en çok 6, backdrop'lu,
-oynatılabilir; tek yer `homelayout._vitrins`, boot `heroes`'tan bağımsız). Tür: anime havuzundaki (`anime` satırı) dizi = anime, diğerleri
+oynatılabilir; tek yer `homelayout._vitrins`, ana ekran slider'ından bağımsız). Tür: anime havuzundaki (`anime` satırı) dizi = anime, diğerleri
 `type`. Her tür için adaylar: sitelerin `featured` listelerindeki o türden yapımlar (siteler arası sırayla, site sırası korunur), sonra
 `score_parts` puanına göre en iyiler (klasik film yalnız trend puanıyla). `featured` (Öne Çıkanlar) vitrini karışık: dizi · film ·
 anime · dizi … (adayı biten tür atlanır, diğerleri doldurur). `series`/`movies`/`anime` vitrinleri (bu sırayla) kendi türünden
 featured → yeni (`latest_series`+`latest_episodes` / `latest_movies` / anime havuzu) → puan adaylarından Öne Çıkanlar'da ve önceki
 bölümlerde gösterilenleri ATLAR; 6'ya yetmezse atlananlar geri gelir (vitrin boş kalmaz). Diziler anime diziyi yalnız hiç dizi yoksa alır.
 `/api/section/{id}` `heroes` = `/api/sections`'taki aynı bölümün vitrini.
-`/api/section/{id}` → `{"id","title","status","heroes":[...],"rows":[...]}` (satırlar boot `tv-v1` satır biçiminde, ilk 20 kart; boş satır
+`/api/section/{id}` → `{"id","title","status","heroes":[...],"rows":[...]}` (satırlar "Ana ekran düzeni" satır biçiminde, ilk 20 kart; boş satır
 gönderilmez; bilinmeyen id → 404). Satırlar (sıra; tek yer `homelayout.section_rows`):
-- `featured`: boot `tv-v1` satırları, `continue`, `series` (Tüm Diziler) ve `movies` (Tüm Filmler) HARİÇ (yeni ana ekran "Devam Et"i menü ekranında `/api/row/continue` ile gösterir; tüm diziler/filmler Diziler/Filmler bölümlerinde).
+- `featured`: ana ekran satırları, `continue`, `series` (Tüm Diziler) ve `movies` (Tüm Filmler) HARİÇ (yeni ana ekran "Devam Et"i menü ekranında `/api/row/continue` ile gösterir; tüm diziler/filmler Diziler/Filmler bölümlerinde).
 - `series`: `featured_series` (Öne Çıkan Diziler: sitelerin `featured` listelerindeki diziler), `new_episodes`, `trending_series`, `series`.
 - `movies`: `featured_movies` (Öne Çıkan Filmler), `latest_movies`, `trending_movies`, `movies`.
 - Kategori satırı `cat_animeler` (ana ekran/featured): sitelerin `category_animeler_*` listeleri (liste sırası), 20'den (`TREND_TARGET`) kısaysa kütüphanedeki diğer animelerle (kaynak adresi `/anime/` altında diziler) `rating` azalan (eşitlikte `id`) 20'ye tamamlanır; `min_items` tamamlanmış satıra bakar. Diğer kategori satırları tamamlanmaz.
 - `anime`: `anime` (Animeler: sitelerin `category_animeler_*` listeleri + kaynak adresi `/anime/` altında olan diğer diziler, yeni eklenen önce).
-Yeni satır kimlikleri `featured_series`, `featured_movies`, `anime` de `/api/row/{id}` ile sayfalanır. `/api/boot` değişmedi.
+Yeni satır kimlikleri `featured_series`, `featured_movies`, `anime` de `/api/row/{id}` ile sayfalanır.
 
 ### Canlı TV (`live_tv` bölümü, kanallar)   ← ek (yalnız EKLEME; kaynak famelack, `server/app/library/live.py`)
 - `/api/sections`: `live_tv` artık `status:"ready"` (`dvr` hâlâ `soon`); `heroes` = birkaç kanal kartı (önce m3u8'i çalışanlar,
@@ -388,11 +372,11 @@ denetlenir), 1 MB / 5 sn sınırı uygular; BOM/UTF-8 temizler, SRT ise VTT'ye �
 (silinmiş/özel/gömülemez) bir fragman için `streams: []` gelir (istemci bunu "Bu içerik için kullanılabilir video
 kaynağı bulunamadı" olarak gösterir).
 
-### Kaynak bulucu ve bildirimler (yalnız EKLEME)
+### Kaynak bulucu (yalnız EKLEME)
 Oynatılacak bir video (fragman değil) için `GET /api/streams/{id}` hiç akış çıkaramazsa (kaynak kaydı yok / hepsi çözülemedi / hepsi `broken`)
 yanıt AYNEN eskisi gibidir (`streams: []`, hata kodu yok); sunucu ek olarak ARKA PLANDA bir **kaynak bulucu** işi başlatır ve yanıta isteğe
 bağlı `"finder":{"state":"searching"|"not_found"}` ekler (yalnız akış yokken; kaynak bulucu kapalıysa ya da iş başlamadıysa alan YOKTUR).
-İstemci bu durumda "kaynak aranıyor" gösterip sayfada kalabilir ya da gezebilir; bulununca bildirim gelir.
+İstemci bu durumda "kaynak aranıyor" gösterip sayfada kalabilir ya da gezebilir (durum: `GET /api/source-finder/{id}`).
 
 İş (başlık+bölüm başına tek-uçuş; aynı bölüm için `SOURCEFINDER_COOLDOWN` (3600 sn) içinde yeni iş açılmaz, `found` sonrası da): (1) `retry`: bölümün
 bilinen kaynakları (kırık sayılanlar dahil) ZORLA yeniden çözülür; (2) `search`: başlık, kaynağı henüz olmayan en çok `SOURCEFINDER_MAX_SITES` (4)
@@ -400,7 +384,7 @@ arama-yetenekli sitede aranır, aynı kanonik kimliğe çözülen sonuçta o diz
 izi "aday var ama akış yok / bilinmeyen host" ise ve LLM hesabı sağlıklı, heal açık, günlük bütçe (`SOURCEFINDER_DAILY_BUDGET`, 10 ajan koşusu) uygunsa onarım
 ajanı. İlk akış veren adım işi bitirir; bulunan kaynak `video_sources`ta kayıtlıdır ve çözülmüş bağlantısı önbelleğe yazılıdır (sonraki oynatma doğrudan).
 
-**Çözülen ama OYNATILAMAYAN akış**: `POST /api/playback-report?profile={pid}` (isteğe bağlı `profile`, bildirimin gideceği profil) sunucu tarafına yazılabilecek bir
+**Çözülen ama OYNATILAMAYAN akış**: `POST /api/playback-report?profile={pid}` (isteğe bağlı `profile`) sunucu tarafına yazılabilecek bir
 oynatma hatası (`playback_failed|timeout|network`; `aborted|offline|autoplay|unsupported|decode` ve tarayıcı-HLS hatası hariç) bildirirse sunucu aynı kaynak
 bulucuyu o bölüm için başlatır (`trigger: playback_failed`; tek-uçuş / cooldown / bütçe kuralları aynı) ve yanıta isteğe bağlı
 `"finder":{"state":"searching"|"not_found"}` ekler (yoksa alan YOKTUR; yanıt `{"ok":true}` olarak kalır). `retry` adımı, son oynatılamayan AYNI akışı
@@ -410,18 +394,10 @@ bulucuyu o bölüm için başlatır (`trigger: playback_failed`; tek-uçuş / co
 → `{"state":"idle"|"searching"|"found"|"not_found","steps":[{"name":"retry","ok":false,"ms":1800,"note":"2 kaynak denendi, akış yok (...)"}],"updated_at":1790889094}`.
 `steps` en çok 6 kısa kayıt (`name` = `retry|search|heal`; `ok` = bu adım akış buldu; `note` kısa Türkçe açıklama), `updated_at` epoch saniye (`idle`'da 0).
 `episode` verilmezse film kendisidir; dizide verilmezse başlığın en yeni işinin durumu döner. `idle` = hiç iş yok (ya da yeniden başlatmada yarıda kesildi).
-Bilinmeyen yapım/bölüm 404. `not_found` yalnızca bu uçta görünür: kullanıcıya bildirim GİTMEZ.
+Bilinmeyen yapım/bölüm 404.
 `?debug=1` (ek): yanıta `/api/streams?debug=1` ile aynı şekilde `debug_trace` eklenir (`stage:"finder"`, `provider` = adımın Türkçe adı, `detail` = `note`,
 `t_ms` = adım sürelerinin toplamı; son satır `result:"info"` + durum).
-
-#### `GET /api/notifications?profile={pid}&since={id}` · `POST /api/notifications/read?profile={pid}` `{"upto":12}`
-`GET` → `{"items":[{"id":12,"kind":"source_found","canonical_id":"tmdb_tv_103516","episode_id":"tmdb_tv_103516:s1:e3","title":"Dizi adı","season":1,"episode":3,
-"site":"yabancidizi","method":"retry|search|heal","created_at":1790889094}],"last_id":12}`: profilin OKUNMAMIŞ bildirimleri, `id > since` (varsayılan 0),
-eskiden yeniye, en çok 50. `last_id` = verilen en büyük `id` (öğe yoksa gönderilen `since`): istemci bir sonraki yoklamada `since=last_id` yollar. `kind` şimdilik
-yalnız `source_found`; `episode_id` film için boş, `season`/`episode` film için `null`; `method` kaynağın nasıl bulunduğu (`retry` yeniden çözüldü, `search` başka
-sitede bulundu, `heal` ajan onarımı). Toast'tan oynatma: `GET /api/streams/{canonical_id}?episode={episode_id}&kind=video`. `POST ... /read` → `{"ok":true,"marked":n}`:
-`upto`'ya kadar (dahil) bildirimleri okundu yapar (idempotent; negatif/sayı olmayan `upto` 422). Profil verilmezse profilsiz bildirim listesi (boş) döner.
-Hata zarfı olağan `{"error":{"code","message"}}`. Admin Olay defterinde her biten iş `kind=finder` olaydır (bulundu ya da bulunamadı, yöntem, adımlar).
+Admin Olay defterinde her biten iş `kind=finder` olaydır (bulundu ya da bulunamadı, yöntem, adımlar).
 
 ### `POST /api/progress`
 body: `{"profile":"p1","item_id":"tmdb_tv_103516","episode_id":"tmdb_tv_103516:s1:e3","position":1240,"duration":2700}`
@@ -430,14 +406,6 @@ Film için `episode_id == item_id` (ya da boş). `position/duration > 0.92` ise 
 `continue`'dan düşürüp aynı dizinin bir sonraki bölümünü sıraya koyar (`next_episode`: onun kimliği ya da `null`; kart olarak
 `play_episode`, `position` 0). İstemcinin "izlendi" eşiği yuvarlanmış `pct >= 92`'dir. Hatalar: bilinmeyen profil 400, bilinmeyen
 yapım/bölüm 404 (başka dizinin bölümü dahil), negatif süre 422.
-
-### `DELETE /api/continue/{item_id}?profile={pid}`
-"İzlemeye Devam Et" satırından kaldırır (yumuşak gizleme; `progress` silinmez: detaydaki kaldığı yer / izlendi durumu / "devam et"
-düğmesi aynı kalır). `item_id` = yapım id'si (bölüm kartında da `id`, `episode_id` DEĞİL). → `{"ok":true,"removed":true}`;
-idempotent: bilinmeyen öğe, hiç yarım izlenmemiş öğe ya da zaten gizli öğe hata değil, `removed:false` (200). Bilinmeyen/eksik
-profil 400. Kural: öğe, `hidden_at >= o öğenin profildeki en son progress.updated_at` iken `continue`'dan (boot, `/api/row/continue`,
-legacy boot) çıkar; sonra `POST /api/progress` ile yeniden izlenirse (`updated_at > hidden_at`) kendiliğinden satıra geri döner.
-Diğer satırlar, `detail.progress` ve `POST /api/progress` değişmez. Profil silinince gizleme kayıtları da silinir.
 
 ### `GET /api/mylist?profile={pid}` · `POST /api/mylist` `{"profile","item_id"}` · `DELETE /api/mylist/{item_id}?profile={pid}`
 `GET` → `{"items":[Item,...]}` (son eklenen önce). `POST` → 201 `{"ok":true,"in_mylist":true}` (bilinmeyen yapım 404, bilinmeyen profil 400);
@@ -448,7 +416,7 @@ Diğer satırlar, `detail.progress` ve `POST /api/progress` değişmez. Profil s
 Filtre sayfalamadan önce uygulanır; `genres`/`years` seçilebilen değerlerdir (tür kimliği `genre` parametresidir; `availability`:
 `ready|check_required|unavailable`). `mine=true` yalnızca Listem. `limit` 1..50. `sort`: `new` (varsayılan: oynatılabilirler önce, en son eklenen),
 `year`, `title`; EK: `trending` = `trend_score` azalan (popülerlik + yenilik), `popular` = aynı skor ama zamana bağlı parçalar (yeni eklenme,
-yayın yılı, yeni bölüm) hariç; ikisinde de oynatılabilirler önce, eşitlikte `rating`, `id`. Katalog `HOME_ONLY_READY`'den etkilenmez. `GET /api/genres?type=` → `{"genres":[{"id","name"}]}`.
+yayın yılı, yeni bölüm) hariç; ikisinde de oynatılabilirler önce, eşitlikte `rating`, `id`. Katalog `HOME_ONLY_READY`'den etkilenmez.
 
 ### `GET /api/search?q=...&profile={pid}&limit=20&source=`
 En az 3 karakterde arama ucu olan TÜM sitelerin (şimdilik Yabancı Dizi; yaml `search:` bloğu olan her yeni site
@@ -495,7 +463,7 @@ Boyut whitelist dışıysa en yakın izinli boyuta yuvarla.
 ### Hatalar
 Her hata `{"error":{"code","message"}}` zarfıdır: `400 bad_request` (eksik/bilinmeyen `profile`, bilinmeyen `source`, geçersiz
 `avatar_seed`), `404 not_found` (bilinmeyen yapım/bölüm/satır/görsel türü), `422 validation_error` (geçersiz parametre/gövde),
-`500` (`?fail=1` ya da beklenmeyen). Silinmiş bir profil kimliğiyle `boot`/`row`/`catalog`/`mylist` 400 döner (istemci hata ekranı
+`500` (`?fail=1` ya da beklenmeyen). Silinmiş bir profil kimliğiyle `sections`/`row`/`catalog`/`mylist` 400 döner (istemci hata ekranı
 gösterir; Ayarlar'dan profil değiştirilir).
 
 ## Geliştirme kolaylıkları
@@ -504,12 +472,11 @@ gösterir; Ayarlar'dan profil değiştirilir).
 
 ### Çoklu kaynak seçimi
 
-`GET /api/sources` → `{ "sources": [{ "id": "sinemalar", "name": "Sinemalar.com", "count": 387 }] }`.
-Sayılar canlı kataloğa göre değişir. `GET /api/boot`, `/api/row/{id}` ve `/api/search`
-istekleri isteğe bağlı `source` parametresini kabul eder. Boş veya eksik değer ortak
+`/api/sections`, `/api/section/{id}`, `/api/row/{id}` ve `/api/search`
+istekleri isteğe bağlı `source` parametresini (site kimliği) kabul eder. Boş veya eksik değer ortak
 kataloğu gösterir; bilinmeyen kaynak 400 döndürür. Filtreleme sayfalama öncesinde
 uygulanır. Yapım kimlikleri, profiller ve listeler kaynaklar arasında ortaktır.
-Boot yanıtında `source` ve `sources`; kart/detay yanıtlarında `sources` (kaynak
+Kart/detay yanıtlarında `sources` (kaynak
 kimlikleri) ve `playback` (`video`, `trailer`, `unavailable`) bulunur. `trailer`,
 fragman sağlayıcısını belirtir; her fragmanın çözüleceğini garanti etmez.
 

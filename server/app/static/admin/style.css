@@ -274,127 +274,26 @@ h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute
 .plist .sstrip img.sp{width:30px;object-fit:cover}
 .plist .sstrip img.ss{width:78px;object-fit:cover}
 
-/* ---- Site ekle (onboarding) ---- */
+/* ---- Siteler sekmesi (sites.js) ---- */
 a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .obw{display:flex;flex-direction:column;gap:24px}
 .obw .hint{color:var(--muted);font-size:13px}
 .obl{display:flex;flex-direction:column;gap:24px;max-width:920px}
-.obf{display:flex;flex-direction:column;gap:10px}
 .obfl{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);font-weight:600}
 .obfl small{font-weight:400}
-.obfl input,.obfl textarea,#ob-fb{font:inherit;font-size:14px;min-height:36px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);width:100%;min-width:0}
+.obfl input,.obfl textarea{font:inherit;font-size:14px;min-height:36px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);width:100%;min-width:0}
 .obfl textarea{resize:vertical;line-height:1.4}
 .obfl textarea{box-sizing:border-box;max-height:250px;overflow-y:auto}
-.obfl textarea.obnote{min-height:96px}
-.obfl input:disabled,#ob-fb:disabled{opacity:.55}
+.obfl input:disabled{opacity:.55}
 .obfl input[readonly]{background:var(--surface2);color:var(--muted)}
-.obhl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:14px}
-.obhl li{display:flex;gap:8px;align-items:baseline;min-width:0}
-.obhl li.bad .ci{color:var(--bad)}
 .ci{flex:none;width:1.1em;font-weight:700;text-align:center}
 .dim{color:var(--muted)}
 .note.ok{border-color:var(--ok)} .note.warn{border-color:var(--warn)} .note.bad{border-color:var(--bad)}
-.obq{display:block;white-space:pre-wrap;overflow-wrap:anywhere;margin:4px 0}
-/* önceki taslaklar */
-.obdr{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-.obdi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;gap:4px;min-width:0}
-.obdm{display:flex;gap:6px 10px;align-items:center;flex-wrap:wrap}
-.obdu{overflow-wrap:anywhere}
-.obdh{font-size:13.5px;overflow-wrap:anywhere}
-.obdh.ok{color:var(--ok)} .obdh.warn{color:var(--warn)} .obdh.bad{color:var(--bad)} .obdh.run{color:var(--run)}
-.obdi .act{margin-top:6px}
-.obu{color:var(--accent);font-weight:600;text-decoration:none;overflow-wrap:anywhere} .obu:hover{text-decoration:underline}
-/* taslak ekranı: üst şerit */
-#ob-detv:not(.hidden){display:flex;flex-direction:column;gap:24px}
-#ob-detv>div:empty{display:none}
-#ob-detv h2{margin:0 0 8px}
-#ob-detv .obpair h2{margin:0}
-#ob-detv .note{margin:0}
-.obbar{display:flex;gap:8px 10px;align-items:center;flex-wrap:wrap}
-.obbar .grow{flex:1}
-.obhd{display:flex;gap:6px 12px;align-items:center;flex-wrap:wrap;min-width:0;margin-bottom:-12px}
-.obhost{font:600 28px/1.15 var(--serif);overflow-wrap:anywhere}
-.obhd .dim{font-size:13px}
-.obids{display:flex;gap:12px 16px;flex-wrap:wrap;align-items:flex-start}
-.obids .obfl{flex:1 1 220px;max-width:300px;gap:2px;font-size:12px}
-.obids .obfl input{min-height:32px;padding:4px 8px;font-size:13px}
-#ob-sid-err:empty{display:none}
-#ob-sid-err{margin-top:-18px}
-/* genel durum başlığı */
-.obov{display:flex;gap:8px;align-items:center;padding:6px 12px;border-radius:10px;font-size:14px;background:var(--surface2);color:var(--text)}
-.obov b{font-weight:600;min-width:0;overflow-wrap:anywhere}
-.obovi{flex:none;font-size:15px}
-.obov.ok{background:var(--ok-bg);color:var(--ok)} .obov.warn{background:var(--warn-bg);color:var(--warn)}
-.obov.bad{background:var(--bad-bg);color:var(--bad)} .obov.run{background:var(--run-bg);color:var(--run)}
-/* adım adım ilerleme: geniş ekranda yatay, dar ekranda dikey */
-.obsteps{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;align-items:stretch}
-.obstep{background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;min-width:0;font-size:13.5px;overflow-wrap:anywhere}
-.obstep.st-ok{border-top-color:var(--ok)} .obstep.st-warn{border-top-color:var(--warn)} .obstep.st-fail{border-top-color:var(--bad)} .obstep.st-running{border-top-color:var(--run)}
-.obstep.st-pending,.obstep.st-skipped{background:var(--surface2)}
-.obstep.isprob.st-fail{box-shadow:0 0 0 2px var(--bad)} .obstep.isprob.st-warn{box-shadow:0 0 0 2px var(--warn)}
-.obsh{display:flex;gap:6px;align-items:baseline;min-width:0}
-.obsh b{font-size:14px;line-height:1.25}
-.obsn{color:var(--muted);font-variant-numeric:tabular-nums}
-.obsi{flex:none;width:1.2em;text-align:center;font-weight:700}
-.st-ok .obsi{color:var(--ok)} .st-warn .obsi{color:var(--warn)} .st-fail .obsi{color:var(--bad)} .st-running .obsi{color:var(--run)}
-.obsq{color:var(--muted);font-size:12.5px}
-.obss{font-size:13.5px}
-.obnums{display:flex;gap:6px;flex-wrap:wrap}
 .obchip{display:inline-flex;gap:6px;align-items:baseline;padding:2px 9px;border-radius:99px;background:var(--surface2);border:1px solid var(--line);font-size:12.5px;white-space:nowrap}
 .obchip b{font-variant-numeric:tabular-nums}
-.obprob{border-left:3px solid var(--warn);background:var(--warn-bg);color:var(--text);border-radius:0 8px 8px 0;padding:6px 10px;font-size:13px}
-.obprob.bad{border-color:var(--bad);background:var(--bad-bg)}
-.obfix{display:flex;gap:6px;flex-wrap:wrap}
-.obfix .btn{font-size:12.5px;padding:4px 10px;min-height:32px}
-.obask{display:flex;flex-direction:column;gap:8px;padding:12px 14px;margin:0;background:var(--warn-bg);border:1px solid var(--warn);border-radius:12px}
-.obask.gap{background:var(--bad-bg);border-color:var(--bad)}
-.obaskh{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.obaskq{font-size:15.5px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
-.obaskb,.obaskin{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.obaskin input{flex:1 1 260px;min-width:0;font:inherit;font-size:14px;min-height:36px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text)}
-.obaskin input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.obaskt{margin:0;padding-left:18px;font-size:13px;color:var(--muted)}
-.obdt{all:unset;box-sizing:border-box;cursor:pointer;color:var(--accent);font-size:12.5px;font-weight:600;margin-top:auto}
-.obdt:hover{text-decoration:underline} .obdt:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
-.obstep .obdl{margin:0;display:flex;flex-direction:column;gap:0;font-size:12.5px;min-width:0}
-.obstep .obdl dt{color:var(--muted);font-size:11.5px;margin-top:6px;overflow-wrap:normal;word-break:normal;hyphens:none}
-.obstep .obdl dt:first-child{margin-top:0}
-.obstep .obdl dd{margin:0;min-width:0;overflow-wrap:break-word;word-break:normal;hyphens:none}
-.obstep .obdl dd.num{white-space:nowrap}
-/* ajan günlüğü | yaml taslağı (yan yana, aynı yükseklik) */
-.obpair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;height:min(620px,78vh);min-height:420px}
-.obcol{display:flex;flex-direction:column;gap:8px;min-width:0;min-height:0}
-.oblog{flex:1;min-height:0;overflow-y:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;font-size:13.5px;user-select:text;-webkit-user-select:text}
-.oblog *{user-select:text;-webkit-user-select:text}
-.obe{display:flex;gap:8px;align-items:baseline;min-width:0}
-.obe .obt{flex:none;font:12px var(--mono);color:var(--muted)}
-.obe .obb{min-width:0;overflow-wrap:anywhere}
-.obe .obi{margin-right:5px}
-.obe.res.ok .obi{color:var(--ok)} .obe.res.bad .obi,.obe.res.bad b{color:var(--bad)}
-.obe.say .obb{white-space:pre-wrap;background:var(--surface2);border-radius:10px;padding:6px 10px}
-.obe.ask .obb{background:var(--warn-bg)}
-.obe.user{align-self:flex-end;max-width:85%;flex-direction:row;background:var(--run-bg);border-radius:10px;padding:6px 10px}
-.obe.user .obb{white-space:pre-wrap}
-.obe.info.bad .obb{color:var(--bad)} .obe.info.ok .obb{color:var(--ok)} .obe.info.warn .obb{color:var(--warn)}
-.obchat{display:flex;gap:8px;align-items:flex-end}
-#ob-fb{flex:1;resize:none;line-height:1.4;min-height:44px}
-#ob-fb:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .obyaml{flex:1;min-height:0;margin:0;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;white-space:pre;tab-size:2}
-.obyaml0{flex:1;display:flex;align-items:center;justify-content:center;background:var(--surface);border:1px solid var(--line);border-radius:12px}
-/* yapışkan üst şerit: durum çubuğu + Kaydet (her zaman görünür) */
-.obtop{position:sticky;top:0;z-index:6;display:flex;flex-direction:column;gap:8px;padding:8px 0;background:var(--bg);border-bottom:1px solid var(--line);max-height:100vh;overflow-y:auto}
-.obpanel{display:flex;flex-direction:column;gap:8px;padding:10px 14px;margin-left:auto;width:min(440px,100%);background:var(--surface);border:1px solid var(--line);border-radius:12px;font-size:13.5px}
-.obpanel .chk{display:flex;gap:8px;align-items:center}
-.obpanel .act{margin-top:2px}
-.obwn{margin:0}
-.obwn ul{margin:6px 0 0;padding-left:18px}
-.obsavedrow{display:flex;gap:8px 16px;align-items:center;flex-wrap:wrap}
-.obsavedrow .act{margin:0}
-.obsaved{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0;flex:1 1 auto;min-width:0}
-.obrec{margin:0}
 /* Siteler: başlık, çalışan iş, site listesi */
 .obhead{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.obrun{font-size:14px}
 .obsl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
 .obs{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
 .obs.isbusy{border-color:var(--run)}
@@ -419,13 +318,8 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .obmy{max-height:60vh;flex:none}
 .obwarn{color:var(--bad);font-size:15px}
 .obsum{font-size:14px}
-@media (max-width:700px){.obtop{max-height:70vh}}
 @media (max-width:1100px){
-  .obsteps{grid-template-columns:1fr}
-  .obpair{grid-template-columns:1fr;height:auto;min-height:0}
-  .oblog{flex:none;height:360px}
   .obyaml{flex:none;max-height:360px}
-  .obyaml0{flex:none;min-height:80px}
 }
 
 /* Kategoriler sekmesi */

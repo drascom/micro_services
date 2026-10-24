@@ -1,15 +1,15 @@
-"""The pi agent runner shared by site onboarding (``scraper/onboard.py``) and the repair agent of the heal
-(``scraper/heal_agent.py``).
+"""The pi agent runner of the heal's repair agent (``scraper/heal_agent.py``; site onboarding, its other user, was removed
+2026-10-24).
 
 One place knows how a ``pi`` process is started (``build_command``), what environment it gets (``child_env``: the server
 environment minus everything that looks like a secret, plus the ``DIZIFLIX_*`` sandbox variables), how its JSON event
 stream is read (``EventParser``, the ``_ev_*`` accessors) and how a run is supervised (``run``: stdin message, time
 limit, cancel hook, stderr tail, cleanup). What a run is FOR is the caller's business: a ``Job`` carries the id (also the
-pi session id and the sandbox token's owner), the first message, the ``mode`` (``onboard`` | ``repair``), the tool
+pi session id and the sandbox token's owner), the first message, the ``mode`` (``repair``), the tool
 allow-list and extra environment variables.
 
 Both command line and event field names were checked against a real pi 0.99.1 in the Faz 2b spike
-(``docs/plans/site-onboarding/pi-spike-notes.md``); what the spike could not measure stays marked ``UNVERIFIED``.
+(notes in git history: ``docs/plans/site-onboarding/pi-spike-notes.md``); what the spike could not measure stays marked ``UNVERIFIED``.
 Nothing here parses a site or touches the library.
 """
 from __future__ import annotations
@@ -36,22 +36,9 @@ EXTENSION_PATH = os.path.join(SERVER_DIR, "pi", "extensions", "diziflix-onboard.
 SKILL_NAME = "diziflix-site-onboarding"
 READ_TOOL = "read"   # pi's own file reader, allowed for the skill references only (extension guard, DIZIFLIX_SKILL_DIR)
 
-#: the tools of an onboarding run: ``discover_site`` (a draft yaml built by code from the site's pages: onboarding only), the page / test tools,
-#: ``match_providers`` (the player page compared with the provider library), ``test_search`` (Faz 6, the yaml ``search:`` block; not a repair
-#: tool: a repair never touches ``search:``), ``ask_user`` and ``submit_draft``. ``ask_user`` is NOT a sandbox call: the extension answers it
-#: itself and the run ends ``needs_input`` (the question is read from the tool-call event, ``EventParser.ask``); a repair (the heal, no human)
-#: never asks.
-ONBOARD_TOOLS = ("discover_site", "fetch_page", "query_html", "grep_page", "outline_page", "test_config", "list_resolvers", "test_resolvers",
-                 "test_provider", "match_providers", "test_search", "ask_user", "submit_draft")
-#: repair mode: the onboarding tools that look at pages and test yaml / recipes, plus ``load_site_config`` and ``submit_repair``
-#: (no ``submit_draft``: a repair never creates a site; no ``discover_site``: the site exists)
+#: the tools of a repair run: the sandbox tools that look at pages and test yaml / recipes, plus ``load_site_config`` and ``submit_repair``
 REPAIR_TOOLS = ("fetch_page", "query_html", "grep_page", "outline_page", "test_config", "test_resolvers", "test_provider", "match_providers",
                 "list_resolvers", "load_site_config", "submit_repair")
-#: edit mode (a registered site is changed on an admin's request, ``onboard.start(mode="edit")``): the onboarding tools minus ``discover_site``
-#: + the read-only ``load_site_config`` (the extension locks ``submit_draft`` to the edited site; the sandbox only lets ``load_site_config``
-#: read that site)
-EDIT_TOOLS = (*(t for t in ONBOARD_TOOLS if t != "discover_site"), "load_site_config")
-MODES = {"onboard": ONBOARD_TOOLS, "repair": REPAIR_TOOLS, "edit": EDIT_TOOLS}
 
 SAY_CLIP = 1000
 SUMMARY_CLIP = 300
@@ -66,8 +53,8 @@ class Job:
     the ``mode`` (``DIZIFLIX_MODE``: which tools the extension registers), the ``tools`` allow-list and extra env."""
     job_id: str
     first_message: str
-    mode: str = "onboard"
-    tools: tuple = ONBOARD_TOOLS
+    mode: str = "repair"
+    tools: tuple = REPAIR_TOOLS
     env_extra: dict = field(default_factory=dict)
 
 
@@ -83,8 +70,8 @@ def clip(value: Any, limit: int) -> str:
 
 
 def model() -> str:
-    """Model of the onboarding agent: ``ONBOARD_MODEL``, else the heal model (``SCRAPER_HEAL_MODEL`` / pi default)."""
-    return config.ONBOARD_MODEL or llm_health.heal_model()
+    """Model of the repair agent: the heal model (``SCRAPER_HEAL_MODEL`` / pi default)."""
+    return llm_health.heal_model()
 
 
 def sandbox_url() -> str:
@@ -143,7 +130,7 @@ def scrub(text: Any, limit: int = STDERR_CLIP, secrets: tuple = ()) -> str:
 
 # --- pi command line (the only place that knows it) -------------------------------------------------------------
 
-def build_command(job_id: str, *, tools: tuple = ONBOARD_TOOLS, pi_bin: Optional[str] = None, model_name: Optional[str] = None,
+def build_command(job_id: str, *, tools: tuple = REPAIR_TOOLS, pi_bin: Optional[str] = None, model_name: Optional[str] = None,
                   extension: Optional[str] = None, skill: Optional[str] = None,
                   session_dir: Optional[str] = None) -> list[str]:
     """The pi argv of one run; the first message goes to stdin (like ``heal._call_pi``).
@@ -298,37 +285,17 @@ def _summarize(text: str, ok: bool) -> str:
     return clip(", ".join(parts), SUMMARY_CLIP) if parts else clip(text, SUMMARY_CLIP)
 
 
-ASK_TOOL = "ask_user"      # the agent asks the admin (extension tool, no sandbox call)
-SUBMIT_TOOL = "submit_draft"
-
-
-def _args_dict(args: Any) -> dict:
-    """The arguments of a tool call as a dict (pi sends an object; a JSON string is tolerated, anything else gives ``{}``)."""
-    if isinstance(args, str):
-        try:
-            args = json.loads(args)
-        except ValueError:
-            return {}
-    return dict(args) if isinstance(args, dict) else {}
 
 
 class EventParser:
-    """Turns pi's JSON lines into agent events (``tool``, ``tool_result``, ``say``, ``ask``, ``error``, ``retry``). ``feed(line)``
+    """Turns pi's JSON lines into agent events (``tool``, ``tool_result``, ``say``, ``error``, ``retry``). ``feed(line)``
     returns the events to append; ``finish()`` flushes the assistant text still buffered. ``label`` / ``phase`` follow the
     running tool, ``turns`` / ``test_runs`` count. ``provider_error`` is the (scrubbed, <= 300 chars) error of the LAST
     assistant message when it ended in a provider failure, else ``""``: a later good assistant message (an automatic retry
-    that worked) clears it.
-
-    ``ask`` = the arguments (dict) of the LAST ``ask_user`` call that did not fail (``None`` = the agent asked nothing),
-    ``ask_seq`` / ``submit_seq`` = the tool-call counter at that call and at the last ``submit_draft`` call that went through: an
-    ask that came AFTER the last submission is a question the admin has to answer (``asking``)."""
+    that worked) clears it."""
 
     def __init__(self) -> None:
         self.provider_error = ""
-        self.ask: Optional[dict] = None
-        self.ask_seq = 0
-        self.submit_seq = 0
-        self.call_seq: dict[str, int] = {}
         self.text = ""
         self.names: dict[str, str] = {}
         self.turn_ends = 0
@@ -341,11 +308,6 @@ class EventParser:
     @property
     def turns(self) -> int:
         return self.turn_ends or self.tool_calls
-
-    @property
-    def asking(self) -> bool:
-        """The agent's last word is a question for the admin: ``ask_user`` was called (and succeeded) after the last ``submit_draft``."""
-        return self.ask is not None and self.ask_seq > self.submit_seq
 
     def _flush(self) -> list[dict]:
         text, self.text = self.text.strip(), ""
@@ -393,21 +355,9 @@ class EventParser:
             else:
                 self.label = name
             out.append({"t": now(), "kind": "tool", "name": name, "args_short": _short_args(args)})
-            self.call_seq[_ev_tool_id(ev)] = self.tool_calls
-            if name == ASK_TOOL:
-                given = _args_dict(args)
-                self.ask, self.ask_seq = given, self.tool_calls
-                question = clip(given.get("question"), 600)
-                if question:
-                    out.append({"t": now(), "kind": "ask", "field": clip(given.get("field"), 60),
-                                "ask_kind": clip(given.get("kind"), 20), "text": question})
         elif kind == "tool_execution_end":
             name = _ev_tool_name(ev) or self.names.get(_ev_tool_id(ev)) or "?"
             ok = not _ev_is_error(ev)
-            if name == ASK_TOOL and not ok:   # the extension refused the call (empty question ...): nothing was asked
-                self.ask = None
-            elif name == SUBMIT_TOOL and ok:   # a submission that went through (the draft is ``ready``)
-                self.submit_seq = self.call_seq.get(_ev_tool_id(ev), self.tool_calls)
             out.append({"t": now(), "kind": "tool_result", "name": name, "ok": ok,
                         "summary": _summarize(_ev_result_text(ev), ok)})
         elif kind == "message_update":

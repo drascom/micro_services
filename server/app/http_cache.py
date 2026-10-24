@@ -11,11 +11,9 @@ import hashlib
 # always revalidates against the ETag; max-age only helps other clients.
 _SHORT = "private, max-age=5, stale-while-revalidate=30"
 POLICIES: tuple[tuple[str, str], ...] = (
-    ("/api/boot", _SHORT),
     ("/api/row/", _SHORT),
     ("/api/detail/", _SHORT),
     ("/api/catalog", _SHORT),
-    ("/api/sources", _SHORT),
     ("/api/avatars", "public, max-age=3600"),
 )
 

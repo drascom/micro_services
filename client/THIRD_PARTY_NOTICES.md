@@ -34,5 +34,8 @@ SOFTWARE.
 
 ## hls.js 1.7.3 (Apache-2.0)
 
-`js/vendor/hls.min.js` is byte-identical to `tizen-client/js/vendor/hls.min.js` (npm `hls.js@1.7.3`, Copyright (c) 2017 Dailymotion; sha256 and source in
-`tizen-client/js/vendor/README.md`), licence text in `js/vendor/hls.js.LICENSE`. Lazy-loaded only by the HTML5 engine for `type: "hls"` streams.
+`js/vendor/hls.min.js` is npm `hls.js@1.7.3` unmodified (UMD, `window.Hls`), Copyright (c) 2017 Dailymotion; licence text in `js/vendor/hls.js.LICENSE`.
+- Source: `https://cdn.jsdelivr.net/npm/hls.js@1.7.3/dist/hls.min.js` (byte-identical to the CDN file; the trailing `sourceMappingURL` line is kept, no `.map` shipped)
+- sha256: `a12e7ee1cd64a69dcdb314157e45dafcba705bfb0b1440b7935cb265d374423e`
+- Lazy-loaded once via `<script>` only by the HTML5 engine for `type: "hls"` streams; AVPlay (Tizen TV) never touches it.
+- Upgrading: download the new version from the same path, update the sha256 here and bump `?v=hlsjs-<version>` in `js/player.js`.

@@ -223,6 +223,3 @@ def check(force: bool = False) -> dict[str, Any]:
         return {**value, "cached": False, "cache_age": 0}
 
 
-def reset_cache() -> None:
-    with _lock:
-        _cache["at"], _cache["value"] = 0.0, None

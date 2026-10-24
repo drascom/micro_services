@@ -89,7 +89,7 @@ appended by `url_template`. A film-only site skips `episode_source`.
 ## Playable chain: a series needs episodes (read this for every series site)
 
 After `normalize` look at `normalize.with_video_sources` and `normalize.series_without_sources`. A `series` item without `video_sources` has
-nothing to play: the library holds a title with no episode, so it is NOT playable. `test_config(playable: true)` and `submit_draft` fail it
+nothing to play: the library holds a title with no episode, so it is NOT playable. `test_config(playable: true)` and `submit_repair` fail it
 (`series_have_episode_sources`, at least 90% of the series items need an episode source).
 
 **Episode pages as cards** (a card = one episode page, the URL carries show, season and episode, e.g. `/<show>-<season>-sezon-<episode>-bolum-.../`):
