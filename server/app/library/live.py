@@ -15,14 +15,18 @@ a success = healthy). A channel with no usable m3u8 AND no YouTube is hidden fro
 
 Wire: cards (``type``/``card_kind`` ``channel``, ``channel_no`` 1..N by name), rows ``live_all`` + ``live_<category>``,
 ``/api/streams/ch_<nanoid>`` (m3u8 first, then YouTube embeds, broken m3u8 last; ``live: true``, ``channel``). See API.md.
+The same channel from several rows (famelack + M3U, name variants) is ONE card on the read side (:func:`merge_key`,
+:func:`visible_channels`): its streams = every member's; delete / restore act on the whole group.
 """
 from __future__ import annotations
 
 import gzip
 import hashlib
+import html
 import json
 import logging
 import os
+import re
 import threading
 import time
 import unicodedata
@@ -30,7 +34,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from typing import Any, Optional
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 import yaml
 
@@ -533,7 +537,7 @@ def _row_to_channel(r) -> dict:
             # M3U sources (library/m3u.py); famelack rows: source_id None, no logo / headers / labels
             "source_id": r["source_id"], "logo": r["logo"] or None, "headers": _loads(r["headers"], {}),
             "labels": _loads(r["labels"], {}),
-            "removed": bool(_col(r, "removed")), "removed_at": _col(r, "removed_at")}
+            "removed": bool(_col(r, "removed")), "removed_at": _col(r, "removed_at"), "created_at": _col(r, "created_at")}
 
 
 def _col(r, name: str):
@@ -554,14 +558,85 @@ def all_channels() -> list[dict]:
     return out
 
 
+# ---- one channel, several sources ------------------------------------------------------------------------------------
+# The same channel often comes from famelack AND an M3U list (or twice from one list) under slightly different names
+# ("Haberturk" / "Haberturk TV", "TürkHaber" / "TurkHaber TV", "TV 4" / "TV4"). The read side groups the rows by
+# :func:`merge_key` (rows stay as they are): one card, its streams = every member's streams. Different non-empty countries
+# never merge. Primary (= the group's id) = the oldest row (famelack first on a tie), so the id stays stable.
+MERGE_SUFFIXES = frozenset(("hd", "fhd", "uhd", "sd", "4k", "hq", "tv", "televizyonu", "canli", "live"))
+
+
+def merge_key(name: str) -> str:
+    """Grouping key of a channel name: Turkish-folded lower case, punctuation / spaces dropped, trailing quality / "TV"
+    words dropped ("Kent Türk TV HD" -> ``kentturk``, "ERTV" -> ``er``; a short name like "ATV" / "NTV" is kept)."""
+    toks = [t for t in re.split(r"[^0-9a-z]+", _fold(name or "").replace("ı", "i")) if t]
+    while len(toks) > 1 and toks[-1] in MERGE_SUFFIXES:
+        toks.pop()
+    key = "".join(toks)
+    if key.endswith("tv") and len(key) >= 4 and not key[-3].isdigit():
+        key = key[:-2]
+    return key
+
+
+def _groups(chans: list[dict]) -> list[list[dict]]:
+    """``chans`` grouped by :func:`merge_key` (+ country: two different non-empty countries = two groups); every group
+    primary first (oldest ``created_at``, famelack before M3U, then id)."""
+    by: dict[str, list[dict]] = {}
+    for c in chans:
+        by.setdefault(merge_key(c["title"]) or c["id"], []).append(c)
+    out: list[list[dict]] = []
+    for members in by.values():
+        members.sort(key=lambda c: (c.get("created_at") or 0, bool(c["source_id"]), c["id"]))
+        countries = list(dict.fromkeys(m["country"] for m in members if m["country"]))
+        if len(countries) <= 1:
+            out.append(members)
+            continue
+        sub: dict[str, list[dict]] = {cc: [] for cc in countries}
+        for m in members:
+            sub[m["country"] or countries[0]].append(m)
+        out.extend(sub.values())
+    return out
+
+
+def _merge(members: list[dict]) -> dict:
+    """One channel of a group: the primary's fields, streams / YouTube / health / categories of every member,
+    ``members`` (rows, play order) and ``member_ids``."""
+    c = dict(members[0])
+    c["members"], c["member_ids"] = members, [m["id"] for m in members]
+    if len(members) == 1:
+        return c
+    c["streams"] = list(dict.fromkeys(u for m in members for u in m["streams"]))
+    c["youtube"] = list(dict.fromkeys(u for m in members for u in m["youtube"]))
+    health: dict[str, dict] = {}
+    for m in members:
+        for u, h in m["stream_health"].items():
+            health.setdefault(u, h)   # a shared url = the first member's (it offers and reports that stream)
+    c["stream_health"] = health
+    c["categories"] = list(dict.fromkeys(k for m in members for k in m["categories"]))
+    labels: dict[str, str] = {}
+    for m in members:
+        for k, v in (m.get("labels") or {}).items():
+            labels.setdefault(k, v)
+    c["labels"] = labels
+    c["logo"] = next((m["logo"] for m in members if m.get("logo")), None)
+    return c
+
+
+def _live_groups() -> list[dict]:
+    """Every active, not removed channel merged into its group (hidden ones too)."""
+    return [_merge(g) for g in _groups([c for c in all_channels() if c["active"] and not c["removed"]])]
+
+
 def visible_channels(fresh: bool = False) -> list[dict]:
-    """Active channels the clients see (a usable m3u8 or a YouTube link), by name, each with ``channel_no`` 1..N."""
+    """Channel groups the clients see (a usable m3u8 or a YouTube link in any member), by name, each with
+    ``channel_no`` 1..N (:func:`_merge` shape: ``id`` = the primary row, ``members`` / ``member_ids``)."""
     global _view
     now = time.monotonic()
     with _view_lock:
         if not fresh and _view is not None and now - _view[0] < CACHE_TTL:
             return _view[1]
-    chans = [c for c in all_channels() if c["active"] and not c["removed"] and channel_health(c["streams"], c["youtube"], c["stream_health"]) != "dead"]
+    chans = [c for c in _live_groups() if channel_health(c["streams"], c["youtube"], c["stream_health"]) != "dead"]
+    chans.sort(key=lambda c: (_fold(c["title"]), c["nanoid"]))
     for n, c in enumerate(chans, 1):
         c["channel_no"] = n
     with _view_lock:
@@ -570,40 +645,59 @@ def visible_channels(fresh: bool = False) -> list[dict]:
 
 
 def by_id(channel_id: str) -> Optional[dict]:
-    """A channel by ``ch_<nanoid>`` (visible ones carry ``channel_no``; an active hidden one too, with 0)."""
+    """A channel group by the ``ch_<nanoid>`` of ANY member (visible ones carry ``channel_no``; an active hidden one
+    too, with 0)."""
     for c in visible_channels():
-        if c["id"] == channel_id:
+        if channel_id in c["member_ids"]:
             return c
-    r = db.query_one("SELECT * FROM channels WHERE id=? AND active=1 AND removed=0", (channel_id,))
-    if not r:
-        return None
-    c = _row_to_channel(r)
-    c["channel_no"] = 0
-    return c
+    for c in _live_groups():
+        if channel_id in c["member_ids"]:
+            c["channel_no"] = 0
+            return c
+    return None
+
+
+def _group_ids(channel_id: str, removed: bool) -> list[str]:
+    """Member ids of the group holding ``channel_id`` among the removed (or not removed) rows; ``[channel_id]`` if none."""
+    for g in _groups([c for c in all_channels() if c["removed"] == removed]):
+        ids = [m["id"] for m in g]
+        if channel_id in ids:
+            return ids
+    return [channel_id]
+
+
+def _set_removed(ids: list[str], removed: bool, now: int) -> int:
+    marks = ",".join("?" * len(ids))
+    with closing(db.connect()) as conn, conn:
+        if removed:
+            n = conn.execute(f"UPDATE channels SET removed=1,removed_at=COALESCE(removed_at,?) WHERE id IN ({marks})",
+                             (now, *ids)).rowcount
+        else:
+            n = conn.execute(f"UPDATE channels SET removed=0,removed_at=NULL WHERE id IN ({marks})", ids).rowcount
+    invalidate()
+    return n
 
 
 def remove_channel(channel_id: str, now: Optional[int] = None) -> bool:
-    """A client deletes a channel for everyone (``removed=1``); False = unknown id. The scans keep the row hidden."""
+    """A client deletes a channel for everyone (``removed=1``), with every source of its group; False = unknown id.
+    The scans keep the rows hidden."""
     now = int(time.time()) if now is None else int(now)
-    with closing(db.connect()) as conn, conn:
-        n = conn.execute("UPDATE channels SET removed=1,removed_at=COALESCE(removed_at,?) WHERE id=?",
-                         (now, channel_id)).rowcount
-    invalidate()
-    return n > 0
+    return _set_removed(_group_ids(channel_id, False), True, now) > 0
 
 
 def restore_channel(channel_id: str) -> bool:
-    """Admin: bring a removed channel back (``removed=0``); False = unknown id."""
-    with closing(db.connect()) as conn, conn:
-        n = conn.execute("UPDATE channels SET removed=0,removed_at=NULL WHERE id=?", (channel_id,)).rowcount
-    invalidate()
-    return n > 0
+    """Admin: bring a removed channel back (``removed=0``) with the removed rows of its group; False = unknown id."""
+    return _set_removed(_group_ids(channel_id, True), False, 0) > 0
 
 
 def removed_channels() -> list[dict]:
-    """Admin "Silinen kanallar": removed rows, newest removal first."""
-    out = [{"id": c["id"], "title": c["title"], "source": source_name(c), "source_id": c["source_id"],
-            "country": c["country"], "removed_at": c["removed_at"]} for c in all_channels() if c["removed"]]
+    """Admin "Silinen kanallar": removed groups (primary row + ``sources`` = row count), newest removal first."""
+    out = []
+    for g in _groups([c for c in all_channels() if c["removed"]]):
+        c = g[0]
+        out.append({"id": c["id"], "title": c["title"], "source": source_name(c), "source_id": c["source_id"],
+                    "country": c["country"], "removed_at": max((m["removed_at"] or 0) for m in g) or None,
+                    "sources": len(g), "member_ids": [m["id"] for m in g]})
     out.sort(key=lambda c: -(c["removed_at"] or 0))
     return out
 
@@ -615,10 +709,12 @@ def card(c: dict) -> dict:
         "availability": {"state": "ready", "reason": None, "has_trailer": False},
         "title": c["title"], "year": None, "card": "", "portrait": "", "backdrop": "", "has_backdrop": False,
         "overview": "", "genres": [c.get("labels", {}).get(k) or CATEGORY_TITLES.get(k, k) for k in c["categories"]],
-        "rating": None, "country": c["country"], "followers": None, "badge": None, "sources": [source_name(c)], "tmdb_id": None,
+        "rating": None, "country": c["country"], "followers": None, "badge": None,
+        "sources": list(dict.fromkeys(source_name(m) for m in c.get("members") or [c])), "tmdb_id": None,
         "imdb_id": None, "playback": "video", "progress": None,
         "channel_no": c.get("channel_no", 0), "categories": list(c["categories"]), "has_youtube": bool(c["youtube"]),
         "geo_blocked": c["geo_blocked"], "live": True, "logo": c.get("logo") or None,
+        "source_count": len(c.get("members") or [c]),
     }
 
 
@@ -700,46 +796,94 @@ def _embed_url(url: str) -> str:
     return url + ("&" if "?" in url else "?") + "autoplay=1"
 
 
-def _stream(c: dict, url: str, kind: str, token: str, label: str) -> dict:
+YT_ID = re.compile(r"^https://(?:www\.)?youtube(?:-nocookie)?\.com/embed/([A-Za-z0-9_-]{11})(?:[?#&]|$)")
+YT_ID_ONLY = re.compile(r"^[A-Za-z0-9_-]{11}$")
+YT_WRAP_PATH = "api/live/yt/"
+
+
+def yt_wrap(url: str, base: str) -> str:
+    """A YouTube embed URL -> the server's wrapper page ``<base>api/live/yt/<id>?autoplay=1`` (an http(s) page, so the inner
+    YouTube iframe gets a Referer / ``origin=``: a Tizen widget's local origin sends none and YouTube refuses to play,
+    Error 152/153). Anything else (or no ``base``) comes back unchanged."""
+    m = YT_ID.match(url or "")
+    return f"{base}{YT_WRAP_PATH}{m.group(1)}?autoplay=1" if m and base else url
+
+
+def yt_wrapper_html(video_id: str, origin: str) -> str:
+    """The wrapper page: black, full-size YouTube iframe, no script and nothing focusable (the client's remote keys stay
+    with the app). ``video_id`` must match ``YT_ID_ONLY``; ``origin`` = ``scheme://host[:port]`` of this server."""
+    q = urlencode({"autoplay": 1, "playsinline": 1, "rel": 0, "origin": origin, "widget_referrer": origin + "/"})
+    src = html.escape(f"https://www.youtube-nocookie.com/embed/{video_id}?{q}", quote=True)
+    return ("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+            "<meta name=\"referrer\" content=\"strict-origin-when-cross-origin\"><title>YouTube</title>"
+            "<style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}"
+            "iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0;background:#000}</style></head><body>"
+            f"<iframe src=\"{src}\" allow=\"autoplay; encrypted-media; fullscreen; picture-in-picture\" allowfullscreen "
+            "frameborder=\"0\" tabindex=\"-1\" referrerpolicy=\"strict-origin-when-cross-origin\"></iframe></body></html>")
+
+
+def _stream(c: dict, url: str, kind: str, token: str, label: str, member: Optional[dict] = None) -> dict:
     return {"url": url, "type": kind, "quality": "auto", "label": label, "attempt_token": token, "kind": "live",
-            "source_id": c["id"], "source": source_name(c), "variant_id": stream_key(url), "audio_lang": None,
+            "source_id": c["id"], "source": source_name(member or c), "variant_id": stream_key(url), "audio_lang": None,
             "sub_mode": "none", "hard_lang": None, "sub_known": False, "site_lang_hint": None, "mirror_of": None}
 
 
-def streams(c: dict) -> list[dict]:
-    """Raw streams in play order: usable m3u8, then YouTube, then broken / probe-failed m3u8. Every stream gets its own
-    attempt token (``playback_attempts.source_id`` = ``ch:<nanoid>|<key>``). A playlist the probe found without CORS carries
-    ``stream_proxy: true`` (``streamproxy.proxy_reason`` -> ``recipe``: handed out through the proxy, the flag is stripped)."""
-    health = c["stream_health"]
-    good = [u for u in c["streams"] if usable(health.get(u))]
-    bad = [u for u in c["streams"] if u not in good]
-    now = int(time.time())
-    out = []
-    labels: dict[str, int] = {}
+def _source_labels() -> dict[str, str]:
+    """``{live_sources.id: name}`` (an M3U stream's label)."""
+    try:
+        return {r["id"]: r["name"] for r in db.query("SELECT id,name FROM live_sources")}
+    except Exception:
+        return {}
 
-    def token_for(url: str) -> str:
+
+def streams(c: dict) -> list[dict]:
+    """Raw streams of a channel group (every member, :func:`_merge`) in play order: usable m3u8, then YouTube, then
+    broken / probe-failed m3u8; a url two members share is offered once. Every stream gets its own attempt token
+    (``playback_attempts.source_id`` = ``ch:<member nanoid>|<key>``) and a readable ``label`` ("<host> · <source>").
+    A playlist the probe found without CORS carries ``stream_proxy: true`` (``streamproxy.proxy_reason`` -> ``recipe``:
+    handed out through the proxy, the flag is stripped)."""
+    members = c.get("members") or [c]
+    names = _source_labels() if any(m["source_id"] for m in members) else {}
+    now = int(time.time())
+    labels: dict[str, int] = {}
+    seen: set[str] = set()
+    good, tube, bad = [], [], []
+
+    def token_for(m: dict, url: str) -> str:
         token = uuid.uuid4().hex
         db.execute("INSERT INTO playback_attempts(token,source_id,created_at) VALUES (?,?,?)",
-                   (token, f"{TOKEN_PREFIX}{c['nanoid']}|{stream_key(url)}", now))
+                   (token, f"{TOKEN_PREFIX}{m['nanoid']}|{stream_key(url)}", now))
         return token
 
     def label(text: str) -> str:
         labels[text] = labels.get(text, 0) + 1
         return text if labels[text] == 1 else f"{text} ({labels[text]})"
 
-    def hls(url: str) -> dict:
-        s = _stream(c, url, "hls", token_for(url), label(f"{urlparse(url).hostname or 'akış'} · canlı"))
-        h = health.get(url) or {}
+    def src_label(m: dict) -> str:
+        return (names.get(m["source_id"]) or "M3U") if m["source_id"] else CONFIG_NAME
+
+    def hls(m: dict, url: str) -> dict:
+        s = _stream(c, url, "hls", token_for(m, url), label(f"{urlparse(url).hostname or 'akış'} · {src_label(m)}"), m)
+        h = m["stream_health"].get(url) or {}
         if h.get("probe") == "ok" and h.get("cors") is False:
             s["stream_proxy"] = True
-        if c.get("headers"):   # M3U #EXTVLCOPT Referer / User-Agent: only the server's proxy can send them
-            s["request_headers"] = dict(c["headers"])
+        if m.get("headers"):   # M3U #EXTVLCOPT Referer / User-Agent: only the server's proxy can send them
+            s["request_headers"] = dict(m["headers"])
             s["stream_proxy"] = True
         return s
 
-    out += [hls(u) for u in good]
-    out += [_stream(c, _embed_url(u), "embed", token_for(u), label("YouTube · canlı")) for u in c["youtube"]]
-    out += [hls(u) for u in bad]
+    for m in members:
+        for u in m["streams"]:
+            if u not in seen:
+                seen.add(u)
+                (good if usable(m["stream_health"].get(u)) else bad).append((m, u))
+        for u in m["youtube"]:
+            if u not in seen:
+                seen.add(u)
+                tube.append((m, u))
+    out = [hls(m, u) for m, u in good]
+    out += [_stream(c, _embed_url(u), "embed", token_for(m, u), label("YouTube · canlı"), m) for m, u in tube]
+    out += [hls(m, u) for m, u in bad]
     return out
 
 
@@ -837,12 +981,18 @@ def admin_view() -> dict:
     cfg = load_config()
     st = load_state()
     chans = all_channels()
-    visible = {c["id"]: c["channel_no"] for c in visible_channels()}
+    visible = {i: c["channel_no"] for c in visible_channels() for i in c["member_ids"]}
+    group: dict[str, tuple[str, int]] = {}   # row id -> (group primary id, group size); removed rows group apart
+    for removed in (False, True):
+        for g in _groups([c for c in chans if c["removed"] == removed]):
+            for m in g:
+                group[m["id"]] = (g[0]["id"], len(g))
     items = []
     for c in chans:
         h = c["stream_health"]
+        gid, gsize = group.get(c["id"], (c["id"], 1))
         items.append({"id": c["id"], "title": c["title"], "country": c["country"], "active": c["active"],
-                      "removed": c["removed"],
+                      "removed": c["removed"], "group_id": gid, "group_size": gsize,
                       "source": source_name(c), "source_id": c["source_id"],
                       "visible": c["id"] in visible, "channel_no": visible.get(c["id"]),
                       "health": channel_health(c["streams"], c["youtube"], h) if c["active"] else "inactive",
@@ -853,7 +1003,8 @@ def admin_view() -> dict:
     return {"enabled": settings.live_tv_auto(), "running": is_running(), "countries": cfg["countries"],
             "languages": cfg["languages"], "interval_minutes": cfg.get("interval_minutes"),
             "ran_at": st.get("ran_at"), "probed_at": st.get("probed_at"), "last": st.get("last"),
-            "counts": {"total": len(chans), "active": sum(1 for c in chans if c["active"]), "visible": len(visible),
+            "counts": {"total": len(chans), "active": sum(1 for c in chans if c["active"]),
+                       "visible": len(set(visible.values())), "groups": len({g for g, _ in group.values()}),
                        "ok": sum(1 for i in items if i["health"] == "ok"),
                        "youtube_only": sum(1 for i in items if i["health"] == "youtube"),
                        "dead": sum(1 for i in items if i["health"] == "dead"),

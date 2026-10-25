@@ -55,23 +55,45 @@ function drawHead(){var el=$('lv-head');if(el)el.innerHTML=safe(headHtml)}
 function safe(fn){try{return fn()}catch(e){try{console.error('live: çizilemedi',e)}catch(_){}return '<div class="note bad">Çizilemedi: '+esc(msgOf(e))+'</div>'}}
 
 /* ---- Kanallar ---- */
+var LVRANK={ok:0,youtube:1,dead:2,inactive:3};
+function rank(h){return LVRANK[h]==null?9:LVRANK[h]}
+/* aynı kanalın satırları (famelack + M3U, ad varyantları) group_id altında tek kanal; sağlık = grubun en iyisi */
+function groupsOf(all){
+  var by={},out=[];
+  all.forEach(function(x){
+    var gid=x.group_id||x.id,g=by[gid];
+    if(!g){g=by[gid]={id:gid,m:[]};out.push(g)}
+    g.m.push(x);
+  });
+  out.forEach(function(g){
+    g.m.sort(function(a,b){return (a.id===g.id?0:1)-(b.id===g.id?0:1)});
+    var p=g.m[0];g.title=p.title;g.channel_no=p.channel_no;g.removed=p.removed;g.health=p.health;
+    g.m.forEach(function(x){if(rank(x.health)<rank(g.health))g.health=x.health;if(x.channel_no&&!g.channel_no)g.channel_no=x.channel_no});
+  });
+  return out;
+}
 function channelsHtml(){
   if(!LV)return '<div class="empty sm">Yükleniyor…</div>';
-  var all=LV.channels||[],cnt={};all.forEach(function(x){cnt[x.health]=(cnt[x.health]||0)+1});
+  var all=groupsOf(LV.channels||[]),cnt={};all.forEach(function(x){cnt[x.health]=(cnt[x.health]||0)+1});
   var FL=[['','Hepsi',all.length],['ok','Çalışan',cnt.ok],['youtube','Yalnız YouTube',cnt.youtube],['dead','Gizli',cnt.dead],['inactive','Kaynakta yok',cnt.inactive]];
   var q=F.q.toLocaleLowerCase('tr-TR');
-  var rows=all.filter(function(x){return (!F.health||x.health===F.health)&&(!q||String(x.title||'').toLocaleLowerCase('tr-TR').indexOf(q)>=0||String(x.source||'').toLocaleLowerCase('tr-TR').indexOf(q)>=0)});
+  function hit(x){return String(x.title||'').toLocaleLowerCase('tr-TR').indexOf(q)>=0||String(x.source||'').toLocaleLowerCase('tr-TR').indexOf(q)>=0}
+  var rows=all.filter(function(g){return (!F.health||g.health===F.health)&&(!q||g.m.some(hit))});
   var h='<div class="lvbar"><input type="search" id="lv-q" placeholder="Kanal ara…" aria-label="Kanal ara" value="'+esc(F.q)+'" autocomplete="off">'+
     '<div class="fg">'+FL.map(function(f){return '<button class="ch'+(f[2]?'':' zero')+'" data-lvf="'+f[0]+'" aria-pressed="'+(F.health===f[0])+'">'+f[1]+' <b>'+num(f[2]||0)+'</b></button>'}).join('')+'</div></div>';
   if(!rows.length)return h+'<div class="empty sm">Bu süzgeçle kanal yok.</div>';
   var shown=rows.slice(0,300);
-  h+='<ul class="lvlist">'+shown.map(function(x){
-    var m=LVH[x.health]||['',x.health||'?'];
-    var st=(x.streams||[]).map(function(s){
-      var bad=s.status==='broken'||s.probe==='fail',ok=s.status==='healthy'||s.probe==='ok';
-      return '<div class="lvst mono"><span class="'+(bad?'bad':ok?'ok':'dim')+'">'+esc((s.probe||'?')+' · '+(s.status||'?'))+'</span>'+(s.cors===false?' <span class="dim">vekil</span>':'')+' <span class="evu">'+esc(s.url)+'</span>'+(s.error?' <span class="dim">('+esc(s.error)+')</span>':'')+'</div>'}).join('');
-    return '<li class="lvch"><span class="num dim">'+esc(x.channel_no||'-')+'</span><div class="grow"><b>'+esc(x.title)+'</b>'+(x.removed?' '+pill('bad','silindi'):'')+(x.geo_blocked?' '+pill('','geo'):'')+
-      ' <span class="dim">'+esc([x.source,x.country,(x.categories||[]).join(', '),x.youtube?'YouTube '+x.youtube:''].filter(Boolean).join(' · '))+'</span>'+st+'</div>'+pill(m[0],m[1])+'</li>'}).join('')+'</ul>'+
+  h+='<ul class="lvlist">'+shown.map(function(g){
+    var m=LVH[g.health]||['',g.health||'?'],multi=g.m.length>1;
+    var body=g.m.map(function(x){
+      var st=(x.streams||[]).map(function(s){
+        var bad=s.status==='broken'||s.probe==='fail',ok=s.status==='healthy'||s.probe==='ok';
+        return '<div class="lvst mono"><span class="'+(bad?'bad':ok?'ok':'dim')+'">'+esc((s.probe||'?')+' · '+(s.status||'?'))+'</span>'+(s.cors===false?' <span class="dim">vekil</span>':'')+' <span class="evu">'+esc(s.url)+'</span>'+(s.error?' <span class="dim">('+esc(s.error)+')</span>':'')+'</div>'}).join('');
+      var meta=esc([x.source,x.country,(x.categories||[]).join(', '),x.youtube?'YouTube '+x.youtube:''].filter(Boolean).join(' · '));
+      var geo=x.geo_blocked?' '+pill('','geo'):'';
+      return (multi?'<div class="lvst"><span class="dim">'+(x.title!==g.title?esc(x.title)+' · ':'')+meta+'</span>'+geo+'</div>':' <span class="dim">'+meta+'</span>'+geo)+st}).join('');
+    return '<li class="lvch"><span class="num dim">'+esc(g.channel_no||'-')+'</span><div class="grow"><b>'+esc(g.title)+'</b>'+(g.removed?' '+pill('bad','silindi'):'')+
+      (multi?' '+pill('',g.m.length+' kaynak','Aynı kanalın kaynakları tek kanalda birleşti'):'')+body+'</div>'+pill(m[0],m[1])+'</li>'}).join('')+'</ul>'+
     (rows.length>shown.length?'<div class="dim errmeta">'+num(rows.length-shown.length)+' kanal daha; aramayla daraltın.</div>':'');
   return h;
 }
@@ -114,7 +136,7 @@ function removedHtml(){
   if(!LR)return '<div class="empty sm">Yükleniyor…</div>';
   if(!LR.length)return '<div class="empty sm">Silinen kanal yok.</div>';
   return '<div class="dim errmeta" title="İstemciden herkes için silinen kanallar; taramalar geri getirmez">'+num(LR.length)+' silinen kanal</div><ul class="lvlist">'+LR.map(function(x){
-    return '<li class="lvch"><div class="grow"><b>'+esc(x.title)+'</b> <span class="dim">'+esc([x.source,x.country].filter(Boolean).join(' · '))+'</span></div>'+
+    return '<li class="lvch"><div class="grow"><b>'+esc(x.title)+'</b>'+(x.sources>1?' '+pill('',x.sources+' kaynak'):'')+' <span class="dim">'+esc([x.source,x.country].filter(Boolean).join(' · '))+'</span></div>'+
       '<span class="dim num">'+esc(x.removed_at?E.when(ts(x.removed_at)):'-')+'</span>'+
       '<span class="act sm"><button data-lv-restore="'+esc(x.id)+'" data-lv-rname="'+esc(x.title)+'">Geri al</button></span></li>'}).join('')+'</ul>';
 }

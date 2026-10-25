@@ -56,7 +56,7 @@ class ChannelDeleteTests(unittest.TestCase):
             self.assertEqual(self.ids(), {"ch_B"})
             removed = c.get("/api/ops/live/removed").json()["channels"]
             self.assertIn("ch_A", [r["id"] for r in removed])
-            self.assertEqual(len(removed), 3)
+            self.assertEqual([x["sources"] for x in removed if x["id"] != "ch_A"], [2], "both M3U Haber rows = one group")
             self.assertEqual(c.post("/api/ops/live/channels/ch_A/restore").status_code, 200)
             self.assertIn("ch_A", self.ids())
             self.assertEqual(c.post("/api/ops/live/channels/ch_nope/restore").status_code, 404)

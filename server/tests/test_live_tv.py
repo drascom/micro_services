@@ -112,13 +112,18 @@ class LiveTvTests(unittest.TestCase):
     def test_dead_channel_hidden_rows_and_streams_shape(self):
         from fastapi.testclient import TestClient
         from app.main import app
-        a = ch("A", "Haber 1", streams=["https://h1/a.m3u8", "https://h1/b.m3u8"], youtube=["https://www.youtube-nocookie.com/embed/x"])
+        a = ch("A", "Haber 1", streams=["https://h1/a.m3u8", "https://h1/b.m3u8"], youtube=["https://www.youtube-nocookie.com/embed/qFKEi2BqHYc"])
         d = ch("D", "Ölü", streams=["https://dead/d.m3u8"])
-        self.ingest(files([a, d], news=[a, d]))
+        a2 = ch("B2", "HABER-1 TV HD", streams=["https://h2/c.m3u8", "https://h1/b.m3u8"], youtube=["https://www.youtube-nocookie.com/embed/qFKEi2BqHYc"])
+        self.assertEqual((live.merge_key("Kent Türk TV"), live.merge_key("TV 4"), live.merge_key("ATV"), live.merge_key("Kanal 7 Avrupa")),
+                         ("kentturk", "tv4", "atv", "kanal7avrupa"))
+        self.ingest(files([a, d, a2], news=[a, d]))
         live.apply_probe({"https://h1/a.m3u8": {"probe": "fail", "cors": False, "error": "HTTP 404"},
                           "https://h1/b.m3u8": {"probe": "ok", "cors": True, "error": None},
-                          "https://dead/d.m3u8": {"probe": "fail", "cors": False, "error": "x"}})
-        self.assertEqual([c["id"] for c in live.visible_channels()], ["ch_A"], "no stream + no YouTube = hidden")
+                          "https://dead/d.m3u8": {"probe": "fail", "cors": False, "error": "x"},
+                          "https://h2/c.m3u8": {"probe": "ok", "cors": True, "error": None}})
+        self.assertEqual([c["id"] for c in live.visible_channels()], ["ch_A"], "no stream + no YouTube = hidden; B2 merged into A")
+        self.assertEqual(live.by_id("ch_B2")["id"], "ch_A")
         with TestClient(app) as c:
             secs = {x["id"]: x for x in c.get("/api/sections?profile=p1").json()["sections"]}
             self.assertEqual(secs["live_tv"]["status"], "ready")
@@ -126,8 +131,8 @@ class LiveTvTests(unittest.TestCase):
             sec = c.get("/api/section/live_tv?profile=p1").json()
             self.assertEqual([r["id"] for r in sec["rows"]], ["live_all", "live_news"])
             card = sec["rows"][0]["items"][0]
-            self.assertEqual((card["id"], card["type"], card["card_kind"], card["channel_no"], card["has_youtube"]),
-                             ("ch_A", "channel", "channel", 1, True))
+            self.assertEqual((card["id"], card["type"], card["card_kind"], card["channel_no"], card["has_youtube"], card["source_count"]),
+                             ("ch_A", "channel", "channel", 1, True, 2))
             self.assertEqual(sec["heroes"][0]["id"], "ch_A")
             page = c.get("/api/row/live_news?profile=p1&offset=0&limit=10").json()
             self.assertEqual((page["title"], page["total"]), ("Haber", 1))
@@ -136,10 +141,17 @@ class LiveTvTests(unittest.TestCase):
             self.assertEqual(st["channel"], {"id": "ch_A", "title": "Haber 1", "channel_no": 1})
             self.assertEqual((st["resume_position"], st["duration"]), (0, None))
             self.assertEqual([(s["type"], s["url"].split("?")[0]) for s in st["streams"]],
-                             [("hls", "https://h1/b.m3u8"), ("embed", "https://www.youtube-nocookie.com/embed/x"),
-                              ("hls", "https://h1/a.m3u8")], "usable m3u8, YouTube, failing m3u8 last")
-            self.assertTrue(st["streams"][1]["url"].endswith("?autoplay=1"))
-            self.assertEqual(st["streams"][0]["label"], "h1 · canlı")
+                             [("hls", "https://h1/b.m3u8"), ("hls", "https://h2/c.m3u8"),
+                              ("embed", "http://testserver/api/live/yt/qFKEi2BqHYc"), ("hls", "https://h1/a.m3u8")],
+                             "both members' usable m3u8 (shared url once), YouTube (server wrapper page), failing m3u8 last")
+            self.assertTrue(st["streams"][2]["url"].endswith("?autoplay=1"))
+            wrap = c.get("/api/live/yt/qFKEi2BqHYc?autoplay=1")
+            self.assertEqual(wrap.status_code, 200)
+            self.assertIn("youtube-nocookie.com/embed/qFKEi2BqHYc?autoplay=1", wrap.text)
+            self.assertIn("origin=http%3A%2F%2Ftestserver", wrap.text)
+            self.assertNotIn("<script", wrap.text)
+            self.assertEqual(c.get("/api/live/yt/x%22%3E%3Cscript%3E").status_code, 404)
+            self.assertEqual([s["label"] for s in st["streams"][:2]], ["h1 · famelack", "h2 · famelack"])
             self.assertTrue(all(len(s["attempt_token"]) == 32 and s["proxied"] is False for s in st["streams"]))
             self.assertEqual(c.get("/api/streams/ch_nope").status_code, 404)
             # playback reports: 3 failures -> broken -> the stream goes last; a success brings it back
@@ -156,6 +168,15 @@ class LiveTvTests(unittest.TestCase):
             # progress for a channel is ignored
             r = c.post("/api/progress", json={"profile": "p1", "item_id": "ch_A", "position": 5, "duration": 0})
             self.assertEqual(r.status_code, 200)
+            # delete / restore act on the whole group (any member id)
+            self.assertEqual(c.delete("/api/live/channels/ch_B2").status_code, 200)
+            self.assertEqual(live.visible_channels(fresh=True), [])
+            removed = c.get("/api/ops/live/removed").json()["channels"]
+            self.assertEqual([(x["id"], x["sources"]) for x in removed], [("ch_A", 2)])
+            self.assertEqual(c.post("/api/ops/live/channels/ch_A/restore").status_code, 200)
+            self.assertEqual([x["member_ids"] for x in live.visible_channels(fresh=True)], [["ch_A", "ch_B2"]])
+            adm = {x["id"]: (x["group_id"], x["group_size"]) for x in c.get("/api/ops/live").json()["channels"]}
+            self.assertEqual((adm["ch_A"], adm["ch_B2"]), (("ch_A", 2), ("ch_A", 2)))
 
 
 if __name__ == "__main__":

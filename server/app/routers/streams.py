@@ -5,6 +5,7 @@ from typing import Optional, Literal
 from pydantic import BaseModel, Field
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import HTMLResponse
 
 from .. import cache, db, rows, streamproxy
 from ..library import hostrules, live
@@ -198,9 +199,23 @@ def _channel_streams(channel_id: str, request: Optional[Request], platform: Opti
     base = streamproxy.public_base(request.headers, request.url.scheme) if request is not None else ""
     raw = live.streams(ch)
     shaped = public_streams(raw, base, hint=_hinter(request, platform))
+    for s in shaped:   # YouTube -> the server's http(s) wrapper page (a Tizen widget's local origin sends no Referer)
+        if s.get("type") == "embed":
+            s["url"] = live.yt_wrap(s["url"], base)
     _trace_public(raw, shaped)
     return {"streams": shaped, "subtitles": [], "audio": [], "resume_position": 0,
             "duration": None, "live": True, "channel": {"id": ch["id"], "title": ch["title"], "channel_no": ch["channel_no"]}}
+
+
+@router.get("/api/live/yt/{video_id}", response_class=HTMLResponse, include_in_schema=False)
+def youtube_wrapper(video_id: str, request: Request) -> HTMLResponse:
+    """A channel's YouTube embed wrapped in an http(s) page of this server (``live.yt_wrap``): only an 11-character
+    YouTube id is accepted (no URL, no redirect)."""
+    if not live.YT_ID_ONLY.match(video_id):
+        raise not_found("video")
+    origin = (streamproxy.public_base(request.headers, request.url.scheme) or "").rstrip("/")
+    return HTMLResponse(live.yt_wrapper_html(video_id, origin),
+                        headers={"Referrer-Policy": "strict-origin-when-cross-origin", "Cache-Control": "public, max-age=3600"})
 
 
 class PlaybackReport(BaseModel):

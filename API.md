@@ -212,15 +212,26 @@ Yeni satır kimlikleri `featured_series`, `featured_movies`, `anime` de `/api/ro
   `#EXTVLCOPT` Referer/User-Agent'lı kanal akışı her zaman vekilden geçer (`proxy_reason:"recipe"`).
 - `GET /api/streams/ch_<nanoid>` → mevcut yanıt şekli + `"live":true`, `"channel":{"id","title","channel_no"}`; `resume_position:0`,
   `duration:null`, `subtitles`/`audio` boş. `streams[]` sırası: çalışan m3u8'ler (`type:"hls"`, `label:"<host> · canlı"`), sonra
-  YouTube (`type:"embed"`, `https://www.youtube-nocookie.com/embed/<id>?autoplay=1`, `label:"YouTube · canlı"`), en sonda sağlıksız
+  YouTube (`type:"embed"`, `<taban>/api/live/yt/<id>?autoplay=1` = sunucunun sarmalayıcı sayfası; taban bilinmezse
+  `https://www.youtube-nocookie.com/embed/<id>?autoplay=1`, `label:"YouTube · canlı"`), en sonda sağlıksız
   (broken / sunucu yoklamasında açılmayan) m3u8'ler. Akış alanları: `kind:"live"`, `source:"famelack"`, `source_id:"ch_<nanoid>"`,
   her akışın KENDİ `attempt_token`'ı. CORS başlığı vermeyen playlist vekilden geçer (`proxied:true`, `proxy_reason:"recipe"`).
+- `GET /api/live/yt/<id>` (ek) → `text/html`: siyah, tam boy YouTube iframe'i (`origin=` + `referrerpolicy`), betik/odak yok;
+  yalnız 11 karakterlik YouTube id'si (`[A-Za-z0-9_-]`), aksi 404. Neden: Tizen widget'ın yerel kökeni Referer göndermez,
+  YouTube gömülüsü Referer'sız oynatmaz (Hata 152/153); sarmalayıcı http(s) kökenli sayfa olarak bunu sağlar.
 - `DELETE /api/live/channels/ch_<nanoid>` → `{"ok":true,"id":"ch_<nanoid>","removed":true}` (bilinmeyen id 404): kanal HERKESTEN
   silinir (`channels.removed=1`); bölüm satırları, vitrin, `/api/row/live_*`, `/api/streams/ch_*` (404) dahil hiçbir istemci yüzeyinde
   görünmez, famelack/M3U taramaları geri getirmez (aynı m3u8 URL'siyle yeni gelen satır da silinmiş doğar). Geri alma yalnız admin:
   `GET /api/ops/live/removed` → `{"channels":[{"id","title","source","source_id","country","removed_at"}]}`,
   `POST /api/ops/live/channels/{ch_id}/restore` → `{"ok":true,"id",...,"removed":false}`. `GET /api/ops/live` kanal satırlarında
   `removed`, `counts.removed` ek alanları.
+- Aynı kanalın birden çok kaynağı (famelack + M3U, ad varyantları "Haberturk"/"Haberturk TV", "TV 4"/"TV4") TEK kanal kartıdır
+  (ek): `id` = grubun birincil satırı (en eski; sabit), kartta `source_count` (birleşen satır sayısı) ve `sources` = kaynak adları
+  (`["famelack","m3u"]`); `/api/streams/ch_<id>` (grubun herhangi bir üyesinin id'siyle de) tüm üyelerin akışlarını aynı sırayla
+  verir (çalışan m3u8'ler, YouTube, sağlıksızlar; ortak URL bir kez), hls `label` = `"<host> · <kaynak adı>"` (famelack ya da M3U
+  kaynak adı), akışın `source` alanı o akışın kaynağı. `DELETE /api/live/channels/{id}` ve admin geri al grubun tamamına uygulanır;
+  `GET /api/ops/live/removed` satırlarında `sources`, `member_ids`; `GET /api/ops/live` kanal satırlarında `group_id`, `group_size`,
+  `counts.groups` (ek; `counts.visible` = görünür kanal grubu).
 - `POST /api/playback-report` kanal akışının `attempt_token`'ıyla da çalışır (1 hata = suspect, 3 = broken, başarı = healthy; cihaz
   kodları sayılmaz). `POST /api/progress` kanal için çağrılmaz; `item_id` `ch_` ile gelirse yok sayılır (`{"ok":true,...}`).
 
