@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import cache, config, db
+from .access import AccessGuard
 from .http_cache import ETagMiddleware
 from .routers import (
     backgrounds,
@@ -68,6 +69,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# External access guard (app/access.py). Added BEFORE CORS so CORS stays outside it (preflights + 401/403 get CORS headers).
+app.add_middleware(AccessGuard)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

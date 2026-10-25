@@ -44,6 +44,13 @@ def _path(name: str, default_rel: str) -> str:
 
 
 HOST = os.environ.get("HOST", "0.0.0.0")
+# Public (internet-facing, reverse-proxied) host names. A request whose Host / X-Forwarded-Host is one of these, or
+# that carries X-Forwarded-For, is EXTERNAL: admin is 403 and /api/* needs the X-DZ-Key access key (app/access.py).
+PUBLIC_HOSTS = [
+    h.strip().lower().split(":")[0]
+    for h in (os.environ.get("PUBLIC_HOSTS") or "diziflix.drascom.uk").split(",")
+    if h.strip()
+]
 PORT = _int("PORT", 8090)
 
 SOURCE = os.environ.get("SOURCE", "mock")

@@ -30,12 +30,12 @@ function env(o) {
   sb.document = doc;
   sb.XMLHttpRequest = function () {
     const x = this;
-    x.open = (m, u) => { x.u = u; }; x.setRequestHeader = () => {}; x.abort = () => {};
+    x.open = (m, u) => { x.u = u; x.h = {}; }; x.setRequestHeader = (k, v) => { x.h[k] = v; }; x.abort = () => {};
     x.send = () => {
       log.xhr.push(x.u);
       const r = (o.routes || []).find(r => r[0].test(x.u));
-      const res = r ? r[1](x.u) : { status: 0 };
-      Promise.resolve().then(() => { x.readyState = 4; x.status = res.status; x.responseText = res.body ? JSON.stringify(res.body) : ''; x.onreadystatechange(); });
+      const res = r ? r[1](x.u, x.h) : { status: 0 };
+      Promise.resolve().then(() => { x.readyState = 4; x.status = res.status; x.responseText = res.raw || (res.body ? JSON.stringify(res.body) : ''); x.onreadystatechange(); });
     };
   };
   vm.createContext(sb);
@@ -118,6 +118,35 @@ function env(o) {
     assert.equal(e.text('c-title').length, 0, 'back on home');
     assert(findAll(e.screen, 'greet').length === 1);
     assert.equal(e.ls['dzproto.server'], 'http://tv.lan:8090');
+  }
+  // ---- access key: 401 auth_required -> key warning + focus on key box; right key -> saved, header on every request;
+  //      non-JSON 401 (proxy login page) -> proxy message ----
+  {
+    const e = env({ routes: [
+      [/^https:\/\/pin\.example\.com\/api\/health/, () => ({ status: 200, body: { status: 'ok' } })],
+      [/^https:\/\/pin\.example\.com\/api\/profiles/, () => ({ status: 401, raw: '<html>PIN</html>' })],
+      [/\/api\/health/, () => ({ status: 200, body: { status: 'ok' } })],
+      [/\/api\/profiles/, (u, h) => (h['X-DZ-Key'] === 'secret-key-123' ? { status: 200, body: { profiles: [{ id: 'p1', name: 'Ali' }] } }
+        : { status: 401, body: { error: { code: 'auth_required', message: 'access key required' } } })],
+    ] });
+    await e.settle();
+    const inp = findAll(e.screen, 'fld-in')[0], kin = findAll(e.screen, 'fld-in')[1];
+    assert(kin, 'key box present');
+    inp.value = 'https://pin.example.com'; inp.oninput(); inp.dzSubmit();
+    await e.settle();
+    assert(/vekil/.test(e.text('c-status')[0]), e.text('c-status')[0]);
+    inp.value = 'https://ext.example.com'; inp.oninput(); inp.dzSubmit();
+    await e.settle();
+    assert(/Erişim anahtarı/.test(e.text('c-status')[0]) && !e.ls['dzproto.server'], 'auth error, not saved');
+    assert(/\bon\b/.test(findAll(e.screen, 'fld')[1].className), 'focus on key box');
+    kin.value = ' secret-key-123 '; kin.oninput(); kin.dzSubmit();
+    await e.settle();
+    assert.equal(e.ls['dzproto.server'], 'https://ext.example.com');
+    assert.equal(e.ls['dzproto.key'], 'secret-key-123');
+    assert.deepEqual(e.text('c-title'), ['Kim izliyor?']);
+    assert.equal(e.api.keyFor('https://ext.example.com/api/subtitles/x.vtt'), 'secret-key-123');
+    assert.equal(e.api.keyFor('https://ext.example.com/api/stream-proxy/t'), '', 'signed proxy: no header');
+    assert.equal(e.api.keyFor('https://cdn.other.com/a.m3u8'), '', 'third party: never');
   }
   console.log('server_error: ok');
 })().catch(err => { console.error(err); process.exit(1); });

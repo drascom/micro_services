@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
-from .. import cache
+from .. import access, cache
 
 router = APIRouter(tags=["health"])
 
 
 @router.get("/api/health")
-def health() -> dict:
+def health(request: Request) -> dict:
+    if not access.authorized(request.headers):
+        return {"status": "ok"}   # external without a valid key: nothing about the catalogue
     snap = cache.get()
     return {
         "status": "ok",

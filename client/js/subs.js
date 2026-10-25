@@ -105,7 +105,9 @@
 
   /* testlerde degistirilebilir: (tam url) -> Promise<metin> */
   subs.fetchText = function (url) {
-    return fetch(url, { mode: 'cors', cache: 'default' }).then(function (res) {
+    var api = g.DZP && g.DZP.api, k = api && api.keyFor ? api.keyFor(url) : '', opt = { mode: 'cors', cache: 'default' };
+    if (k) { opt.headers = {}; opt.headers[api.keyHeader] = k; }   /* /api/subtitles: dis erisimde anahtar gerekir */
+    return fetch(url, opt).then(function (res) {
       if (!res.ok) throw new Error('http_' + res.status);
       return res.text();
     });

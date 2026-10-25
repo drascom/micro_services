@@ -1920,13 +1920,14 @@
   /* =====================================================================
      SUNUCU ADRESI (ilk acilis; Ayarlar > Sunucu)
      IP ya da URL (kurallar: api.serverCandidates; alan adi once https://, sonra http://:8090; semali portsuz URL aynen + :8090; adaylar sirayla denenir). "Baglan" KAYDETMEDEN /api/health dener;
-     basariliysa kaydeder ve profil ekranina gecer. Kumanda: satir 0 girdi (OK = ekran klavyesi; klavyede Done = Baglan),
-     satir 1 [Baglan].
+     basariliysa kaydeder ve profil ekranina gecer. Kumanda: satir 0 adres girdisi (OK = ekran klavyesi; klavyede Done = Baglan),
+     satir 1 istege bagli Erisim anahtari (internetten / ters vekil uzerinden baglanirken; adresle birlikte kaydedilir), satir 2 [Baglan].
+     401 auth_required (testte ya da calisirken: api.onAuthError) -> anahtar uyarisi + odak anahtar kutusunda.
      ===================================================================== */
   var SV = null;
   function openServer(from) {
     var cur = api.base();
-    S.srv = { from: from, value: cur || api.suggestBase(), row: 1, busy: false, msg: '', err: false, fail: false, cont: null, back: '' };
+    S.srv = { from: from, value: cur || api.suggestBase(), key: api.key(), row: 2, busy: false, msg: '', err: false, fail: false, cont: null, back: '' };
     if (!S.srv.value) S.srv.row = 0;
     go('server');
   }
@@ -1935,10 +1936,21 @@
      `cont` (kaldigi yerden devam); adres degistiyse kaydedilir ve profil secimine gecilir. back: 'settings' | 'home' | '' (cikis onayi). */
   function openServerError(message, cont, back) {
     var cur = api.base();
-    S.srv = { from: 'error', back: back || '', value: cur || api.suggestBase(), row: 0, busy: false,
+    /* anahtar uyarisi zaten acik (api.onAuthError): ayni 401'in istek hatasi onu ezmesin, yalniz devam noktasi alinir */
+    if (S.screen === 'server' && S.srv && S.srv.auth) { if (!S.srv.cont) S.srv.cont = cont; if (back && !S.srv.back) S.srv.back = back; return; }
+    S.srv = { from: 'error', back: back || '', value: cur || api.suggestBase(), key: api.key(), row: 0, busy: false,
       msg: 'Sunucuya bağlanılamadı (' + (cur || '—') + '): ' + (message || 'bağlantı hatası'), err: true, fail: true, cont: cont };
     go('server');
   }
+  /* calisirken sunucu 401 auth_required dondu (anahtar degisti/silindi): sunucu adresi ekrani, anahtar uyarisi, odak anahtar kutusunda */
+  api.onAuthError = function (e) {
+    if (S.screen === 'server') return;
+    try { if (DZP.player && DZP.player.active && DZP.player.active()) DZP.player.close(); } catch (x) {}
+    var cur = api.base();
+    S.srv = { from: 'error', back: '', value: cur || api.suggestBase(), key: api.key(), row: 1, busy: false, auth: true,
+      msg: (e && e.message ? e.message : 'Erişim anahtarı gerekli ya da yanlış') + ' — sunucunun erişim anahtarını girin.', err: true, fail: false, cont: null };
+    go('server');
+  };
   function liveClock() {
     var ck = el('div', 'clock live', clockText());
     ck.style.right = '144px';
@@ -1956,12 +1968,12 @@
     screenEl.appendChild(liveClock());
     var lg = brandImg('brand-logo', 'img/logo-wide.png', 'DiziFlix'); lg.style.top = '76px';
     screenEl.appendChild(lg);
-    var t = el('div', 'c-title', V.fail ? 'Sunucuya bağlanılamadı' : 'Sunucu adresi'); t.style.top = '300px';
+    var t = el('div', 'c-title', V.fail ? 'Sunucuya bağlanılamadı' : 'Sunucu adresi'); t.style.top = '280px';
     var sub = el('div', 'c-sub', 'diziflix sunucunuzun IP adresini ya da URL\'sini girin (örn. 192.168.1.10 ya da https://diziflix.ornek.com).');
-    sub.style.top = '392px';
+    sub.style.top = '372px';
     screenEl.appendChild(t); screenEl.appendChild(sub);
 
-    var fx = 460, fy = 500;
+    var fx = 460, fy = 460;
     var fld = el('div', 'fld');
     fld.style.left = fx + 'px'; fld.style.top = fy + 'px';
     var m = makeMat('fld-mat', fx, fy);
@@ -1978,25 +1990,43 @@
     bindPointer(fld, 'srv', 0);
     screenEl.appendChild(fld);
 
-    var cw = el('div', 'c-ctrls'); cw.style.top = '648px';
+    /* erisim anahtari (istege bagli): yalniz internetten / vekil uzerinden baglanirken gerekir */
+    var ky = fy + 124;
+    var kfld = el('div', 'fld');
+    kfld.style.left = fx + 'px'; kfld.style.top = ky + 'px';
+    kfld.appendChild(makeMat('fld-mat', fx, ky));
+    var kin = el('input', 'fld-in');
+    kin.type = 'text'; kin.value = V.key || ''; kin.placeholder = 'Erişim anahtarı (isteğe bağlı)';
+    kin.setAttribute('aria-label', 'Erişim anahtarı');
+    kin.setAttribute('autocomplete', 'off'); kin.setAttribute('spellcheck', 'false'); kin.setAttribute('autocapitalize', 'off');
+    kin.oninput = function () { V.key = kin.value; };
+    kin.onfocus = function () { V.row = 1; serverPaint(); };
+    kin.dzSubmit = function () { kin.blur(); serverConnect(); };
+    kfld.appendChild(kin);
+    kfld.appendChild(el('div', 'fld-ring'));
+    bindPointer(kfld, 'srv', 1);
+    screenEl.appendChild(kfld);
+
+    var cw = el('div', 'c-ctrls'); cw.style.top = (ky + 152) + 'px';
     var b = el('div', 'ctrl');
     b.appendChild(makeMat(''));
     b.appendChild(el('span', '', 'Bağlan'));
-    bindPointer(b, 'srv', 1);
+    bindPointer(b, 'srv', 2);
     cw.appendChild(b);
     screenEl.appendChild(cw);
 
-    var st = el('div', 'c-status'); st.style.top = '752px';
+    var st = el('div', 'c-status'); st.style.top = (ky + 252) + 'px';
     screenEl.appendChild(st);
     screenEl.appendChild(hintBar(backLbl ? [['OK', ' Yaz / Bağlan'], ['Geri', ' ' + backLbl]] : [['OK', ' Yaz / Bağlan']]));
-    SV = { fld: fld, inp: inp, btn: b, st: st };
+    SV = { fld: fld, inp: inp, kfld: kfld, kin: kin, btn: b, st: st };
     serverPaint();
   }
   function serverPaint() {
     if (!SV) return;
     var V = S.srv;
     SV.fld.className = 'fld' + (V.row === 0 ? ' on' : '');
-    SV.btn.className = 'ctrl' + (V.row === 1 ? ' on' : '');
+    SV.kfld.className = 'fld' + (V.row === 1 ? ' on' : '');
+    SV.btn.className = 'ctrl' + (V.row === 2 ? ' on' : '');
     SV.st.className = 'c-status srv' + (V.err ? ' err' : '');
     SV.st.textContent = V.msg;
   }
@@ -2014,8 +2044,15 @@
       }
       V.err = false; V.msg = 'Bağlanılıyor: ' + cands[i] + ' …';
       serverPaint();
-      api.probe(cands[i], function (err) {
+      api.probe(cands[i], V.key || '', function (err) {
         if (S.srv !== V) return;
+        /* sunucuya ulasildi ama anahtar/vekil engeli: diger adaylari denemeden soyle (anahtar hatasinda odak anahtar kutusunda) */
+        if (err && err.code) {
+          V.busy = false; V.err = true;
+          V.msg = cands[i] + ': ' + err.message + (err.code === 'auth_required' ? ' — anahtarı kontrol edin, kaydedilmedi.' : ' — kaydedilmedi.');
+          if (err.code === 'auth_required') { V.row = 1; if (SV) { try { focusNoScroll(SV.kin); } catch (e2) {} } }
+          return serverPaint();
+        }
         if (err) { fails.push(cands[i] + ': ' + (err.message || 'bağlantı hatası')); return next(i + 1); }
         V.busy = false;
         connected(cands[i]);
@@ -2023,8 +2060,9 @@
     })(0);
     function connected(base) {
       V.value = base; if (SV) SV.inp.value = base;
-      if (V.cont && base === api.base()) return V.cont();   /* ayni adres: yeniden dene, kaldigi yerden */
-      api.setBase(base);
+      var key = String(V.key || '').replace(/\s+/g, '');
+      if (V.cont && base === api.base() && key === api.key()) return V.cont();   /* ayni adres + anahtar: yeniden dene, kaldigi yerden */
+      api.setBase(base, key);
       DZP.BG_LIST = []; reloadBackgrounds();
       S.pid = null; S.profiles = []; S.pname = '';
       openProfiles('start');
@@ -2032,10 +2070,11 @@
   }
   function serverKey(k) {
     var V = S.srv;
-    if (k === 'up') V.row = 0;
-    else if (k === 'down') V.row = 1;
+    if (k === 'up') V.row = Math.max(0, V.row - 1);
+    else if (k === 'down') V.row = Math.min(2, V.row + 1);
     else if (k === 'ok') {
       if (V.row === 0 && SV) { try { focusNoScroll(SV.inp); } catch (e) {} return; }   /* TV: odak girdiye -> ekran klavyesi */
+      if (V.row === 1 && SV) { try { focusNoScroll(SV.kin); } catch (e) {} return; }
       return serverConnect();
     } else if (k === 'back') {
       if (V.from === 'settings' || V.back === 'settings') go('settings');

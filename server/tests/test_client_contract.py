@@ -475,6 +475,48 @@ class ErrorEnvelopeTests(Base):
                              ("/api/sections?profile=p1&fail=1", 500), ("/img/yok/card", 404), ("/img/%s/bogus" % FILM, 404)):
             body = self.get(path, status)
             self.conforms(body, S.ERROR, path)
+        self._external_access_rules()
+
+    def _external_access_rules(self):
+        """app/access.py: internal = no key; external (public Host / X-Forwarded-For) -> admin 403, /api/* 401 without the
+        admin-typed key (fail closed while none is set), 200 with it; exempt image/stream/health; 5 bad tries/min -> 429."""
+        from app import access, settings
+        ext = {"host": "diziflix.drascom.uk"}
+        def st(path, h=None, code=None):
+            r = self.c.get(path, headers=h or {})
+            if code is not None:
+                self.assertEqual(r.status_code, code, "%s %s -> %s %s" % (path, h, r.status_code, r.text[:120]))
+            return r
+        access.reset_limits(); access.invalidate()
+        try:
+            st("/api/profiles", code=200)                                       # internal (LAN host): no key
+            self.assertEqual(st("/api/profiles", ext, 401).json()["error"]["code"], "auth_required")   # no key set: closed
+            with self.assertRaises(settings.SettingsError):
+                settings.set_access_key("short")
+            access.set_key("test-key-123456")
+            access.reset_limits()
+            self.conforms(st("/api/profiles", ext, 401).json(), S.ERROR, "401")
+            st("/api/profiles", {**ext, "X-DZ-Key": "wrong-key-000000"}, 401)
+            st("/api/profiles", {**ext, "X-DZ-Key": "test-key-123456"}, 200)
+            st("/api/profiles", {"x-forwarded-for": "1.2.3.4", "X-DZ-Key": "test-key-123456"}, 200)
+            for p in ("/admin", "/api/ops/settings", "/api/ops/access-key", "/docs", "/openapi.json"):
+                self.assertEqual(st(p, {**ext, "X-DZ-Key": "test-key-123456"}, 403).json()["error"]["code"], "forbidden")
+            st("/api/ops/access-key", code=200)                                 # admin from the LAN still works
+            self.assertEqual(st("/api/health", ext, 200).json(), {"status": "ok"})   # exempt, minimal body
+            st("/img/%s/card" % FILM, ext, 200)
+            self.assertNotEqual(st("/api/stream-proxy/bogus", ext).status_code, 401)
+            pre = self.c.options("/api/profiles", headers={**ext, "Origin": "http://tv", "Access-Control-Request-Method": "GET",
+                                                           "Access-Control-Request-Headers": "x-dz-key"})
+            self.assertEqual(pre.status_code, 200)
+            self.assertIn("x-dz-key", pre.headers.get("access-control-allow-headers", "").lower())
+            access.reset_limits()
+            bot = {"host": "diziflix.drascom.uk", "x-forwarded-for": "9.9.9.9"}
+            for _ in range(access.FAIL_LIMIT):
+                st("/api/sections", bot, 401)                                    # missing key counts too
+            self.assertEqual(st("/api/sections", {**bot, "X-DZ-Key": "test-key-123456"}, 429).json()["error"]["code"], "rate_limited")
+            st("/api/profiles", {**ext, "x-forwarded-for": "8.8.8.8", "X-DZ-Key": "test-key-123456"}, 200)   # other IP unaffected
+        finally:
+            access.reset_limits()
 
     def test_client_debug_delay_flag_is_accepted(self):
         self.get("/api/health?delay=1")

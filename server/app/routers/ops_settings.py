@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import APIRouter, Body
 
-from .. import autoscan, llm_health, settings
+from .. import access, autoscan, config, llm_health, settings
 from ..errors import ApiError
 from ..library import tmdb
 from ..scraper import heal as sheal, state as sstate
@@ -93,3 +93,19 @@ def get_llm_health() -> dict[str, Any]:
 @router.post("/api/ops/llm/health")
 def post_llm_health() -> dict[str, Any]:
     return llm_health.check(force=True)
+
+
+@router.get("/api/ops/access-key")
+def get_access_key() -> dict[str, Any]:
+    """External access key (header ``X-DZ-Key``, "" = none set); admin is only reachable from the LAN (app/access.py)."""
+    return {"key": access.current_key(), "min_length": settings.ACCESS_KEY_MIN, "public_hosts": list(config.PUBLIC_HOSTS)}
+
+
+@router.put("/api/ops/access-key")
+def put_access_key(body: Any = Body(...)) -> dict[str, Any]:
+    """``{"key": "<admin-typed, >= 12 chars>"}``; external clients holding an old key get 401 ``auth_required``."""
+    try:
+        access.set_key(body.get("key") if isinstance(body, dict) else None)
+    except settings.SettingsError as exc:
+        raise ApiError(422, "validation_error", str(exc))
+    return get_access_key()

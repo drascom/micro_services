@@ -1,5 +1,5 @@
 /* Ayarlar sekmesi: alt menü Genel · Görünüm (backgrounds.js) · Kategoriler (categories.js) · Sistem olayları (errors.js).
-   Genel = kompakt satırlar (etiket solda, kontrol sağda): heal (/api/ops/settings, /api/ops/llm/health), TMDB
+   Genel = kompakt satırlar (etiket solda, kontrol sağda): dış erişim anahtarı (/api/ops/access-key), heal (/api/ops/settings, /api/ops/llm/health), TMDB
    (/api/ops/tmdb/status|preview|backfill; "Sezon" = kind=series + scope=seasons), Bakım (kütüphaneyi sıfırla).
    Değişiklik anında kaydedilir (PUT) ve yeniden başlatma gerektirmez. Canlı TV ayarları "Canlı TV" sekmesinde (live.js). */
 (function(){
@@ -288,6 +288,36 @@ function healHtml(){
       'Model: '+(h.model||'varsayılan')+' · başarısız denemeden sonra cooldown '+secText(h.cooldown_seconds||0))+
     '<div id="llm-card">'+llmHtml()+'</div></section>';
 }
+/* ---- erişim anahtarı (dış istekler X-DZ-Key; /api/ops/access-key). Sunucu üretmez: admin yazar (>= min_length); boşken dış /api/* kapalı ---- */
+var AK=null,akShow=false;
+function akMin(){return (AK&&AK.min_length)||12}
+function accessHtml(fresh){
+  var k=(AK&&AK.key)||'',old=$('ak-val'),v=!fresh&&old?old.value:k;   /* yeniden çizimde yazılmakta olan taslak korunur */
+  return '<section><h2>Dış erişim</h2>'+rowH('Erişim anahtarı'+(AK&&!k?' '+pill('bad','tanımsız'):''),
+    '<input id="ak-val" type="'+(akShow?'text':'password')+'" autocomplete="off" spellcheck="false" placeholder="en az '+akMin()+' karakter" value="'+esc(v)+'" aria-label="Erişim anahtarı">'+
+    '<button class="btn" id="ak-show">'+(akShow?'Gizle':'Göster')+'</button>'+
+    '<button class="btn" id="ak-copy">Kopyala</button>'+
+    '<button class="btn" id="ak-save">Kaydet</button>',
+    'İnternetten ('+esc(((AK&&AK.public_hosts)||[]).join(', ')||'dış alan adı')+') bağlanan istemciler bu anahtarı “Sunucu adresi” ekranına girer (header X-DZ-Key). Anahtar boşken dışarıdan hiçbir API isteği kabul edilmez. Yerel ağ / NetBird anahtarsız çalışır; admin dışarıdan kapalıdır')+'</section>';
+}
+function renderAccess(fresh){var el=$('ak-card');if(el)el.innerHTML=accessHtml(fresh)}
+function akVal(){var i=$('ak-val');return i?i.value.trim():''}
+function akLoad(){return call('/api/ops/access-key',{cache:'no-cache'}).then(function(d){AK=d;renderAccess(true)}).catch(function(e){toast('Erişim anahtarı alınamadı: '+(e&&e.message||e),'bad')})}
+function akCopy(){
+  var k=akVal();if(!k){toast('Anahtar boş','bad');return}
+  function fallback(){var t=document.createElement('textarea');t.value=k;document.body.appendChild(t);t.select();
+    try{document.execCommand('copy');toast('Kopyalandı')}catch(e){toast('Kopyalanamadı','bad')}document.body.removeChild(t)}
+  if(navigator.clipboard&&window.isSecureContext)navigator.clipboard.writeText(k).then(function(){toast('Kopyalandı')},fallback);else fallback();
+}
+function akSave(){
+  var k=akVal();
+  if(k.length<akMin()){toast('Anahtar en az '+akMin()+' karakter olmalı; kaydedilmedi','bad');return}
+  if(/\s/.test(k)){toast('Anahtarda boşluk olamaz; kaydedilmedi','bad');return}
+  if(AK&&AK.key&&AK.key!==k&&!window.confirm('Erişim anahtarı değişsin mi? Eski anahtarla dışarıdan bağlanan istemciler yeni anahtarı girene kadar bağlanamaz.'))return;
+  call('/api/ops/access-key',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})})
+    .then(function(d){AK=d;renderAccess(true);toast('Erişim anahtarı kaydedildi')})
+    .catch(function(e){toast('Kaydedilemedi: '+(e&&e.message||e),'bad')});
+}
 function resetHtml(){
   return '<section><h2>Bakım</h2>'+rowH('Kütüphaneyi sıfırla',
     '<label class="chk" title="Görsel ve altyazı önbelleğini de sil"><input type="checkbox" id="reset-cache"> önbellek de</label>'+
@@ -306,7 +336,8 @@ function libReset(b){
 function render(){
   var root=$('set-root');if(!root)return;
   if(!D){root.innerHTML=failed?'<div class="note bad">Ayarlar yüklenemedi: '+esc(failed)+' <button class="btn" id="set-retry">Yeniden dene</button></div>':'<div class="empty sm">Yükleniyor…</div>';return}
-  root.innerHTML=healHtml()+'<section><h2>TMDB zenginleştirme</h2><div id="tmdb-card" class="tmdb"></div></section>'+resetHtml();
+  root.innerHTML=healHtml()+'<div id="ak-card">'+accessHtml()+'</div>'+'<section><h2>TMDB zenginleştirme</h2><div id="tmdb-card" class="tmdb"></div></section>'+resetHtml();
+  if(!AK)akLoad();
   tLast='';renderTmdb();
 }
 
@@ -342,6 +373,9 @@ root.addEventListener('click',function(ev){
   if(b.id==='llm-test'){loadLlm(true);return}
   if(b.id==='set-retry'){load();return}
   if(b.id==='lib-reset'){libReset(b);return}
+  if(b.id==='ak-show'){akShow=!akShow;var i=$('ak-val');if(i)i.type=akShow?'text':'password';b.textContent=akShow?'Gizle':'Göster';return}
+  if(b.id==='ak-copy'){akCopy();return}
+  if(b.id==='ak-save'){akSave();return}
   if(b.id==='tmdb-retry'){tFail=false;tmdbLoad();return}
   if(b.id==='tmdb-preview'){tmdbStart(true);return}
   if(b.id==='tmdb-apply'){tmdbStart(false);return}

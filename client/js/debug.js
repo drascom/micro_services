@@ -129,6 +129,8 @@
       x.open('POST', B + '/api/debug-log', true);
       x.timeout = 8000;
       x.setRequestHeader('Content-Type', 'application/json');
+      var ak = g.DZP && g.DZP.api && g.DZP.api.key ? g.DZP.api.key() : '';
+      if (ak) x.setRequestHeader(g.DZP.api.keyHeader, ak);
       x.onreadystatechange = function () { if (x.readyState === 4) done(); };
       x.ontimeout = done;
       x.send(JSON.stringify({ device: deviceId(), ua: String((g.navigator && g.navigator.userAgent) || '').slice(0, 200),

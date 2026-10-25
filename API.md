@@ -3,6 +3,19 @@
 Server: `http://<sunucu>:8090` (örn. `http://192.168.1.10:8090`; istemcide gömülü adres yok, ilk açılışta sorulur)  ·  Tüm yanıtlar JSON, `Access-Control-Allow-Origin: *`
 Hata: `{"error": {"code": "...", "message": "..."}}` + uygun HTTP status.
 
+**Dış erişim (EK, 2026-10-25; `server/app/access.py`).** Sunucu internete ters vekille (`PUBLIC_HOSTS`, varsayılan
+`diziflix.drascom.uk`) açıksa, `Host`/`X-Forwarded-Host` bu adlardan biri olan ya da `X-Forwarded-For` taşıyan istek DIŞ sayılır:
+- `/api/*` istekleri başlık `X-DZ-Key: <erişim anahtarı>` ister (anahtarı admin Ayarlar > Genel'de kendisi yazar, en az 12 karakter;
+  tanımsızken dış `/api/*` hep reddedilir). Yok/yanlış → `401 {"error":{"code":"auth_required"}}`.
+- Muaf (etiketle yüklenen, başlık gönderemeyen): `/img/*`, `/api/stream-proxy/*` (imzalı token, HLS vekili dahil), `/api/live/yt/*`,
+  `/api/backgrounds/{id}.jpg`, `/api/health` (anahtarsız dış istekte yalnız `{"status":"ok"}`).
+- Admin yüzeyi (`/admin*`, `/api/ops/*`, `/api/admin/*`, `/api/onboard/*`, `/docs`, `/openapi.json`) dışarıdan → `403 forbidden`.
+- Kaba kuvvet: aynı istemci IP'sinden (ilk `X-Forwarded-For`) 1 dk içinde 5 eksik/yanlış anahtar → `429 rate_limited` 15 dk
+  (tekrarında 60 dk).
+- İç istekler (LAN IP / NetBird `diziflix.internal`) değişmeden anahtarsız çalışır. CORS ön uçuşu `X-DZ-Key`'e izin verir.
+- İstemci: anahtar "Sunucu adresi" ekranında (isteğe bağlı) girilir, adresle birlikte saklanır (`dzproto.key`); sunucuya giden her
+  XHR/fetch (hls.js `xhrSetup`, altyazı, uzak log dahil; akış vekili ve üçüncü taraf hariç) başlığı taşır.
+
 > **2026-10-24 kaldırıldı** (hiçbir istemci çağırmıyordu): `GET /api/boot` (tv-v1 ve legacy yerleşim; ana ekran artık `/api/sections` +
 > `/api/section/{id}` + `/api/row/{id}`), `GET /api/sources`, `GET /api/genres` (tür listesi `/api/catalog` yanıtının `genres` alanında),
 > `GET /api/notifications` + `POST /api/notifications/read`, `DELETE /api/continue/{item_id}`. Aşağıdaki ana ekran satır kuralları
@@ -484,7 +497,8 @@ Boyut whitelist dışıysa en yakın izinli boyuta yuvarla.
 ### Hatalar
 Her hata `{"error":{"code","message"}}` zarfıdır: `400 bad_request` (eksik/bilinmeyen `profile`, bilinmeyen `source`, geçersiz
 `avatar_seed`), `404 not_found` (bilinmeyen yapım/bölüm/satır/görsel türü), `422 validation_error` (geçersiz parametre/gövde),
-`500` (`?fail=1` ya da beklenmeyen). Silinmiş bir profil kimliğiyle `sections`/`row`/`catalog`/`mylist` 400 döner (istemci hata ekranı
+`500` (`?fail=1` ya da beklenmeyen); dış erişimde `401 auth_required` (erişim anahtarı yok/yanlış), `403 forbidden` (admin
+yüzeyi), `429 rate_limited` (hatalı anahtar denemesi sınırı; bkz. üstte "Dış erişim"). Silinmiş bir profil kimliğiyle `sections`/`row`/`catalog`/`mylist` 400 döner (istemci hata ekranı
 gösterir; Ayarlar'dan profil değiştirilir).
 
 ## Geliştirme kolaylıkları

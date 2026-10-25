@@ -1,10 +1,12 @@
 /* api.js - diziflix API (ES5, XHR).
    Sunucu adresi sirasi: kayitli (localStorage `dzproto.server`, ilk acilis / Ayarlar > Sunucu) > `?server=` > sayfa sunucunun
-   KENDISINDEN (port 8090) aciliyorsa o origin > yok ('' -> ilk acilis "Sunucu adresi" ekrani, js/app.js). */
+   KENDISINDEN (port 8090) aciliyorsa o origin > yok ('' -> ilk acilis "Sunucu adresi" ekrani, js/app.js).
+   Erisim anahtari (istege bagli, `dzproto.key`, adresle birlikte kaydedilir): sunucuya giden her istege `X-DZ-Key` basligi
+   (internetten / ters vekil uzerinden baglanirken gerekli; yerel ag anahtarsiz). 401 auth_required -> DZP.api.onAuthError. */
 (function (g) {
   'use strict';
   var DZP = g.DZP = g.DZP || {};
-  var K_SERVER = 'dzproto.server', PORT = '8090';
+  var K_SERVER = 'dzproto.server', K_KEY = 'dzproto.key', PORT = '8090', KEY_HDR = 'X-DZ-Key';
 
   function qs(name) {
     var m = new RegExp('[?&]' + name + '=([^&]*)').exec(g.location.search || '');
@@ -61,6 +63,12 @@
     return '';
   }
   var BASE = autoBase();
+  function cleanKey(v) { return String(v || '').replace(/\s+/g, ''); }
+  var KEY = cleanKey(lsGet(K_KEY));
+  /* url sunucumuza mi gidiyor (yalniz o zaman anahtar basligi eklenir; ucuncu taraf CDN'e asla) */
+  function isServerUrl(u) { return !!(BASE && u && String(u).indexOf(BASE + '/') === 0); }
+  /* imzali akis vekili basliksiz calisir: ozel baslik her parcada CORS on ucusu dogurmasin */
+  function keyFor(u) { return KEY && isServerUrl(u) && String(u).indexOf(BASE + '/api/stream-proxy/') !== 0 ? KEY : ''; }
 
   function dbgOn() { try { return !!(g.DZDebug && g.DZDebug.enabled()); } catch (e) { return false; } }
   /* istemci platformu: tizen | android (WebView kabugu) | browser (sunucu engine_hint + motor istatistigi icin) */
@@ -74,8 +82,17 @@
   }
   function enc(v) { return encodeURIComponent(String(v == null ? '' : v)); }
 
-  function request(method, path, body, cb, base, timeout) {
-    var x = new XMLHttpRequest(), B = base || BASE;
+  /* hata nesnesi: 401 JSON auth_required (anahtar yok/yanlis) | JSON olmayan 401 (vekilin giris sayfasi, orn. NetBird PIN) */
+  function authErr(status, data) {
+    var code = data && data.error && data.error.code;
+    if (status === 401 && code === 'auth_required') return { status: 401, code: 'auth_required', message: 'Erişim anahtarı gerekli ya da yanlış' };
+    if (status === 401 && !code) return { status: 401, code: 'proxy_auth', message: 'Sunucu önünde giriş koruması var (vekil)' };
+    if (status === 429 && code === 'rate_limited') return { status: 429, code: 'rate_limited', message: 'Çok fazla hatalı deneme; birkaç dakika sonra yeniden deneyin' };
+    return null;
+  }
+  /* key: undefined = kayitli anahtar; base/key verilirse (bağlantı testi) onAuthError CAGRILMAZ */
+  function request(method, path, body, cb, base, timeout, key) {
+    var x = new XMLHttpRequest(), B = base || BASE, K = key === undefined ? KEY : cleanKey(key), probing = !!base || key !== undefined;
     var done = false;
     function fin(err, data) { if (done) return; done = true; cb(err, data); }
     /* iptal tutamaci: abort() sonrasi geri cagri HIC calismaz (arama: eski istek yok sayilir) */
@@ -85,6 +102,7 @@
       x.timeout = timeout || 12000;
       var form = !!(body && g.FormData && body instanceof g.FormData);   /* multipart: tarayici sinir (boundary) basligini kendisi koyar */
       if (body && !form) x.setRequestHeader('Content-Type', 'application/json');
+      if (K) x.setRequestHeader(KEY_HDR, K);
       x.onreadystatechange = function () {
         if (x.readyState !== 4) return;
         var data = null;
@@ -92,7 +110,9 @@
         if (x.status >= 200 && x.status < 300 && data) return fin(null, data);
         var msg = x.status ? ('Sunucu hatası (' + x.status + ')') : ('Sunucuya ulaşılamıyor: ' + B);
         if (data && data.error && data.error.message) msg = data.error.message;
-        fin({ status: x.status, message: msg }, null);
+        var ae = authErr(x.status, data);
+        if (ae && !probing && ae.code === 'auth_required' && DZP.api.onAuthError) { try { DZP.api.onAuthError(ae); } catch (e) {} }
+        fin(ae || { status: x.status, message: msg }, null);
       };
       x.ontimeout = function () { fin({ status: 0, message: 'Sunucu zaman aşımı' }, null); };
       x.send(form ? body : (body ? JSON.stringify(body) : null));
@@ -106,15 +126,31 @@
     normalizeServer: normalizeServer,
     serverCandidates: serverCandidates,
     suggestBase: suggestBase,
-    /* adresi kaydet ve etkinlestir (bos = kaydi sil, otomatik adrese don) */
-    setBase: function (v) { var s = cleanBase(normalizeServer(v)); lsSet(K_SERVER, s); BASE = s || autoBase(); return BASE; },
-    /* KAYDETMEDEN aday adresi dene: /api/health {status:'ok'} degilse hata */
-    probe: function (base, cb) {
+    /* adresi (+ istege bagli erisim anahtarini) kaydet ve etkinlestir (bos = kaydi sil, otomatik adrese don); key undefined = anahtara dokunma */
+    setBase: function (v, key) {
+      var s = cleanBase(normalizeServer(v)); lsSet(K_SERVER, s); BASE = s || autoBase();
+      if (key !== undefined) { KEY = cleanKey(key); lsSet(K_KEY, KEY); }
+      return BASE;
+    },
+    key: function () { return KEY; },
+    keyHeader: KEY_HDR,
+    isServerUrl: isServerUrl,
+    /* bu url'ye giden istege eklenecek anahtar ('' = ekleme): hls.js xhrSetup, altyazi fetch, uzak log */
+    keyFor: keyFor,
+    /* app.js atar: calisirken 401 auth_required (anahtar yenilendi/silindi) -> sunucu adresi ekranina */
+    onAuthError: null,
+    /* KAYDETMEDEN aday adres + anahtari dene: /api/health {status:'ok'} degilse hata; sonra /api/profiles (anahtar gerekiyorsa
+       401 -> {code:'auth_required'} ya da vekil girisi {code:'proxy_auth'}). key verilmezse ('' dahil) anahtarsiz. */
+    probe: function (base, key, cb) {
+      if (typeof key === 'function') { cb = key; key = ''; }
       request('GET', '/api/health', null, function (err, data) {
         if (err) return cb(err);
         if (!data || data.status !== 'ok') return cb({ status: 0, message: 'Bu adres bir diziflix sunucusu değil' });
-        cb(null, data);
-      }, base, 6000);
+        request('GET', '/api/profiles', null, function (err2) {
+          if (err2 && err2.code) return cb(err2);
+          cb(null, data);
+        }, base, 6000, key || '');
+      }, base, 6000, key || '');
     },
     img: function (p) {
       if (!p) return '';
