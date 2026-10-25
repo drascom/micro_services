@@ -31,7 +31,8 @@
   var PROGRESS_MS = 20000;
   var SEEK_STEP = 10;
   var SEEK_COMMIT_MS = 350;
-  var NEXT_WINDOW = 45;
+  var NEXT_WINDOW = 60;       /* kart penceresi: surenin son %10'u, en az 60 sn, en cok 300 sn (jenerik basinda) -> checkNext */
+  var NEXT_WINDOW_MAX = 300;
   var NEXT_MIN_DURATION = 600;
   var NEXT_COUNT = 5;
   var START_TIMEOUT_MS = 20000, START_PROXIED_MP4_MS = 30000, START_EXTEND_MS = 10000;
@@ -222,7 +223,12 @@
           AV.setListener({
             onbufferingstart: function () { bufT = nowMs(); D('AVPlay onbufferingstart'); call('buffering', true); },
             onbufferingcomplete: function () { D('AVPlay onbufferingcomplete · ' + (bufT ? nowMs() - bufT : 0) + ' ms'); call('buffering', false); },
-            oncurrentplaytime: function (ms) { eng.cur = (ms || 0) / 1000; markStarted(); call('time'); },
+            oncurrentplaytime: function (ms) {
+              eng.cur = (ms || 0) / 1000;
+              /* bazi HLS akislarinda prepare sonrasi sure 0/eksik (o anki liste uzunlugu) gelir (Tizen): gecersiz ya da sona yakinken yeniden sor */
+              if (!(eng.dur > eng.cur + 120)) { try { var dd = (AV.getDuration() || 0) / 1000; if (dd > eng.dur) eng.dur = dd; } catch (eD) {} }
+              markStarted(); call('time');
+            },
             onstreamcompleted: function () { D('AVPlay onstreamcompleted'); call('completed'); },
             onerror: function (err) {
               D('AVPlay onerror: ' + errName(err), 'bad');
@@ -263,7 +269,7 @@
       eng.play = function () { try { AV.play(); eng.playing = true; } catch (e) {} };
       eng.pause = function () { try { AV.pause(); eng.playing = false; } catch (e) {} };
       eng.seek = function (sec) {
-        var t = Math.max(0, Math.min(eng.dur > 0 ? eng.dur - 2 : sec, sec));
+        var t = Math.max(0, Math.min(eng.dur > 0 && eng.dur >= eng.cur ? eng.dur - 2 : sec, sec));   /* gecersiz sure (< konum) sinir sayilmaz */
         try { AV.seekTo(Math.round(t * 1000)); eng.cur = t; } catch (e) {}
       };
       eng.destroy = function () {
@@ -316,7 +322,11 @@
     /* fatal AG hatasi (manifest/level disi) -> startLoad, fatal MEDYA -> recoverMediaError; her biri BIR kez, sonra hata */
     function attachHls(url, resume) {
       var H = g.Hls, ET = H.ErrorTypes || { NETWORK_ERROR: 'networkError', MEDIA_ERROR: 'mediaError' };
-      var h = new H({ startPosition: resume > 0 ? resume : -1 });
+      /* sunucumuza giden istekler (vekil disi) erisim anahtari basligini tasir; ucuncu taraf CDN'e asla (api.keyFor) */
+      var h = new H({ startPosition: resume > 0 ? resume : -1, xhrSetup: function (xhr, u) {
+        var k = DZP.api && DZP.api.keyFor ? DZP.api.keyFor(u) : '';
+        if (k) { try { xhr.setRequestHeader(DZP.api.keyHeader, k); } catch (e) {} }
+      } });
       hlsTried = { net: false, media: false };
       hls = h; eng.hlsjs = true; eng.hlsStage = 'new';
       D('hls.js ortam: ' + hlsEnvInfo());
@@ -397,7 +407,7 @@
     eng.play = function () { var p = v.play(); if (p && p.catch) p.catch(function () {}); eng.playing = true; };
     eng.pause = function () { v.pause(); eng.playing = false; };
     eng.seek = function (sec) {
-      var t = Math.max(0, Math.min(eng.dur > 0 ? eng.dur - 1 : sec, sec));
+      var t = Math.max(0, Math.min(eng.dur > 0 && eng.dur >= eng.cur ? eng.dur - 1 : sec, sec));
       try { v.currentTime = t; eng.cur = t; } catch (e) {}
     };
     eng.destroy = function () {
@@ -432,12 +442,34 @@
   var IC_PAUSE = svg('M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z', true);
   var IC_RW = svg('M4 12a8 8 0 1 0 2.3-5.6M4 4.5v4h4');
   var IC_FF = svg('M20 12a8 8 0 1 1-2.3-5.6M20 4.5v4h-4');
+  var IC_NEXT = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 5.5v13l9.5-6.5zM16.5 5.5h2.5v13h-2.5z"/></svg>';
 
   /* ================= durum ================= */
   var P = null;
   function api() { return DZP.api; }
   function alive(cur) { return P === cur && cur.alive; }
   function isEp() { return !!(P && (P.type === 'series' || (P.episodeId && P.episodeId !== P.itemId))); }
+  /* gecerli sure: sonlu, > 0 ve konumdan kucuk degil. Motor suresi (HLS'de 0/NaN/Infinity ya da eksik gelebilir) -> sunucu
+     `duration` -> detaydaki bolum/film `runtime` (dk). Hicbiri yoksa 0 (bilinmiyor). */
+  function okDur(d, c) { return typeof d === 'number' && isFinite(d) && d > 0 && d >= c - 1 ? d : 0; }
+  function runtimeSec() {
+    var d = P && P.detail;
+    if (!d) return 0;
+    if (isEp()) {
+      var ss = d.seasons || [];
+      for (var i = 0; i < ss.length; i++) for (var j = 0, es = ss[i].episodes || []; j < es.length; j++)
+        if (es[j].id === P.episodeId) return es[j].runtime > 0 ? es[j].runtime * 60 : 0;
+      return 0;
+    }
+    return d.runtime > 0 ? d.runtime * 60 : 0;
+  }
+  function effDur() {
+    if (!P || P.live) return 0;
+    var e = P.eng, c = e ? (e.cur || 0) : 0;
+    return okDur(e && e.dur, c) || okDur(P.duration, c) || okDur(runtimeSec(), c);
+  }
+  /* kalan sure: kalan sure yazisi + sonraki bolum karti AYNI kaynaktan (effDur - konum); sure bilinmiyorsa -1 */
+  function remainSec() { var d = effDur(); return d > 0 && P.eng ? Math.max(0, d - (P.eng.cur || 0)) : -1; }
   function T(name) { if (P && P[name]) { g.clearTimeout(P[name]); g.clearInterval(P[name]); P[name] = null; } }
 
   function build() {
@@ -464,7 +496,7 @@
     u.bar.onclick = function (ev) {
       if (ev && ev.stopPropagation) ev.stopPropagation();
       if (!P || !P.eng || P.live || P.ended) return;
-      var dur = P.eng.dur || P.duration || 0;
+      var dur = effDur();
       if (!dur) return;
       var r = null, x;
       try { r = u.bar.getBoundingClientRect(); } catch (e) { r = null; }
@@ -527,7 +559,7 @@
   }
   function header() {
     var u = P.ui;
-    u.pn.className = 'pl-panel pl-glass' + (P.live ? ' live' : '');
+    u.pn.className = 'pl-panel pl-glass' + (P.live ? ' live' : (P.iframe ? ' emb' : ''));   /* emb: gomulu oynatici, yalniz dugmeler */
     if (P.live) {
       u.title.textContent = chLabel(curChannel());
       u.ep.textContent = '';
@@ -547,7 +579,7 @@
 
   function paint() {
     if (!P || !P.eng) return;
-    var e = P.eng, pos = P.seeking ? P.seekTarget : e.cur, dur = e.dur || P.duration || 0;
+    var e = P.eng, pos = P.seeking ? P.seekTarget : e.cur, dur = effDur();
     var r = dur > 0 ? Math.max(0, Math.min(1, pos / dur)) : 0;
     setT(P.ui.fill, 'scaleX(' + r.toFixed(4) + ')');
     setT(P.ui.knob, 'translateX(' + Math.round(r * BAR_W) + 'px) scale(' + (P.row === 0 && P.uiOn ? 1 : 0.6) + ')');
@@ -563,7 +595,7 @@
     paintFocus();
     T('hideTimer');
     P.hideTimer = g.setTimeout(function () {
-      if (P && P.eng && P.eng.playing && !P.ended && !P.panel && !P.seeking) hideUI();
+      if (P && !P.ended && !P.panel && !P.seeking && (P.iframe || (P.eng && P.eng.playing))) hideUI();
     }, HIDE_MS);
   }
   function hideUI() {
@@ -571,7 +603,7 @@
     T('hideTimer');
     P.ui.ui.className = 'pl-ui hide';
     P.uiOn = false;
-    P.row = P.live ? 1 : 0;
+    P.row = P.live || P.iframe ? 1 : 0;
     if (P.subs) P.subs.setRaised(false);
     paintFocus();
   }
@@ -589,7 +621,7 @@
       if (chList().length > 1) dl.push({ id: 'channels', label: 'Kanallar' });
       return dl;
     }
-    var d = [{ id: 'play' }, { id: 'rw' }, { id: 'ff' }];
+    var d = P.iframe ? [] : [{ id: 'play' }, { id: 'rw' }, { id: 'ff' }];   /* gomulu oynatici: oynat/sar capraz kokende calismaz */
     if (tracksOn() && P.model.subs.length > 1) d.push({ id: 'subs', label: 'Altyazı', value: DZ.tracks.subLabel(P.model, P.sel) });
     if (tracksOn() && P.model.audio.length > 1) {
       var a = DZ.tracks.byId(P.model.audio, P.sel.audio);
@@ -597,6 +629,7 @@
     }
     if (P.streams.length > 1) d.push({ id: 'source', label: 'Kaynak' });
     if (episodesList().length) d.push({ id: 'episodes', label: 'Bölümler' });
+    if (P.next) d.push({ id: 'next', label: 'Sonraki bölüm', icon: IC_NEXT });   /* dizi bolumu + sonraki bolum varsa */
     return d;
   }
   function renderButtons() {
@@ -616,6 +649,7 @@
         b.appendChild(ic);
         if (d.id !== 'play') b.appendChild(el('span', 'pl-ten', '10'));
       } else {
+        if (d.icon) { var ni = el('span', 'pl-ni'); ni.innerHTML = d.icon; b.appendChild(ni); }
         b.appendChild(el('span', '', d.label));
         if (d.value) b.appendChild(el('span', 'pl-bv ell', d.value));
       }
@@ -646,6 +680,7 @@
     if (id === 'play') togglePlay();
     else if (id === 'rw') nudge(-1);
     else if (id === 'ff') nudge(1);
+    else if (id === 'next') goNext();
     else openPanel(id);
   }
 
@@ -653,7 +688,7 @@
   function nudge(dir) {
     if (P && P.live) { showUI(); return; }   /* canli: arama yok */
     if (!P || P.ended || !P.eng) return;
-    var e = P.eng, dur = e.dur || P.duration || 0;
+    var e = P.eng, dur = effDur();
     if (!P.seeking) { P.seeking = true; P.seekTarget = e.cur; P.holdCount = 0; }
     P.holdCount++;
     var step = SEEK_STEP * Math.min(6, 1 + Math.floor(P.holdCount / 5));   /* basili tutunca hizlanir */
@@ -697,7 +732,7 @@
     if (!cur || cur.live || !cur.ready || !cur.eng || cur.iframe || cur.kind === 'trailer') return;   /* kanal: progress YOK */
     var s = cur.streams[cur.idx];
     if (s && s.kind === 'trailer') return;
-    var pos = Math.round(cur.eng.cur || 0), dur = Math.round(cur.eng.dur || cur.duration || 0);
+    var pos = Math.round(cur.eng.cur || 0), dur = Math.round(effDur());
     if (!dur) return;
     if (!force && Math.abs(pos - cur.lastSent) < 5) return;
     cur.lastSent = pos;
@@ -706,8 +741,10 @@
 
   /* ---------- sonraki bolum ---------- */
   function refreshNext() {
+    var had = !!P.next;
     P.next = isEp() && P.kind !== 'trailer' ? nextEpisodeOf(P.detail, P.episodeId, todayIso()) : null;
     header();
+    if (had !== !!P.next && P.btnEls) renderButtons();
   }
   function removeNext() {
     if (!P) return;
@@ -740,17 +777,17 @@
   function dismissNext() { if (!P) return; P.nextDismissed = true; removeNext(); }
   function checkNext() {
     if (!P || !P.next || P.iframe || P.ended || P.nextDismissed || !P.eng) return;
-    var dur = P.eng.dur || P.duration || 0;
-    if (!(dur >= NEXT_MIN_DURATION)) return;
-    var remain = dur - (P.eng.cur || 0);
-    if (remain > 0 && remain <= NEXT_WINDOW) showNext();
-    else if (remain > NEXT_WINDOW + 5 && P.nextOn) removeNext();
+    var dur = effDur();
+    if (!(dur >= NEXT_MIN_DURATION)) { if (P.nextOn) removeNext(); return; }
+    var remain = remainSec(), win = Math.max(NEXT_WINDOW, Math.min(NEXT_WINDOW_MAX, dur * 0.1));
+    if (remain > 0 && remain <= win) showNext();
+    else if (remain > win + 5 && P.nextOn) removeNext();
   }
   function onCompleted() {
     var cur = P;
     if (cur.live) { failed('Yayın kesildi', 'playback_failed', 'live-ended'); return; }
     cur.ended = true;
-    cur.eng.cur = cur.eng.dur || cur.duration || cur.eng.cur;
+    cur.eng.cur = effDur() || cur.eng.cur;
     sendProgress(true);
     if (!cur.next) refreshNext();
     if (!cur.next || cur.nextDismissed) { exit('ended'); return; }
@@ -1219,9 +1256,9 @@
       fr.src = /[?&]autoplay=/.test(u) ? u : u + (u.indexOf('?') >= 0 ? '&' : '?') + 'autoplay=true';
       cur.ui.media.appendChild(fr);
       cur.iframeEl = fr;
-      cur.shown = true;
-      unveil(); poster(false); hideUI();
-      cur.ui.hint.textContent = cur.live ? 'Geri: çık · ↑ ↓ kanal · OK: kanal listesi' : 'Geri: oynatıcıdan çık';
+      cur.shown = true; cur.row = 1;
+      unveil(); poster(false); hideUI(); header();
+      cur.ui.hint.textContent = cur.live ? 'Geri: çık · ↑ ↓ kanal · OK: kanal listesi' : iframeHint();
       cur.ui.hint.className = 'pl-ihint on';
       cur.hintTimer = g.setTimeout(function () { if (alive(cur)) cur.ui.hint.className = 'pl-ihint'; }, 3000);
       /* iframe odagi alirsa uzaktan kumanda tuslari (Geri, CH, ↑↓) capraz kokenli belgeye gider: odagi sayfaya geri al */
@@ -1240,6 +1277,7 @@
     cur.startTimer = g.setTimeout(function () { if (valid()) failed('Video başlamadı', 'timeout', 'start-timeout'); }, cur.startLimit);
     cur.eng.load(s.url, resume || 0, s.type, pk.mode);
   }
+  function iframeHint() { return buttonDefs().length ? 'Geri: oynatıcıdan çık · OK: kontroller' : 'Geri: oynatıcıdan çık'; }
   function loadStreams() {
     var cur = P, gen = ++cur.loadGen;
     stopEngine();
@@ -1460,10 +1498,23 @@
     if (k === 'red') { if (cur.ready || cur.iframe) failed('Kaynak çalışmıyor olarak bildirildi', 'playback_failed', 'user-report'); return true; }
     if (cur.live && liveKey(k)) return true;
     if (k === 'chup' || k === 'chdown' || /^d\d$/.test(k)) return true;   /* kanal disi: yok sayilir */
+    if (k === 'next') { if (cur.next && !cur.live) goNext(); return true; }   /* kumanda Next (MediaTrackNext) */
     if (cur.panel) return panelKey(k);
     if (cur.err) return errKey(k);
+    if (cur.iframe && !cur.live && cur.uiOn && cur.btnEls && cur.btnEls.length) {
+      /* gomulu oynatici + kontrol katmani acik: tek satir dugme (Kaynak / Bolumler / Sonraki bolum) */
+      if (k === 'back') { hideUI(); return true; }
+      if (k === 'stop') { exit('back'); return true; }
+      showUI();
+      cur.row = 1;
+      if (k === 'left' && cur.btn > 0) { cur.btn--; paintFocus(); }
+      else if (k === 'right' && cur.btn < cur.btnEls.length - 1) { cur.btn++; paintFocus(); }
+      else if (k === 'ok' && cur.btnDefs[cur.btn]) activate(cur.btnDefs[cur.btn].id);
+      return true;
+    }
     if (cur.iframe) {
       if (k === 'back' || k === 'stop') exit('back');
+      else if (!cur.live && /^(ok|up|down|left|right)$/.test(k) && cur.btnEls && cur.btnEls.length) { cur.row = 1; showUI(); }
       else if (cur.live && k === 'ok' && chList().length > 1) openPanel('channels');
       else { cur.ui.hint.className = 'pl-ihint on'; T('hintTimer'); cur.hintTimer = g.setTimeout(function () { if (alive(cur)) cur.ui.hint.className = 'pl-ihint'; }, 3000); }
       return true;

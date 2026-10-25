@@ -653,5 +653,38 @@ const okRoutes = [['POST', /\/api\/progress/, () => ({ ok: true })], ['POST', /\
     assert(!st.panel, 'background click closes the panel');
     e.P.close();
   }
+  // (22) next episode: engine duration invalid (Infinity / < position) -> runtime fallback; card in the last 10 % (60..300 s); Next button + Next key
+  {
+    const detail = { id: 's1', type: 'series', seasons: [{ season: 1, episodes: [
+      { id: 's1:s1:e1', episode: 1, title: '', runtime: 45, availability: { state: 'ready' } },
+      { id: 's1:s1:e2', episode: 2, title: 'İki', runtime: 45, availability: { state: 'ready' } }] }] };
+    const e = env([streamsRoute({ streams: [S(1)] }), ...okRoutes]);
+    await e.open({ itemId: 's1', type: 'series', episodeId: 's1:s1:e1', title: 'Dizi', detail });
+    const st = e.st(), v = e.video();
+    v.duration = Infinity; v.listeners.loadedmetadata(); v.listeners.playing();
+    for (let t = 1; t <= 3; t++) { v.currentTime = t; v.listeners.timeupdate(); }
+    assert(st.next && st.next.id === 's1:s1:e2', 'next episode resolved');
+    const ni = st.btnDefs.findIndex(d => d.id === 'next');
+    assert(ni > 0, 'Next button in the control row');
+    assert(!st.nextOn, 'no card early');
+    v.currentTime = 2700 - 280; v.listeners.timeupdate();
+    assert(!st.nextOn, 'no card before the last 10 % (270 s of 45 min)');
+    v.currentTime = 2700 - 260; v.listeners.timeupdate();
+    assert(st.nextOn, 'card at credits start (4:20 left)');
+    v.currentTime = 2700 - 30; v.listeners.timeupdate();
+    assert(st.nextOn, 'card in the window (runtime fallback, engine duration Infinity)');
+    assert(/-0:30/.test(st.ui.tRem.textContent), 'remaining time from the same source: ' + st.ui.tRem.textContent);
+    e.P.key('next'); await tick();
+    assert.equal(st.episodeId, 's1:s1:e2', 'Next key switches episode');
+    assert(!st.btnDefs.some(d => d.id === 'next'), 'last episode: no Next button');
+    e.P.close();
+  }
+  // (23) movie: no Next button
+  {
+    const e = env([streamsRoute({ streams: [S(1)], duration: 2700 }), ...okRoutes]);
+    await e.open();
+    assert(!e.st().btnDefs.some(d => d.id === 'next'), 'movie: no Next button');
+    e.P.close();
+  }
   console.log('client player: ok');
 })().catch(err => { console.error(err); process.exit(1); });

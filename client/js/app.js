@@ -2715,17 +2715,17 @@
   var KEYMAP = { 37: 'left', 38: 'up', 39: 'right', 40: 'down', 13: 'ok', 32: 'ok', 27: 'back', 8: 'back', 10009: 'back', 461: 'back',
     /* Tizen medya/renk tuslari (eski istemcinin keys.js'i ile ayni kodlar); masaustu: F1 = Kirmizi, F2 / G = Yesil (oynaticida hata ayiklama
        paneli), Y = Sari, F4 = Mavi */
-    10252: 'playpause', 415: 'play', 19: 'pause', 413: 'stop', 417: 'ff', 412: 'rew', 403: 'red', 112: 'red', 405: 'yellow', 89: 'yellow',
+    10252: 'playpause', 415: 'play', 19: 'pause', 413: 'stop', 417: 'ff', 412: 'rew', 10233: 'next', 403: 'red', 112: 'red', 405: 'yellow', 89: 'yellow',
     404: 'green', 71: 'green', 113: 'green', 406: 'blue', 115: 'blue',
     /* Canli TV: Tizen ChannelUp/Down (427/428), masaustu PageUp/PageDown; rakamlar (ust sira + sayi tus takimi) = kanal numarasi */
     427: 'chup', 428: 'chdown', 33: 'chup', 34: 'chdown' };
   var COLOR_CODES = { 403: 'red', 112: 'red', 404: 'green', 113: 'green', 406: 'blue', 115: 'blue' };   /* kisayol: harf karsiliklari yok */
   for (var dk = 0; dk < 10; dk++) { KEYMAP[48 + dk] = 'd' + dk; KEYMAP[96 + dk] = 'd' + dk; }
-  var MEDIA_KEYS = ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaFastForward', 'MediaRewind', 'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue',
+  var MEDIA_KEYS = ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaFastForward', 'MediaRewind', 'MediaTrackNext', 'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue',
     'ChannelUp', 'ChannelDown', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
   var KEYNAME = { ArrowLeft: 'left', ArrowUp: 'up', ArrowRight: 'right', ArrowDown: 'down', Enter: 'ok', ' ': 'ok',
     Escape: 'back', Backspace: 'back', GoBack: 'back', BrowserBack: 'back', XF86Back: 'back',
-    MediaPlayPause: 'playpause', MediaPlay: 'play', MediaPause: 'pause', MediaStop: 'stop', MediaFastForward: 'ff', MediaRewind: 'rew',
+    MediaPlayPause: 'playpause', MediaPlay: 'play', MediaPause: 'pause', MediaStop: 'stop', MediaFastForward: 'ff', MediaRewind: 'rew', MediaTrackNext: 'next',
     ChannelUp: 'chup', ChannelDown: 'chdown', PageUp: 'chup', PageDown: 'chdown' };
   doc.addEventListener('keydown', function (ev) {
     var k = KEYNAME[ev.key] || KEYMAP[ev.keyCode];

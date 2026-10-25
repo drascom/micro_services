@@ -457,6 +457,7 @@ html.av-active .pl { background: transparent; }
   background: linear-gradient(170deg, rgba(255,255,255,.30), rgba(255,255,255,.12) 60%);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.36), inset 0 0 0 1px rgba(255,255,255,.10); }
 .pl-btn span { position: relative; }
+.pl-btn .pl-ni { display: block; height: 22px; margin-right: 10px; opacity: .9; }
 .pl-btn .pl-ic { display: block; height: 30px; }
 .pl-ten { position: absolute !important; left: 0; right: 0; bottom: 6px; text-align: center; font-size: 13px; font-weight: 700; opacity: .8; }
 .pl-bv { margin-left: 12px; max-width: 280px; opacity: .62; font-size: 22px; }
@@ -536,6 +537,10 @@ html.av-active .pl { background: transparent; }
 .pl-panel.live .pl-bar, .pl-panel.live .pl-times { display: none; }
 .pl-panel.live .pl-btns { top: 24px; }
 .pl-panel.live .pl-state { left: 1000px; top: 40px; width: 640px; text-align: right; }
+/* gomulu oynatici (iframe): sure bilinmez, yalniz dugme satiri (Kaynak / Bolumler / Sonraki bolum) */
+.pl-panel.emb { top: 920px; height: 112px; }
+.pl-panel.emb .pl-bar, .pl-panel.emb .pl-times, .pl-panel.emb .pl-state { display: none; }
+.pl-panel.emb .pl-btns { top: 24px; }
 .pl-live { display: inline-block; height: 36px; padding: 0 14px; border-radius: 18px; line-height: 36px; font-size: 20px; font-weight: 700;
   letter-spacing: 1.4px; background: rgba(214,48,48,.86); text-shadow: none; }
 .pl-band { position: absolute; left: 1316px; top: 64px; width: 484px; height: 112px; padding: 0 28px; border-radius: 30px; display: -webkit-flex; display: flex;
